@@ -1,0 +1,20 @@
+# Build artifacts
+obj/
+lib/
+bin/
+*.o
+*.ali
+
+# Alire
+alire/
+config/
+
+# Generated code (committed separately under crates/examples/generated/.gitkeep)
+crates/examples/generated/*.ad?
+!crates/examples/generated/.gitkeep
+
+# Editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
