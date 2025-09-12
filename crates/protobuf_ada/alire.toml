@@ -1,0 +1,11 @@
+name = "protobuf_ada"
+description = "Protocol Buffers wire format and descriptors, in pure Ada"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["protobuf", "serialization", "rpc"]
+
+project-files = ["protobuf_ada.gpr"]
