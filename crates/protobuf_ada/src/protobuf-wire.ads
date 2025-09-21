@@ -34,27 +34,51 @@ is
    --  Field numbers are 1 .. 2**29 - 1 with 19000 .. 19999 reserved by the
    --  protobuf runtime.
    subtype Field_Number is Interfaces.Unsigned_32 range 1 .. 16#1FFF_FFFF#;
-   --  i.e. 2**29 - 1; expressed as a hex literal so the bound is universal.
 
-   --  A tag is the 32-bit varint that prefixes every field on the wire,
-   --  combining field number and wire type.
+   --  Worst-case varint widths (in bytes).
+   Max_Varint_32 : constant := 5;
+   Max_Varint_64 : constant := 10;
+
+   --  Tag --------------------------------------------------------------
    --
-   --  tag = (Field_Number << 3) | Wire_Type
+   --  tag = (Field_Number << 3) | Wire_Type, encoded as a 32-bit varint.
+
    procedure Encode_Tag
-     (C       : in out Protobuf.IO.Write_Cursor;
-      Buffer  : in out Protobuf.IO.Octet_Array;
-      Number  : Field_Number;
-      Wire    : Wire_Type)
-     with Pre => Protobuf.IO.Free (C, Buffer) >= 5;
-   --  Worst case: a 32-bit tag varint takes 5 bytes.
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Wire   : Wire_Type)
+     with Pre => Protobuf.IO.Free (C, Buffer) >= Max_Varint_32;
 
    procedure Decode_Tag
-     (C       : in out Protobuf.IO.Read_Cursor;
-      Buffer  : Protobuf.IO.Octet_Array;
-      Number  : out Field_Number;
-      Wire    : out Wire_Type);
-   --  Raises Wire_Format_Error on malformed input or reserved field number
-   --  in the 19000..19999 internal range.
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Number : out Field_Number;
+      Wire   : out Wire_Type);
+
+   --  Varint -----------------------------------------------------------
+
+   procedure Encode_Varint_32
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Interfaces.Unsigned_32)
+     with Pre => Protobuf.IO.Free (C, Buffer) >= Max_Varint_32;
+
+   procedure Decode_Varint_32
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Unsigned_32);
+
+   procedure Encode_Varint_64
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Interfaces.Unsigned_64)
+     with Pre => Protobuf.IO.Free (C, Buffer) >= Max_Varint_64;
+
+   procedure Decode_Varint_64
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Unsigned_64);
 
    --  Errors -----------------------------------------------------------
 

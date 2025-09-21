@@ -2,22 +2,10 @@ with Interfaces; use Interfaces;
 
 package body Protobuf.Wire is
 
-   --  Internal varint helpers used by tag encoding. The full public varint
-   --  API lands in a follow-up commit; for now we just need 32-bit values.
-
-   procedure Put_Varint_32
-     (C      : in out Protobuf.IO.Write_Cursor;
-      Buffer : in out Protobuf.IO.Octet_Array;
-      Value  : Unsigned_32);
-
-   function Get_Varint_32
-     (C      : in out Protobuf.IO.Read_Cursor;
-      Buffer : Protobuf.IO.Octet_Array) return Unsigned_32;
-
    ----------------------
-   -- Put_Varint_32 --
+   -- Encode_Varint_32 --
 
-   procedure Put_Varint_32
+   procedure Encode_Varint_32
      (C      : in out Protobuf.IO.Write_Cursor;
       Buffer : in out Protobuf.IO.Octet_Array;
       Value  : Unsigned_32)
@@ -31,32 +19,82 @@ package body Protobuf.Wire is
          V := Shift_Right (V, 7);
       end loop;
       Protobuf.IO.Write_Octet (C, Buffer, Protobuf.IO.Octet (V));
-   end Put_Varint_32;
+   end Encode_Varint_32;
 
    ----------------------
-   -- Get_Varint_32 --
+   -- Decode_Varint_32 --
 
-   function Get_Varint_32
+   procedure Decode_Varint_32
      (C      : in out Protobuf.IO.Read_Cursor;
-      Buffer : Protobuf.IO.Octet_Array) return Unsigned_32
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Unsigned_32)
    is
       Octet : Protobuf.IO.Octet;
       Shift : Natural := 0;
       Acc   : Unsigned_32 := 0;
    begin
-      for Byte_Index in 1 .. 5 loop
+      for Byte_Index in 1 .. Max_Varint_32 loop
+         pragma Unreferenced (Byte_Index);
          if Protobuf.IO.Available (C, Buffer) = 0 then
             raise Wire_Format_Error with "truncated varint";
          end if;
          Protobuf.IO.Read_Octet (C, Buffer, Octet);
          Acc := Acc or Shift_Left (Unsigned_32 (Octet) and 16#7F#, Shift);
          if (Unsigned_32 (Octet) and 16#80#) = 0 then
-            return Acc;
+            Value := Acc;
+            return;
          end if;
          Shift := Shift + 7;
       end loop;
       raise Wire_Format_Error with "32-bit varint exceeded 5 bytes";
-   end Get_Varint_32;
+   end Decode_Varint_32;
+
+   ----------------------
+   -- Encode_Varint_64 --
+
+   procedure Encode_Varint_64
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Unsigned_64)
+   is
+      V : Unsigned_64 := Value;
+   begin
+      while V >= 16#80# loop
+         Protobuf.IO.Write_Octet
+           (C, Buffer,
+            Protobuf.IO.Octet ((V and 16#7F#) or 16#80#));
+         V := Shift_Right (V, 7);
+      end loop;
+      Protobuf.IO.Write_Octet (C, Buffer, Protobuf.IO.Octet (V));
+   end Encode_Varint_64;
+
+   ----------------------
+   -- Decode_Varint_64 --
+
+   procedure Decode_Varint_64
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Unsigned_64)
+   is
+      Octet : Protobuf.IO.Octet;
+      Shift : Natural := 0;
+      Acc   : Unsigned_64 := 0;
+   begin
+      for Byte_Index in 1 .. Max_Varint_64 loop
+         pragma Unreferenced (Byte_Index);
+         if Protobuf.IO.Available (C, Buffer) = 0 then
+            raise Wire_Format_Error with "truncated varint";
+         end if;
+         Protobuf.IO.Read_Octet (C, Buffer, Octet);
+         Acc := Acc or Shift_Left (Unsigned_64 (Octet) and 16#7F#, Shift);
+         if (Unsigned_64 (Octet) and 16#80#) = 0 then
+            Value := Acc;
+            return;
+         end if;
+         Shift := Shift + 7;
+      end loop;
+      raise Wire_Format_Error with "64-bit varint exceeded 10 bytes";
+   end Decode_Varint_64;
 
    ---------------
    -- Encode_Tag --
@@ -71,7 +109,7 @@ package body Protobuf.Wire is
         Shift_Left (Unsigned_32 (Number), 3)
         or Unsigned_32 (Wire_Type'Enum_Rep (Wire));
    begin
-      Put_Varint_32 (C, Buffer, Tag);
+      Encode_Varint_32 (C, Buffer, Tag);
    end Encode_Tag;
 
    ----------------
@@ -83,10 +121,13 @@ package body Protobuf.Wire is
       Number : out Field_Number;
       Wire   : out Wire_Type)
    is
-      Tag       : constant Unsigned_32 := Get_Varint_32 (C, Buffer);
-      Wire_Bits : constant Unsigned_32 := Tag and 16#07#;
-      Num_Bits  : constant Unsigned_32 := Shift_Right (Tag, 3);
+      Tag       : Unsigned_32;
+      Wire_Bits : Unsigned_32;
+      Num_Bits  : Unsigned_32;
    begin
+      Decode_Varint_32 (C, Buffer, Tag);
+      Wire_Bits := Tag and 16#07#;
+      Num_Bits  := Shift_Right (Tag, 3);
       if Num_Bits = 0 then
          raise Wire_Format_Error with "zero field number";
       end if;
