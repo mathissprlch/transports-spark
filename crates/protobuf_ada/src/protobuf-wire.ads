@@ -80,6 +80,23 @@ is
       Buffer : Protobuf.IO.Octet_Array;
       Value  : out Interfaces.Unsigned_64);
 
+   --  ZigZag -----------------------------------------------------------
+   --
+   --  Maps signed values into unsigned so small magnitudes (positive or
+   --  negative) take few varint bytes. Used for sint32/sint64.
+
+   function ZigZag_Encode_32
+     (Value : Interfaces.Integer_32) return Interfaces.Unsigned_32;
+
+   function ZigZag_Decode_32
+     (Value : Interfaces.Unsigned_32) return Interfaces.Integer_32;
+
+   function ZigZag_Encode_64
+     (Value : Interfaces.Integer_64) return Interfaces.Unsigned_64;
+
+   function ZigZag_Decode_64
+     (Value : Interfaces.Unsigned_64) return Interfaces.Integer_64;
+
    --  Errors -----------------------------------------------------------
 
    Wire_Format_Error : exception;

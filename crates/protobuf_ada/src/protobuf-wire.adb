@@ -1,6 +1,19 @@
+with Ada.Unchecked_Conversion;
 with Interfaces; use Interfaces;
 
 package body Protobuf.Wire is
+
+   function To_Unsigned_32 is
+     new Ada.Unchecked_Conversion (Integer_32, Unsigned_32);
+
+   function To_Signed_32 is
+     new Ada.Unchecked_Conversion (Unsigned_32, Integer_32);
+
+   function To_Unsigned_64 is
+     new Ada.Unchecked_Conversion (Integer_64, Unsigned_64);
+
+   function To_Signed_64 is
+     new Ada.Unchecked_Conversion (Unsigned_64, Integer_64);
 
    ----------------------
    -- Encode_Varint_32 --
@@ -95,6 +108,42 @@ package body Protobuf.Wire is
       end loop;
       raise Wire_Format_Error with "64-bit varint exceeded 10 bytes";
    end Decode_Varint_64;
+
+   ----------------------
+   -- ZigZag_Encode_32 --
+
+   function ZigZag_Encode_32 (Value : Integer_32) return Unsigned_32 is
+      U : constant Unsigned_32 := To_Unsigned_32 (Value);
+   begin
+      return Shift_Left (U, 1) xor Shift_Right_Arithmetic (U, 31);
+   end ZigZag_Encode_32;
+
+   ----------------------
+   -- ZigZag_Decode_32 --
+
+   function ZigZag_Decode_32 (Value : Unsigned_32) return Integer_32 is
+      Mask : constant Unsigned_32 := -(Value and 1);  --  0 or all-ones
+   begin
+      return To_Signed_32 (Shift_Right (Value, 1) xor Mask);
+   end ZigZag_Decode_32;
+
+   ----------------------
+   -- ZigZag_Encode_64 --
+
+   function ZigZag_Encode_64 (Value : Integer_64) return Unsigned_64 is
+      U : constant Unsigned_64 := To_Unsigned_64 (Value);
+   begin
+      return Shift_Left (U, 1) xor Shift_Right_Arithmetic (U, 63);
+   end ZigZag_Encode_64;
+
+   ----------------------
+   -- ZigZag_Decode_64 --
+
+   function ZigZag_Decode_64 (Value : Unsigned_64) return Integer_64 is
+      Mask : constant Unsigned_64 := -(Value and 1);
+   begin
+      return To_Signed_64 (Shift_Right (Value, 1) xor Mask);
+   end ZigZag_Decode_64;
 
    ---------------
    -- Encode_Tag --
