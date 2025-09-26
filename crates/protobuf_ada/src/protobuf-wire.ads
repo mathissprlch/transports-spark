@@ -80,6 +80,43 @@ is
       Buffer : Protobuf.IO.Octet_Array;
       Value  : out Interfaces.Unsigned_64);
 
+   --  Fixed-width -----------------------------------------------------
+   --
+   --  Little-endian 32- and 64-bit values. Used directly for fixed32,
+   --  sfixed32, fixed64, sfixed64, float, double — for the signed and
+   --  float variants pair with the bit-cast helpers below.
+
+   procedure Encode_Fixed_32
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Interfaces.Unsigned_32)
+     with Pre => Protobuf.IO.Free (C, Buffer) >= 4;
+
+   procedure Decode_Fixed_32
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Unsigned_32)
+     with Pre => Protobuf.IO.Available (C, Buffer) >= 4;
+
+   procedure Encode_Fixed_64
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Interfaces.Unsigned_64)
+     with Pre => Protobuf.IO.Free (C, Buffer) >= 8;
+
+   procedure Decode_Fixed_64
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Unsigned_64)
+     with Pre => Protobuf.IO.Available (C, Buffer) >= 8;
+
+   --  Float bit-casts. IEEE 754. Use these to convert to/from the wire
+   --  Unsigned_32/64 representation that Encode/Decode_Fixed expects.
+   function To_Bits   (Value : Interfaces.IEEE_Float_32) return Interfaces.Unsigned_32;
+   function From_Bits (Value : Interfaces.Unsigned_32)   return Interfaces.IEEE_Float_32;
+   function To_Bits   (Value : Interfaces.IEEE_Float_64) return Interfaces.Unsigned_64;
+   function From_Bits (Value : Interfaces.Unsigned_64)   return Interfaces.IEEE_Float_64;
+
    --  ZigZag -----------------------------------------------------------
    --
    --  Maps signed values into unsigned so small magnitudes (positive or

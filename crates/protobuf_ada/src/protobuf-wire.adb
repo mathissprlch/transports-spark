@@ -110,6 +110,101 @@ package body Protobuf.Wire is
    end Decode_Varint_64;
 
    ----------------------
+   -- Encode_Fixed_32 --
+
+   procedure Encode_Fixed_32
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Unsigned_32)
+   is
+   begin
+      for I in 0 .. 3 loop
+         Protobuf.IO.Write_Octet
+           (C, Buffer,
+            Protobuf.IO.Octet (Shift_Right (Value, I * 8) and 16#FF#));
+      end loop;
+   end Encode_Fixed_32;
+
+   ----------------------
+   -- Decode_Fixed_32 --
+
+   procedure Decode_Fixed_32
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Unsigned_32)
+   is
+      Octet : Protobuf.IO.Octet;
+      Acc   : Unsigned_32 := 0;
+   begin
+      for I in 0 .. 3 loop
+         Protobuf.IO.Read_Octet (C, Buffer, Octet);
+         Acc := Acc or Shift_Left (Unsigned_32 (Octet), I * 8);
+      end loop;
+      Value := Acc;
+   end Decode_Fixed_32;
+
+   ----------------------
+   -- Encode_Fixed_64 --
+
+   procedure Encode_Fixed_64
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Value  : Unsigned_64)
+   is
+   begin
+      for I in 0 .. 7 loop
+         Protobuf.IO.Write_Octet
+           (C, Buffer,
+            Protobuf.IO.Octet (Shift_Right (Value, I * 8) and 16#FF#));
+      end loop;
+   end Encode_Fixed_64;
+
+   ----------------------
+   -- Decode_Fixed_64 --
+
+   procedure Decode_Fixed_64
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Unsigned_64)
+   is
+      Octet : Protobuf.IO.Octet;
+      Acc   : Unsigned_64 := 0;
+   begin
+      for I in 0 .. 7 loop
+         Protobuf.IO.Read_Octet (C, Buffer, Octet);
+         Acc := Acc or Shift_Left (Unsigned_64 (Octet), I * 8);
+      end loop;
+      Value := Acc;
+   end Decode_Fixed_64;
+
+   ----------------------
+   --  Float bit-casts. --
+
+   function To_Bits (Value : IEEE_Float_32) return Unsigned_32 is
+      function Conv is new Ada.Unchecked_Conversion (IEEE_Float_32, Unsigned_32);
+   begin
+      return Conv (Value);
+   end To_Bits;
+
+   function From_Bits (Value : Unsigned_32) return IEEE_Float_32 is
+      function Conv is new Ada.Unchecked_Conversion (Unsigned_32, IEEE_Float_32);
+   begin
+      return Conv (Value);
+   end From_Bits;
+
+   function To_Bits (Value : IEEE_Float_64) return Unsigned_64 is
+      function Conv is new Ada.Unchecked_Conversion (IEEE_Float_64, Unsigned_64);
+   begin
+      return Conv (Value);
+   end To_Bits;
+
+   function From_Bits (Value : Unsigned_64) return IEEE_Float_64 is
+      function Conv is new Ada.Unchecked_Conversion (Unsigned_64, IEEE_Float_64);
+   begin
+      return Conv (Value);
+   end From_Bits;
+
+   ----------------------
    -- ZigZag_Encode_32 --
 
    function ZigZag_Encode_32 (Value : Integer_32) return Unsigned_32 is
