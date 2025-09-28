@@ -134,6 +134,29 @@ is
    function ZigZag_Decode_64
      (Value : Interfaces.Unsigned_64) return Interfaces.Integer_64;
 
+   --  Length-delimited -------------------------------------------------
+
+   procedure Encode_Length_Delim_Bytes
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Bytes  : Protobuf.IO.Octet_Array);
+   --  Writes varint(Bytes'Length) followed by Bytes.
+
+   procedure Decode_Length_Delim_Length
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Length : out Protobuf.IO.Octet_Count);
+   --  Reads the varint length prefix only. Caller then consumes that many
+   --  bytes from C. Raises Wire_Format_Error on overflow or truncation.
+
+   --  Skip an unknown field (after its tag has been read). Required for
+   --  forward compatibility per the protobuf spec — decoders must accept
+   --  fields they don't recognise.
+   procedure Skip_Field
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Wire   : Wire_Type);
+
    --  Errors -----------------------------------------------------------
 
    Wire_Format_Error : exception;

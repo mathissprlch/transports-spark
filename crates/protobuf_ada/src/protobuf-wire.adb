@@ -240,6 +240,67 @@ package body Protobuf.Wire is
       return To_Signed_64 (Shift_Right (Value, 1) xor Mask);
    end ZigZag_Decode_64;
 
+   --------------------------------
+   -- Encode_Length_Delim_Bytes  --
+
+   procedure Encode_Length_Delim_Bytes
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Bytes  : Protobuf.IO.Octet_Array)
+   is
+   begin
+      Encode_Varint_64 (C, Buffer, Unsigned_64 (Bytes'Length));
+      Protobuf.IO.Write_Octets (C, Buffer, Bytes);
+   end Encode_Length_Delim_Bytes;
+
+   ---------------------------------
+   -- Decode_Length_Delim_Length  --
+
+   procedure Decode_Length_Delim_Length
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Length : out Protobuf.IO.Octet_Count)
+   is
+      Raw : Unsigned_64;
+   begin
+      Decode_Varint_64 (C, Buffer, Raw);
+      if Raw > Unsigned_64 (Protobuf.IO.Octet_Count'Last) then
+         raise Wire_Format_Error with "length-delim length out of range";
+      end if;
+      Length := Protobuf.IO.Octet_Count (Raw);
+      if Length > Protobuf.IO.Available (C, Buffer) then
+         raise Wire_Format_Error with "length-delim past buffer end";
+      end if;
+   end Decode_Length_Delim_Length;
+
+   ----------------
+   -- Skip_Field --
+
+   procedure Skip_Field
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Wire   : Wire_Type)
+   is
+      Throwaway_64 : Unsigned_64;
+      Throwaway_32 : Unsigned_32;
+      Length       : Protobuf.IO.Octet_Count;
+   begin
+      case Wire is
+         when Varint =>
+            Decode_Varint_64 (C, Buffer, Throwaway_64);
+         when Fixed_64 =>
+            Decode_Fixed_64 (C, Buffer, Throwaway_64);
+         when Fixed_32 =>
+            Decode_Fixed_32 (C, Buffer, Throwaway_32);
+         when Length_Delim =>
+            Decode_Length_Delim_Length (C, Buffer, Length);
+            Protobuf.IO.Skip (C, Buffer, Length);
+         when Start_Group | End_Group =>
+            raise Wire_Format_Error
+              with "group wire types are deprecated and not supported";
+      end case;
+   end Skip_Field;
+
    ---------------
    -- Encode_Tag --
 
