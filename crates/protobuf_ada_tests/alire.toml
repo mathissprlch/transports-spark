@@ -1,0 +1,17 @@
+name = "protobuf_ada_tests"
+description = "Tests for protobuf_ada"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+
+executables = ["protobuf_ada_tests"]
+project-files = ["protobuf_ada_tests.gpr"]
+
+[[depends-on]]
+protobuf_ada = "*"
+
+[[pins]]
+protobuf_ada = { path = "../protobuf_ada" }
