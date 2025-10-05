@@ -16,6 +16,7 @@
 with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
 with Interfaces;
+with Protobuf.IO;
 
 package Protobuf.Descriptor is
 
@@ -169,4 +170,13 @@ package Protobuf.Descriptor is
       Files : File_Vectors.Vector;
    end record;
 
+   --  Top-level entry point: decode a raw FileDescriptorSet (as emitted by
+   --  `protoc --descriptor_set_out=` or as the file_descriptor_set field
+   --  of a CodeGeneratorRequest). Raises Protobuf.Wire.Wire_Format_Error
+   --  on malformed input; ignores fields we don't model.
+   procedure Decode
+     (Buffer : Protobuf.IO.Octet_Array;
+      Result : out File_Descriptor_Set);
+
 end Protobuf.Descriptor;
+

@@ -43,6 +43,18 @@ package body Protobuf.IO is
       C.Position := C.Position + Count;
    end Skip;
 
+   function Take_Slice
+     (C      : in out Read_Cursor;
+      Buffer : Octet_Array;
+      Length : Octet_Count) return Octet_Array
+   is
+      First : constant Octet_Offset :=
+        Buffer'First + Octet_Offset (C.Position);
+   begin
+      C.Position := C.Position + Length;
+      return Buffer (First .. First + Octet_Offset (Length) - 1);
+   end Take_Slice;
+
    ----------------
    --  Write side --
 

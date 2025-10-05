@@ -51,6 +51,14 @@ is
      with Pre  => Available (C, Buffer) >= Count,
           Post => C.Position = C.Position'Old + Count;
 
+   function Take_Slice
+     (C      : in out Read_Cursor;
+      Buffer : Octet_Array;
+      Length : Octet_Count) return Octet_Array
+     with Pre => Available (C, Buffer) >= Length;
+   --  Returns the next Length bytes as a slice (copy) and advances the
+   --  cursor past them. Used for length-delimited sub-messages.
+
    --  Write side --------------------------------------------------------
 
    type Write_Cursor is record
