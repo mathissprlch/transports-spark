@@ -2,11 +2,14 @@ with Ada.Command_Line;
 with Ada.Text_IO;
 with Test_Support;
 with Tests.Wire;
+with Tests.Descriptor;
 
 procedure Test_Main is
 begin
    Ada.Text_IO.Put_Line ("Tests.Wire");
    Tests.Wire.Run;
+   Ada.Text_IO.Put_Line ("Tests.Descriptor");
+   Tests.Descriptor.Run;
 
    Ada.Text_IO.New_Line;
    if Test_Support.All_Passed then
