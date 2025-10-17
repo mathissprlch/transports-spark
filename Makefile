@@ -13,7 +13,7 @@ else
   ALR_ENV :=
 endif
 
-CRATES := protobuf_ada protobuf_ada_tests
+CRATES := protobuf_ada protoc_gen_grpc_ada protobuf_ada_tests
 
 .PHONY: all build test clean
 

@@ -1,0 +1,17 @@
+name = "protoc_gen_grpc_ada"
+description = "protoc plugin: emits Ada from .proto files (build-time tool)"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+
+executables = ["protoc_gen_grpc_ada"]
+project-files = ["protoc_gen_grpc_ada.gpr"]
+
+[[depends-on]]
+protobuf_ada = "*"
+
+[[pins]]
+protobuf_ada = { path = "../protobuf_ada" }
