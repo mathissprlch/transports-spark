@@ -349,4 +349,149 @@ package body Protobuf.Wire is
       Wire   := Wire_Type'Enum_Val (Wire_Bits);
    end Decode_Tag;
 
+   --  Field-level helpers --------------------------------------------
+
+   procedure Encode_String_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : String)
+   is
+      Bytes : Protobuf.IO.Octet_Array (1 .. Value'Length);
+   begin
+      for I in Value'Range loop
+         Bytes (Protobuf.IO.Octet_Offset (I - Value'First + 1)) :=
+           Protobuf.IO.Octet (Character'Pos (Value (I)));
+      end loop;
+      Encode_Tag (C, Buffer, Number, Length_Delim);
+      Encode_Length_Delim_Bytes (C, Buffer, Bytes);
+   end Encode_String_Field;
+
+   procedure Encode_Bytes_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Protobuf.IO.Octet_Array)
+   is
+   begin
+      Encode_Tag (C, Buffer, Number, Length_Delim);
+      Encode_Length_Delim_Bytes (C, Buffer, Value);
+   end Encode_Bytes_Field;
+
+   procedure Encode_Bool_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Boolean)
+   is
+   begin
+      Encode_Tag (C, Buffer, Number, Varint);
+      Protobuf.IO.Write_Octet (C, Buffer, (if Value then 1 else 0));
+   end Encode_Bool_Field;
+
+   procedure Encode_Int32_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Integer_32)
+   is
+   begin
+      Encode_Tag (C, Buffer, Number, Varint);
+      --  int32 sign-extends to 64 bits when negative; encode as varint64.
+      Encode_Varint_64 (C, Buffer, Unsigned_64 (To_Unsigned_64 (Integer_64 (Value))));
+   end Encode_Int32_Field;
+
+   procedure Encode_Int64_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Integer_64)
+   is
+   begin
+      Encode_Tag (C, Buffer, Number, Varint);
+      Encode_Varint_64 (C, Buffer, To_Unsigned_64 (Value));
+   end Encode_Int64_Field;
+
+   procedure Encode_UInt32_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Unsigned_32)
+   is
+   begin
+      Encode_Tag (C, Buffer, Number, Varint);
+      Encode_Varint_32 (C, Buffer, Value);
+   end Encode_UInt32_Field;
+
+   procedure Encode_UInt64_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Unsigned_64)
+   is
+   begin
+      Encode_Tag (C, Buffer, Number, Varint);
+      Encode_Varint_64 (C, Buffer, Value);
+   end Encode_UInt64_Field;
+
+   --  Decoders --------------------------------------------------------
+
+   procedure Decode_String_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out String;
+      Last   : out Natural)
+   is
+      Length : Protobuf.IO.Octet_Count;
+   begin
+      Decode_Length_Delim_Length (C, Buffer, Length);
+      if Natural (Length) > Value'Length then
+         raise Wire_Format_Error with "string longer than caller buffer";
+      end if;
+      declare
+         Slice : constant Protobuf.IO.Octet_Array :=
+           Protobuf.IO.Take_Slice (C, Buffer, Length);
+      begin
+         for I in 1 .. Natural (Length) loop
+            Value (Value'First + I - 1) :=
+              Character'Val (Slice (Slice'First
+                              + Protobuf.IO.Octet_Offset (I - 1)));
+         end loop;
+         Last := Value'First + Natural (Length) - 1;
+      end;
+   end Decode_String_Value;
+
+   procedure Decode_Bool_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Boolean)
+   is
+      V : Unsigned_64;
+   begin
+      Decode_Varint_64 (C, Buffer, V);
+      Value := V /= 0;
+   end Decode_Bool_Value;
+
+   procedure Decode_Int32_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Integer_32)
+   is
+      V : Unsigned_64;
+   begin
+      Decode_Varint_64 (C, Buffer, V);
+      Value := Integer_32 (Integer_64 (To_Signed_64 (V)));
+   end Decode_Int32_Value;
+
+   procedure Decode_Int64_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Integer_64)
+   is
+      V : Unsigned_64;
+   begin
+      Decode_Varint_64 (C, Buffer, V);
+      Value := To_Signed_64 (V);
+   end Decode_Int64_Value;
+
 end Protobuf.Wire;

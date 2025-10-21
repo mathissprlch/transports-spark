@@ -157,6 +157,81 @@ is
       Buffer : Protobuf.IO.Octet_Array;
       Wire   : Wire_Type);
 
+   --  Field-level helpers ---------------------------------------------
+   --
+   --  Each "Encode_X_Field" writes the tag and value of a single field;
+   --  generated message-encode code calls these directly. The matching
+   --  decoders consume the value AFTER the tag has already been read
+   --  (so they take the wire type used in the tag for sanity).
+
+   procedure Encode_String_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : String);
+
+   procedure Encode_Bytes_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Protobuf.IO.Octet_Array);
+
+   procedure Encode_Bool_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Boolean);
+
+   procedure Encode_Int32_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Interfaces.Integer_32);
+
+   procedure Encode_Int64_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Interfaces.Integer_64);
+
+   procedure Encode_UInt32_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Interfaces.Unsigned_32);
+
+   procedure Encode_UInt64_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Interfaces.Unsigned_64);
+
+   --  Decoders read the value only — the tag has already been consumed.
+
+   procedure Decode_String_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out String;
+      Last   : out Natural);
+   --  Reads a length-delimited field and copies up to Value'Length bytes
+   --  into Value, setting Last to the number of bytes filled. If the
+   --  encoded length exceeds Value'Length, raises Wire_Format_Error.
+
+   procedure Decode_Bool_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Boolean);
+
+   procedure Decode_Int32_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Integer_32);
+
+   procedure Decode_Int64_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Integer_64);
+
    --  Errors -----------------------------------------------------------
 
    Wire_Format_Error : exception;
