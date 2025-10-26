@@ -3,6 +3,7 @@ with Ada.Streams;            use Ada.Streams;
 with Ada.Streams.Stream_IO;  use Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded;  use Ada.Strings.Unbounded;
 with Ada.Text_IO;
+with Codegen.Emit_Enum;
 with Codegen.Emit_Message;
 with Codegen.Naming;
 with Codegen.Plugin;
@@ -117,6 +118,9 @@ package body Codegen.Driver is
             Emit_Parent_Package (File.Package_Name, Resp.Files);
             for M of File.Messages loop
                Codegen.Emit_Message.Emit (M.all, Pkg, Resp.Files);
+            end loop;
+            for E of File.Enums loop
+               Codegen.Emit_Enum.Emit (E, Pkg, Resp.Files);
             end loop;
          end;
       end loop;
