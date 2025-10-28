@@ -3,6 +3,7 @@ with Ada.Text_IO;
 with Test_Support;
 with Tests.Wire;
 with Tests.Descriptor;
+with Tests.Codegen;
 
 procedure Test_Main is
 begin
@@ -10,6 +11,8 @@ begin
    Tests.Wire.Run;
    Ada.Text_IO.Put_Line ("Tests.Descriptor");
    Tests.Descriptor.Run;
+   Ada.Text_IO.Put_Line ("Tests.Codegen");
+   Tests.Codegen.Run;
 
    Ada.Text_IO.New_Line;
    if Test_Support.All_Passed then

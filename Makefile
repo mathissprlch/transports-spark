@@ -14,10 +14,23 @@ else
 endif
 
 CRATES := protobuf_ada protoc_gen_grpc_ada protobuf_ada_tests
+PLUGIN := crates/protoc_gen_grpc_ada/bin/protoc_gen_grpc_ada
+GEN_DIR := crates/protobuf_ada_tests/generated
 
-.PHONY: all build test clean
+.PHONY: all build test clean codegen plugin
 
 all: build
+
+plugin:
+	@( cd crates/protoc_gen_grpc_ada && $(ALR_ENV) alr build )
+
+# Regenerate Ada code from .proto fixtures.
+codegen: plugin
+	@mkdir -p $(GEN_DIR)
+	@protoc --plugin=protoc-gen-grpc-ada=$(PLUGIN) \
+	        --grpc-ada_out=$(GEN_DIR) \
+	        -I crates/protobuf_ada_tests/fixtures \
+	        crates/protobuf_ada_tests/fixtures/helloworld.proto
 
 build:
 	@for c in $(CRATES); do \
@@ -32,3 +45,4 @@ clean:
 	@for c in $(CRATES); do \
 	  rm -rf crates/$$c/obj crates/$$c/lib crates/$$c/bin; \
 	done
+	@rm -rf $(GEN_DIR)
