@@ -1,0 +1,22 @@
+with "protobuf_ada.gpr";
+
+library project Grpc_Ada is
+
+   for Library_Name use "grpc_ada";
+   for Library_Kind use "static";
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Library_Dir use "lib";
+   for Create_Missing_Dirs use "True";
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g",
+         "-O0",
+         "-gnatwa",
+         "-gnatVa",
+         "-gnatyM100",
+         "-gnata");
+   end Compiler;
+
+end Grpc_Ada;

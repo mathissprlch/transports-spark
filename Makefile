@@ -13,7 +13,7 @@ else
   ALR_ENV :=
 endif
 
-CRATES := protobuf_ada protoc_gen_grpc_ada protobuf_ada_tests
+CRATES := protobuf_ada grpc_ada protoc_gen_grpc_ada protobuf_ada_tests
 PLUGIN := crates/protoc_gen_grpc_ada/bin/protoc_gen_grpc_ada
 GEN_DIR := crates/protobuf_ada_tests/generated
 

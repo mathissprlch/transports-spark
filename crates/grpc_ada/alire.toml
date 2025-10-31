@@ -1,0 +1,17 @@
+name = "grpc_ada"
+description = "gRPC for Ada (runtime library)"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["grpc", "rpc", "http2"]
+
+project-files = ["grpc_ada.gpr"]
+
+[[depends-on]]
+protobuf_ada = "*"
+
+[[pins]]
+protobuf_ada = { path = "../protobuf_ada" }
