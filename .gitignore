@@ -13,6 +13,9 @@ config/
 crates/examples/generated/*.ad?
 !crates/examples/generated/.gitkeep
 
+# Vendored sources are bootstrapped, not committed.
+vendor/aws/
+
 # Editor
 .DS_Store
 *.swp
