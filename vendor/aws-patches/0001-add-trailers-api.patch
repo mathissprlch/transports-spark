@@ -1,0 +1,129 @@
+diff --git a/src/core/aws-response-set.adb b/src/core/aws-response-set.adb
+index 336dca454..d004814b9 100644
+--- a/src/core/aws-response-set.adb
++++ b/src/core/aws-response-set.adb
+@@ -64,6 +64,29 @@ package body AWS.Response.Set is
+       D.Header.Add (Name, Value);
+    end Add_Header;
+ 
++   -----------------
++   -- Add_Trailer --
++   -----------------
++
++   procedure Add_Trailer
++     (D     : in out Data;
++      Name  : String;
++      Value : String) is
++   begin
++      D.Trailers.Add (Name, Value);
++   end Add_Trailer;
++
++   --------------
++   -- Trailers --
++   --------------
++
++   procedure Trailers
++     (D        : in out Data;
++      Trailers : AWS.Headers.List) is
++   begin
++      D.Trailers := Trailers;
++   end Trailers;
++
+    -----------------
+    -- Append_Body --
+    -----------------
+diff --git a/src/core/aws-response-set.ads b/src/core/aws-response-set.ads
+index 106704cab..58e0420cf 100644
+--- a/src/core/aws-response-set.ads
++++ b/src/core/aws-response-set.ads
+@@ -60,6 +60,24 @@ package AWS.Response.Set is
+    --  Should be used inside of server's callback when the user want
+    --  to add/modify its own header lines to the response.
+ 
++   --------------
++   -- Trailers --
++   --------------
++
++   procedure Add_Trailer
++     (D     : in out Data;
++      Name  : String;
++      Value : String)
++     with Inline;
++   --  Add a trailing-metadata entry. Trailers are emitted after the
++   --  response body in an HTTP/2 trailer-HEADERS frame. Used by gRPC
++   --  for grpc-status. Ignored by HTTP/1.1 transports.
++
++   procedure Trailers
++     (D        : in out Data;
++      Trailers : AWS.Headers.List);
++   --  Replace the trailing-metadata block.
++
+    procedure Read_Header
+      (Socket : Net.Socket_Type'Class; D : in out Data);
+    --  Read all header data from the socket
+diff --git a/src/core/aws-response.adb b/src/core/aws-response.adb
+index e5831020b..2f5ab2efa 100644
+--- a/src/core/aws-response.adb
++++ b/src/core/aws-response.adb
+@@ -464,6 +464,20 @@ package body AWS.Response is
+       return Headers.Get_Values (D.Header, Name);
+    end Header;
+ 
++   --------------
++   -- Trailers --
++   --------------
++
++   function Trailers (D : Data) return AWS.Headers.List is
++   begin
++      return D.Trailers;
++   end Trailers;
++
++   function Has_Trailers (D : Data) return Boolean is
++   begin
++      return D.Trailers.Count > 0;
++   end Has_Trailers;
++
+    ----------------
+    -- Initialize --
+    ----------------
+@@ -472,6 +486,7 @@ package body AWS.Response is
+    begin
+       Object.Ref_Counter := new Release_Controller;
+       Object.Header.Reset;
++      Object.Trailers.Reset;
+    end Initialize;
+ 
+    --------------
+diff --git a/src/core/aws-response.ads b/src/core/aws-response.ads
+index d49678976..c4b5e15a7 100644
+--- a/src/core/aws-response.ads
++++ b/src/core/aws-response.ads
+@@ -317,6 +317,20 @@ package AWS.Response is
+    function Has_Header (D : Data; Name : String) return Boolean with Inline;
+    --  Returns True if D headers contains Name
+ 
++   --------------
++   -- Trailers --
++   --------------
++
++   --  Trailing metadata, sent in an HTTP/2 trailer-HEADERS frame after the
++   --  response body. Used by gRPC to carry grpc-status. Only emitted by
++   --  the HTTP/2 transport (not HTTP/1.1).
++
++   function Trailers (D : Data) return AWS.Headers.List;
++   --  Returns the trailing-metadata block (empty by default).
++
++   function Has_Trailers (D : Data) return Boolean with Inline;
++   --  True iff Trailers (D) is non-empty.
++
+    procedure Send_Header
+      (Socket    : Net.Socket_Type'Class;
+       D         : Data;
+@@ -474,6 +488,7 @@ private
+       Content_Type : Unbounded_String;
+       Stream       : Resources.Streams.Stream_Access;
+       Header       : AWS.Headers.List;
++      Trailers     : AWS.Headers.List;
+       Close_Stream : Boolean              := True;
+       Keep_Alive   : Boolean              := True;
+    end record;

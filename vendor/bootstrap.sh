@@ -22,7 +22,8 @@ cd "$AWS_DIR"
 # Reset to the pinned commit on a local branch so subsequent applies are clean.
 echo "==> checkout pin $AWS_PIN"
 git fetch --quiet origin "$AWS_PIN"
-git checkout --quiet -B grpc-ada "$AWS_PIN"
+git reset --quiet --hard "$AWS_PIN"
+git checkout --quiet -B grpc-ada
 
 # Apply patches in order. `git apply --check` first so we fail loudly.
 if [ -d "$PATCH_DIR" ]; then
