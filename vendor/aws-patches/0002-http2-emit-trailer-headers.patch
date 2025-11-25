@@ -1,0 +1,162 @@
+diff --git a/src/http2/aws-http2-message.adb b/src/http2/aws-http2-message.adb
+index a34b0f6f4..bcf20e79a 100644
+--- a/src/http2/aws-http2-message.adb
++++ b/src/http2/aws-http2-message.adb
+@@ -163,6 +163,15 @@ package body AWS.HTTP2.Message is
+ 
+       O.Headers.Add (Messages.Status_Token, Messages.Image (Status_Code));
+ 
++      --  Carry the response's trailing-metadata block into the message so
++      --  To_Frames can emit it as a trailer HEADERS frame after the body.
++      --  See AWS.Response.Set.Add_Trailer / Trailers.
++      if Response.Has_Trailers (Answer) then
++         O.Trailers := Response.Trailers (Answer);
++         O.Trailers.Case_Sensitive (False);
++         O.Trailers.Names_Lowercased (True);
++      end if;
++
+       case O.Mode is
+          when Response.Message | Response.Header =>
+             --  Set status code
+@@ -416,9 +425,17 @@ package body AWS.HTTP2.Message is
+       List : Frame.List.Object;
+       --  The list of created frames
+ 
++      Has_Trailers : constant Boolean :=
++        Self.Trailers.Count > 0 and then not Self.T_Sent;
++      --  True when this message wants to emit a trailer HEADERS frame
++      --  after the body. When set, DATA frames must NOT carry END_STREAM.
++
+       procedure Handle_Headers (Headers : AWS.Headers.List);
+       --  Create the header frames
+ 
++      procedure Handle_Trailers;
++      --  Append the trailer HEADERS frame and set END_STREAM on it.
++
+       procedure From_Stream;
+       --  Creates the data frame Self.Stream
+ 
+@@ -442,7 +459,7 @@ package body AWS.HTTP2.Message is
+          List.Append
+            (Frame.Data.Create
+               (Stream.Identifier, new Stream_Element_Array'(Content),
+-               End_Stream => Next_Size = 0));
++               End_Stream => Next_Size = 0 and then not Has_Trailers));
+ 
+          FCW := @ - Content'Length;
+ 
+@@ -552,11 +569,54 @@ package body AWS.HTTP2.Message is
+                   Flags => Frame.End_Headers_Flag));
+          end if;
+ 
+-         if not Self.Has_Body then
++         if not Self.Has_Body and then not Has_Trailers then
+             List (List.Last).Set_Flag (Frame.End_Stream_Flag);
+          end if;
+       end Handle_Headers;
+ 
++      ---------------------
++      -- Handle_Trailers --
++      ---------------------
++
++      procedure Handle_Trailers is
++         L      : AWS.Headers.List;
++         Size   : Natural := 0;
++         E_Size : Natural;
++      begin
++         L.Case_Sensitive (False);
++         L.Names_Lowercased (True);
++
++         for K in 1 .. Self.Trailers.Count loop
++            declare
++               Element : constant AWS.Headers.Element :=
++                           Self.Trailers.Get (K);
++            begin
++               E_Size := Length (Element.Name) + Length (Element.Value);
++
++               if Size + E_Size > Natural (Ctx.Settings.Max_Frame_Size) then
++                  --  Flush partial trailer block (rare for gRPC).
++                  List.Append
++                    (Frame.Headers.Create
++                       (Ctx.Tab_Enc, Ctx.Settings, Stream.Identifier, L,
++                        Flags => Frame.End_Headers_Flag));
++                  L.Reset;
++                  Size := E_Size;
++               else
++                  Size := Size + E_Size;
++               end if;
++
++               L.Add (Element.Name, Element.Value);
++            end;
++         end loop;
++
++         List.Append
++           (Frame.Headers.Create
++              (Ctx.Tab_Enc, Ctx.Settings, Stream.Identifier, L,
++               Flags => Frame.End_Headers_Flag));
++         List (List.Last).Set_Flag (Frame.End_Stream_Flag);
++         Self.T_Sent := True;
++      end Handle_Trailers;
++
+    begin
+       if not Self.H_Sent then
+          if not Self.Headers.Exist (Messages.Content_Length_Token)
+@@ -581,13 +641,24 @@ package body AWS.HTTP2.Message is
+       if Self.Has_Body and then FCW > 0 then
+          From_Stream;
+ 
+-         --  If file is empty the last frame is the header one
++         --  If file is empty the last frame is the header one. With
++         --  trailers pending we still close the stream via the trailer
++         --  HEADERS below, so don't set END_STREAM here in that case.
+ 
+-         if List (List.Last).Kind = HTTP2.Frame.K_Headers then
++         if List (List.Last).Kind = HTTP2.Frame.K_Headers
++           and then not Has_Trailers
++         then
+             List (List.Last).Set_Flag (Frame.End_Stream_Flag);
+          end if;
+       end if;
+ 
++      --  Emit the trailer HEADERS frame once the body is fully sent.
++      --  Has_Trailers is fixed at function entry; T_Sent guards re-emission
++      --  across calls (the body may take several flow-control rounds).
++      if Has_Trailers and then Self.B_Sent and then not Self.T_Sent then
++         Handle_Trailers;
++      end if;
++
+       return List;
+    end To_Frames;
+ 
+diff --git a/src/http2/aws-http2-message.ads b/src/http2/aws-http2-message.ads
+index 3e4349bf9..54d0c015b 100644
+--- a/src/http2/aws-http2-message.ads
++++ b/src/http2/aws-http2-message.ads
+@@ -128,9 +128,11 @@ private
+       Ranges    : Unbounded_String;
+       Stream_Id : HTTP2.Stream_Id;
+       Headers   : AWS.Headers.List;
++      Trailers  : AWS.Headers.List;
+       Sent      : Utils.File_Size_Type := 0;
+       H_Sent    : Boolean := False; -- Whether the header has been sent
+       B_Sent    : Boolean := False; -- Whether the body has been sent
++      T_Sent    : Boolean := False; -- Whether the trailer HEADERS has been sent
+       M_Body    : Resources.Streams.Stream_Access;
+       Ref       : Utils.Counter_Access;
+    end record;
+@@ -151,10 +153,13 @@ private
+    function Stream_Id (Self : Object) return HTTP2.Stream_Id is
+      (Self.Stream_Id);
+ 
++   function Has_Pending_Trailers (Self : Object) return Boolean is
++     (Self.Trailers.Count > 0 and then not Self.T_Sent);
++
+    function More_Frames (Self : Object) return Boolean is
+      (if Self.Has_Body
+-      then not Self.B_Sent
+-      else not Self.H_Sent);
++      then not Self.B_Sent or else Has_Pending_Trailers (Self)
++      else not Self.H_Sent or else Has_Pending_Trailers (Self));
+ 
+    function Status_Code (Self : Object) return Messages.Status_Code is
+      (Messages.Status_Code'Value
