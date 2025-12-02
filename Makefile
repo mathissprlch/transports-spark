@@ -13,9 +13,10 @@ else
   ALR_ENV :=
 endif
 
-CRATES := protobuf_ada grpc_ada protoc_gen_grpc_ada protobuf_ada_tests
+CRATES := protobuf_ada grpc_ada protoc_gen_grpc_ada protobuf_ada_tests examples
 PLUGIN := crates/protoc_gen_grpc_ada/bin/protoc_gen_grpc_ada
 GEN_DIR := crates/protobuf_ada_tests/generated
+EXAMPLES_GEN := crates/examples/generated
 
 .PHONY: all build test clean codegen plugin
 
@@ -26,11 +27,15 @@ plugin:
 
 # Regenerate Ada code from .proto fixtures.
 codegen: plugin
-	@mkdir -p $(GEN_DIR)
+	@mkdir -p $(GEN_DIR) $(EXAMPLES_GEN)
 	@protoc --plugin=protoc-gen-grpc-ada=$(PLUGIN) \
 	        --grpc-ada_out=$(GEN_DIR) \
 	        -I crates/protobuf_ada_tests/fixtures \
 	        crates/protobuf_ada_tests/fixtures/helloworld.proto
+	@protoc --plugin=protoc-gen-grpc-ada=$(PLUGIN) \
+	        --grpc-ada_out=$(EXAMPLES_GEN) \
+	        -I crates/examples/proto \
+	        crates/examples/proto/helloworld.proto
 
 build:
 	@for c in $(CRATES); do \
