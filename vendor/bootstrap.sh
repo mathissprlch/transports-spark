@@ -17,6 +17,18 @@ if [ ! -d "$AWS_DIR" ]; then
   git clone "$AWS_REMOTE" "$AWS_DIR"
 fi
 
+# Pick the correct os_lib.ads overlay for this host. AWS normally generates
+# this by running `clang/gcc + xoscons` against SDK headers (see
+# docs/aws-integration.md). We ship pre-generated overlays per platform so
+# every developer gets identical constants without needing OpenSSL headers
+# locally.
+OVERLAY=""
+case "$(uname -sm)" in
+  "Darwin arm64") OVERLAY="darwin-arm64-openssl" ;;
+  "Darwin x86_64") OVERLAY="darwin-x86_64-openssl" ;;
+  Linux\ x86_64)  OVERLAY="linux-x86_64-openssl" ;;
+esac
+
 cd "$AWS_DIR"
 
 # Reset to the pinned commit on a local branch so subsequent applies are clean.
@@ -40,6 +52,22 @@ if [ -d "$PATCH_DIR" ]; then
     git -c user.email=patches@grpc-ada -c user.name="grpc-ada bootstrap" \
         commit -q -m "vendor: $(basename "$p" .patch)"
   done
+fi
+
+if [ -n "$OVERLAY" ]; then
+  OVERLAY_DIR="$VENDOR_DIR/aws-overlays/$OVERLAY"
+  if [ -f "$OVERLAY_DIR/os_lib.ads" ]; then
+    DEST="$AWS_DIR/darwin-arm64/setup/src"
+    case "$OVERLAY" in
+      linux-*)        DEST="$AWS_DIR/x86_64-pc-linux-gnu/setup/src" ;;
+      darwin-x86_64-*) DEST="$AWS_DIR/darwin-x86_64/setup/src" ;;
+    esac
+    mkdir -p "$DEST"
+    cp "$OVERLAY_DIR/os_lib.ads" "$DEST/os_lib.ads"
+    echo "==> installed os_lib.ads overlay ($OVERLAY)"
+  fi
+else
+  echo "==> WARNING: no os_lib.ads overlay for $(uname -sm); see docs/aws-integration.md"
 fi
 
 echo "==> AWS ready at $AWS_DIR"
