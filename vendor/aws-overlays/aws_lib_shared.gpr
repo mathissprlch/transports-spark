@@ -1,0 +1,15 @@
+abstract project AWS_Lib_Shared is
+   for Source_Files use ();
+   type SSL_Library_Kind is ("relocatable", "static");
+   SSL_Library_Type : SSL_Library_Kind := external ("SSL_LIBRARY_TYPE", "relocatable");
+   LIB_Path := "/opt/homebrew/lib/";
+   S_SSL_Lib := "ssl";
+   R_SSL_Lib := "ssl";
+   S_CRY_Lib := "crypto";
+   R_CRY_Lib := "crypto";
+   S_TLS_Lib := "gnutls";
+   R_TLS_Lib := "gnutls";
+   --  libz
+   LIBZ_Path := Project'Project_Dir 
+     & "../../../lib/aws/static";
+end AWS_Lib_Shared;

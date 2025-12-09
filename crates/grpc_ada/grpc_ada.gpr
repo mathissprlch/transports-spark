@@ -1,4 +1,5 @@
 with "protobuf_ada.gpr";
+with "aws.gpr";
 
 library project Grpc_Ada is
 

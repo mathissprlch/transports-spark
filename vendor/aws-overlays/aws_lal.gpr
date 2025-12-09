@@ -1,0 +1,3 @@
+abstract project AWS_LAL is
+   for Source_Dirs use ();
+end AWS_LAL;

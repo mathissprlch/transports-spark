@@ -1,0 +1,39 @@
+name = "aws"
+description = "Ada Web Server (vendored fork with grpc-ada trailer patches)"
+version = "25.2.0-grpc-ada-1"
+
+authors = ["AdaCore", "Mathis Sperlich"]
+maintainers = ["sperlich.mathis@gmail.com"]
+maintainers-logins = ["mathis"]
+licenses = "GPL-3.0-only WITH GCC-exception-3.1"
+tags = ["aws", "web", "server", "http", "https", "ssl"]
+
+project-files = ["aws.gpr", "build/projects/aws_config.gpr"]
+
+[gpr-externals]
+PRJ_TARGET = ["Windows_NT", "UNIX", "Darwin", "vxworks", "freebsd"]
+TARGET = ""
+TGT_DIR = ""
+SOCKET = ["std", "ssl", "openssl", "gnutls"]
+ADAFLAGS = ""
+
+[gpr-set-externals]
+PRJ_TARGET = "Darwin"
+TARGET = "build"
+TGT_DIR = "../build"
+SOCKET = "std"
+#  Relax line-length and order checks so upstream AWS sources with UTF-8
+#  characters in comments (smart quotes) build cleanly. The patches we
+#  apply already follow AWS's style; this only affects upstream files.
+ADAFLAGS = "-gnatyM200 -gnaty-m -gnaty-o"
+
+[[depends-on]]
+gnat = ">=12"
+gnatcoll = "~25.0.0"
+make = "*"
+openssl = ">=1.1.0"
+xmlada = "~25.0.0"
+
+#  No make-setup post-fetch action: bootstrap.sh installs a
+#  pre-generated os_lib.ads from vendor/aws-overlays/ and applies the
+#  trailer patches before this manifest is used.

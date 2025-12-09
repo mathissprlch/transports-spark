@@ -1,0 +1,4 @@
+with "xmlada";
+abstract project AWS_XMLADA is
+   for Source_Dirs use ();
+end AWS_XMLADA;
