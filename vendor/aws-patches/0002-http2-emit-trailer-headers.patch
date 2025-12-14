@@ -129,7 +129,7 @@ index a34b0f6f4..bcf20e79a 100644
     end To_Frames;
  
 diff --git a/src/http2/aws-http2-message.ads b/src/http2/aws-http2-message.ads
-index 3e4349bf9..54d0c015b 100644
+index 3e4349bf9..17c1128e8 100644
 --- a/src/http2/aws-http2-message.ads
 +++ b/src/http2/aws-http2-message.ads
 @@ -128,9 +128,11 @@ private
@@ -140,23 +140,18 @@ index 3e4349bf9..54d0c015b 100644
        Sent      : Utils.File_Size_Type := 0;
        H_Sent    : Boolean := False; -- Whether the header has been sent
        B_Sent    : Boolean := False; -- Whether the body has been sent
-+      T_Sent    : Boolean := False; -- Whether the trailer HEADERS has been sent
++      T_Sent    : Boolean := False; -- Whether trailer HEADERS has been sent
        M_Body    : Resources.Streams.Stream_Access;
        Ref       : Utils.Counter_Access;
     end record;
-@@ -151,10 +153,13 @@ private
-    function Stream_Id (Self : Object) return HTTP2.Stream_Id is
-      (Self.Stream_Id);
- 
-+   function Has_Pending_Trailers (Self : Object) return Boolean is
-+     (Self.Trailers.Count > 0 and then not Self.T_Sent);
-+
+@@ -154,7 +156,9 @@ private
     function More_Frames (Self : Object) return Boolean is
       (if Self.Has_Body
--      then not Self.B_Sent
+       then not Self.B_Sent
 -      else not Self.H_Sent);
-+      then not Self.B_Sent or else Has_Pending_Trailers (Self)
-+      else not Self.H_Sent or else Has_Pending_Trailers (Self));
++           or else (Self.Trailers.Count > 0 and then not Self.T_Sent)
++      else not Self.H_Sent
++           or else (Self.Trailers.Count > 0 and then not Self.T_Sent));
  
     function Status_Code (Self : Object) return Messages.Status_Code is
       (Messages.Status_Code'Value

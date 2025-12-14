@@ -1,8 +1,8 @@
 diff --git a/src/core/aws-response-set.adb b/src/core/aws-response-set.adb
-index 336dca454..d004814b9 100644
+index 336dca454..bacbcc822 100644
 --- a/src/core/aws-response-set.adb
 +++ b/src/core/aws-response-set.adb
-@@ -64,6 +64,29 @@ package body AWS.Response.Set is
+@@ -64,6 +64,18 @@ package body AWS.Response.Set is
        D.Header.Add (Name, Value);
     end Add_Header;
  
@@ -18,6 +18,13 @@ index 336dca454..d004814b9 100644
 +      D.Trailers.Add (Name, Value);
 +   end Add_Trailer;
 +
+    -----------------
+    -- Append_Body --
+    -----------------
+@@ -554,6 +566,17 @@ package body AWS.Response.Set is
+       D.Mode := Stream;
+    end Stream;
+ 
 +   --------------
 +   -- Trailers --
 +   --------------
@@ -29,9 +36,9 @@ index 336dca454..d004814b9 100644
 +      D.Trailers := Trailers;
 +   end Trailers;
 +
-    -----------------
-    -- Append_Body --
-    -----------------
+    -------------------
+    -- Update_Header --
+    -------------------
 diff --git a/src/core/aws-response-set.ads b/src/core/aws-response-set.ads
 index 106704cab..58e0420cf 100644
 --- a/src/core/aws-response-set.ads
@@ -62,12 +69,36 @@ index 106704cab..58e0420cf 100644
       (Socket : Net.Socket_Type'Class; D : in out Data);
     --  Read all header data from the socket
 diff --git a/src/core/aws-response.adb b/src/core/aws-response.adb
-index e5831020b..2f5ab2efa 100644
+index e5831020b..262392576 100644
 --- a/src/core/aws-response.adb
 +++ b/src/core/aws-response.adb
-@@ -464,6 +464,20 @@ package body AWS.Response is
-       return Headers.Get_Values (D.Header, Name);
-    end Header;
+@@ -445,6 +445,15 @@ package body AWS.Response is
+       return D.Header.Exist (Name);
+    end Has_Header;
+ 
++   ------------------
++   -- Has_Trailers --
++   ------------------
++
++   function Has_Trailers (D : Data) return Boolean is
++   begin
++      return D.Trailers.Count > 0;
++   end Has_Trailers;
++
+    ------------
+    -- Header --
+    ------------
+@@ -472,6 +481,7 @@ package body AWS.Response is
+    begin
+       Object.Ref_Counter := new Release_Controller;
+       Object.Header.Reset;
++      Object.Trailers.Reset;
+    end Initialize;
+ 
+    --------------
+@@ -739,6 +749,15 @@ package body AWS.Response is
+       return Result;
+    end Stream;
  
 +   --------------
 +   -- Trailers --
@@ -78,22 +109,9 @@ index e5831020b..2f5ab2efa 100644
 +      return D.Trailers;
 +   end Trailers;
 +
-+   function Has_Trailers (D : Data) return Boolean is
-+   begin
-+      return D.Trailers.Count > 0;
-+   end Has_Trailers;
-+
-    ----------------
-    -- Initialize --
-    ----------------
-@@ -472,6 +486,7 @@ package body AWS.Response is
-    begin
-       Object.Ref_Counter := new Release_Controller;
-       Object.Header.Reset;
-+      Object.Trailers.Reset;
-    end Initialize;
- 
-    --------------
+    ---------
+    -- URL --
+    ---------
 diff --git a/src/core/aws-response.ads b/src/core/aws-response.ads
 index d49678976..c4b5e15a7 100644
 --- a/src/core/aws-response.ads
