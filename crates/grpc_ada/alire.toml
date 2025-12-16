@@ -12,6 +12,16 @@ project-files = ["grpc_ada.gpr"]
 
 [[depends-on]]
 protobuf_ada = "*"
+aws = "*"
 
 [[pins]]
 protobuf_ada = { path = "../protobuf_ada" }
+aws = { path = "../../vendor/aws" }
+
+#  GNAT 15.1.2 ships a broken stdio.h shim under include-fixed/ on
+#  macOS Apple Silicon. Injecting the macOS SDK headers via -isystem
+#  ahead of GNAT's shim makes gnatcoll's C sources find sys/stat.h,
+#  unistd.h, fpos_t, etc. Linux builds ignore this block.
+[environment.'case(os)'.macos]
+CFLAGS.append = " -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+CPPFLAGS.append = " -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
