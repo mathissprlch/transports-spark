@@ -7,12 +7,11 @@
 --  produced by AWS once Send_Trailers is called and the AWS callback
 --  returns the response.
 --
---  Body is currently a stub — wiring lands when the AWS build
---  environment is unblocked (see docs/aws-integration.md). Higher
---  layers (Server, Channel, generated code) are unaffected: they
---  speak only to GRPC.Transport.Stream'Class.
+--  v0.1 supports unary RPCs end-to-end. Streaming methods plug in at
+--  the Send_Message / Receive_Message boundary in a later phase.
 
 with Ada.Strings.Unbounded;
+with Ada.Streams;
 with GRPC.Metadata;
 with GRPC.Server;
 with Protobuf.IO;
@@ -33,12 +32,24 @@ package GRPC.Transport.HTTP2 is
 
 private
 
+   type Octet_Array_Access is access Ada.Streams.Stream_Element_Array;
+
    type Server_Stream is limited new GRPC.Transport.Stream with record
-      Path             : Ada.Strings.Unbounded.Unbounded_String;
-      --  Inbound + outbound message queues, AWS request/response handles,
-      --  and flow-control state attach here once the body is written.
-      Headers_Sent     : Boolean := False;
-      Trailers_Sent    : Boolean := False;
+      Path              : Ada.Strings.Unbounded.Unbounded_String;
+
+      --  Inbound (set up by the AWS callback before dispatch):
+      Request_Headers   : GRPC.Metadata.Headers;
+      Request_Body      : Octet_Array_Access;
+      Request_Consumed  : Boolean := False;
+
+      --  Outbound (populated by the handler, harvested after it returns):
+      Response_Headers  : GRPC.Metadata.Headers;
+      Response_Body     : Octet_Array_Access;
+      Response_Length   : Ada.Streams.Stream_Element_Count := 0;
+      Response_Trailers : GRPC.Metadata.Headers;
+
+      Headers_Sent      : Boolean := False;
+      Trailers_Sent     : Boolean := False;
    end record;
 
    overriding procedure Send_Initial_Headers
@@ -52,8 +63,8 @@ private
       End_Stream : Boolean);
 
    overriding procedure Send_Trailers
-     (S          : in out Server_Stream;
-      Trailers   : GRPC.Metadata.Headers);
+     (S        : in out Server_Stream;
+      Trailers : GRPC.Metadata.Headers);
 
    overriding procedure Receive_Initial_Headers
      (S       : in out Server_Stream;
