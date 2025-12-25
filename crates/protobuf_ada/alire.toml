@@ -9,3 +9,11 @@ licenses = "MIT"
 tags = ["protobuf", "serialization", "rpc"]
 
 project-files = ["protobuf_ada.gpr"]
+
+#  GNAT 15.1.2 on macOS Apple Silicon needs SDK headers and lib path
+#  injected ahead of its broken include-fixed/ shim. Linux ignores via
+#  the os case-guard. See crates/grpc_ada/alire.toml for context.
+[environment.'case(os)'.macos]
+CFLAGS.append = " -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+CPPFLAGS.append = " -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+LIBRARY_PATH.append = ":/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib"

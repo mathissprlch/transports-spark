@@ -8,6 +8,7 @@ package Helloworld.Greeter is
    Path_Say_Hello : constant String := "/helloworld.Greeter/SayHello";
 
    type Service is abstract tagged limited null record;
+   type Service_Access is access all Service'Class;
 
    procedure Say_Hello
      (Self     : in out Service;
