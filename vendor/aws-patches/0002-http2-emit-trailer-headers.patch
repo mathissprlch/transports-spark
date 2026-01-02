@@ -1,5 +1,5 @@
 diff --git a/src/http2/aws-http2-message.adb b/src/http2/aws-http2-message.adb
-index a34b0f6f4..bcf20e79a 100644
+index a34b0f6f4..02e180387 100644
 --- a/src/http2/aws-http2-message.adb
 +++ b/src/http2/aws-http2-message.adb
 @@ -163,6 +163,15 @@ package body AWS.HTTP2.Message is
@@ -101,7 +101,7 @@ index a34b0f6f4..bcf20e79a 100644
     begin
        if not Self.H_Sent then
           if not Self.Headers.Exist (Messages.Content_Length_Token)
-@@ -581,13 +641,24 @@ package body AWS.HTTP2.Message is
+@@ -581,13 +641,28 @@ package body AWS.HTTP2.Message is
        if Self.Has_Body and then FCW > 0 then
           From_Stream;
  
@@ -120,8 +120,12 @@ index a34b0f6f4..bcf20e79a 100644
  
 +      --  Emit the trailer HEADERS frame once the body is fully sent.
 +      --  Has_Trailers is fixed at function entry; T_Sent guards re-emission
-+      --  across calls (the body may take several flow-control rounds).
-+      if Has_Trailers and then Self.B_Sent and then not Self.T_Sent then
++      --  across calls (the body may take several flow-control rounds). For
++      --  trailers-only responses (no body), emit immediately after headers.
++      if Has_Trailers
++        and then (Self.B_Sent or else not Self.Has_Body)
++        and then not Self.T_Sent
++      then
 +         Handle_Trailers;
 +      end if;
 +
