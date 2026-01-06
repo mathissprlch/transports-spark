@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package routeguide;
+
+//  Streaming demo. Real RouteGuide nests Point inside Rectangle and
+//  Feature; we flatten because the v0.1 codegen doesn't yet emit
+//  nested-message field types. The streaming wire shape is the same.
+
+message Bounds {
+  int32 lo_lat = 1;
+  int32 lo_lon = 2;
+  int32 hi_lat = 3;
+  int32 hi_lon = 4;
+}
+
+message Feature {
+  string name    = 1;
+  int32  lat     = 2;
+  int32  lon     = 3;
+}
+
+service RouteGuide {
+  //  Server-streaming: yield each Feature inside the bounding box.
+  rpc ListFeatures (Bounds) returns (stream Feature);
+}

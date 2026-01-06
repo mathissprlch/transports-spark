@@ -7,7 +7,8 @@ maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
 maintainers-logins = ["mathis"]
 licenses = "MIT"
 
-executables = ["greeter_server", "greeter_client"]
+executables = ["greeter_server", "greeter_client",
+               "listfeatures_server", "listfeatures_client"]
 project-files = ["examples.gpr"]
 
 [[depends-on]]

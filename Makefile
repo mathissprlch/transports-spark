@@ -36,6 +36,10 @@ codegen: plugin
 	        --grpc-ada_out=$(EXAMPLES_GEN) \
 	        -I crates/examples/proto \
 	        crates/examples/proto/helloworld.proto
+	@protoc --plugin=protoc-gen-grpc-ada=$(PLUGIN) \
+	        --grpc-ada_out=$(EXAMPLES_GEN) \
+	        -I crates/examples/proto \
+	        crates/examples/proto/routeguide.proto
 
 build:
 	@for c in $(CRATES); do \
