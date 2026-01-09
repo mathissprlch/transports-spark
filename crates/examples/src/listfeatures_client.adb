@@ -6,13 +6,13 @@ with Ada.Text_IO;
 with Interfaces; use Interfaces;
 
 with GRPC.Channel;
-with Routeguide.Bounds;
 with Routeguide.Feature;
+with Routeguide.Rectangle;
 with Routeguide.Route_Guide.Client;
 
 procedure Listfeatures_Client is
    Channel : GRPC.Channel.Instance;
-   Request : Routeguide.Bounds.T;
+   Request : Routeguide.Rectangle.T;
    Reader  : Routeguide.Route_Guide.Client.List_Features_Reader;
    Feature : Routeguide.Feature.T;
    Got     : Boolean;
@@ -21,10 +21,10 @@ begin
    GRPC.Channel.Initialize (Channel, "localhost", 50_052);
 
    --  Wide bounding box covering the whole hard-coded catalog.
-   Request.Lo_Lat :=  400_000_000;
-   Request.Lo_Lon := -750_000_000;
-   Request.Hi_Lat :=  420_000_000;
-   Request.Hi_Lon := -740_000_000;
+   Request.Lo.Latitude  :=  400_000_000;
+   Request.Lo.Longitude := -750_000_000;
+   Request.Hi.Latitude  :=  420_000_000;
+   Request.Hi.Longitude := -740_000_000;
 
    Routeguide.Route_Guide.Client.List_Features (Channel, Request, Reader);
 
@@ -34,7 +34,8 @@ begin
       Count := Count + 1;
       Ada.Text_IO.Put_Line
         ("  " & Count'Image & "  " & To_String (Feature.Name)
-         & " @ " & Feature.Lat'Image & ", " & Feature.Lon'Image);
+         & " @ " & Feature.Location.Latitude'Image
+         & ", "  & Feature.Location.Longitude'Image);
    end loop;
 
    Ada.Text_IO.Put_Line ("done -" & Count'Image & " features");

@@ -1,6 +1,7 @@
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Interfaces; use Interfaces;
 with Routeguide.Feature;
+with Routeguide.Point;
 
 package body Routeguide_Impl is
 
@@ -22,19 +23,19 @@ package body Routeguide_Impl is
 
    function In_Box
      (Lat, Lon : Interfaces.Integer_32;
-      R        : Routeguide.Bounds.T) return Boolean
+      R        : Routeguide.Rectangle.T) return Boolean
    is
-      Lo_Lat : constant Integer_32 := Integer_32'Min (R.Lo_Lat, R.Hi_Lat);
-      Hi_Lat : constant Integer_32 := Integer_32'Max (R.Lo_Lat, R.Hi_Lat);
-      Lo_Lon : constant Integer_32 := Integer_32'Min (R.Lo_Lon, R.Hi_Lon);
-      Hi_Lon : constant Integer_32 := Integer_32'Max (R.Lo_Lon, R.Hi_Lon);
+      Lo_Lat : constant Integer_32 := Integer_32'Min (R.Lo.Latitude,  R.Hi.Latitude);
+      Hi_Lat : constant Integer_32 := Integer_32'Max (R.Lo.Latitude,  R.Hi.Latitude);
+      Lo_Lon : constant Integer_32 := Integer_32'Min (R.Lo.Longitude, R.Hi.Longitude);
+      Hi_Lon : constant Integer_32 := Integer_32'Max (R.Lo.Longitude, R.Hi.Longitude);
    begin
       return Lat in Lo_Lat .. Hi_Lat and then Lon in Lo_Lon .. Hi_Lon;
    end In_Box;
 
    overriding procedure List_Features
      (Self    : in out Service;
-      Request : Routeguide.Bounds.T;
+      Request : Routeguide.Rectangle.T;
       Writer  : not null access
                   Routeguide.Route_Guide.List_Features_Writer'Class)
    is
@@ -45,9 +46,9 @@ package body Routeguide_Impl is
             declare
                F : Routeguide.Feature.T;
             begin
-               F.Name := E.Name;
-               F.Lat  := E.Lat;
-               F.Lon  := E.Lon;
+               F.Name               := E.Name;
+               F.Location.Latitude  := E.Lat;
+               F.Location.Longitude := E.Lon;
                Writer.Write (F);
             end;
          end if;

@@ -1,7 +1,7 @@
 --  RouteGuide service implementation. Subclasses the generated abstract
 --  base in Routeguide.Route_Guide and overrides List_Features.
 
-with Routeguide.Bounds;
+with Routeguide.Rectangle;
 with Routeguide.Route_Guide;
 
 package Routeguide_Impl is
@@ -10,7 +10,7 @@ package Routeguide_Impl is
 
    overriding procedure List_Features
      (Self    : in out Service;
-      Request : Routeguide.Bounds.T;
+      Request : Routeguide.Rectangle.T;
       Writer  : not null access
                   Routeguide.Route_Guide.List_Features_Writer'Class);
 
