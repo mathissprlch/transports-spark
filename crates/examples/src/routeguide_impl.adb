@@ -49,6 +49,11 @@ package body Routeguide_Impl is
                F.Name               := E.Name;
                F.Location.Latitude  := E.Lat;
                F.Location.Longitude := E.Lon;
+               --  Exercise repeated fields: tag every feature.
+               F.Tags.Append (To_Unbounded_String ("listed"));
+               if E.Lat > 415_000_000 then
+                  F.Tags.Append (To_Unbounded_String ("northern"));
+               end if;
                Writer.Write (F);
             end;
          end if;

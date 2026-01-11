@@ -32,10 +32,21 @@ begin
       Routeguide.Route_Guide.Client.Read (Reader, Feature, Got);
       exit when not Got;
       Count := Count + 1;
-      Ada.Text_IO.Put_Line
-        ("  " & Count'Image & "  " & To_String (Feature.Name)
-         & " @ " & Feature.Location.Latitude'Image
-         & ", "  & Feature.Location.Longitude'Image);
+      declare
+         Tag_List : Unbounded_String;
+      begin
+         for T of Feature.Tags loop
+            if Length (Tag_List) > 0 then
+               Append (Tag_List, ", ");
+            end if;
+            Append (Tag_List, T);
+         end loop;
+         Ada.Text_IO.Put_Line
+           ("  " & Count'Image & "  " & To_String (Feature.Name)
+            & " @ " & Feature.Location.Latitude'Image
+            & ", "  & Feature.Location.Longitude'Image
+            & "  [" & To_String (Tag_List) & "]");
+      end;
    end loop;
 
    Ada.Text_IO.Put_Line ("done -" & Count'Image & " features");

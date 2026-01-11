@@ -13,8 +13,9 @@ message Rectangle {
 }
 
 message Feature {
-  string name     = 1;
-  Point  location = 2;
+  string          name     = 1;
+  Point           location = 2;
+  repeated string tags     = 3;  //  arbitrary labels
 }
 
 service RouteGuide {
