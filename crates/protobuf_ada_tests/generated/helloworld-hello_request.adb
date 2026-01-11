@@ -18,21 +18,25 @@ package body Helloworld.Hello_Request is
      (Buffer : Protobuf.IO.Octet_Array;
       Msg    : out T)
    is
+      Default : T;  --  Reset Msg to defaults so
+      --  callers reusing the same record across decodes
+      --  don't accumulate values into repeated fields.
       Cursor : Protobuf.IO.Read_Cursor;
       Num    : Protobuf.Wire.Field_Number;
       Wire   : Protobuf.Wire.Wire_Type;
       use type Protobuf.IO.Octet_Count;
    begin
+      Msg := Default;
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-         when 1 => 
+         when 1 =>
             declare
-               Tmp : String (1 .. 4096);
-               Last : Natural;
+               Str_Buf  : String (1 .. 4096);
+               Str_Last : Natural;
             begin
-               Protobuf.Wire.Decode_String_Value (Cursor, Buffer, Tmp, Last);
-               Msg.Name := To_Unbounded_String (Tmp (Tmp'First .. Last));
+               Protobuf.Wire.Decode_String_Value (Cursor, Buffer, Str_Buf, Str_Last);
+               Msg.Name := To_Unbounded_String (Str_Buf (Str_Buf'First .. Str_Last));
             end;
          when others =>
             Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
