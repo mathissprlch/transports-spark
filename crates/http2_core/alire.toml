@@ -1,0 +1,11 @@
+name = "http2_core"
+description = "SPARK HTTP/2 frame layer and stream state machine"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["http2", "spark", "verified", "recordflux"]
+
+project-files = ["http2_core.gpr"]

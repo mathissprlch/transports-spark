@@ -1,0 +1,11 @@
+name = "protobuf_core"
+description = "SPARK-verified Protocol Buffers wire codec"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["protobuf", "spark", "verified", "embedded"]
+
+project-files = ["protobuf_core.gpr"]

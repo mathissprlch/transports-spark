@@ -1,0 +1,19 @@
+name = "grpc_core"
+description = "SPARK gRPC framing on HTTP/2 + Protocol Buffers"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["grpc", "spark", "verified", "rpc"]
+
+project-files = ["grpc_core.gpr"]
+
+[[depends-on]]
+http2_core = "*"
+protobuf_core = "*"
+
+[[pins]]
+http2_core = { path = "../http2_core" }
+protobuf_core = { path = "../protobuf_core" }

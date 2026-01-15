@@ -1,0 +1,11 @@
+name = "mqtt_core"
+description = "SPARK MQTT 3.1.1 codec and session state machine"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["mqtt", "spark", "verified", "iot", "recordflux"]
+
+project-files = ["mqtt_core.gpr"]
