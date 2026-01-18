@@ -1,10 +1,64 @@
-# grpc-ada
+# transports-spark
 
-A from-scratch implementation of [gRPC](https://grpc.io) in Ada. Single
-runtime dependency: a vendored fork of [AWS](https://github.com/AdaCore/aws)
-with two small patches that teach its HTTP/2 server to emit trailers.
+Verified embedded transport stack in SPARK Ada. Two transports —
+**MQTT 3.1.1** and **gRPC** — over two backends — Ada Web Server on
+hosted Linux/macOS, and bare-metal MCU (STM32, Zynq). Verification
+via AdaCore's [RecordFlux](https://github.com/AdaCore/RecordFlux) +
+community GNATprove. No proprietary tooling.
 
-## Hello world
+The roadmap target is a formally verified MQTT 3.1.1 client in SPARK.
+[SPARK CoAP](https://github.com/AdaCore/coap-spark) exists; an
+open-source SPARK MQTT does not — that's the gap this fills. gRPC
+follows as a second transport on the same verified `protobuf_core`.
+
+## Status
+
+**v0.1.0** (tagged) — pure-Ada gRPC over HTTP/2, end-to-end:
+
+- Unary + server-streaming RPC. Helloworld + RouteGuide examples.
+- Hand-written protobuf wire codec, descriptor decoder,
+  `protoc-gen-grpc-ada` plugin, framing, status, metadata, channel,
+  server, stubs.
+- Single runtime dependency: a vendored AWS fork with two patches
+  that teach its HTTP/2 server to emit trailers.
+
+**v0.2** (in progress) — SPARK rework:
+
+- `protobuf_core` — hand-written SPARK wire codec.
+- `mqtt_core` — RecordFlux-driven SPARK MQTT 3.1.1 client (headline).
+- `http2_core`, `grpc_core` — RecordFlux frame layer + SPARK framing;
+  v0.1 gRPC refactored onto verified foundations.
+- Bare-metal PoCs on STM32 + Zynq. Benchmarks: gRPC vs MQTT on
+  identical hardware and payloads.
+
+## Architecture
+
+```
++--------------------------------------------------------+
+|  Hosted (AWS)             Bare-metal MCU               |
++--------------------------------------------------------+
+|  grpc_aws  mqtt_hosted    grpc_embed  mqtt_embed       |  transport bindings
++--------------------------------------------------------+
+|  grpc_core | http2_core | mqtt_core | protobuf_core    |  SPARK cores
++--------------------------------------------------------+
+```
+
+`*_core` crates are transport-agnostic and SPARK-verified. Backend
+crates wire the I/O. Bare-metal gRPC is a deliberate subset — single
+bidi stream, static HPACK, bounded buffers, no heap — wire-compatible
+with standard gRPC peers.
+
+## V&V tiers
+
+1. **SPARK Silver** across all code: absence of runtime errors.
+2. **SPARK Gold** on load-bearing invariants: parser bounds, stream
+   FSM, flow-control non-negative, MQTT QoS 1/2 delivery guarantees.
+3. **Not** chasing full functional correctness vs HTTP/2 spec.
+
+Where community GNATprove can't close a goal, it's documented as a
+known gap rather than papered over.
+
+## Quick start (v0.1, hosted)
 
 ```sh
 $ make codegen build
@@ -15,7 +69,7 @@ $ ./crates/examples/bin/greeter_client
 Request:  World
 Reply:    Hello, World!
 
-# Same thing from raw HTTP/2 — proves wire-level conformance:
+# Wire conformance via raw HTTP/2:
 $ printf '\x00\x00\x00\x00\x07\x0a\x05World' \
   | curl -s -i --http2-prior-knowledge \
          -H 'content-type: application/grpc+proto' -H 'TE: trailers' \
@@ -27,53 +81,29 @@ $ printf '\x00\x00\x00\x00\x07\x0a\x05World' \
 000000b0: 733a 2030 0d0a                           s: 0..
 ```
 
-`grpc-status: 0` in the trailing HEADERS frame confirms the AWS patches
-are working.
-
-## What's in v0.1
-
-- **Pure-Ada protobuf wire format** — varint, ZigZag, fixed32/64,
-  tag/wire-type, length-delim, `Skip_Field` for forward-compat.
-- **Descriptor decoder** for `FileDescriptorSet` and the subset of
-  `descriptor.proto` the plugin needs.
-- **`protoc-gen-grpc-ada`** — the `protoc` plugin, in Ada. Emits per
-  message, enum, and service: record types with `Encode`/`Decode`,
-  abstract service base, **server dispatch glue**, **client stubs**.
-- **gRPC runtime** — `Status` (16 codes), `Metadata` (ASCII + binary,
-  case-insensitive), `Framing` (5-byte length prefix), `Deadline`
-  (`grpc-timeout`), `Call`, `Server`, `Channel`.
-- **`GRPC.Transport.HTTP2`** — bridges AWS's `Server.Callback` to the
-  dispatcher and the `AWS.Client.Post` to the stub. Trailer HEADERS
-  frame carries `grpc-status` after the body.
-- **Patched AWS** at pinned commit `483739e49a4`. Two unified diffs
-  under `vendor/aws-patches/`. Bootstrap script clones, applies,
-  installs helper GPRs and the platform `os_lib.ads`.
-- **Helloworld example** — server, client, and an Ada `Greeter_Impl`
-  service, each ~20 lines.
-
-## Out of scope for v0.1
-
-- Server / client / bidi streaming. The transport abstraction is
-  designed for it; a `GRPC.Server_Writer (T)` generic is the next phase.
-- TLS. Plaintext h2c only; the plumbing is there in AWS to add later.
-- Bare metal. The API is biased toward bounded buffers and named
-  access types so a Phase 2 lwIP transport can plug in below the
-  framing layer; nothing today targets `light-tasking`.
-- Connect-RPC and gRPC-Web.
+`grpc-status: 0` in the trailing HEADERS frame confirms the AWS
+trailer patches work.
 
 ## Layout
 
 ```
 crates/
-  protobuf_ada/         protobuf wire format + descriptor decoder
-  grpc_ada/             gRPC runtime + HTTP/2 transport
-  protoc_gen_grpc_ada/  the protoc plugin (build-time tool)
-  protobuf_ada_tests/   AUnit-flavoured tests + fixtures
-  examples/             helloworld server + client
+  protobuf_core/        SPARK protobuf wire codec (v0.2, hand-written)
+  http2_core/           SPARK HTTP/2 frames + stream FSM (v0.2, RecordFlux + glue)
+  mqtt_core/            SPARK MQTT 3.1.1 (v0.2, RecordFlux + glue)
+  grpc_core/            SPARK gRPC framing on http2_core + protobuf_core (v0.2)
+  protobuf_ada/         legacy: v0.1 protobuf codec (retires when protobuf_core lands)
+  grpc_ada/             legacy: v0.1 gRPC runtime (retires when grpc_core + grpc_aws land)
+  protoc_gen_grpc_ada/  protoc plugin (build-time; retargeted to protobuf_core)
+  protobuf_ada_tests/   AUnit tests + fixtures
+  examples/             helloworld + RouteGuide
+targets/
+  stm32f4/              STM32 Cortex-M (planned)
+  zynq7000/             Xilinx Zynq-7000 (planned)
 vendor/
-  aws-patches/          unified diffs against AWS upstream
-  aws-overlays/         platform constants (os_lib.ads) + helper GPRs
-  bootstrap.sh          clones AWS at pin, applies patches, installs overlays
+  aws-patches/          unified diffs against AWS upstream (HTTP/2 trailer support)
+  aws-overlays/         platform constants + helper GPRs
+  bootstrap.sh          clones AWS at pin, applies patches
 docs/
   design.md             architecture sketch
   aws-integration.md    AWS bootstrap details
@@ -83,10 +113,10 @@ docs/
 
 ## Build
 
-Tested on macOS arm64 with `alr 2.1.0` + `gnat_native 15.1.2` + `gprbuild
-25.0.1`. Linux x86_64 / aarch64 should work the same way once a fresh
-`os_lib.ads` overlay is generated for the host (run
-`vendor/aws-overlays/gen_os_lib.c`; output is committed per platform).
+Tested on macOS arm64 with `alr 2.1.0` + `gnat_native 15.1.2` +
+`gprbuild 25.0.1`. Linux x86_64 / aarch64 should work the same way
+once a fresh `os_lib.ads` overlay is generated for the host (run
+`vendor/aws-overlays/gen_os_lib.c`; output committed per platform).
 
 ```sh
 ./vendor/bootstrap.sh   # one-time: clone AWS at pin, apply patches
@@ -96,10 +126,10 @@ make test               # protobuf wire + framing + status suites
 ```
 
 The macOS SDK headers and lib path are injected via Alire's
-`[environment.'case(os)'.macos]` blocks in each crate's `alire.toml` —
-no external `SDKROOT` needed.
+`[environment.'case(os)'.macos]` blocks in each crate's `alire.toml`
+— no external `SDKROOT` needed.
 
-## Defining a service
+## Defining a service (v0.1 codegen)
 
 ```proto
 syntax = "proto3";
@@ -113,21 +143,21 @@ message HelloRequest { string name = 1; }
 message HelloReply   { string message = 1; }
 ```
 
-`protoc-gen-grpc-ada` emits:
+`protoc-gen-grpc-ada` emits per service:
 
 ```
-helloworld.ads                          -- empty parent
-helloworld-hello_request.ads/adb        -- T + Encode/Decode
-helloworld-hello_reply.ads/adb          -- T + Encode/Decode
-helloworld-greeter.ads                  -- abstract Service + Path_*
-helloworld-greeter-dispatch.ads/adb     -- Bind (Server, Service_Access)
-helloworld-greeter-client.ads/adb       -- per-method stubs
+helloworld.ads                       empty parent
+helloworld-hello_request.ads/adb     T + Encode/Decode
+helloworld-hello_reply.ads/adb       T + Encode/Decode
+helloworld-greeter.ads               abstract Service + Path_*
+helloworld-greeter-dispatch.ads/adb  Bind (Server, Service_Access)
+helloworld-greeter-client.ads/adb    per-method stubs
 ```
 
-Implement the abstract base (`override Say_Hello`), pass an aliased
-instance to `Helloworld.Greeter.Dispatch.Bind`, run
-`GRPC.Transport.HTTP2.Run`. The client calls
-`Helloworld.Greeter.Client.Say_Hello (Channel, Request, Reply)`.
+Implement the abstract base, pass an aliased instance to
+`Helloworld.Greeter.Dispatch.Bind`, run `GRPC.Transport.HTTP2.Run`.
+The client calls `Helloworld.Greeter.Client.Say_Hello (Channel,
+Request, Reply)`. Codegen retargets to `protobuf_core` in v0.2.
 
 ## License
 
