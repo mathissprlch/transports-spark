@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+#  Drop into a shell inside the RecordFlux container with /workspace mounted.
+
+set -eu
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+IMAGE="transports-spark/rflx:latest"
+
+exec docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  -v "$REPO_ROOT:/workspace" \
+  -w /workspace \
+  --entrypoint /bin/bash \
+  "$IMAGE"

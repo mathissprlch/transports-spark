@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+#  Run RecordFlux inside a Linux container with the repo mounted at
+#  /workspace. Builds the image on first use. See docs/recordflux-setup.md.
+#
+#  Usage:  scripts/rflx <rflx-subcommand> [args...]
+#  Shell:  scripts/rflx-shell    (drops you into bash inside the container)
+
+set -eu
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+IMAGE="transports-spark/rflx:latest"
+
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo ">>> Building RecordFlux container (one-time, ~30 min)..." >&2
+  docker build -t "$IMAGE" "$REPO_ROOT/tools/recordflux"
+fi
+
+exec docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  -v "$REPO_ROOT:/workspace" \
+  -w /workspace \
+  "$IMAGE" \
+  rflx "$@"

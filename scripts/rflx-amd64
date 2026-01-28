@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+#  Run RecordFlux via Apple `container` on linux/amd64. This mirrors
+#  AdaCore's tested config (Ubuntu 22.04 + Alire 2.0.1). Slower than
+#  the native arm64 path (Apple's emulation, not Rosetta) but matches
+#  the verified-by-AdaCore configuration. Builds the image on first
+#  use. See docs/recordflux-setup.md.
+#
+#  Usage:  scripts/rflx-amd64 <rflx-subcommand> [args...]
+
+set -eu
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+IMAGE="transports-spark/rflx:amd64"
+
+if ! container image list 2>/dev/null | grep -q "^transports-spark/rflx[[:space:]]*amd64"; then
+  echo ">>> Building RecordFlux amd64 image via Apple container (one-time, ~30 min)..." >&2
+  container build \
+    --platform linux/amd64 \
+    -c 6 -m 8G \
+    -t "$IMAGE" \
+    -f "$REPO_ROOT/tools/recordflux/Dockerfile.amd64" \
+    "$REPO_ROOT/tools/recordflux"
+fi
+
+exec container run --rm \
+  --platform linux/amd64 \
+  --user "$(id -u):$(id -g)" \
+  -v "$REPO_ROOT:/workspace" \
+  -w /workspace \
+  "$IMAGE" \
+  rflx "$@"
