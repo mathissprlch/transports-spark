@@ -1,0 +1,37 @@
+--  Pubrel: MQTT 3.1.1 PUBREL control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.6 — PUBREL.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Pubrel is
+
+   --  §3.6.1 — Reserved flag bits for PUBREL. MUST be 0010 (= 2).
+   --  Per §3.6.1, a server receiving PUBREL with any other reserved-bit
+   --  value MUST treat it as a malformed packet and close the connection.
+   --  Constraining the type to value 2 enforces this at parse time.
+   type Reserved_Flags is range 2 .. 2 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. PUBREL has only a 2-byte Packet Identifier,
+   --  so Remaining Length is always 2 — a single varint byte.
+   type Remaining_Length is range 2 .. 2 with Size => 8;
+
+   --  §3.6 — PUBREL packet: 4 bytes total (0x62 0x02 + 2-byte Packet Id).
+   --  Third leg of the QoS 2 flow: sender of original PUBLISH releases the
+   --  Packet Identifier after receiving PUBREC.
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::PUBREL;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.6.2 — Variable header: Packet Identifier from the PUBLISH.
+         Packet_Identifier : Control_Packet::Packet_Identifier;
+      end message;
+
+end Pubrel;

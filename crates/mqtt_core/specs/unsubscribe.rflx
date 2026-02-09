@@ -1,0 +1,42 @@
+--  Unsubscribe: MQTT 3.1.1 UNSUBSCRIBE control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.10 — UNSUBSCRIBE.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Unsubscribe is
+
+   --  §3.10.1 — Fixed-header reserved-bit pattern. MUST be 0010 (= 2).
+   --  Servers MUST treat any other value as malformed and disconnect.
+   type Reserved_Flags is range 2 .. 2 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. 1-byte varint form for v0.2 (max 127).
+   type Remaining_Length is range 0 .. 127 with Size => 8;
+
+   --  §3.10.3 — Payload is a sequence of one or more Topic Filters,
+   --  each a length-prefixed UTF-8 string. The shared
+   --  `Control_Packet::UTF8_String` shape applies directly.
+   type Topic_Filter_List is sequence of Control_Packet::UTF8_String;
+
+   --  §3.10 — UNSUBSCRIBE packet.
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::UNSUBSCRIBE;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.10.2 — Variable header: Packet Identifier.
+         Packet_Identifier : Control_Packet::Packet_Identifier
+            then Topic_Filters
+               with Size => Remaining_Length * 8 - 16
+               --  §3.10.3 — at least one Topic Filter required.
+               if Remaining_Length > 2;
+         Topic_Filters : Topic_Filter_List;
+      end message;
+
+end Unsubscribe;

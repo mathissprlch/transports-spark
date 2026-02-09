@@ -1,0 +1,126 @@
+--  Control_Packet: shared primitives for MQTT 3.1.1 control packets.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §1.5 (data representations), §2.2.1 (packet type
+--  enum), §2.2.3 (Remaining Length varint).
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+--
+--  Per-packet specs `with Control_Packet;` and reference these types
+--  to keep the §2.2.1 / §2.2.3 / §1.5.3 traces in a single place.
+
+package Control_Packet is
+
+   ---------------------------------------------------------------------
+   --  §2.2.1, Table 2.1 — MQTT Control Packet type.
+   --  Encoded in the high 4 bits of the fixed header's first byte.
+   ---------------------------------------------------------------------
+
+   type Packet_Type is
+      (RESERVED_LOW  => 0,
+       CONNECT       => 1,
+       CONNACK       => 2,
+       PUBLISH       => 3,
+       PUBACK        => 4,
+       PUBREC        => 5,
+       PUBREL        => 6,
+       PUBCOMP       => 7,
+       SUBSCRIBE     => 8,
+       SUBACK        => 9,
+       UNSUBSCRIBE   => 10,
+       UNSUBACK      => 11,
+       PINGREQ       => 12,
+       PINGRESP      => 13,
+       DISCONNECT    => 14,
+       RESERVED_HIGH => 15)
+   with Size => 4;
+
+   ---------------------------------------------------------------------
+   --  §2.2.3 — Remaining Length.
+   --
+   --  Variable length encoding: 1 to 4 bytes. Each byte's most
+   --  significant bit is a continuation flag; the lower 7 bits hold
+   --  data. Decoded value is the concatenation of the seven-bit groups,
+   --  little-endian in byte order. §2.2.3 mandates that the fourth
+   --  byte's continuation bit MUST be 0 (a fifth byte would overflow);
+   --  this rule is enforced by `Continuation_4 = False` having no
+   --  alternative branch — anything else is a parse error.
+   ---------------------------------------------------------------------
+
+   type Var_Byte_Value is unsigned 7;
+
+   type Remaining_Length is
+      message
+         Continuation_1 : Boolean
+            then Value_1;
+         Value_1 : Var_Byte_Value
+            then null
+               if Continuation_1 = False
+            then Continuation_2
+               if Continuation_1 = True;
+         Continuation_2 : Boolean
+            then Value_2;
+         Value_2 : Var_Byte_Value
+            then null
+               if Continuation_2 = False
+            then Continuation_3
+               if Continuation_2 = True;
+         Continuation_3 : Boolean
+            then Value_3;
+         Value_3 : Var_Byte_Value
+            then null
+               if Continuation_3 = False
+            then Continuation_4
+               if Continuation_3 = True;
+         Continuation_4 : Boolean
+            then Value_4
+               if Continuation_4 = False;
+         Value_4 : Var_Byte_Value;
+      end message;
+
+   ---------------------------------------------------------------------
+   --  §1.5.2 / §1.5.3 — UTF-8 encoded string.
+   --
+   --  Length-prefixed: 16-bit big-endian length followed by that many
+   --  UTF-8 encoded bytes. §1.5.3 also requires that the string contain
+   --  no U+0000 NUL characters and no Unicode noncharacters; those
+   --  semantic checks live above the wire layer (in the MQTT client
+   --  validation code, not the RecordFlux model).
+   ---------------------------------------------------------------------
+
+   type String_Length is unsigned 16;
+
+   type UTF8_String is
+      message
+         Length : String_Length;
+         Data : Opaque
+            with Size => Length * 8;
+      end message;
+
+   ---------------------------------------------------------------------
+   --  §2.3.1 — Packet Identifier (used by PUBLISH QoS>0, PUBACK,
+   --  PUBREC, PUBREL, PUBCOMP, SUBSCRIBE, SUBACK, UNSUBSCRIBE,
+   --  UNSUBACK).
+   --
+   --  16-bit big-endian. Value 0 is reserved by §2.3.1 — non-zero
+   --  enforced where the field is used.
+   ---------------------------------------------------------------------
+
+   type Packet_Identifier is range 1 .. 2 ** 16 - 1 with Size => 16;
+
+   ---------------------------------------------------------------------
+   --  §3.3.1.2, §4.3 — QoS level (0, 1, or 2). Value 3 is forbidden.
+   --
+   --  Used as the 2-bit QoS sub-field of PUBLISH's flag nibble, and as
+   --  the low 2 bits of the per-subscription Requested QoS byte in
+   --  SUBSCRIBE (§3.8.3).
+   ---------------------------------------------------------------------
+
+   type QoS_Level is
+      (QOS_0 => 0,
+       QOS_1 => 1,
+       QOS_2 => 2)
+   with Size => 2;
+
+end Control_Packet;

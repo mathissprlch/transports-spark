@@ -1,0 +1,59 @@
+--  Subscribe: MQTT 3.1.1 SUBSCRIBE control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.8 — SUBSCRIBE.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Subscribe is
+
+   --  §3.8.1 — Fixed-header reserved-bit pattern. MUST be 0010 (= 2).
+   --  Servers MUST treat any other value as malformed and disconnect.
+   type Reserved_Flags is range 2 .. 2 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. Restricted to the 1-byte varint form
+   --  for v0.2 (max 127 byte body; covers ~25 short topic filters).
+   type Remaining_Length is range 0 .. 127 with Size => 8;
+
+   --  §3.8.3 — Reserved bits in the per-subscription Requested QoS byte.
+   --  Bits 7..2 MUST be 0. Bits 1..0 hold the QoS (0, 1, or 2).
+   type Reserved_Sub_QoS is range 0 .. 0 with Size => 6;
+
+   --  §3.8.3 — One subscription record: Topic Filter (UTF-8 length-
+   --  prefixed) followed by the per-subscription Requested QoS byte.
+   type Subscription is
+      message
+         Topic_Filter_Length : Control_Packet::String_Length;
+         Topic_Filter : Opaque
+            with Size => Topic_Filter_Length * 8
+            then Reserved_Sub_QoS;
+         Reserved_Sub_QoS : Reserved_Sub_QoS;
+         Requested_QoS : Control_Packet::QoS_Level;
+      end message;
+
+   --  §3.8.3 — Payload is a sequence of one or more Subscription records.
+   --  The "at least one" constraint (§3.8.3 protocol error otherwise) is
+   --  expressed below by gating the sequence's Size to be > 0.
+   type Subscription_List is sequence of Subscription;
+
+   --  §3.8 — SUBSCRIBE packet.
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::SUBSCRIBE;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.8.2 — Variable header: Packet Identifier.
+         Packet_Identifier : Control_Packet::Packet_Identifier
+            then Subscriptions
+               with Size => Remaining_Length * 8 - 16
+               --  §3.8.3 — at least one subscription pair required.
+               if Remaining_Length > 2;
+         Subscriptions : Subscription_List;
+      end message;
+
+end Subscribe;

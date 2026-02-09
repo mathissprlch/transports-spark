@@ -16,6 +16,9 @@ crates/examples/generated/*.ad?
 # Vendored sources are bootstrapped, not committed.
 vendor/aws/
 
+# RecordFlux verification cache
+.rflx_cache/
+
 # Editor
 .DS_Store
 *.swp

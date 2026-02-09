@@ -1,0 +1,52 @@
+--  Suback: MQTT 3.1.1 SUBACK control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.9 — SUBACK.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Suback is
+
+   --  §3.9.1 — Reserved flag bits for SUBACK. MUST be 0000.
+   type Reserved_Flags is range 0 .. 0 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. Restricted to 1-byte varint form for
+   --  v0.2; supports up to 125 return codes (RL = 2 + N return codes).
+   type Remaining_Length is range 0 .. 127 with Size => 8;
+
+   --  §3.9.3 — Per-topic return code in the payload. One byte each.
+   --  Values 0x00–0x02 are Success codes (granted QoS); 0x80 is Failure.
+   --  All other byte values are reserved by §3.9.3 — restricting the
+   --  enum's range rejects them at parse time.
+   type Return_Code is
+      (SUCCESS_QOS_0 => 16#00#,
+       SUCCESS_QOS_1 => 16#01#,
+       SUCCESS_QOS_2 => 16#02#,
+       FAILURE       => 16#80#)
+   with Size => 8;
+
+   --  §3.9.3 — Payload is a sequence of one return code per topic from
+   --  the originating SUBSCRIBE, in the same order.
+   type Return_Code_List is sequence of Return_Code;
+
+   --  §3.9 — SUBACK packet.
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::SUBACK;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.9.2 — Variable header: Packet Identifier from SUBSCRIBE.
+         Packet_Identifier : Control_Packet::Packet_Identifier
+            then Return_Codes
+               with Size => Remaining_Length * 8 - 16
+               --  §3.9.3 — at least one return code required.
+               if Remaining_Length > 2;
+         Return_Codes : Return_Code_List;
+      end message;
+
+end Suback;

@@ -1,0 +1,32 @@
+--  Pingresp: MQTT 3.1.1 PINGRESP control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.13 — PINGRESP.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Pingresp is
+
+   --  §3.13.1 — Reserved flag bits for PINGRESP. MUST be 0000.
+   --  Encoded in the low 4 bits of the fixed header's first byte.
+   type Reserved_Flags is range 0 .. 0 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. PINGRESP has no variable header and no
+   --  payload, so Remaining Length is always 0 — a single varint byte.
+   --  General varint encoding modeled in `Control_Packet::Remaining_Length`.
+   type Remaining_Length is range 0 .. 0 with Size => 8;
+
+   --  §3.13 — PINGRESP packet on the wire: exactly two bytes (0xD0 0x00).
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::PINGRESP;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+      end message;
+
+end Pingresp;

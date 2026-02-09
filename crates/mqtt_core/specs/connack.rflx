@@ -1,0 +1,58 @@
+--  Connack: MQTT 3.1.1 CONNACK control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.2 — CONNACK.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Connack is
+
+   --  §3.2.1 — Reserved flag bits for CONNACK. MUST be 0000.
+   type Reserved_Flags is range 0 .. 0 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. CONNACK has a 2-byte variable header
+   --  (flags + return code) and no payload, so Remaining Length is always 2.
+   type Remaining_Length is range 2 .. 2 with Size => 8;
+
+   --  §3.2.2.1 — Connect Acknowledge Flags. High 7 bits are reserved and
+   --  MUST be 0; low bit is the Session Present flag (§3.2.2.2).
+   type Reserved_Ack_Flags is range 0 .. 0 with Size => 7;
+
+   --  §3.2.2.3, Table 3.1 — Connect Return code.
+   --  Values 6–255 are reserved for future use; constraining the type to the
+   --  enumeration's range rejects them at parse time.
+   type Connect_Return_Code is
+      (ACCEPTED                     => 0,
+       REFUSED_PROTOCOL_VERSION     => 1,
+       REFUSED_IDENTIFIER_REJECTED  => 2,
+       REFUSED_SERVER_UNAVAILABLE   => 3,
+       REFUSED_BAD_USERNAME_OR_PWD  => 4,
+       REFUSED_NOT_AUTHORIZED       => 5)
+   with Size => 8;
+
+   --  §3.2 — CONNACK packet: 4 bytes total.
+   --  Sent by the Server in response to CONNECT.
+   --
+   --  Layout (after the fixed header):
+   --    Byte 3 high 7 bits: reserved (0)
+   --    Byte 3 low 1 bit:   Session Present
+   --    Byte 4:             Connect Return code
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::CONNACK;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.2.2.1 — Connect Acknowledge Flags byte.
+         Reserved_Ack_Flags : Reserved_Ack_Flags;
+         --  §3.2.2.2 — Session Present.
+         Session_Present : Boolean;
+         --  §3.2.2.3 — Connect Return code.
+         Return_Code : Connect_Return_Code;
+      end message;
+
+end Connack;

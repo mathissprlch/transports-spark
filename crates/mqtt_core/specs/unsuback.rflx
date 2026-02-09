@@ -1,0 +1,34 @@
+--  Unsuback: MQTT 3.1.1 UNSUBACK control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.11 — UNSUBACK.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Unsuback is
+
+   --  §3.11.1 — Reserved flag bits for UNSUBACK. MUST be 0000.
+   type Reserved_Flags is range 0 .. 0 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. UNSUBACK has only a 2-byte Packet Identifier
+   --  in its variable header and no payload (§3.11.3), so Remaining Length is
+   --  always 2 — a single varint byte.
+   type Remaining_Length is range 2 .. 2 with Size => 8;
+
+   --  §3.11 — UNSUBACK packet: 4 bytes total (0xB0 0x02 + 2-byte Packet Id).
+   --  Sent by the Server to confirm receipt of an UNSUBSCRIBE request.
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::UNSUBACK;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.11.2 — Variable header: Packet Identifier from UNSUBSCRIBE.
+         Packet_Identifier : Control_Packet::Packet_Identifier;
+      end message;
+
+end Unsuback;

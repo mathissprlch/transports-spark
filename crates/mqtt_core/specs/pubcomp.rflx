@@ -1,0 +1,33 @@
+--  Pubcomp: MQTT 3.1.1 PUBCOMP control packet.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §3.7 — PUBCOMP.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+
+with Control_Packet;
+
+package Pubcomp is
+
+   --  §3.7.1 — Reserved flag bits for PUBCOMP. MUST be 0000.
+   type Reserved_Flags is range 0 .. 0 with Size => 4;
+
+   --  §2.2.3 — Remaining Length. PUBCOMP has only a 2-byte Packet Identifier,
+   --  so Remaining Length is always 2 — a single varint byte.
+   type Remaining_Length is range 2 .. 2 with Size => 8;
+
+   --  §3.7 — PUBCOMP packet: 4 bytes total (0x70 0x02 + 2-byte Packet Id).
+   --  Fourth and final leg of the QoS 2 flow: receiver acknowledges PUBREL.
+   type Packet is
+      message
+         Packet_Type : Control_Packet::Packet_Type
+            then Reserved
+               if Packet_Type = Control_Packet::PUBCOMP;
+         Reserved : Reserved_Flags;
+         Remaining_Length : Remaining_Length;
+         --  §3.7.2 — Variable header: Packet Identifier from PUBREL.
+         Packet_Identifier : Control_Packet::Packet_Identifier;
+      end message;
+
+end Pubcomp;
