@@ -1,0 +1,82 @@
+--  Session: MQTT 3.1.1 client connection-lifecycle state machine.
+--
+--  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
+--  Section coverage: §4.2 (Network Connections), §3.1 + §3.2 (CONNECT
+--  / CONNACK handshake), §3.14 (DISCONNECT shutdown).
+--
+--  Scope for v0.2: connect handshake and clean shutdown. The §4.3 QoS
+--  protocol flows, §4.4 retry, §4.6 ordering, and §4.5 server-side
+--  message receipt are out of scope here — the steady-state phase
+--  between handshake and shutdown is driven by the Ada client layer
+--  using the generated packet decoders/encoders, not the FSM. A
+--  follow-up machine (post-v0.2) will model the QoS 1/2 flows.
+--
+--  Verification value: a generated SPARK implementation cannot send
+--  any packet before CONNECT, cannot treat a refused CONNACK as
+--  success, and cannot reach the post-disconnect terminal state
+--  without having transmitted DISCONNECT.
+
+with Connect;
+with Connack;
+with Disconnect;
+
+package Session is
+
+   generic
+      --  §4.2 — the MQTT Network Connection. Reads incoming packets
+      --  from the Server, writes outgoing packets to it. The TLS or
+      --  TCP transport sits beneath this channel.
+      Network : Channel with Readable, Writable;
+   machine Client is
+      Outgoing_Connect    : Connect::Packet;
+      Incoming_Connack    : Connack::Packet;
+      Outgoing_Disconnect : Disconnect::Packet;
+   begin
+
+      --  §3.1 — Send CONNECT. The caller populates `Outgoing_Connect`
+      --  (Client Id, Keep Alive, Clean Session, credentials) before
+      --  driving the machine.
+      state Connecting is
+      begin
+         Network'Write (Outgoing_Connect);
+      transition
+         goto Awaiting_Connack
+      end Connecting;
+
+      --  §3.2 — Read CONNACK and dispatch on its Return Code.
+      --  Per §3.2.2.3 / Table 3.1, only ACCEPTED (0) means the session
+      --  is open; every other code (1..5) MUST cause the Client to
+      --  close the Network Connection without sending a DISCONNECT
+      --  (§3.2.2 makes ACCEPTED the precondition for any further
+      --  client→server packets).
+      state Awaiting_Connack is
+      begin
+         Network'Read (Incoming_Connack);
+      transition
+         goto Disconnecting
+            if Incoming_Connack'Valid
+               and Incoming_Connack.Return_Code = Connack::ACCEPTED
+         --  Refused or malformed CONNACK: end without DISCONNECT.
+         goto null
+      exception
+         goto null
+      end Awaiting_Connack;
+
+      --  §3.14 — Client-initiated DISCONNECT. Reaching this state
+      --  proves the handshake succeeded (only path here is from the
+      --  ACCEPTED branch above). The Ada client layer prepares
+      --  `Outgoing_Disconnect` and any final publish/subscribe work
+      --  before the machine resumes through this state.
+      --
+      --  Per §3.14.4, after sending DISCONNECT the Client MUST close
+      --  the Network Connection and MUST NOT send any further packets.
+      state Disconnecting is
+      begin
+         Network'Write (Outgoing_Disconnect);
+      transition
+         goto null
+      end Disconnecting;
+
+   end Client;
+
+end Session;
