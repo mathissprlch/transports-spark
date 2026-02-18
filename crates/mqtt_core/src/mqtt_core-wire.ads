@@ -118,4 +118,73 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 2,
      Post => Buffer = null;
 
+   ---------------------------------------------------------------------
+   --  SUBSCRIBE (single topic) — §3.8. v0.2 demo path.
+   ---------------------------------------------------------------------
+
+   subtype Packet_Identifier is RFLX.Control_Packet.Packet_Identifier;
+   subtype QoS_Level         is RFLX.Control_Packet.QoS_Level;
+
+   procedure Encode_Subscribe_Single
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Topic     : String;
+      QoS       : QoS_Level := RFLX.Control_Packet.QOS_0)
+   with
+     Pre  => Buffer /= null
+             and then Topic'Length in 1 .. 120
+             and then Buffer'Length >= 7 + Topic'Length,
+     Post => Buffer = null;
+
+   ---------------------------------------------------------------------
+   --  SUBACK (single return code) — §3.9. v0.2 demo path.
+   ---------------------------------------------------------------------
+
+   type Suback_Return_Code is
+     (Granted_QoS_0,
+      Granted_QoS_1,
+      Granted_QoS_2,
+      Failure);
+
+   procedure Decode_Suback_Single
+     (Buffer    : in out Bytes_Ptr;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier;
+      Code      :    out Suback_Return_Code)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 5,
+     Post => Buffer = null;
+
+   ---------------------------------------------------------------------
+   --  PUBLISH (decode) — extract Topic + Payload from an incoming
+   --  PUBLISH. v0.2: QoS 0 only (no Packet Identifier consumption).
+   --
+   --  Caller supplies max-sized String/Bytes; the procedure writes the
+   --  actual length into Topic_Last/Payload_Last (one-past-the-end of
+   --  written data, or 'First - 1 if empty).
+   ---------------------------------------------------------------------
+
+   procedure Decode_Publish_Qos0
+     (Buffer        : in out Bytes_Ptr;
+      Valid         :    out Boolean;
+      Topic         : in out String;
+      Topic_Last    :    out Natural;
+      Payload       : in out RFLX.RFLX_Types.Bytes;
+      Payload_Last  :    out RFLX.RFLX_Types.Length)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer = null;
+
+   ---------------------------------------------------------------------
+   --  Peek at the high 4 bits of a buffer's first byte to dispatch on
+   --  incoming packet type without parsing the whole message yet.
+   ---------------------------------------------------------------------
+
+   function Peek_Packet_Type
+     (Buffer : RFLX.RFLX_Types.Bytes)
+      return RFLX.Control_Packet.Packet_Type
+   with
+     Pre => Buffer'Length >= 1;
+
 end Mqtt_Core.Wire;
