@@ -38,7 +38,7 @@ is
       Last   :    out Index)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 2,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  DISCONNECT — §3.14. 2-byte fixed packet (0xE0 0x00).
@@ -49,7 +49,7 @@ is
       Last   :    out Index)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 2,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  CONNECT — §3.1. v0.2 minimal: no Username/Password (Mosquitto
@@ -70,7 +70,7 @@ is
      Pre  => Buffer /= null
              and then Buffer'Length >= 14 + Client_Id'Length
              and then Client_Id'Length in 1 .. 115,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  CONNACK — §3.2. Decode a 4-byte server response.
@@ -85,7 +85,7 @@ is
       Code            :    out Return_Code)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 4,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  PUBLISH (QoS 0) — §3.3. Application bytes published on a topic.
@@ -105,7 +105,7 @@ is
              and then Topic'Length in 1 .. 124
              and then Payload'Length <= 125 - Topic'Length
              and then Buffer'Length >= 4 + Topic'Length + Payload'Length,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  PINGRESP — §3.13. Verify a 2-byte ping response from the broker.
@@ -116,7 +116,7 @@ is
       Valid  :    out Boolean)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 2,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  SUBSCRIBE (single topic) — §3.8. v0.2 demo path.
@@ -135,7 +135,7 @@ is
      Pre  => Buffer /= null
              and then Topic'Length in 1 .. 120
              and then Buffer'Length >= 7 + Topic'Length,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  SUBACK (single return code) — §3.9. v0.2 demo path.
@@ -154,7 +154,7 @@ is
       Code      :    out Suback_Return_Code)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 5,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  PUBLISH (decode) — extract Topic + Payload from an incoming
@@ -174,7 +174,7 @@ is
       Payload_Last  :    out RFLX.RFLX_Types.Length)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 4,
-     Post => Buffer = null;
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
    --  Peek at the high 4 bits of a buffer's first byte to dispatch on
