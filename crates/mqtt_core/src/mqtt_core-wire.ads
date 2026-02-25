@@ -80,6 +80,7 @@ is
 
    procedure Decode_Connack
      (Buffer          : in out Bytes_Ptr;
+      Last            : Index;
       Valid           :    out Boolean;
       Session_Present :    out Boolean;
       Code            :    out Return_Code)
@@ -113,6 +114,7 @@ is
 
    procedure Decode_Pingresp
      (Buffer : in out Bytes_Ptr;
+      Last   : Index;
       Valid  :    out Boolean)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 2,
@@ -149,6 +151,7 @@ is
 
    procedure Decode_Suback_Single
      (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
       Valid     :    out Boolean;
       Packet_Id :    out Packet_Identifier;
       Code      :    out Suback_Return_Code)
@@ -167,6 +170,7 @@ is
 
    procedure Decode_Publish_Qos0
      (Buffer        : in out Bytes_Ptr;
+      Last          : Index;
       Valid         :    out Boolean;
       Topic         : in out String;
       Topic_Last    :    out Natural;

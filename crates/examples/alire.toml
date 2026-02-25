@@ -1,5 +1,5 @@
 name = "examples"
-description = "grpc-ada example programs"
+description = "transports-spark example programs"
 version = "0.0.1"
 
 authors = ["Mathis Sperlich"]
@@ -8,11 +8,18 @@ maintainers-logins = ["mathis"]
 licenses = "MIT"
 
 executables = ["greeter_server", "greeter_client",
-               "listfeatures_server", "listfeatures_client"]
+               "listfeatures_server", "listfeatures_client",
+               "mqtt_demo"]
 project-files = ["examples.gpr"]
 
 [[depends-on]]
 grpc_ada = "*"
 
+[[depends-on]]
+mqtt_core = "*"
+
 [[pins]]
 grpc_ada = { path = "../grpc_ada" }
+
+[pins.mqtt_core]
+path = "../mqtt_core"

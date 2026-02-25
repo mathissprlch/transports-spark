@@ -39,7 +39,7 @@ package body Mqtt_Core.Client is
       Body_Ok      : Boolean;
       RL           : Natural;
    begin
-      Last    := Buf'First - 1;
+      Last    := Buf'First;  --  not meaningful unless Success = True
       Success := False;
       Transport.Receive_Full
         (C.Trans, Buf.all (Buf'First .. Buf'First + 1), Two_Bytes_Ok);
@@ -108,7 +108,7 @@ package body Mqtt_Core.Client is
             raise Connect_Failure with "no CONNACK";
          end if;
       end;
-      Wire.Decode_Connack (Buf, Connack_Ok, Session_Present, Code);
+      Wire.Decode_Connack (Buf, Last, Connack_Ok, Session_Present, Code);
       RFLX.RFLX_Types.Free (Buf);
       if not Connack_Ok or Code /= RFLX.Connack.ACCEPTED then
          Transport.Close (C.Trans);
@@ -164,7 +164,7 @@ package body Mqtt_Core.Client is
          RFLX.RFLX_Types.Free (Buf);
          raise Subscribe_Failure with "no SUBACK";
       end if;
-      Wire.Decode_Suback_Single (Buf, Ok, Reply_Pid, Reply_Code);
+      Wire.Decode_Suback_Single (Buf, Last, Ok, Reply_Pid, Reply_Code);
       RFLX.RFLX_Types.Free (Buf);
       if not Ok or Reply_Pid /= Pid or Reply_Code = Wire.Failure then
          raise Subscribe_Failure with "broker refused subscription";
@@ -202,7 +202,8 @@ package body Mqtt_Core.Client is
          Kind := Wire.Peek_Packet_Type (Buf.all (Buf'First .. Last));
          if Kind = RFLX.Control_Packet.PUBLISH then
             Wire.Decode_Publish_Qos0
-              (Buf, Pkt_Valid, Topic, Topic_Last, Payload, Payload_Last);
+              (Buf, Last, Pkt_Valid, Topic, Topic_Last,
+               Payload, Payload_Last);
             RFLX.RFLX_Types.Free (Buf);
             if not Pkt_Valid then
                raise Receive_Failure with "malformed PUBLISH";

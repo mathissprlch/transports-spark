@@ -16,6 +16,7 @@ with SPARK_Mode
 is
 
    use type RFLX.RFLX_Types.Index;
+   use type RFLX.RFLX_Types.Bit_Length;
 
    --  String → RFLX_Types.Bytes conversion. Used for UTF-8 fields.
    function To_Bytes (S : String) return RFLX.RFLX_Types.Bytes
@@ -130,13 +131,16 @@ is
 
    procedure Decode_Connack
      (Buffer          : in out Bytes_Ptr;
+      Last            : Index;
       Valid           :    out Boolean;
       Session_Present :    out Boolean;
       Code            :    out Return_Code)
    is
       Ctx : RFLX.Connack.Packet.Context;
    begin
-      RFLX.Connack.Packet.Initialize (Ctx, Buffer);
+      RFLX.Connack.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
       RFLX.Connack.Packet.Verify_Message (Ctx);
       if RFLX.Connack.Packet.Well_Formed_Message (Ctx) then
          Valid           := True;
@@ -190,11 +194,14 @@ is
 
    procedure Decode_Pingresp
      (Buffer : in out Bytes_Ptr;
+      Last   : Index;
       Valid  :    out Boolean)
    is
       Ctx : RFLX.Pingresp.Packet.Context;
    begin
-      RFLX.Pingresp.Packet.Initialize (Ctx, Buffer);
+      RFLX.Pingresp.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
       RFLX.Pingresp.Packet.Verify_Message (Ctx);
       Valid := RFLX.Pingresp.Packet.Well_Formed_Message (Ctx);
       RFLX.Pingresp.Packet.Take_Buffer (Ctx, Buffer);
@@ -252,6 +259,7 @@ is
 
    procedure Decode_Suback_Single
      (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
       Valid     :    out Boolean;
       Packet_Id :    out Packet_Identifier;
       Code      :    out Suback_Return_Code)
@@ -264,7 +272,9 @@ is
       Packet_Id := 1;
       Code      := Failure;
 
-      RFLX.Suback.Packet.Initialize (Pkt_Ctx, Buffer);
+      RFLX.Suback.Packet.Initialize
+        (Pkt_Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
       RFLX.Suback.Packet.Verify_Message (Pkt_Ctx);
       if not RFLX.Suback.Packet.Well_Formed_Message (Pkt_Ctx) then
          RFLX.Suback.Packet.Take_Buffer (Pkt_Ctx, Buffer);
@@ -272,7 +282,10 @@ is
       end if;
       Packet_Id := RFLX.Suback.Packet.Get_Packet_Identifier (Pkt_Ctx);
       RFLX.Suback.Packet.Switch_To_Return_Codes (Pkt_Ctx, Seq_Ctx);
-      if RFLX.Suback.Return_Code_List.Has_Element (Seq_Ctx) then
+      if RFLX.Suback.Return_Code_List.Has_Element (Seq_Ctx)
+        and then RFLX.Suback.Return_Code_List.Valid_Element (Seq_Ctx)
+      then
+         RFLX.Suback.Return_Code_List.Next (Seq_Ctx);
          declare
             Rc : constant RFLX.Suback.Return_Code :=
               RFLX.Suback.Return_Code_List.Head (Seq_Ctx);
@@ -296,6 +309,7 @@ is
 
    procedure Decode_Publish_Qos0
      (Buffer        : in out Bytes_Ptr;
+      Last          : Index;
       Valid         :    out Boolean;
       Topic         : in out String;
       Topic_Last    :    out Natural;
@@ -308,7 +322,9 @@ is
       Topic_Last   := Topic'First - 1;
       Payload_Last := 0;
 
-      RFLX.Publish.Packet.Initialize (Ctx, Buffer);
+      RFLX.Publish.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
       RFLX.Publish.Packet.Verify_Message (Ctx);
       if not RFLX.Publish.Packet.Well_Formed_Message (Ctx) then
          RFLX.Publish.Packet.Take_Buffer (Ctx, Buffer);
@@ -328,17 +344,34 @@ is
             return;
          end if;
          Topic_Last := Topic'First + T_Len - 1;
-         for K in 0 .. T_Len - 1 loop
-            Topic (Topic'First + K) :=
-              Character'Val
-                (Natural (T_Bytes (T_Bytes'First
-                                   + RFLX.RFLX_Types.Index (K))));
-         end loop;
+         declare
+            Src : RFLX.RFLX_Types.Index := T_Bytes'First;
+            Dst : Natural               := Topic'First;
+         begin
+            while Dst <= Topic_Last loop
+               Topic (Dst) :=
+                 Character'Val (Natural (T_Bytes (Src)));
+               exit when Dst = Topic_Last;
+               Dst := Dst + 1;
+               Src := Src + 1;
+            end loop;
+         end;
          Payload_Last := RFLX.RFLX_Types.Length (P_Len);
-         for K in 0 .. P_Len - 1 loop
-            Payload (Payload'First + RFLX.RFLX_Types.Index (K)) :=
-              P_Bytes (P_Bytes'First + RFLX.RFLX_Types.Index (K));
-         end loop;
+         if P_Len > 0 then
+            declare
+               Src : RFLX.RFLX_Types.Index := P_Bytes'First;
+               Dst : RFLX.RFLX_Types.Index := Payload'First;
+               Last_Dst : constant RFLX.RFLX_Types.Index :=
+                 Payload'First + RFLX.RFLX_Types.Index (P_Len - 1);
+            begin
+               while Dst <= Last_Dst loop
+                  Payload (Dst) := P_Bytes (Src);
+                  exit when Dst = Last_Dst;
+                  Dst := Dst + 1;
+                  Src := Src + 1;
+               end loop;
+            end;
+         end if;
          Valid := True;
       end;
       RFLX.Publish.Packet.Take_Buffer (Ctx, Buffer);

@@ -84,18 +84,27 @@ package body Mqtt_Core.Transport is
       Recv_Last : Stream_Element_Offset;
    begin
       Buffer  := (others => 0);
-      Last    := Buffer'First - 1;
+      Last    := Buffer'First;  --  not meaningful unless Success = True
       Success := False;
       GNAT.Sockets.Receive_Socket (Chan.Socket, Buf, Recv_Last);
       if Recv_Last < Buf'First then
          --  EOF or zero-length read.
          return;
       end if;
-      for I in Buf'First .. Recv_Last loop
-         Buffer (Buffer'First + RFLX.RFLX_Types.Index (I - Buf'First)) :=
-           RFLX.RFLX_Types.Byte (Buf (I));
-      end loop;
-      Last := Buffer'First + RFLX.RFLX_Types.Index (Recv_Last - Buf'First);
+      --  Copy in lockstep; we cannot convert 0 → RFLX_Types.Index since
+      --  Index starts at 1, so use parallel indices instead of an offset.
+      declare
+         Src : Stream_Element_Offset := Buf'First;
+         Dst : RFLX.RFLX_Types.Index := Buffer'First;
+      begin
+         while Src <= Recv_Last loop
+            Buffer (Dst) := RFLX.RFLX_Types.Byte (Buf (Src));
+            Src := Src + 1;
+            exit when Src > Recv_Last;
+            Dst := Dst + 1;
+         end loop;
+         Last := Dst;
+      end;
       Success := True;
    exception
       when others =>
