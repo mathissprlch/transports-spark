@@ -1,13 +1,15 @@
---  mqtt_demo — exercises the v0.2 SPARK MQTT 3.1.1 client end-to-end.
+--  mqtt_demo — exercises the SPARK MQTT 3.1.1 client end-to-end.
 --
---  Connects to localhost:1883 (Mosquitto), subscribes to `ada/test`,
---  publishes a "Hello, MQTT!" payload on the same topic, then waits
---  for the broker to deliver it back. Disconnects cleanly.
+--  Multi-stage demo against any compliant 3.1.1 broker on
+--  127.0.0.1:1883:
+--    1. CONNECT + CONNACK handshake
+--    2. SUBSCRIBE to ada/test, await SUBACK
+--    3. Three publish/receive round trips, including one near the
+--       single-byte Remaining-Length cap
+--    4. DISCONNECT and clean socket close
 --
 --  Run a broker first, e.g.:
 --    docker run --rm -p 1883:1883 eclipse-mosquitto
---    --or--
---    brew services start mosquitto
 
 with Ada.Text_IO;
 with RFLX.RFLX_Types;
@@ -51,13 +53,59 @@ procedure Mqtt_Demo is
       return Result;
    end To_String;
 
-   Topic        : constant String := "ada/test";
-   Hello        : constant String := "Hello, MQTT!";
-   Topic_Buf    : String (1 .. 128);
-   Topic_Last   : Natural;
-   Payload_Buf  : RFLX.RFLX_Types.Bytes (1 .. 256);
-   Payload_Last : RFLX.RFLX_Types.Length;
-   Client       : Mqtt_Core.Client.Client;
+   --  Send `Payload` then immediately consume the broker's echo of it
+   --  (we are subscribed to the topic we publish on). Reports the
+   --  topic + payload of the round trip and flags any mismatch.
+   procedure Round_Trip
+     (C       : in out Mqtt_Core.Client.Client;
+      Topic   : String;
+      Payload : String);
+
+   procedure Round_Trip
+     (C       : in out Mqtt_Core.Client.Client;
+      Topic   : String;
+      Payload : String)
+   is
+      Recv_Topic   : String (1 .. 128);
+      Recv_T_Last  : Natural;
+      Recv_Payload : RFLX.RFLX_Types.Bytes (1 .. 256);
+      Recv_P_Last  : RFLX.RFLX_Types.Length;
+   begin
+      Mqtt_Core.Client.Publish (C, Topic, To_Bytes (Payload));
+      Put_Line
+        ("  -> published" & Integer'Image (Payload'Length)
+         & "B to " & Topic);
+      Mqtt_Core.Client.Receive_Publish
+        (C, Recv_Topic, Recv_T_Last, Recv_Payload, Recv_P_Last);
+      declare
+         Got : constant String := To_String (Recv_Payload, Recv_P_Last);
+      begin
+         if Recv_Topic (Recv_Topic'First .. Recv_T_Last) /= Topic then
+            Put_Line ("  !! topic mismatch: got "
+                      & Recv_Topic (Recv_Topic'First .. Recv_T_Last));
+         elsif Got /= Payload then
+            Put_Line ("  !! payload mismatch:");
+            Put_Line ("     sent: " & Payload);
+            Put_Line ("     got:  " & Got);
+         else
+            Put_Line ("  <- echoed" & Integer'Image (Got'Length)
+                      & "B ok");
+         end if;
+      end;
+   end Round_Trip;
+
+   --  Bigger payload to exercise the spec's single-byte
+   --  Remaining-Length cap. Total wire frame for PUBLISH must satisfy
+   --  2 + topic + payload <= 127, i.e. payload <= 117 with this topic.
+   Big_Payload : constant String :=
+     "abcdefghijklmnopqrstuvwxyz"
+     & "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+     & "0123456789"
+     & "abcdefghijklmnopqrstuvwxyz"
+     & "ABCDEFGHIJKLMNOPQ";  --  total = 26+26+10+26+17 = 105 chars
+
+   Topic  : constant String := "ada/test";
+   Client : Mqtt_Core.Client.Client;
 
 begin
    Put_Line ("mqtt_demo: connecting to localhost:1883...");
@@ -73,15 +121,14 @@ begin
    Mqtt_Core.Client.Subscribe (Client, Topic);
    Put_Line ("mqtt_demo: subscribed to " & Topic);
 
-   Mqtt_Core.Client.Publish (Client, Topic, To_Bytes (Hello));
-   Put_Line ("mqtt_demo: published """ & Hello & """ to " & Topic);
+   Put_Line ("mqtt_demo: round-trip 1 (small)");
+   Round_Trip (Client, Topic, "Hello, MQTT!");
 
-   Mqtt_Core.Client.Receive_Publish
-     (Client, Topic_Buf, Topic_Last, Payload_Buf, Payload_Last);
-   Put_Line
-     ("mqtt_demo: received topic="
-      & Topic_Buf (Topic_Buf'First .. Topic_Last)
-      & " payload=""" & To_String (Payload_Buf, Payload_Last) & """");
+   Put_Line ("mqtt_demo: round-trip 2 (medium)");
+   Round_Trip (Client, Topic, "second message - same buffer reused, no heap");
+
+   Put_Line ("mqtt_demo: round-trip 3 (near RL cap)");
+   Round_Trip (Client, Topic, Big_Payload);
 
    Mqtt_Core.Client.Close (Client);
    Put_Line ("mqtt_demo: disconnected. ok.");
