@@ -1,4 +1,5 @@
 with RFLX.RFLX_Types; use type RFLX.RFLX_Types.Index;
+with RFLX.RFLX_Builtin_Types;
 with RFLX.Connack;
 with RFLX.Connect;
 with Mqtt_Core.Wire;
@@ -6,38 +7,26 @@ with Mqtt_Core.Wire;
 package body Mqtt_Core.Client is
 
    use type RFLX.Control_Packet.Packet_Identifier;
+   use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
-   --  Single re-usable buffer size. v0.2 caps at 1-byte Remaining
-   --  Length, so any packet fits comfortably in 256 bytes.
-   Buffer_Capacity : constant := 256;
-
-   --  Allocate a fresh zero-filled buffer. Caller frees.
-   function Fresh_Buffer return RFLX.RFLX_Types.Bytes_Ptr;
-
-   function Fresh_Buffer return RFLX.RFLX_Types.Bytes_Ptr is
-   begin
-      return new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
-   end Fresh_Buffer;
-
-   --  Read the next full MQTT packet from the socket into Buf.
-   --  v0.2 assumes single-byte Remaining Length form: byte 1 is the
-   --  fixed-header byte, byte 2 is RL (0..127), then RL more bytes.
+   --  Read the next full MQTT control packet from the socket into
+   --  C.Buf. Assumes the single-byte Remaining-Length form: byte 1 is
+   --  the fixed-header byte, byte 2 is RL (0..127), then RL more bytes.
    --  Sets Success := False on EOF / socket error.
    procedure Read_Full_Packet
      (C       : in out Client;
-      Buf     : in out RFLX.RFLX_Types.Bytes_Ptr;
       Last    :    out RFLX.RFLX_Types.Index;
       Success :    out Boolean);
 
    procedure Read_Full_Packet
      (C       : in out Client;
-      Buf     : in out RFLX.RFLX_Types.Bytes_Ptr;
       Last    :    out RFLX.RFLX_Types.Index;
       Success :    out Boolean)
    is
       Two_Bytes_Ok : Boolean;
       Body_Ok      : Boolean;
       RL           : Natural;
+      Buf          : RFLX.RFLX_Types.Bytes_Ptr renames C.Buf;
    begin
       Last    := Buf'First;  --  not meaningful unless Success = True
       Success := False;
@@ -79,37 +68,37 @@ package body Mqtt_Core.Client is
       Keep_Alive_S  : Natural := 60;
       Clean_Session : Boolean := True)
    is
-      Buf  : RFLX.RFLX_Types.Bytes_Ptr := Fresh_Buffer;
       Last : RFLX.RFLX_Types.Index;
       Connack_Ok       : Boolean;
       Session_Present  : Boolean;
       Code             : Wire.Return_Code;
+      Read_Ok          : Boolean;
       use type Wire.Return_Code;
    begin
+      --  One allocation per Client lifetime; Close frees it. The buffer
+      --  hops back and forth between this record and RecordFlux contexts
+      --  via Initialize / Take_Buffer, never touching the heap again.
+      if C.Buf = null then
+         C.Buf := new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      end if;
+
       Transport.Connect (C.Trans, Host, Port);
-      --  Encode CONNECT.
+
+      --  CONNECT.
       Wire.Encode_Connect
-        (Buf, Last,
+        (C.Buf, Last,
          Client_Id     => Client_Id,
          Keep_Alive_S  => RFLX.Connect.Keep_Alive (Keep_Alive_S),
          Clean_Session => Clean_Session);
-      Transport.Send (C.Trans, Buf.all (Buf'First .. Last));
-      RFLX.RFLX_Types.Free (Buf);
+      Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
 
-      --  Read CONNACK.
-      Buf := Fresh_Buffer;
-      declare
-         Ok : Boolean;
-      begin
-         Read_Full_Packet (C, Buf, Last, Ok);
-         if not Ok then
-            RFLX.RFLX_Types.Free (Buf);
-            Transport.Close (C.Trans);
-            raise Connect_Failure with "no CONNACK";
-         end if;
-      end;
-      Wire.Decode_Connack (Buf, Last, Connack_Ok, Session_Present, Code);
-      RFLX.RFLX_Types.Free (Buf);
+      --  CONNACK.
+      Read_Full_Packet (C, Last, Read_Ok);
+      if not Read_Ok then
+         Transport.Close (C.Trans);
+         raise Connect_Failure with "no CONNACK";
+      end if;
+      Wire.Decode_Connack (C.Buf, Last, Connack_Ok, Session_Present, Code);
       if not Connack_Ok or Code /= RFLX.Connack.ACCEPTED then
          Transport.Close (C.Trans);
          raise Connect_Failure with "broker refused CONNECT";
@@ -125,12 +114,10 @@ package body Mqtt_Core.Client is
       Topic   : String;
       Payload : RFLX.RFLX_Types.Bytes)
    is
-      Buf  : RFLX.RFLX_Types.Bytes_Ptr := Fresh_Buffer;
       Last : RFLX.RFLX_Types.Index;
    begin
-      Wire.Encode_Publish_Qos0 (Buf, Last, Topic, Payload);
-      Transport.Send (C.Trans, Buf.all (Buf'First .. Last));
-      RFLX.RFLX_Types.Free (Buf);
+      Wire.Encode_Publish_Qos0 (C.Buf, Last, Topic, Payload);
+      Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
    end Publish;
 
    ---------------------------------------------------------------------
@@ -143,30 +130,28 @@ package body Mqtt_Core.Client is
       QoS   : RFLX.Control_Packet.QoS_Level :=
         RFLX.Control_Packet.QOS_0)
    is
-      Buf  : RFLX.RFLX_Types.Bytes_Ptr := Fresh_Buffer;
-      Last : RFLX.RFLX_Types.Index;
-      Pid  : constant Wire.Packet_Identifier := C.Next_Packet_Id;
-      Ok            : Boolean;
-      Reply_Pid     : Wire.Packet_Identifier;
-      Reply_Code    : Wire.Suback_Return_Code;
+      Last       : RFLX.RFLX_Types.Index;
+      Pid        : constant Wire.Packet_Identifier := C.Next_Packet_Id;
+      Read_Ok    : Boolean;
+      Reply_Pid  : Wire.Packet_Identifier;
+      Reply_Code : Wire.Suback_Return_Code;
       use type Wire.Suback_Return_Code;
    begin
       C.Next_Packet_Id := C.Next_Packet_Id + 1;
 
       Wire.Encode_Subscribe_Single
-        (Buf, Last, Pid, Topic, QoS);
-      Transport.Send (C.Trans, Buf.all (Buf'First .. Last));
-      RFLX.RFLX_Types.Free (Buf);
+        (C.Buf, Last, Pid, Topic, QoS);
+      Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
 
-      Buf := Fresh_Buffer;
-      Read_Full_Packet (C, Buf, Last, Ok);
-      if not Ok then
-         RFLX.RFLX_Types.Free (Buf);
+      Read_Full_Packet (C, Last, Read_Ok);
+      if not Read_Ok then
          raise Subscribe_Failure with "no SUBACK";
       end if;
-      Wire.Decode_Suback_Single (Buf, Last, Ok, Reply_Pid, Reply_Code);
-      RFLX.RFLX_Types.Free (Buf);
-      if not Ok or Reply_Pid /= Pid or Reply_Code = Wire.Failure then
+      Wire.Decode_Suback_Single (C.Buf, Last, Read_Ok, Reply_Pid, Reply_Code);
+      if not Read_Ok
+        or Reply_Pid /= Pid
+        or Reply_Code = Wire.Failure
+      then
          raise Subscribe_Failure with "broker refused subscription";
       end if;
    end Subscribe;
@@ -183,36 +168,30 @@ package body Mqtt_Core.Client is
       Payload_Last :    out RFLX.RFLX_Types.Length)
    is
       use type RFLX.Control_Packet.Packet_Type;
-      Buf  : RFLX.RFLX_Types.Bytes_Ptr;
-      Last : RFLX.RFLX_Types.Index;
-      Ok   : Boolean;
-      Kind : RFLX.Control_Packet.Packet_Type;
+      Last      : RFLX.RFLX_Types.Index;
+      Read_Ok   : Boolean;
+      Kind      : RFLX.Control_Packet.Packet_Type;
       Pkt_Valid : Boolean;
    begin
       Topic_Last   := Topic'First - 1;
       Payload_Last := 0;
 
       loop
-         Buf := Fresh_Buffer;
-         Read_Full_Packet (C, Buf, Last, Ok);
-         if not Ok then
-            RFLX.RFLX_Types.Free (Buf);
+         Read_Full_Packet (C, Last, Read_Ok);
+         if not Read_Ok then
             raise Receive_Failure with "EOF or socket error";
          end if;
-         Kind := Wire.Peek_Packet_Type (Buf.all (Buf'First .. Last));
+         Kind := Wire.Peek_Packet_Type (C.Buf.all (C.Buf'First .. Last));
          if Kind = RFLX.Control_Packet.PUBLISH then
             Wire.Decode_Publish_Qos0
-              (Buf, Last, Pkt_Valid, Topic, Topic_Last,
+              (C.Buf, Last, Pkt_Valid, Topic, Topic_Last,
                Payload, Payload_Last);
-            RFLX.RFLX_Types.Free (Buf);
             if not Pkt_Valid then
                raise Receive_Failure with "malformed PUBLISH";
             end if;
             return;
-         else
-            --  PINGRESP / other: discard and keep listening.
-            RFLX.RFLX_Types.Free (Buf);
          end if;
+         --  PINGRESP / other: discard and keep listening.
       end loop;
    end Receive_Publish;
 
@@ -221,19 +200,23 @@ package body Mqtt_Core.Client is
    ---------------------------------------------------------------------
 
    procedure Close (C : in out Client) is
-      Buf  : RFLX.RFLX_Types.Bytes_Ptr := Fresh_Buffer;
       Last : RFLX.RFLX_Types.Index;
    begin
-      Wire.Encode_Disconnect (Buf, Last);
-      Transport.Send (C.Trans, Buf.all (Buf'First .. Last));
-      RFLX.RFLX_Types.Free (Buf);
-      Transport.Close (C.Trans);
-   exception
-      when others =>
-         --  Best-effort close; swallow socket errors on shutdown.
-         if Transport.Is_Open (C.Trans) then
-            Transport.Close (C.Trans);
-         end if;
+      if C.Buf /= null and Transport.Is_Open (C.Trans) then
+         begin
+            Wire.Encode_Disconnect (C.Buf, Last);
+            Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
+         exception
+            when others =>
+               null;  --  best-effort: socket may already be torn down
+         end;
+      end if;
+      if Transport.Is_Open (C.Trans) then
+         Transport.Close (C.Trans);
+      end if;
+      if C.Buf /= null then
+         RFLX.RFLX_Types.Free (C.Buf);
+      end if;
    end Close;
 
 end Mqtt_Core.Client;

@@ -1,5 +1,5 @@
 --  Mqtt_Core.Client — synchronous, single-connection MQTT 3.1.1
---  client API for v0.2.
+--  client API.
 --
 --  Wires Mqtt_Core.Transport (TCP) and Mqtt_Core.Wire (RecordFlux
 --  encoders / decoders) into a request-response API:
@@ -10,9 +10,14 @@
 --    Receive_*   blocks for next inbound packet
 --    Close       sends DISCONNECT, closes the socket
 --
---  Out of scope for v0.2: QoS 1/2 retry, keep-alive PINGREQ scheduling
---  in a background task, last-will, server-initiated reconnection. The
---  API is shaped so these can be added without breaking callers.
+--  Buffer model: Open allocates a single fixed-size byte buffer in the
+--  Client record; every operation reuses it. Close frees it. There are
+--  no per-operation heap allocations on the steady-state path.
+--
+--  Out of scope (current implementation): QoS 1/2 retry, keep-alive
+--  PINGREQ scheduling in a background task, last-will, server-initiated
+--  reconnection. The API shape leaves room to add these without
+--  breaking callers.
 
 with RFLX.RFLX_Types;
 with RFLX.Control_Packet;
@@ -36,8 +41,8 @@ package Mqtt_Core.Client is
       Clean_Session : Boolean := True);
 
    ---------------------------------------------------------------------
-   --  Publish QoS 0 (fire-and-forget). Payload up to ~120 bytes per
-   --  the v0.2 single-byte Remaining-Length restriction in publish.rflx.
+   --  Publish QoS 0 (fire-and-forget). Topic + payload together must
+   --  fit within the spec's single-byte Remaining-Length cap.
    ---------------------------------------------------------------------
 
    procedure Publish
@@ -71,13 +76,13 @@ package Mqtt_Core.Client is
       Payload_Last :    out RFLX.RFLX_Types.Length);
 
    ---------------------------------------------------------------------
-   --  Close: send DISCONNECT and close the socket.
+   --  Close: send DISCONNECT, close the socket, release buffer.
    ---------------------------------------------------------------------
 
    procedure Close (C : in out Client);
 
    ---------------------------------------------------------------------
-   --  Errors. Exceptions chosen for v0.2 ergonomics; a SPARK-compatible
+   --  Errors. Exceptions chosen for ergonomics; a SPARK-compatible
    --  status-return variant can be added later.
    ---------------------------------------------------------------------
 
@@ -87,8 +92,15 @@ package Mqtt_Core.Client is
 
 private
 
+   --  Re-usable I/O buffer size. The current Remaining-Length spec is
+   --  the single-byte varint form (max 127), so the largest packet on
+   --  the wire is 129 bytes (1 fixed-header byte + 1 RL byte + 127).
+   --  256 leaves headroom for when the spec's RL is widened.
+   Buffer_Capacity : constant := 256;
+
    type Client is limited record
       Trans          : Transport.Channel;
+      Buf            : RFLX.RFLX_Types.Bytes_Ptr := null;
       Next_Packet_Id :
         RFLX.Control_Packet.Packet_Identifier := 1;
    end record;

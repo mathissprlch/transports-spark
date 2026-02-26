@@ -52,12 +52,13 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  CONNECT — §3.1. v0.2 minimal: no Username/Password (Mosquitto
-   --  local-test usage). Will fields are deferred per coverage.md.
+   --  CONNECT — §3.1. Encodes a CONNECT without Username/Password and
+   --  without Will fields (the latter are deferred per coverage.md and
+   --  forced to 0 in connect.rflx).
    --
-   --  The v0.2 RecordFlux spec restricts the Remaining Length field to
-   --  a single varint byte (max 127). The buffer must therefore hold
-   --  at most 129 bytes (1 fixed-header byte + 1 RL byte + 127).
+   --  The Remaining Length field uses the single-byte varint form
+   --  (spec restriction): packet size on the wire is at most 129 bytes
+   --  (1 fixed-header byte + 1 RL byte + 127 payload).
    ---------------------------------------------------------------------
 
    procedure Encode_Connect
@@ -91,9 +92,9 @@ is
    ---------------------------------------------------------------------
    --  PUBLISH (QoS 0) — §3.3. Application bytes published on a topic.
    --
-   --  v0.2 minimal: DUP=0, QoS=0, RETAIN=0 (deferred). RL is single
-   --  varint byte so the sum (2 + Topic'Length + Payload'Length)
-   --  must fit in 0..127.
+   --  Forces DUP=0 and RETAIN=0 (RETAIN is deferred per coverage.md,
+   --  see publish.rflx). Total wire size is bounded by the single-byte
+   --  Remaining-Length cap: 2 + Topic'Length + Payload'Length <= 127.
    ---------------------------------------------------------------------
 
    procedure Encode_Publish_Qos0
@@ -121,7 +122,9 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  SUBSCRIBE (single topic) — §3.8. v0.2 demo path.
+   --  SUBSCRIBE (single topic) — §3.8. Subscribes to one Topic Filter
+   --  with one Requested QoS. A future multi-topic variant will take a
+   --  caller-supplied subscription list.
    ---------------------------------------------------------------------
 
    subtype Packet_Identifier is RFLX.Control_Packet.Packet_Identifier;
@@ -140,7 +143,9 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  SUBACK (single return code) — §3.9. v0.2 demo path.
+   --  SUBACK (single return code) — §3.9. Decodes the head Return Code
+   --  from the SUBACK payload. A future multi-topic variant will yield
+   --  the full sequence.
    ---------------------------------------------------------------------
 
    type Suback_Return_Code is
@@ -161,11 +166,12 @@ is
 
    ---------------------------------------------------------------------
    --  PUBLISH (decode) — extract Topic + Payload from an incoming
-   --  PUBLISH. v0.2: QoS 0 only (no Packet Identifier consumption).
+   --  PUBLISH. QoS 0 only (no Packet Identifier in the variable
+   --  header); QoS 1/2 incoming will need a sibling procedure that
+   --  also returns the Packet_Identifier.
    --
    --  Caller supplies max-sized String/Bytes; the procedure writes the
-   --  actual length into Topic_Last/Payload_Last (one-past-the-end of
-   --  written data, or 'First - 1 if empty).
+   --  actual length into Topic_Last/Payload_Last.
    ---------------------------------------------------------------------
 
    procedure Decode_Publish_Qos0
