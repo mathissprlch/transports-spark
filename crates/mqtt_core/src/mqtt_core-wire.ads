@@ -165,6 +165,36 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
+   --  UNSUBSCRIBE (single topic) — §3.10. Sibling of
+   --  Encode_Subscribe_Single without the Requested-QoS byte.
+   ---------------------------------------------------------------------
+
+   procedure Encode_Unsubscribe_Single
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Topic     : String)
+   with
+     Pre  => Buffer /= null
+             and then Topic'Length in 1 .. 121
+             and then Buffer'Length >= 6 + Topic'Length,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  UNSUBACK — §3.11. Decode the 4-byte server response (fixed
+   --  shape: Packet Identifier only, no payload).
+   ---------------------------------------------------------------------
+
+   procedure Decode_Unsuback
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
    --  PUBLISH (decode) — extract Topic + Payload from an incoming
    --  PUBLISH. QoS 0 only (no Packet Identifier in the variable
    --  header); QoS 1/2 incoming will need a sibling procedure that

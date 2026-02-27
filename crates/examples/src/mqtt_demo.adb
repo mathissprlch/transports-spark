@@ -130,6 +130,9 @@ begin
    Put_Line ("mqtt_demo: round-trip 3 (near RL cap)");
    Round_Trip (Client, Topic, Big_Payload);
 
+   Mqtt_Core.Client.Unsubscribe (Client, Topic);
+   Put_Line ("mqtt_demo: unsubscribed from " & Topic);
+
    Mqtt_Core.Client.Close (Client);
    Put_Line ("mqtt_demo: disconnected. ok.");
 end Mqtt_Demo;

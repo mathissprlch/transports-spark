@@ -61,6 +61,14 @@ package Mqtt_Core.Client is
         RFLX.Control_Packet.QOS_0);
 
    ---------------------------------------------------------------------
+   --  Unsubscribe from a single topic, await UNSUBACK.
+   ---------------------------------------------------------------------
+
+   procedure Unsubscribe
+     (C     : in out Client;
+      Topic : String);
+
+   ---------------------------------------------------------------------
    --  Block until the next inbound PUBLISH arrives. PINGRESP and other
    --  in-band server traffic are silently skipped.
    --
@@ -86,9 +94,10 @@ package Mqtt_Core.Client is
    --  status-return variant can be added later.
    ---------------------------------------------------------------------
 
-   Connect_Failure   : exception;
-   Subscribe_Failure : exception;
-   Receive_Failure   : exception;
+   Connect_Failure     : exception;
+   Subscribe_Failure   : exception;
+   Unsubscribe_Failure : exception;
+   Receive_Failure     : exception;
 
 private
 

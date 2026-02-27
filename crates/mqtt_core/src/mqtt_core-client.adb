@@ -157,6 +157,34 @@ package body Mqtt_Core.Client is
    end Subscribe;
 
    ---------------------------------------------------------------------
+   --  Unsubscribe (single topic)
+   ---------------------------------------------------------------------
+
+   procedure Unsubscribe
+     (C     : in out Client;
+      Topic : String)
+   is
+      Last      : RFLX.RFLX_Types.Index;
+      Pid       : constant Wire.Packet_Identifier := C.Next_Packet_Id;
+      Read_Ok   : Boolean;
+      Reply_Pid : Wire.Packet_Identifier;
+   begin
+      C.Next_Packet_Id := C.Next_Packet_Id + 1;
+
+      Wire.Encode_Unsubscribe_Single (C.Buf, Last, Pid, Topic);
+      Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
+
+      Read_Full_Packet (C, Last, Read_Ok);
+      if not Read_Ok then
+         raise Unsubscribe_Failure with "no UNSUBACK";
+      end if;
+      Wire.Decode_Unsuback (C.Buf, Last, Read_Ok, Reply_Pid);
+      if not Read_Ok or Reply_Pid /= Pid then
+         raise Unsubscribe_Failure with "broker UNSUBACK mismatch";
+      end if;
+   end Unsubscribe;
+
+   ---------------------------------------------------------------------
    --  Receive_Publish — block until next PUBLISH (skipping PINGRESP).
    ---------------------------------------------------------------------
 

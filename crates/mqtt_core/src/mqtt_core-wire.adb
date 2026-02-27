@@ -10,6 +10,10 @@ with RFLX.Subscribe.Subscription;
 with RFLX.Subscribe.Subscription_List;
 with RFLX.Suback.Packet;
 with RFLX.Suback.Return_Code_List;
+with RFLX.Unsubscribe.Packet;
+with RFLX.Unsubscribe.Topic_Filter_List;
+with RFLX.Unsuback.Packet;
+with RFLX.Control_Packet.UTF8_String;
 
 package body Mqtt_Core.Wire
 with SPARK_Mode
@@ -302,6 +306,71 @@ is
       RFLX.Suback.Packet.Update_Return_Codes (Pkt_Ctx, Seq_Ctx);
       RFLX.Suback.Packet.Take_Buffer (Pkt_Ctx, Buffer);
    end Decode_Suback_Single;
+
+   ---------------------------------------------------------------------
+   --  Encode_Unsubscribe_Single
+   --
+   --  Layout for one Topic Filter:
+   --    fixed header: 0xA2 + RL (= 4 + Topic'Length, single varint byte)
+   --    var header:   Packet Identifier (16-bit big-endian)
+   --    payload:      Topic Filter length (16-bit) + Topic Filter bytes
+   ---------------------------------------------------------------------
+
+   procedure Encode_Unsubscribe_Single
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Topic     : String)
+   is
+      Pkt_Ctx  : RFLX.Unsubscribe.Packet.Context;
+      Seq_Ctx  : RFLX.Unsubscribe.Topic_Filter_List.Context;
+      Elem_Ctx : RFLX.Control_Packet.UTF8_String.Context;
+      RL       : constant RFLX.Unsubscribe.Remaining_Length :=
+        RFLX.Unsubscribe.Remaining_Length (4 + Topic'Length);
+   begin
+      RFLX.Unsubscribe.Packet.Initialize (Pkt_Ctx, Buffer);
+      RFLX.Unsubscribe.Packet.Set_Packet_Type
+        (Pkt_Ctx, RFLX.Control_Packet.UNSUBSCRIBE);
+      RFLX.Unsubscribe.Packet.Set_Reserved (Pkt_Ctx, 2);
+      RFLX.Unsubscribe.Packet.Set_Remaining_Length (Pkt_Ctx, RL);
+      RFLX.Unsubscribe.Packet.Set_Packet_Identifier (Pkt_Ctx, Packet_Id);
+      RFLX.Unsubscribe.Packet.Switch_To_Topic_Filters (Pkt_Ctx, Seq_Ctx);
+      RFLX.Unsubscribe.Topic_Filter_List.Switch (Seq_Ctx, Elem_Ctx);
+      RFLX.Control_Packet.UTF8_String.Set_Length
+        (Elem_Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
+      RFLX.Control_Packet.UTF8_String.Set_Data (Elem_Ctx, To_Bytes (Topic));
+      RFLX.Unsubscribe.Topic_Filter_List.Update (Seq_Ctx, Elem_Ctx);
+      RFLX.Unsubscribe.Packet.Update_Topic_Filters (Pkt_Ctx, Seq_Ctx);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Unsubscribe.Packet.Message_Last (Pkt_Ctx));
+      RFLX.Unsubscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+   end Encode_Unsubscribe_Single;
+
+   ---------------------------------------------------------------------
+   --  Decode_Unsuback
+   ---------------------------------------------------------------------
+
+   procedure Decode_Unsuback
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   is
+      Ctx : RFLX.Unsuback.Packet.Context;
+   begin
+      Valid     := False;
+      Packet_Id := 1;
+
+      RFLX.Unsuback.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Unsuback.Packet.Verify_Message (Ctx);
+      if RFLX.Unsuback.Packet.Well_Formed_Message (Ctx) then
+         Packet_Id := RFLX.Unsuback.Packet.Get_Packet_Identifier (Ctx);
+         Valid     := True;
+      end if;
+      RFLX.Unsuback.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Unsuback;
 
    ---------------------------------------------------------------------
    --  Decode_Publish_Qos0
