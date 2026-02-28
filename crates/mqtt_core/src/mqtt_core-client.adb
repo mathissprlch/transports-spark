@@ -121,6 +121,35 @@ package body Mqtt_Core.Client is
    end Publish;
 
    ---------------------------------------------------------------------
+   --  Publish_Qos1 — send PUBLISH (QoS 1) and await PUBACK.
+   ---------------------------------------------------------------------
+
+   procedure Publish_Qos1
+     (C       : in out Client;
+      Topic   : String;
+      Payload : RFLX.RFLX_Types.Bytes)
+   is
+      Last      : RFLX.RFLX_Types.Index;
+      Pid       : constant Wire.Packet_Identifier := C.Next_Packet_Id;
+      Read_Ok   : Boolean;
+      Reply_Pid : Wire.Packet_Identifier;
+   begin
+      C.Next_Packet_Id := C.Next_Packet_Id + 1;
+
+      Wire.Encode_Publish_Qos1 (C.Buf, Last, Pid, Topic, Payload);
+      Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
+
+      Read_Full_Packet (C, Last, Read_Ok);
+      if not Read_Ok then
+         raise Publish_Failure with "no PUBACK";
+      end if;
+      Wire.Decode_Puback (C.Buf, Last, Read_Ok, Reply_Pid);
+      if not Read_Ok or Reply_Pid /= Pid then
+         raise Publish_Failure with "broker PUBACK mismatch";
+      end if;
+   end Publish_Qos1;
+
+   ---------------------------------------------------------------------
    --  Subscribe (single topic)
    ---------------------------------------------------------------------
 

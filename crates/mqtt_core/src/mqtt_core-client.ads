@@ -51,6 +51,16 @@ package Mqtt_Core.Client is
       Payload : RFLX.RFLX_Types.Bytes);
 
    ---------------------------------------------------------------------
+   --  Publish QoS 1: send PUBLISH with a Packet Identifier, then block
+   --  until the broker's PUBACK with a matching id arrives.
+   ---------------------------------------------------------------------
+
+   procedure Publish_Qos1
+     (C       : in out Client;
+      Topic   : String;
+      Payload : RFLX.RFLX_Types.Bytes);
+
+   ---------------------------------------------------------------------
    --  Subscribe to a single topic, await SUBACK.
    ---------------------------------------------------------------------
 
@@ -97,6 +107,7 @@ package Mqtt_Core.Client is
    Connect_Failure     : exception;
    Subscribe_Failure   : exception;
    Unsubscribe_Failure : exception;
+   Publish_Failure     : exception;
    Receive_Failure     : exception;
 
 private

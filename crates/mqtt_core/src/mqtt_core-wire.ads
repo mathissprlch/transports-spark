@@ -27,7 +27,9 @@ is
 
    use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
-   subtype Keep_Alive is RFLX.Connect.Keep_Alive;
+   subtype Keep_Alive        is RFLX.Connect.Keep_Alive;
+   subtype Packet_Identifier is RFLX.Control_Packet.Packet_Identifier;
+   subtype QoS_Level         is RFLX.Control_Packet.QoS_Level;
 
    ---------------------------------------------------------------------
    --  PINGREQ — §3.12. 2-byte fixed packet (0xC0 0x00).
@@ -110,6 +112,41 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
+   --  PUBLISH (QoS 1) — §3.3 with QoS=1 + Packet Identifier.
+   --
+   --  Forces DUP=0 (no retransmission yet) and RETAIN=0 (deferred).
+   --  Wire size bound: 4 + Topic'Length + Payload'Length <= 127
+   --  (extra 2 bytes vs QoS 0 for the Packet Identifier).
+   ---------------------------------------------------------------------
+
+   procedure Encode_Publish_Qos1
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Topic     : String;
+      Payload   : RFLX.RFLX_Types.Bytes)
+   with
+     Pre  => Buffer /= null
+             and then Topic'Length in 1 .. 122
+             and then Payload'Length <= 123 - Topic'Length
+             and then Buffer'Length >= 6 + Topic'Length + Payload'Length,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  PUBACK — §3.4. Decode the 4-byte ack from the broker for a
+   --  QoS 1 PUBLISH we sent.
+   ---------------------------------------------------------------------
+
+   procedure Decode_Puback
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
    --  PINGRESP — §3.13. Verify a 2-byte ping response from the broker.
    ---------------------------------------------------------------------
 
@@ -126,9 +163,6 @@ is
    --  with one Requested QoS. A future multi-topic variant will take a
    --  caller-supplied subscription list.
    ---------------------------------------------------------------------
-
-   subtype Packet_Identifier is RFLX.Control_Packet.Packet_Identifier;
-   subtype QoS_Level         is RFLX.Control_Packet.QoS_Level;
 
    procedure Encode_Subscribe_Single
      (Buffer    : in out Bytes_Ptr;

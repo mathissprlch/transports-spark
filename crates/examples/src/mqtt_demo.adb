@@ -130,6 +130,16 @@ begin
    Put_Line ("mqtt_demo: round-trip 3 (near RL cap)");
    Round_Trip (Client, Topic, Big_Payload);
 
+   --  QoS 1 publish to a topic we are *not* subscribed to: isolates the
+   --  outbound QoS 1 path (PUBLISH → PUBACK) from the inbound subscriber
+   --  echo. If we published to ada/test we'd race the broker's PUBLISH
+   --  echo against the PUBACK on the same socket.
+   Put_Line ("mqtt_demo: QoS 1 publish (awaits PUBACK)");
+   Mqtt_Core.Client.Publish_Qos1
+     (Client, "ada/qos1-only",
+      To_Bytes ("qos-1 hello, please ack"));
+   Put_Line ("  -> publish acked");
+
    Mqtt_Core.Client.Unsubscribe (Client, Topic);
    Put_Line ("mqtt_demo: unsubscribed from " & Topic);
 
