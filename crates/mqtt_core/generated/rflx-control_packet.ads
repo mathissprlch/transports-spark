@@ -196,4 +196,38 @@ is
 
    pragma Warnings (On, "unreachable branch");
 
+   type Header_Flags is range 0 .. 2**4 - 1
+   with
+     Size =>
+       4;
+
+   function Valid_Header_Flags (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+     (Val <= 15);
+
+   function To_Base_Integer (Val : RFLX.Control_Packet.Header_Flags) return RFLX.RFLX_Types.Base_Integer is
+     (RFLX.RFLX_Types.Base_Integer (Val));
+
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Control_Packet.Header_Flags is
+     (RFLX.Control_Packet.Header_Flags (Val))
+   with
+     Pre =>
+       Valid_Header_Flags (Val);
+
+   type Single_Byte_Remaining_Length is range 0 .. 127
+   with
+     Size =>
+       8;
+
+   function Valid_Single_Byte_Remaining_Length (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+     (Val <= 127);
+
+   function To_Base_Integer (Val : RFLX.Control_Packet.Single_Byte_Remaining_Length) return RFLX.RFLX_Types.Base_Integer is
+     (RFLX.RFLX_Types.Base_Integer (Val));
+
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Control_Packet.Single_Byte_Remaining_Length is
+     (RFLX.Control_Packet.Single_Byte_Remaining_Length (Val))
+   with
+     Pre =>
+       Valid_Single_Byte_Remaining_Length (Val);
+
 end RFLX.Control_Packet;

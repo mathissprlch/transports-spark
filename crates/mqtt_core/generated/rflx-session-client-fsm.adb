@@ -44,7 +44,7 @@ is
         Ghost;
    begin
       pragma Assert (Connecting_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:41:10
+      -- crates/mqtt_core/specs/session.rflx:39:10
       Ctx.P.Next_State := S_Awaiting_Connack;
       pragma Assert (Connecting_Invariant);
    end Connecting;
@@ -69,11 +69,11 @@ is
         Ghost;
    begin
       pragma Assert (Awaiting_Connack_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:54:10
+      -- crates/mqtt_core/specs/session.rflx:52:10
       Connack.Packet.Verify_Message (Ctx.P.Incoming_Connack_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:57:16
+      -- crates/mqtt_core/specs/session.rflx:55:16
       T_0 := Connack.Packet.Well_Formed_Message (Ctx.P.Incoming_Connack_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:58:20
+      -- crates/mqtt_core/specs/session.rflx:56:20
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -89,9 +89,9 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:58:20
+      -- crates/mqtt_core/specs/session.rflx:56:20
       T_1 := Connack.Packet.Get_Return_Code (Ctx.P.Incoming_Connack_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:58:20
+      -- crates/mqtt_core/specs/session.rflx:56:20
       T_2 := T_1 = Connack.ACCEPTED;
       if
          T_0
@@ -122,7 +122,7 @@ is
         Ghost;
    begin
       pragma Assert (Disconnecting_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:75:10
+      -- crates/mqtt_core/specs/session.rflx:73:10
       Ctx.P.Next_State := S_Final;
       pragma Assert (Disconnecting_Invariant);
    end Disconnecting;
