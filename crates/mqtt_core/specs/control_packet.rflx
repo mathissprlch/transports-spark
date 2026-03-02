@@ -123,4 +123,33 @@ package Control_Packet is
        QOS_2 => 2)
    with Size => 2;
 
+   ---------------------------------------------------------------------
+   --  Incoming_Packet — meta-shape used by the session FSM to dispatch
+   --  any inbound MQTT packet by type without first knowing what
+   --  packet body to decode against.
+   --
+   --  Captures the fixed-header byte (Packet_Type + 4 reserved/flag
+   --  bits we don't interpret here) + Remaining_Length (single-byte
+   --  varint form, matching our v0.2 constraint across all packets) +
+   --  the rest of the packet as Opaque bytes that downstream state
+   --  transitions decode based on Packet_Type.
+   --
+   --  This is what makes RecordFlux's exhaustiveness check apply to
+   --  inbound dispatch: the FSM must declare what to do for every
+   --  Packet_Type at every state, or the spec fails verification.
+   ---------------------------------------------------------------------
+
+   type Header_Flags is unsigned 4;
+
+   type Single_Byte_Remaining_Length is range 0 .. 127 with Size => 8;
+
+   type Incoming_Packet is
+      message
+         Packet_Type : Packet_Type;
+         Flags : Header_Flags;
+         Remaining_Length : Single_Byte_Remaining_Length;
+         Payload : Opaque
+            with Size => Remaining_Length * 8;
+      end message;
+
 end Control_Packet;

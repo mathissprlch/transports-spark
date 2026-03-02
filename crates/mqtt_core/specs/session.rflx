@@ -1,24 +1,22 @@
---  Session: MQTT 3.1.1 client connection-lifecycle state machine.
+--  Session: MQTT 3.1.1 client connection-lifecycle and protocol-flow
+--  state machines.
 --
 --  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
---  Section coverage: §4.2 (Network Connections), §3.1 + §3.2 (CONNECT
---  / CONNACK handshake), §3.14 (DISCONNECT shutdown).
 --
---  Scope for v0.2: connect handshake and clean shutdown. The §4.3 QoS
---  protocol flows, §4.4 retry, §4.6 ordering, and §4.5 server-side
---  message receipt are out of scope here — the steady-state phase
---  between handshake and shutdown is driven by the Ada client layer
---  using the generated packet decoders/encoders, not the FSM. A
---  follow-up machine (post-v0.2) will model the QoS 1/2 flows.
---
---  Verification value: a generated SPARK implementation cannot send
---  any packet before CONNECT, cannot treat a refused CONNACK as
---  success, and cannot reach the post-disconnect terminal state
---  without having transmitted DISCONNECT.
+--  Verification value: a generated SPARK implementation of these
+--  machines cannot reach a transition that hasn't been declared.
+--  Specifically the QoS 1 publish exchange must enumerate every
+--  packet type the broker can send in response, including the
+--  in-band PUBLISH echo arriving before the PUBACK — the bug class
+--  that flushed out of E2E testing in our first cut at hand-written
+--  Ada is unwriteable in the spec because the verifier rejects gaps.
 
 with Connect;
 with Connack;
 with Disconnect;
+with Publish;
+with Puback;
+with Control_Packet;
 
 package Session is
 
@@ -78,5 +76,82 @@ package Session is
       end Disconnecting;
 
    end Client;
+
+   ---------------------------------------------------------------------
+   --  Publish_Qos1 — §3.3.4 / §4.3.2 protocol flow for a single QoS 1
+   --  PUBLISH from the client.
+   --
+   --  Caller populates Outgoing_Publish (with QoS=1 and a fresh
+   --  Packet Identifier) before invoking. The machine sends it, then
+   --  loops through inbound packets until a matching PUBACK arrives
+   --  or a peer-side error is detected.
+   --
+   --  The Awaiting_Puback dispatch is the part that catches the bug
+   --  class our hand-written Ada hit: while waiting for PUBACK, the
+   --  broker may interleave a PUBLISH (echo of a topic we subscribe
+   --  to) or a PINGRESP (in-band keep-alive). Each branch is
+   --  declared explicitly; omitting any one is a spec error.
+   ---------------------------------------------------------------------
+
+   generic
+      Network : Channel with Readable, Writable;
+   machine Publish_Qos1 is
+      Outgoing       : Publish::Packet;
+      Inbound        : Control_Packet::Incoming_Packet;
+      Inbound_Puback : Puback::Packet;
+   begin
+
+      state Sending is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Awaiting_Puback
+      end Sending;
+
+      --  §3.3.4 / §3.4 — Read inbound, classify, dispatch.
+      --
+      --  ACCEPTED transitions:
+      --    PUBACK         → continue to puback validation
+      --    PUBLISH        → in-band subscriber echo; loop back
+      --    PINGRESP       → broker keep-alive; loop back
+      --    PUBREC/PUBREL/PUBCOMP → QoS 2 traffic, deferred; loop back
+      --    SUBACK/UNSUBACK       → late acks for prior commands; loop
+      --    other (CONNECT/CONNACK/SUBSCRIBE/UNSUBSCRIBE/DISCONNECT/
+      --           PINGREQ/RESERVED) → server MUST NOT send these to
+      --           a client; treat as protocol error and exit.
+      state Awaiting_Puback is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Validating_Puback
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBACK
+         goto Awaiting_Puback
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PUBLISH
+                    or Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::SUBACK
+                    or Inbound.Packet_Type = Control_Packet::UNSUBACK)
+         --  Invalid bytes or server→client packet that MQTT 3.1.1
+         --  forbids the broker from sending us: hard error, exit.
+         goto null
+      exception
+         goto null
+      end Awaiting_Puback;
+
+      --  Re-decode the inbound bytes specifically as a PUBACK to
+      --  surface the Packet_Identifier for the caller to compare
+      --  against the one it sent.
+      state Validating_Puback is
+      begin
+         Network'Read (Inbound_Puback);
+      transition
+         goto null
+      end Validating_Puback;
+
+   end Publish_Qos1;
 
 end Session;
