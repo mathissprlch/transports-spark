@@ -2,11 +2,14 @@ with RFLX.RFLX_Types; use type RFLX.RFLX_Types.Index;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.Connack;
 with RFLX.Connect;
+with RFLX.Session.Publish_Qos1.FSM;
+use type RFLX.Session.Publish_Qos1.FSM.State;
 with Mqtt_Core.Wire;
 
 package body Mqtt_Core.Client is
 
    use type RFLX.Control_Packet.Packet_Identifier;
+   use type RFLX.Control_Packet.Packet_Type;
    use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
    --  Read the next full MQTT control packet from the socket into
@@ -148,6 +151,128 @@ package body Mqtt_Core.Client is
          raise Publish_Failure with "broker PUBACK mismatch";
       end if;
    end Publish_Qos1;
+
+   ---------------------------------------------------------------------
+   --  Publish_Qos1_FSM — drive the generated session.rflx machine.
+   ---------------------------------------------------------------------
+
+   procedure Publish_Qos1_FSM
+     (C       : in out Client;
+      Topic   : String;
+      Payload : RFLX.RFLX_Types.Bytes)
+   is
+      package FSM renames RFLX.Session.Publish_Qos1.FSM;
+      Ctx           : FSM.Context;
+      Last          : RFLX.RFLX_Types.Index;
+      Pid           : constant Wire.Packet_Identifier := C.Next_Packet_Id;
+      Read_Ok       : Boolean;
+      Got_Puback    : Boolean := False;
+      Puback_Pid    : Wire.Packet_Identifier := 1;
+   begin
+      C.Next_Packet_Id := C.Next_Packet_Id + 1;
+
+      --  Build the outgoing PUBLISH using the existing wire encoder,
+      --  then push the bytes into the FSM's App_Outbox channel.
+      Wire.Encode_Publish_Qos1 (C.Buf, Last, Pid, Topic, Payload);
+
+      FSM.Initialize (Ctx);
+      if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
+         FSM.Write
+           (Ctx, FSM.C_App_Outbox,
+            C.Buf.all (C.Buf'First .. Last));
+      end if;
+
+      --  Drive the state machine until it terminates.
+      Drive_Loop :
+      loop
+         FSM.Run (Ctx);
+         exit Drive_Loop when not FSM.Active (Ctx);
+
+         --  FSM has bytes to send out on the network.
+         if FSM.Has_Data (Ctx, FSM.C_Network) then
+            declare
+               N    : constant RFLX.RFLX_Types.Length :=
+                 FSM.Read_Buffer_Size (Ctx, FSM.C_Network);
+               View : RFLX.RFLX_Types.Bytes
+                 (C.Buf'First ..
+                    C.Buf'First + RFLX.RFLX_Types.Index (N) - 1);
+            begin
+               FSM.Read (Ctx, FSM.C_Network, View);
+               Transport.Send (C.Trans, View);
+               C.Buf.all (View'Range) := View;  -- keep buf in sync
+            end;
+         end if;
+
+         --  FSM has produced bytes on App_Pending — either a PUBLISH
+         --  echo to forward to the application, or the PUBACK we are
+         --  waiting for. Distinguish by Packet_Type. Inbound PUBLISH
+         --  forwarding to Receive_Publish is the next iteration; for
+         --  now we drain and note the PUBACK arrival.
+         if FSM.Has_Data (Ctx, FSM.C_App_Pending) then
+            declare
+               N    : constant RFLX.RFLX_Types.Length :=
+                 FSM.Read_Buffer_Size (Ctx, FSM.C_App_Pending);
+               View : RFLX.RFLX_Types.Bytes
+                 (C.Buf'First ..
+                    C.Buf'First + RFLX.RFLX_Types.Index (N) - 1);
+            begin
+               FSM.Read (Ctx, FSM.C_App_Pending, View);
+               if View'Length >= 4
+                 and then Wire.Peek_Packet_Type (View)
+                          = RFLX.Control_Packet.PUBACK
+               then
+                  --  Decode for the Packet Identifier match check.
+                  C.Buf.all (View'Range) := View;
+                  declare
+                     Decode_Ok : Boolean;
+                     Pkt_Id    : Wire.Packet_Identifier;
+                  begin
+                     Wire.Decode_Puback
+                       (C.Buf, View'Last, Decode_Ok, Pkt_Id);
+                     if Decode_Ok then
+                        Got_Puback := True;
+                        Puback_Pid := Pkt_Id;
+                     end if;
+                  end;
+               end if;
+               --  Else: an inbound PUBLISH echoed by the broker. The
+               --  next iteration of the FSM-driven receive path will
+               --  enqueue these for the application to drain via
+               --  Receive_Publish. For now: silently discarded,
+               --  matching the hand-written QoS 1 path's behavior.
+            end;
+         end if;
+
+         --  FSM needs more bytes from the network: assemble a full
+         --  packet via Read_Full_Packet (already handles the
+         --  fixed-header + RL framing) and feed it in.
+         if FSM.Needs_Data (Ctx, FSM.C_Network) then
+            Read_Full_Packet (C, Last, Read_Ok);
+            if not Read_Ok then
+               FSM.Finalize (Ctx);
+               raise Publish_Failure with "EOF or socket error";
+            end if;
+            declare
+               Pkt : constant RFLX.RFLX_Types.Bytes :=
+                 C.Buf.all (C.Buf'First .. Last);
+            begin
+               if FSM.Needs_Data (Ctx, FSM.C_Network) then
+                  FSM.Write (Ctx, FSM.C_Network, Pkt);
+               end if;
+            end;
+         end if;
+      end loop Drive_Loop;
+
+      --  Outcome: success requires that we drained a PUBACK on
+      --  App_Pending and that its Packet_Identifier matches what we
+      --  sent. Anything else is a protocol/peer error.
+      FSM.Finalize (Ctx);
+      if not Got_Puback then
+         raise Publish_Failure with "no PUBACK received";
+      elsif Puback_Pid /= Pid then
+         raise Publish_Failure with "PUBACK Packet_Identifier mismatch";
+      end if;
+   end Publish_Qos1_FSM;
 
    ---------------------------------------------------------------------
    --  Subscribe (single topic)

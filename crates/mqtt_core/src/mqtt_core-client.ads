@@ -61,6 +61,27 @@ package Mqtt_Core.Client is
       Payload : RFLX.RFLX_Types.Bytes);
 
    ---------------------------------------------------------------------
+   --  Publish QoS 1, FSM-driven variant.
+   --
+   --  Uses the generated session.rflx Publish_Qos1 state machine to
+   --  drive the protocol exchange, including correct handling of any
+   --  inbound PUBLISH that arrives in the Awaiting_Puback window
+   --  (forwarded via the FSM's App_Pending channel; this initial
+   --  version drains that channel into a discard buffer, but the
+   --  shape is in place for the next iteration to re-queue it for
+   --  Receive_Publish).
+   --
+   --  The state-machine dispatch is exhaustively verified by RecordFlux
+   --  at spec-compile time: any Server→Client packet type MQTT 3.1.1
+   --  permits is handled (or routed to error) explicitly.
+   ---------------------------------------------------------------------
+
+   procedure Publish_Qos1_FSM
+     (C       : in out Client;
+      Topic   : String;
+      Payload : RFLX.RFLX_Types.Bytes);
+
+   ---------------------------------------------------------------------
    --  Subscribe to a single topic, await SUBACK.
    ---------------------------------------------------------------------
 

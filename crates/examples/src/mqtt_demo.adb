@@ -132,13 +132,25 @@ begin
 
    --  QoS 1 publish to a topic we are *not* subscribed to: isolates the
    --  outbound QoS 1 path (PUBLISH → PUBACK) from the inbound subscriber
-   --  echo. If we published to ada/test we'd race the broker's PUBLISH
-   --  echo against the PUBACK on the same socket.
-   Put_Line ("mqtt_demo: QoS 1 publish (awaits PUBACK)");
+   --  echo.
+   Put_Line ("mqtt_demo: QoS 1 publish via hand-written client");
    Mqtt_Core.Client.Publish_Qos1
      (Client, "ada/qos1-only",
       To_Bytes ("qos-1 hello, please ack"));
-   Put_Line ("  -> publish acked");
+   Put_Line ("  -> publish acked (hand-written path)");
+
+   --  QoS 1 publish via the FSM-driven path. This exercises the
+   --  generated session.rflx Publish_Qos1 state machine end-to-end.
+   --  We publish to ada/test (we're still subscribed) so the broker
+   --  echoes back as a subscriber-side PUBLISH while it's also
+   --  sending PUBACK — the very interleaving that broke the
+   --  hand-written path. The FSM forwards the inbound PUBLISH on
+   --  C_App_Pending and we drain it before validating PUBACK.
+   Put_Line ("mqtt_demo: QoS 1 publish via FSM-driven path");
+   Mqtt_Core.Client.Publish_Qos1_FSM
+     (Client, Topic,
+      To_Bytes ("qos-1 via FSM, dispatch verified by RecordFlux"));
+   Put_Line ("  -> publish acked (FSM path)");
 
    Mqtt_Core.Client.Unsubscribe (Client, Topic);
    Put_Line ("mqtt_demo: unsubscribed from " & Topic);

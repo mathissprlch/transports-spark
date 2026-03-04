@@ -25,7 +25,6 @@ is
    begin
       S.Slot_Ptr_1 := M.Slot_1'Unrestricted_Access;
       S.Slot_Ptr_2 := M.Slot_2'Unrestricted_Access;
-      S.Slot_Ptr_3 := M.Slot_3'Unrestricted_Access;
    end Initialize;
 
    procedure Finalize (S : in out Slots)
@@ -36,7 +35,6 @@ is
    begin
       S.Slot_Ptr_1 := null;
       S.Slot_Ptr_2 := null;
-      S.Slot_Ptr_3 := null;
    end Finalize;
 
 end RFLX.Session.Publish_Qos1.FSM_Allocator;

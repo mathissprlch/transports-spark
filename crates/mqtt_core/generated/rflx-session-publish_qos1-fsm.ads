@@ -18,8 +18,6 @@ with RFLX.Publish;
 with RFLX.Publish.Packet;
 with RFLX.Control_Packet;
 with RFLX.Control_Packet.Incoming_Packet;
-with RFLX.Puback;
-with RFLX.Puback.Packet;
 
 package RFLX.Session.Publish_Qos1.FSM
 with
@@ -30,9 +28,9 @@ is
 
    use type RFLX.RFLX_Types.Length;
 
-   type Channel is (C_Network);
+   type Channel is (C_Network, C_App_Pending, C_App_Outbox);
 
-   type State is (S_Sending, S_Awaiting_Puback, S_Validating_Puback, S_Final);
+   type State is (S_Loading, S_Sending, S_Awaiting_Puback, S_Forwarding_Inbound_Publish, S_Forwarding_Puback, S_Final);
 
    type Private_Context is private;
 
@@ -145,10 +143,9 @@ private
 
    type Private_Context is
       record
-         Next_State : State := S_Sending;
+         Next_State : State := S_Loading;
          Outgoing_Ctx : Publish.Packet.Context;
          Inbound_Ctx : Control_Packet.Incoming_Packet.Context;
-         Inbound_Puback_Ctx : Puback.Packet.Context;
          Slots : Session.Publish_Qos1.FSM_Allocator.Slots;
          Memory : Session.Publish_Qos1.FSM_Allocator.Memory;
       end record;
@@ -156,7 +153,6 @@ private
    function Uninitialized (Ctx : Context) return Boolean is
      (not Publish.Packet.Has_Buffer (Ctx.P.Outgoing_Ctx)
       and not Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx)
-      and not Puback.Packet.Has_Buffer (Ctx.P.Inbound_Puback_Ctx)
       and Session.Publish_Qos1.FSM_Allocator.Uninitialized (Ctx.P.Slots));
 
    function Global_Initialized (Ctx : Context) return Boolean is
@@ -165,10 +161,7 @@ private
       and then Ctx.P.Outgoing_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095
       and then Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx)
       and then Ctx.P.Inbound_Ctx.Buffer_First = RFLX_Types.Index'First
-      and then Ctx.P.Inbound_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095
-      and then Puback.Packet.Has_Buffer (Ctx.P.Inbound_Puback_Ctx)
-      and then Ctx.P.Inbound_Puback_Ctx.Buffer_First = RFLX_Types.Index'First
-      and then Ctx.P.Inbound_Puback_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095);
+      and then Ctx.P.Inbound_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095);
 
    function Global_Allocated (Ctx : Context) return Boolean is
      (Session.Publish_Qos1.FSM_Allocator.Global_Allocated (Ctx.P.Slots));
@@ -191,7 +184,16 @@ private
                     Publish.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx)
                     and Publish.Packet.Byte_Size (Ctx.P.Outgoing_Ctx) > 0,
                  when others =>
-                    False));
+                    False),
+          when C_App_Pending =>
+             (case Ctx.P.Next_State is
+                 when S_Forwarding_Inbound_Publish | S_Forwarding_Puback =>
+                    Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx)
+                    and Control_Packet.Incoming_Packet.Byte_Size (Ctx.P.Inbound_Ctx) > 0,
+                 when others =>
+                    False),
+          when C_App_Outbox =>
+             False);
 
    function Read_Buffer_Size (Ctx : Context; Chan : Channel) return RFLX_Types.Length is
      (case Chan is
@@ -200,13 +202,29 @@ private
                  when S_Sending =>
                     Publish.Packet.Byte_Size (Ctx.P.Outgoing_Ctx),
                  when others =>
-                    RFLX_Types.Unreachable));
+                    RFLX_Types.Unreachable),
+          when C_App_Pending =>
+             (case Ctx.P.Next_State is
+                 when S_Forwarding_Inbound_Publish | S_Forwarding_Puback =>
+                    Control_Packet.Incoming_Packet.Byte_Size (Ctx.P.Inbound_Ctx),
+                 when others =>
+                    RFLX_Types.Unreachable),
+          when C_App_Outbox =>
+             RFLX_Types.Unreachable);
 
    function Needs_Data (Ctx : Context; Chan : Channel) return Boolean is
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Awaiting_Puback | S_Validating_Puback =>
+                 when S_Awaiting_Puback =>
+                    True,
+                 when others =>
+                    False),
+          when C_App_Pending =>
+             False,
+          when C_App_Outbox =>
+             (case Ctx.P.Next_State is
+                 when S_Loading =>
                     True,
                  when others =>
                     False));
@@ -217,8 +235,14 @@ private
              (case Ctx.P.Next_State is
                  when S_Awaiting_Puback =>
                     Control_Packet.Incoming_Packet.Buffer_Length (Ctx.P.Inbound_Ctx),
-                 when S_Validating_Puback =>
-                    Puback.Packet.Buffer_Length (Ctx.P.Inbound_Puback_Ctx),
+                 when others =>
+                    RFLX_Types.Unreachable),
+          when C_App_Pending =>
+             0,
+          when C_App_Outbox =>
+             (case Ctx.P.Next_State is
+                 when S_Loading =>
+                    Publish.Packet.Buffer_Length (Ctx.P.Outgoing_Ctx),
                  when others =>
                     RFLX_Types.Unreachable));
 

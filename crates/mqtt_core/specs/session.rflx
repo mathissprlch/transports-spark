@@ -81,25 +81,51 @@ package Session is
    --  Publish_Qos1 — §3.3.4 / §4.3.2 protocol flow for a single QoS 1
    --  PUBLISH from the client.
    --
-   --  Caller populates Outgoing_Publish (with QoS=1 and a fresh
-   --  Packet Identifier) before invoking. The machine sends it, then
-   --  loops through inbound packets until a matching PUBACK arrives
-   --  or a peer-side error is detected.
+   --  Caller stashes the publish parameters in package-private state
+   --  consumed by Build_Outgoing, then drives the FSM. The machine
+   --  sends the PUBLISH, then loops through inbound packets until a
+   --  matching PUBACK arrives or a peer-side error is detected.
    --
-   --  The Awaiting_Puback dispatch is the part that catches the bug
-   --  class our hand-written Ada hit: while waiting for PUBACK, the
-   --  broker may interleave a PUBLISH (echo of a topic we subscribe
-   --  to) or a PINGRESP (in-band keep-alive). Each branch is
-   --  declared explicitly; omitting any one is a spec error.
+   --  RFC traceability: the legal-from-broker packet enumeration in
+   --  Awaiting_Puback is from §2.2.1 Table 2.1 (Direction column).
+   --  The PUBLISH→PUBACK exchange is from §3.3.4 / §4.3.2.
+   --
+   --  RFC-correctness note: while we wait for PUBACK, an inbound
+   --  PUBLISH (matching a topic we subscribe to) MUST NOT be
+   --  discarded — §3.3.4 obligates Servers to deliver matching
+   --  PUBLISHes to subscribers, and a Client that drops them is
+   --  non-compliant. The FSM emits any queued inbound PUBLISH bytes
+   --  on the App_Pending channel for the caller to drain after the
+   --  PUBACK has been validated. Other interleavable in-band traffic
+   --  (PINGRESP, late SUBACK/UNSUBACK, QoS 2 control packets) is
+   --  loop-back-safe to ignore at this layer.
    ---------------------------------------------------------------------
 
    generic
       Network : Channel with Readable, Writable;
+      --  Side channel: the FSM emits any inbound PUBLISH bytes the
+      --  caller hasn't yet drained, so the Ada Receive_Publish path
+      --  can still surface them to the application.
+      App_Pending : Channel with Writable;
+      --  Outbox: the caller hands the FSM the pre-encoded PUBLISH
+      --  via this channel (using Wire.Encode_Publish_Qos1 to build
+      --  the bytes, then FSM.Write to push them in).
+      App_Outbox : Channel with Readable;
    machine Publish_Qos1 is
-      Outgoing       : Publish::Packet;
-      Inbound        : Control_Packet::Incoming_Packet;
-      Inbound_Puback : Puback::Packet;
+      Outgoing : Publish::Packet;
+      Inbound  : Control_Packet::Incoming_Packet;
    begin
+
+      state Loading is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading;
 
       state Sending is
       begin
@@ -110,26 +136,32 @@ package Session is
 
       --  §3.3.4 / §3.4 — Read inbound, classify, dispatch.
       --
-      --  ACCEPTED transitions:
-      --    PUBACK         → continue to puback validation
-      --    PUBLISH        → in-band subscriber echo; loop back
-      --    PINGRESP       → broker keep-alive; loop back
-      --    PUBREC/PUBREL/PUBCOMP → QoS 2 traffic, deferred; loop back
-      --    SUBACK/UNSUBACK       → late acks for prior commands; loop
-      --    other (CONNECT/CONNACK/SUBSCRIBE/UNSUBSCRIBE/DISCONNECT/
-      --           PINGREQ/RESERVED) → server MUST NOT send these to
-      --           a client; treat as protocol error and exit.
+      --  Per §2.2.1 Table 2.1 the legal Server→Client packet types are
+      --  PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBACK, UNSUBACK,
+      --  PINGRESP, and CONNACK (handshake-only). Everything else is a
+      --  protocol violation by the peer; we exit.
+      --
+      --  PUBACK     → puback validation
+      --  PUBLISH    → forward to App_Pending (the caller drains it),
+      --               then loop back to wait for our PUBACK
+      --  PINGRESP   → silently consume; loop back
+      --  PUBREC/REL/COMP, SUBACK/UNSUBACK → late traffic from prior
+      --               operations; silently consume; loop back
+      --  other (CONNACK out-of-handshake, CONNECT/SUBSCRIBE/etc.
+      --         from server) → protocol violation, exit
       state Awaiting_Puback is
       begin
          Network'Read (Inbound);
       transition
-         goto Validating_Puback
+         goto Forwarding_Puback
             if Inbound'Valid
                and Inbound.Packet_Type = Control_Packet::PUBACK
+         goto Forwarding_Inbound_Publish
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBLISH
          goto Awaiting_Puback
             if Inbound'Valid
-               and (Inbound.Packet_Type = Control_Packet::PUBLISH
-                    or Inbound.Packet_Type = Control_Packet::PINGRESP
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
                     or Inbound.Packet_Type = Control_Packet::PUBREC
                     or Inbound.Packet_Type = Control_Packet::PUBREL
                     or Inbound.Packet_Type = Control_Packet::PUBCOMP
@@ -142,15 +174,28 @@ package Session is
          goto null
       end Awaiting_Puback;
 
-      --  Re-decode the inbound bytes specifically as a PUBACK to
-      --  surface the Packet_Identifier for the caller to compare
-      --  against the one it sent.
-      state Validating_Puback is
+      --  Forward the inbound PUBLISH bytes (still wrapped as
+      --  Incoming_Packet) to the App_Pending channel and resume
+      --  waiting for PUBACK. The caller drains App_Pending and feeds
+      --  it to the application's PUBLISH dispatcher.
+      state Forwarding_Inbound_Publish is
       begin
-         Network'Read (Inbound_Puback);
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Puback
+      end Forwarding_Inbound_Publish;
+
+      --  Forward the PUBACK bytes back to the caller via App_Pending
+      --  so the Ada layer can decode it (specifically the
+      --  Packet_Identifier) and compare against the one it sent.
+      --  Reaching this state is the success condition; the FSM
+      --  terminates afterwards.
+      state Forwarding_Puback is
+      begin
+         App_Pending'Write (Inbound);
       transition
          goto null
-      end Validating_Puback;
+      end Forwarding_Puback;
 
    end Publish_Qos1;
 
