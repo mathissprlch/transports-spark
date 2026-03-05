@@ -5,112 +5,112 @@
 --
 --  Verification value: a generated SPARK implementation of these
 --  machines cannot reach a transition that hasn't been declared.
---  Specifically the QoS 1 publish exchange must enumerate every
---  packet type the broker can send in response, including the
---  in-band PUBLISH echo arriving before the PUBACK — the bug class
---  that flushed out of E2E testing in our first cut at hand-written
---  Ada is unwriteable in the spec because the verifier rejects gaps.
+--  Every state that reads from the network enumerates explicitly
+--  what to do with each Server→Client packet type from §2.2.1
+--  Table 2.1; forgetting one is a spec error, not a runtime bug.
+--
+--  All four request-response machines below share a common pattern:
+--    Loading            App_Outbox'Read     →  caller hands in the
+--                                              pre-encoded request
+--    Sending            Network'Write       →  request goes to broker
+--    Awaiting_Reply     Network'Read        →  read inbound, dispatch
+--                                              by Packet_Type
+--    Forwarding_Reply   App_Pending'Write   →  reply goes to caller
+--    Forwarding_Inbound App_Pending'Write   →  unrelated PUBLISH
+--                                              encountered while
+--                                              waiting; queue it back
+--                                              to the caller
+--
+--  The dispatch in Awaiting_Reply enumerates every legal-from-broker
+--  packet:
+--    expected reply (PUBACK, SUBACK, etc.) → Forwarding_Reply
+--    PUBLISH                                → Forwarding_Inbound
+--    PINGRESP, late acks                    → loop back
+--    forbidden-from-server packets          → null (protocol error)
+--
+--  RFC-correctness note: while we wait for any reply, an inbound
+--  PUBLISH (matching a topic we subscribe to) MUST NOT be dropped
+--  per §3.3.4 — Servers obligate Clients to deliver subscribed
+--  messages. Forwarding_Inbound routes the bytes back to the Ada
+--  caller so they reach the application's PUBLISH queue.
 
 with Connect;
 with Connack;
-with Disconnect;
+with Subscribe;
+with Suback;
+with Unsubscribe;
+with Unsuback;
 with Publish;
-with Puback;
 with Control_Packet;
 
 package Session is
 
+   ---------------------------------------------------------------------
+   --  Connect_Handshake — §3.1 + §3.2: send CONNECT, await CONNACK.
+   --
+   --  Per §3.2.0 the broker MUST send CONNACK as the first packet to
+   --  the Client; anything else before CONNACK is a protocol error.
+   ---------------------------------------------------------------------
+
    generic
-      --  §4.2 — the MQTT Network Connection. Reads incoming packets
-      --  from the Server, writes outgoing packets to it. The TLS or
-      --  TCP transport sits beneath this channel.
-      Network : Channel with Readable, Writable;
-   machine Client is
-      Outgoing_Connect    : Connect::Packet;
-      Incoming_Connack    : Connack::Packet;
-      Outgoing_Disconnect : Disconnect::Packet;
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Connect_Handshake is
+      Outgoing : Connect::Packet;
+      Inbound  : Control_Packet::Incoming_Packet;
    begin
 
-      --  §3.1 — Send CONNECT. The caller populates `Outgoing_Connect`
-      --  (Client Id, Keep Alive, Clean Session, credentials) before
-      --  driving the machine.
-      state Connecting is
+      state Loading is
       begin
-         Network'Write (Outgoing_Connect);
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading;
+
+      state Sending is
+      begin
+         Network'Write (Outgoing);
       transition
          goto Awaiting_Connack
-      end Connecting;
+      end Sending;
 
-      --  §3.2 — Read CONNACK and dispatch on its Return Code.
-      --  Per §3.2.2.3 / Table 3.1, only ACCEPTED (0) means the session
-      --  is open; every other code (1..5) MUST cause the Client to
-      --  close the Network Connection without sending a DISCONNECT
-      --  (§3.2.2 makes ACCEPTED the precondition for any further
-      --  client→server packets).
+      --  §3.2.0: only CONNACK is permitted here. Any other packet
+      --  type is a protocol violation by the broker.
       state Awaiting_Connack is
       begin
-         Network'Read (Incoming_Connack);
+         Network'Read (Inbound);
       transition
-         goto Disconnecting
-            if Incoming_Connack'Valid
-               and Incoming_Connack.Return_Code = Connack::ACCEPTED
-         --  Refused or malformed CONNACK: end without DISCONNECT.
+         goto Forwarding_Connack
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::CONNACK
          goto null
       exception
          goto null
       end Awaiting_Connack;
 
-      --  §3.14 — Client-initiated DISCONNECT. Reaching this state
-      --  proves the handshake succeeded (only path here is from the
-      --  ACCEPTED branch above). The Ada client layer prepares
-      --  `Outgoing_Disconnect` and any final publish/subscribe work
-      --  before the machine resumes through this state.
-      --
-      --  Per §3.14.4, after sending DISCONNECT the Client MUST close
-      --  the Network Connection and MUST NOT send any further packets.
-      state Disconnecting is
+      state Forwarding_Connack is
       begin
-         Network'Write (Outgoing_Disconnect);
+         App_Pending'Write (Inbound);
       transition
          goto null
-      end Disconnecting;
+      end Forwarding_Connack;
 
-   end Client;
+   end Connect_Handshake;
 
    ---------------------------------------------------------------------
-   --  Publish_Qos1 — §3.3.4 / §4.3.2 protocol flow for a single QoS 1
-   --  PUBLISH from the client.
-   --
-   --  Caller stashes the publish parameters in package-private state
-   --  consumed by Build_Outgoing, then drives the FSM. The machine
-   --  sends the PUBLISH, then loops through inbound packets until a
-   --  matching PUBACK arrives or a peer-side error is detected.
-   --
-   --  RFC traceability: the legal-from-broker packet enumeration in
-   --  Awaiting_Puback is from §2.2.1 Table 2.1 (Direction column).
-   --  The PUBLISH→PUBACK exchange is from §3.3.4 / §4.3.2.
-   --
-   --  RFC-correctness note: while we wait for PUBACK, an inbound
-   --  PUBLISH (matching a topic we subscribe to) MUST NOT be
-   --  discarded — §3.3.4 obligates Servers to deliver matching
-   --  PUBLISHes to subscribers, and a Client that drops them is
-   --  non-compliant. The FSM emits any queued inbound PUBLISH bytes
-   --  on the App_Pending channel for the caller to drain after the
-   --  PUBACK has been validated. Other interleavable in-band traffic
-   --  (PINGRESP, late SUBACK/UNSUBACK, QoS 2 control packets) is
-   --  loop-back-safe to ignore at this layer.
+   --  Publish_Qos1 — §3.3.4 / §4.3.2: send PUBLISH (QoS 1), await
+   --  PUBACK, route any inbound PUBLISH echoes back to the caller.
    ---------------------------------------------------------------------
 
    generic
-      Network : Channel with Readable, Writable;
-      --  Side channel: the FSM emits any inbound PUBLISH bytes the
-      --  caller hasn't yet drained, so the Ada Receive_Publish path
-      --  can still surface them to the application.
+      Network     : Channel with Readable, Writable;
       App_Pending : Channel with Writable;
-      --  Outbox: the caller hands the FSM the pre-encoded PUBLISH
-      --  via this channel (using Wire.Encode_Publish_Qos1 to build
-      --  the bytes, then FSM.Write to push them in).
-      App_Outbox : Channel with Readable;
+      App_Outbox  : Channel with Readable;
    machine Publish_Qos1 is
       Outgoing : Publish::Packet;
       Inbound  : Control_Packet::Incoming_Packet;
@@ -134,21 +134,6 @@ package Session is
          goto Awaiting_Puback
       end Sending;
 
-      --  §3.3.4 / §3.4 — Read inbound, classify, dispatch.
-      --
-      --  Per §2.2.1 Table 2.1 the legal Server→Client packet types are
-      --  PUBLISH, PUBACK, PUBREC, PUBREL, PUBCOMP, SUBACK, UNSUBACK,
-      --  PINGRESP, and CONNACK (handshake-only). Everything else is a
-      --  protocol violation by the peer; we exit.
-      --
-      --  PUBACK     → puback validation
-      --  PUBLISH    → forward to App_Pending (the caller drains it),
-      --               then loop back to wait for our PUBACK
-      --  PINGRESP   → silently consume; loop back
-      --  PUBREC/REL/COMP, SUBACK/UNSUBACK → late traffic from prior
-      --               operations; silently consume; loop back
-      --  other (CONNACK out-of-handshake, CONNECT/SUBSCRIBE/etc.
-      --         from server) → protocol violation, exit
       state Awaiting_Puback is
       begin
          Network'Read (Inbound);
@@ -167,17 +152,11 @@ package Session is
                     or Inbound.Packet_Type = Control_Packet::PUBCOMP
                     or Inbound.Packet_Type = Control_Packet::SUBACK
                     or Inbound.Packet_Type = Control_Packet::UNSUBACK)
-         --  Invalid bytes or server→client packet that MQTT 3.1.1
-         --  forbids the broker from sending us: hard error, exit.
          goto null
       exception
          goto null
       end Awaiting_Puback;
 
-      --  Forward the inbound PUBLISH bytes (still wrapped as
-      --  Incoming_Packet) to the App_Pending channel and resume
-      --  waiting for PUBACK. The caller drains App_Pending and feeds
-      --  it to the application's PUBLISH dispatcher.
       state Forwarding_Inbound_Publish is
       begin
          App_Pending'Write (Inbound);
@@ -185,11 +164,6 @@ package Session is
          goto Awaiting_Puback
       end Forwarding_Inbound_Publish;
 
-      --  Forward the PUBACK bytes back to the caller via App_Pending
-      --  so the Ada layer can decode it (specifically the
-      --  Packet_Identifier) and compare against the one it sent.
-      --  Reaching this state is the success condition; the FSM
-      --  terminates afterwards.
       state Forwarding_Puback is
       begin
          App_Pending'Write (Inbound);
@@ -198,5 +172,190 @@ package Session is
       end Forwarding_Puback;
 
    end Publish_Qos1;
+
+   ---------------------------------------------------------------------
+   --  Subscribe — §3.8: send SUBSCRIBE, await SUBACK, route inbound
+   --  PUBLISH echoes back to the caller.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Subscribing is
+      Outgoing : Subscribe::Packet;
+      Inbound  : Control_Packet::Incoming_Packet;
+   begin
+
+      state Loading is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading;
+
+      state Sending is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Awaiting_Suback
+      end Sending;
+
+      state Awaiting_Suback is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Suback
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::SUBACK
+         goto Forwarding_Inbound_Publish
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBLISH
+         goto Awaiting_Suback
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::UNSUBACK)
+         goto null
+      exception
+         goto null
+      end Awaiting_Suback;
+
+      state Forwarding_Inbound_Publish is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Suback
+      end Forwarding_Inbound_Publish;
+
+      state Forwarding_Suback is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Suback;
+
+   end Subscribing;
+
+   ---------------------------------------------------------------------
+   --  Unsubscribing — §3.10: send UNSUBSCRIBE, await UNSUBACK, route
+   --  inbound PUBLISH echoes back to the caller.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Unsubscribing is
+      Outgoing : Unsubscribe::Packet;
+      Inbound  : Control_Packet::Incoming_Packet;
+   begin
+
+      state Loading is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading;
+
+      state Sending is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Awaiting_Unsuback
+      end Sending;
+
+      state Awaiting_Unsuback is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Unsuback
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::UNSUBACK
+         goto Forwarding_Inbound_Publish
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBLISH
+         goto Awaiting_Unsuback
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::SUBACK)
+         goto null
+      exception
+         goto null
+      end Awaiting_Unsuback;
+
+      state Forwarding_Inbound_Publish is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Unsuback
+      end Forwarding_Inbound_Publish;
+
+      state Forwarding_Unsuback is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Unsuback;
+
+   end Unsubscribing;
+
+   ---------------------------------------------------------------------
+   --  Receive — §4.6 / §3.3 reception side. Block until the next
+   --  inbound PUBLISH arrives; route any other in-band traffic
+   --  appropriately (drop if benign, exit on protocol violation).
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+   machine Receive is
+      Inbound : Control_Packet::Incoming_Packet;
+   begin
+
+      state Reading is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Publish
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBLISH
+         goto Reading
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::SUBACK
+                    or Inbound.Packet_Type = Control_Packet::UNSUBACK)
+         goto null
+      exception
+         goto null
+      end Reading;
+
+      state Forwarding_Publish is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Publish;
+
+   end Receive;
 
 end Session;

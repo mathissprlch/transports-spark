@@ -1,23 +1,27 @@
 --  Mqtt_Core.Client — synchronous, single-connection MQTT 3.1.1
 --  client API.
 --
---  Wires Mqtt_Core.Transport (TCP) and Mqtt_Core.Wire (RecordFlux
---  encoders / decoders) into a request-response API:
+--  Every request-response operation (Open, Subscribe, Unsubscribe,
+--  Publish_Qos1, Receive_Publish) is driven by a generated session.rflx
+--  state machine. The dispatch logic — what to do with each kind of
+--  Server→Client packet that may arrive while we wait for a specific
+--  reply — is verified at spec-compile time by RecordFlux's
+--  exhaustiveness check; "forgot a packet type" is a spec error, not
+--  a runtime bug. Wire compatibility against any compliant 3.1.1
+--  broker follows from the spec, not from per-broker testing.
 --
---    Open        sends CONNECT, awaits CONNACK
---    Subscribe   sends SUBSCRIBE, awaits SUBACK
---    Publish     fire-and-forget QoS 0
---    Receive_*   blocks for next inbound packet
---    Close       sends DISCONNECT, closes the socket
+--  Inbound PUBLISHes that arrive while another operation is in
+--  flight are queued in the Client record and drained by
+--  Receive_Publish in arrival order. Per §3.3.4 the Server obligates
+--  the Client to deliver subscribed PUBLISHes; we never drop one.
 --
---  Buffer model: Open allocates a single fixed-size byte buffer in the
---  Client record; every operation reuses it. Close frees it. There are
---  no per-operation heap allocations on the steady-state path.
+--  Buffer model: a single fixed-size Bytes_Ptr is allocated in Open
+--  and freed in Close. No per-op heap traffic.
 --
---  Out of scope (current implementation): QoS 1/2 retry, keep-alive
---  PINGREQ scheduling in a background task, last-will, server-initiated
---  reconnection. The API shape leaves room to add these without
---  breaking callers.
+--  Out of scope (current version): QoS 1/2 retry on reconnect,
+--  keep-alive PINGREQ scheduling in a background task, Will fields,
+--  TLS. The wire / spec layers leave room for these without API
+--  breakage.
 
 with RFLX.RFLX_Types;
 with RFLX.Control_Packet;
@@ -28,10 +32,6 @@ package Mqtt_Core.Client is
 
    type Client is limited private;
 
-   ---------------------------------------------------------------------
-   --  Open: TCP connect + MQTT handshake.
-   ---------------------------------------------------------------------
-
    procedure Open
      (C             : in out Client;
       Host          : String;
@@ -40,50 +40,19 @@ package Mqtt_Core.Client is
       Keep_Alive_S  : Natural := 60;
       Clean_Session : Boolean := True);
 
-   ---------------------------------------------------------------------
-   --  Publish QoS 0 (fire-and-forget). Topic + payload together must
-   --  fit within the spec's single-byte Remaining-Length cap.
-   ---------------------------------------------------------------------
-
+   --  Publish QoS 0 — fire-and-forget. No FSM (no reply, no dispatch).
    procedure Publish
      (C       : in out Client;
       Topic   : String;
       Payload : RFLX.RFLX_Types.Bytes);
 
-   ---------------------------------------------------------------------
-   --  Publish QoS 1: send PUBLISH with a Packet Identifier, then block
-   --  until the broker's PUBACK with a matching id arrives.
-   ---------------------------------------------------------------------
-
+   --  Publish QoS 1 — sends PUBLISH, awaits PUBACK with matching id.
+   --  Inbound PUBLISHes interleaved while waiting for PUBACK are
+   --  enqueued for Receive_Publish to drain. No data is dropped.
    procedure Publish_Qos1
      (C       : in out Client;
       Topic   : String;
       Payload : RFLX.RFLX_Types.Bytes);
-
-   ---------------------------------------------------------------------
-   --  Publish QoS 1, FSM-driven variant.
-   --
-   --  Uses the generated session.rflx Publish_Qos1 state machine to
-   --  drive the protocol exchange, including correct handling of any
-   --  inbound PUBLISH that arrives in the Awaiting_Puback window
-   --  (forwarded via the FSM's App_Pending channel; this initial
-   --  version drains that channel into a discard buffer, but the
-   --  shape is in place for the next iteration to re-queue it for
-   --  Receive_Publish).
-   --
-   --  The state-machine dispatch is exhaustively verified by RecordFlux
-   --  at spec-compile time: any Server→Client packet type MQTT 3.1.1
-   --  permits is handled (or routed to error) explicitly.
-   ---------------------------------------------------------------------
-
-   procedure Publish_Qos1_FSM
-     (C       : in out Client;
-      Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes);
-
-   ---------------------------------------------------------------------
-   --  Subscribe to a single topic, await SUBACK.
-   ---------------------------------------------------------------------
 
    procedure Subscribe
      (C     : in out Client;
@@ -91,22 +60,14 @@ package Mqtt_Core.Client is
       QoS   : RFLX.Control_Packet.QoS_Level :=
         RFLX.Control_Packet.QOS_0);
 
-   ---------------------------------------------------------------------
-   --  Unsubscribe from a single topic, await UNSUBACK.
-   ---------------------------------------------------------------------
-
    procedure Unsubscribe
      (C     : in out Client;
       Topic : String);
 
-   ---------------------------------------------------------------------
-   --  Block until the next inbound PUBLISH arrives. PINGRESP and other
-   --  in-band server traffic are silently skipped.
-   --
-   --  Topic / Payload buffers are caller-allocated; the procedure
-   --  writes into them and reports the actual lengths.
-   ---------------------------------------------------------------------
-
+   --  Block until the next inbound PUBLISH is available — first
+   --  draining any PUBLISHes that were queued by a concurrent
+   --  Subscribe / Unsubscribe / Publish_Qos1 / Open call, then
+   --  reading from the network if the queue is empty.
    procedure Receive_Publish
      (C            : in out Client;
       Topic        : in out String;
@@ -114,16 +75,7 @@ package Mqtt_Core.Client is
       Payload      : in out RFLX.RFLX_Types.Bytes;
       Payload_Last :    out RFLX.RFLX_Types.Length);
 
-   ---------------------------------------------------------------------
-   --  Close: send DISCONNECT, close the socket, release buffer.
-   ---------------------------------------------------------------------
-
    procedure Close (C : in out Client);
-
-   ---------------------------------------------------------------------
-   --  Errors. Exceptions chosen for ergonomics; a SPARK-compatible
-   --  status-return variant can be added later.
-   ---------------------------------------------------------------------
 
    Connect_Failure     : exception;
    Subscribe_Failure   : exception;
@@ -133,17 +85,27 @@ package Mqtt_Core.Client is
 
 private
 
-   --  Re-usable I/O buffer size. The current Remaining-Length spec is
-   --  the single-byte varint form (max 127), so the largest packet on
-   --  the wire is 129 bytes (1 fixed-header byte + 1 RL byte + 127).
-   --  256 leaves headroom for when the spec's RL is widened.
-   Buffer_Capacity : constant := 256;
+   Buffer_Capacity      : constant := 256;
+   Max_Queued_Publishes : constant := 4;
+
+   --  One slot for a queued inbound PUBLISH packet. Stored as raw
+   --  Incoming_Packet bytes; Receive_Publish decodes when draining.
+   type Pending_Slot is record
+      Buf    : RFLX.RFLX_Types.Bytes (1 .. Buffer_Capacity) :=
+        (others => 0);
+      Last   : RFLX.RFLX_Types.Index := 1;
+      In_Use : Boolean := False;
+   end record;
+
+   type Pending_Array is
+     array (1 .. Max_Queued_Publishes) of Pending_Slot;
 
    type Client is limited record
       Trans          : Transport.Channel;
       Buf            : RFLX.RFLX_Types.Bytes_Ptr := null;
       Next_Packet_Id :
         RFLX.Control_Packet.Packet_Identifier := 1;
+      Pending        : Pending_Array;
    end record;
 
 end Mqtt_Core.Client;

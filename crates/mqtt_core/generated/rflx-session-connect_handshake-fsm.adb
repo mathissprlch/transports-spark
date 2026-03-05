@@ -14,7 +14,7 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types.Operators;
 
-package body RFLX.Session.Client.FSM
+package body RFLX.Session.Connect_Handshake.FSM
 with
   SPARK_Mode
 is
@@ -23,31 +23,56 @@ is
 
    use type RFLX.RFLX_Types.Bytes_Ptr;
 
-   use type RFLX.Connack.Connect_Return_Code;
+   use type RFLX.Control_Packet.Packet_Type;
 
    use type RFLX.RFLX_Types.Bit_Length;
 
-   procedure Connecting (Ctx : in out Context)
+   procedure Loading (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
      Post =>
        Initialized (Ctx)
    is
-      function Connecting_Invariant return Boolean is
+      function Loading_Invariant return Boolean is
         (Ctx.P.Slots.Slot_Ptr_1 = null
-         and Ctx.P.Slots.Slot_Ptr_2 = null
-         and Ctx.P.Slots.Slot_Ptr_3 = null)
+         and Ctx.P.Slots.Slot_Ptr_2 = null)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Connecting_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:39:10
+      pragma Assert (Loading_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:66:10
+      Connect.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
+      if Connect.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx) then
+         Ctx.P.Next_State := S_Sending;
+      else
+         Ctx.P.Next_State := S_Final;
+      end if;
+      pragma Assert (Loading_Invariant);
+   end Loading;
+
+   procedure Sending (Ctx : in out Context)
+   with
+     Pre =>
+       Initialized (Ctx),
+     Post =>
+       Initialized (Ctx)
+   is
+      function Sending_Invariant return Boolean is
+        (Ctx.P.Slots.Slot_Ptr_1 = null
+         and Ctx.P.Slots.Slot_Ptr_2 = null)
+      with
+        Annotate =>
+          (GNATprove, Inline_For_Proof),
+        Ghost;
+   begin
+      pragma Assert (Sending_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:77:10
       Ctx.P.Next_State := S_Awaiting_Connack;
-      pragma Assert (Connecting_Invariant);
-   end Connecting;
+      pragma Assert (Sending_Invariant);
+   end Sending;
 
    procedure Awaiting_Connack (Ctx : in out Context)
    with
@@ -57,29 +82,28 @@ is
        Initialized (Ctx)
    is
       T_0 : Boolean;
-      T_1 : Connack.Connect_Return_Code;
+      T_1 : Control_Packet.Packet_Type;
       T_2 : Boolean;
       function Awaiting_Connack_Invariant return Boolean is
         (Ctx.P.Slots.Slot_Ptr_1 = null
-         and Ctx.P.Slots.Slot_Ptr_2 = null
-         and Ctx.P.Slots.Slot_Ptr_3 = null)
+         and Ctx.P.Slots.Slot_Ptr_2 = null)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
       pragma Assert (Awaiting_Connack_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:52:10
-      Connack.Packet.Verify_Message (Ctx.P.Incoming_Connack_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:55:16
-      T_0 := Connack.Packet.Well_Formed_Message (Ctx.P.Incoming_Connack_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:56:20
+      -- crates/mqtt_core/specs/session.rflx:86:10
+      Control_Packet.Incoming_Packet.Verify_Message (Ctx.P.Inbound_Ctx);
+      -- crates/mqtt_core/specs/session.rflx:89:16
+      T_0 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
+      -- crates/mqtt_core/specs/session.rflx:90:20
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
       pragma Warnings (Off, "statement has no effect");
       pragma Warnings (Off, "this statement is never reached");
-      if not Connack.Packet.Valid (Ctx.P.Incoming_Connack_Ctx, Connack.Packet.F_Return_Code) then
+      if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
          pragma Assert (Awaiting_Connack_Invariant);
          goto Finalize_Awaiting_Connack;
@@ -89,15 +113,15 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:56:20
-      T_1 := Connack.Packet.Get_Return_Code (Ctx.P.Incoming_Connack_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:56:20
-      T_2 := T_1 = Connack.ACCEPTED;
+      -- crates/mqtt_core/specs/session.rflx:90:20
+      T_1 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
+      -- crates/mqtt_core/specs/session.rflx:90:20
+      T_2 := T_1 = Control_Packet.CONNACK;
       if
          T_0
          and then T_2
       then
-         Ctx.P.Next_State := S_Disconnecting;
+         Ctx.P.Next_State := S_Forwarding_Connack;
       else
          Ctx.P.Next_State := S_Final;
       end if;
@@ -105,79 +129,64 @@ is
       <<Finalize_Awaiting_Connack>>
    end Awaiting_Connack;
 
-   procedure Disconnecting (Ctx : in out Context)
+   procedure Forwarding_Connack (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
      Post =>
        Initialized (Ctx)
    is
-      function Disconnecting_Invariant return Boolean is
+      function Forwarding_Connack_Invariant return Boolean is
         (Ctx.P.Slots.Slot_Ptr_1 = null
-         and Ctx.P.Slots.Slot_Ptr_2 = null
-         and Ctx.P.Slots.Slot_Ptr_3 = null)
+         and Ctx.P.Slots.Slot_Ptr_2 = null)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Disconnecting_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:73:10
+      pragma Assert (Forwarding_Connack_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:98:10
       Ctx.P.Next_State := S_Final;
-      pragma Assert (Disconnecting_Invariant);
-   end Disconnecting;
+      pragma Assert (Forwarding_Connack_Invariant);
+   end Forwarding_Connack;
 
    procedure Initialize (Ctx : in out Context) is
-      Outgoing_Connect_Buffer : RFLX_Types.Bytes_Ptr;
-      Incoming_Connack_Buffer : RFLX_Types.Bytes_Ptr;
-      Outgoing_Disconnect_Buffer : RFLX_Types.Bytes_Ptr;
+      Outgoing_Buffer : RFLX_Types.Bytes_Ptr;
+      Inbound_Buffer : RFLX_Types.Bytes_Ptr;
    begin
-      Session.Client.FSM_Allocator.Initialize (Ctx.P.Slots, Ctx.P.Memory);
-      Outgoing_Connect_Buffer := Ctx.P.Slots.Slot_Ptr_1;
+      Session.Connect_Handshake.FSM_Allocator.Initialize (Ctx.P.Slots, Ctx.P.Memory);
+      Outgoing_Buffer := Ctx.P.Slots.Slot_Ptr_1;
       pragma Warnings (Off, "unused assignment");
       Ctx.P.Slots.Slot_Ptr_1 := null;
       pragma Warnings (On, "unused assignment");
-      Connect.Packet.Initialize (Ctx.P.Outgoing_Connect_Ctx, Outgoing_Connect_Buffer);
-      Incoming_Connack_Buffer := Ctx.P.Slots.Slot_Ptr_2;
+      Connect.Packet.Initialize (Ctx.P.Outgoing_Ctx, Outgoing_Buffer);
+      Inbound_Buffer := Ctx.P.Slots.Slot_Ptr_2;
       pragma Warnings (Off, "unused assignment");
       Ctx.P.Slots.Slot_Ptr_2 := null;
       pragma Warnings (On, "unused assignment");
-      Connack.Packet.Initialize (Ctx.P.Incoming_Connack_Ctx, Incoming_Connack_Buffer);
-      Outgoing_Disconnect_Buffer := Ctx.P.Slots.Slot_Ptr_3;
-      pragma Warnings (Off, "unused assignment");
-      Ctx.P.Slots.Slot_Ptr_3 := null;
-      pragma Warnings (On, "unused assignment");
-      Disconnect.Packet.Initialize (Ctx.P.Outgoing_Disconnect_Ctx, Outgoing_Disconnect_Buffer);
-      Ctx.P.Next_State := S_Connecting;
+      Control_Packet.Incoming_Packet.Initialize (Ctx.P.Inbound_Ctx, Inbound_Buffer);
+      Ctx.P.Next_State := S_Loading;
    end Initialize;
 
    procedure Finalize (Ctx : in out Context) is
-      Outgoing_Connect_Buffer : RFLX_Types.Bytes_Ptr;
-      Incoming_Connack_Buffer : RFLX_Types.Bytes_Ptr;
-      Outgoing_Disconnect_Buffer : RFLX_Types.Bytes_Ptr;
+      Outgoing_Buffer : RFLX_Types.Bytes_Ptr;
+      Inbound_Buffer : RFLX_Types.Bytes_Ptr;
    begin
-      pragma Warnings (Off, """Ctx.P.Outgoing_Connect_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-      Connect.Packet.Take_Buffer (Ctx.P.Outgoing_Connect_Ctx, Outgoing_Connect_Buffer);
-      pragma Warnings (On, """Ctx.P.Outgoing_Connect_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+      pragma Warnings (Off, """Ctx.P.Outgoing_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+      Connect.Packet.Take_Buffer (Ctx.P.Outgoing_Ctx, Outgoing_Buffer);
+      pragma Warnings (On, """Ctx.P.Outgoing_Ctx"" is set by ""Take_Buffer"" but not used after the call");
       pragma Assert (Ctx.P.Slots.Slot_Ptr_1 = null);
-      pragma Assert (Outgoing_Connect_Buffer /= null);
-      Ctx.P.Slots.Slot_Ptr_1 := Outgoing_Connect_Buffer;
+      pragma Assert (Outgoing_Buffer /= null);
+      Ctx.P.Slots.Slot_Ptr_1 := Outgoing_Buffer;
       pragma Assert (Ctx.P.Slots.Slot_Ptr_1 /= null);
-      pragma Warnings (Off, """Ctx.P.Incoming_Connack_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-      Connack.Packet.Take_Buffer (Ctx.P.Incoming_Connack_Ctx, Incoming_Connack_Buffer);
-      pragma Warnings (On, """Ctx.P.Incoming_Connack_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+      pragma Warnings (Off, """Ctx.P.Inbound_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+      Control_Packet.Incoming_Packet.Take_Buffer (Ctx.P.Inbound_Ctx, Inbound_Buffer);
+      pragma Warnings (On, """Ctx.P.Inbound_Ctx"" is set by ""Take_Buffer"" but not used after the call");
       pragma Assert (Ctx.P.Slots.Slot_Ptr_2 = null);
-      pragma Assert (Incoming_Connack_Buffer /= null);
-      Ctx.P.Slots.Slot_Ptr_2 := Incoming_Connack_Buffer;
+      pragma Assert (Inbound_Buffer /= null);
+      Ctx.P.Slots.Slot_Ptr_2 := Inbound_Buffer;
       pragma Assert (Ctx.P.Slots.Slot_Ptr_2 /= null);
-      pragma Warnings (Off, """Ctx.P.Outgoing_Disconnect_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-      Disconnect.Packet.Take_Buffer (Ctx.P.Outgoing_Disconnect_Ctx, Outgoing_Disconnect_Buffer);
-      pragma Warnings (On, """Ctx.P.Outgoing_Disconnect_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-      pragma Assert (Ctx.P.Slots.Slot_Ptr_3 = null);
-      pragma Assert (Outgoing_Disconnect_Buffer /= null);
-      Ctx.P.Slots.Slot_Ptr_3 := Outgoing_Disconnect_Buffer;
-      pragma Assert (Ctx.P.Slots.Slot_Ptr_3 /= null);
-      Session.Client.FSM_Allocator.Finalize (Ctx.P.Slots);
+      Session.Connect_Handshake.FSM_Allocator.Finalize (Ctx.P.Slots);
       Ctx.P.Next_State := S_Final;
    end Finalize;
 
@@ -190,11 +199,13 @@ is
    is
    begin
       case Ctx.P.Next_State is
-         when S_Connecting =>
+         when S_Loading =>
+            Connect.Packet.Reset (Ctx.P.Outgoing_Ctx, Ctx.P.Outgoing_Ctx.First, Ctx.P.Outgoing_Ctx.First - 1);
+         when S_Sending =>
             null;
          when S_Awaiting_Connack =>
-            Connack.Packet.Reset (Ctx.P.Incoming_Connack_Ctx, Ctx.P.Incoming_Connack_Ctx.First, Ctx.P.Incoming_Connack_Ctx.First - 1);
-         when S_Disconnecting | S_Final =>
+            Control_Packet.Incoming_Packet.Reset (Ctx.P.Inbound_Ctx, Ctx.P.Inbound_Ctx.First, Ctx.P.Inbound_Ctx.First - 1);
+         when S_Forwarding_Connack | S_Final =>
             null;
       end case;
    end Reset_Messages_Before_Write;
@@ -202,12 +213,14 @@ is
    procedure Tick (Ctx : in out Context) is
    begin
       case Ctx.P.Next_State is
-         when S_Connecting =>
-            Connecting (Ctx);
+         when S_Loading =>
+            Loading (Ctx);
+         when S_Sending =>
+            Sending (Ctx);
          when S_Awaiting_Connack =>
             Awaiting_Connack (Ctx);
-         when S_Disconnecting =>
-            Disconnecting (Ctx);
+         when S_Forwarding_Connack =>
+            Forwarding_Connack (Ctx);
          when S_Final =>
             null;
       end case;
@@ -215,7 +228,7 @@ is
    end Tick;
 
    function In_IO_State (Ctx : Context) return Boolean is
-     (Ctx.P.Next_State in S_Connecting | S_Awaiting_Connack | S_Disconnecting);
+     (Ctx.P.Next_State in S_Loading | S_Sending | S_Awaiting_Connack | S_Forwarding_Connack);
 
    procedure Run (Ctx : in out Context) is
    begin
@@ -244,21 +257,32 @@ is
          Buffer (Buffer'First .. RFLX_Types.Index (Buffer_Last)) := Message_Buffer (RFLX_Types.Index (RFLX_Types.Length (Message_Buffer'First) + Offset) .. Message_Buffer'First + Offset + (Length - RFLX_Types.Length'(1)));
       end Read;
       procedure Connect_Packet_Read is new Connect.Packet.Generic_Read (Read, Read_Pre);
-      procedure Disconnect_Packet_Read is new Disconnect.Packet.Generic_Read (Read, Read_Pre);
+      procedure Control_Packet_Incoming_Packet_Read is new Control_Packet.Incoming_Packet.Generic_Read (Read, Read_Pre);
    begin
       Buffer := (others => 0);
       case Chan is
          when C_Network =>
             case Ctx.P.Next_State is
-               when S_Connecting =>
-                  Connect_Packet_Read (Ctx.P.Outgoing_Connect_Ctx);
-               when S_Disconnecting =>
-                  Disconnect_Packet_Read (Ctx.P.Outgoing_Disconnect_Ctx);
+               when S_Sending =>
+                  Connect_Packet_Read (Ctx.P.Outgoing_Ctx);
                when others =>
                   pragma Warnings (Off, "unreachable code");
                   null;
                   pragma Warnings (On, "unreachable code");
             end case;
+         when C_App_Pending =>
+            case Ctx.P.Next_State is
+               when S_Forwarding_Connack =>
+                  Control_Packet_Incoming_Packet_Read (Ctx.P.Inbound_Ctx);
+               when others =>
+                  pragma Warnings (Off, "unreachable code");
+                  null;
+                  pragma Warnings (On, "unreachable code");
+            end case;
+         when C_App_Outbox =>
+            pragma Warnings (Off, "unreachable code");
+            null;
+            pragma Warnings (On, "unreachable code");
       end case;
    end Read;
 
@@ -283,13 +307,27 @@ is
          Message_Buffer := (others => 0);
          Message_Buffer (Message_Buffer'First .. RFLX_Types.Index (RFLX_Types.Length (Message_Buffer'First) - 1 + Length)) := Buffer;
       end Write;
-      procedure Connack_Packet_Write is new Connack.Packet.Generic_Write (Write, Write_Pre);
+      procedure Connect_Packet_Write is new Connect.Packet.Generic_Write (Write, Write_Pre);
+      procedure Control_Packet_Incoming_Packet_Write is new Control_Packet.Incoming_Packet.Generic_Write (Write, Write_Pre);
    begin
       case Chan is
          when C_Network =>
             case Ctx.P.Next_State is
                when S_Awaiting_Connack =>
-                  Connack_Packet_Write (Ctx.P.Incoming_Connack_Ctx, Offset);
+                  Control_Packet_Incoming_Packet_Write (Ctx.P.Inbound_Ctx, Offset);
+               when others =>
+                  pragma Warnings (Off, "unreachable code");
+                  null;
+                  pragma Warnings (On, "unreachable code");
+            end case;
+         when C_App_Pending =>
+            pragma Warnings (Off, "unreachable code");
+            null;
+            pragma Warnings (On, "unreachable code");
+         when C_App_Outbox =>
+            case Ctx.P.Next_State is
+               when S_Loading =>
+                  Connect_Packet_Write (Ctx.P.Outgoing_Ctx, Offset);
                when others =>
                   pragma Warnings (Off, "unreachable code");
                   null;
@@ -298,4 +336,4 @@ is
       end case;
    end Write;
 
-end RFLX.Session.Client.FSM;
+end RFLX.Session.Connect_Handshake.FSM;

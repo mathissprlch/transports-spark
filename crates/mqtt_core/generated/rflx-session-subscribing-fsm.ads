@@ -12,16 +12,14 @@ pragma Restrictions (No_Streams);
 pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
-with RFLX.Session.Client.FSM_Allocator;
+with RFLX.Session.Subscribing.FSM_Allocator;
 with RFLX.RFLX_Types;
-with RFLX.Connect;
-with RFLX.Connect.Packet;
-with RFLX.Connack;
-with RFLX.Connack.Packet;
-with RFLX.Disconnect;
-with RFLX.Disconnect.Packet;
+with RFLX.Subscribe;
+with RFLX.Subscribe.Packet;
+with RFLX.Control_Packet;
+with RFLX.Control_Packet.Incoming_Packet;
 
-package RFLX.Session.Client.FSM
+package RFLX.Session.Subscribing.FSM
 with
   SPARK_Mode
 is
@@ -30,9 +28,9 @@ is
 
    use type RFLX.RFLX_Types.Length;
 
-   type Channel is (C_Network);
+   type Channel is (C_Network, C_App_Pending, C_App_Outbox);
 
-   type State is (S_Connecting, S_Awaiting_Connack, S_Disconnecting, S_Final);
+   type State is (S_Loading, S_Sending, S_Awaiting_Suback, S_Forwarding_Inbound_Publish, S_Forwarding_Suback, S_Final);
 
    type Private_Context is private;
 
@@ -145,33 +143,28 @@ private
 
    type Private_Context is
       record
-         Next_State : State := S_Connecting;
-         Outgoing_Connect_Ctx : Connect.Packet.Context;
-         Incoming_Connack_Ctx : Connack.Packet.Context;
-         Outgoing_Disconnect_Ctx : Disconnect.Packet.Context;
-         Slots : Session.Client.FSM_Allocator.Slots;
-         Memory : Session.Client.FSM_Allocator.Memory;
+         Next_State : State := S_Loading;
+         Outgoing_Ctx : Subscribe.Packet.Context;
+         Inbound_Ctx : Control_Packet.Incoming_Packet.Context;
+         Slots : Session.Subscribing.FSM_Allocator.Slots;
+         Memory : Session.Subscribing.FSM_Allocator.Memory;
       end record;
 
    function Uninitialized (Ctx : Context) return Boolean is
-     (not Connect.Packet.Has_Buffer (Ctx.P.Outgoing_Connect_Ctx)
-      and not Connack.Packet.Has_Buffer (Ctx.P.Incoming_Connack_Ctx)
-      and not Disconnect.Packet.Has_Buffer (Ctx.P.Outgoing_Disconnect_Ctx)
-      and Session.Client.FSM_Allocator.Uninitialized (Ctx.P.Slots));
+     (not Subscribe.Packet.Has_Buffer (Ctx.P.Outgoing_Ctx)
+      and not Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx)
+      and Session.Subscribing.FSM_Allocator.Uninitialized (Ctx.P.Slots));
 
    function Global_Initialized (Ctx : Context) return Boolean is
-     (Connect.Packet.Has_Buffer (Ctx.P.Outgoing_Connect_Ctx)
-      and then Ctx.P.Outgoing_Connect_Ctx.Buffer_First = RFLX_Types.Index'First
-      and then Ctx.P.Outgoing_Connect_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095
-      and then Connack.Packet.Has_Buffer (Ctx.P.Incoming_Connack_Ctx)
-      and then Ctx.P.Incoming_Connack_Ctx.Buffer_First = RFLX_Types.Index'First
-      and then Ctx.P.Incoming_Connack_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095
-      and then Disconnect.Packet.Has_Buffer (Ctx.P.Outgoing_Disconnect_Ctx)
-      and then Ctx.P.Outgoing_Disconnect_Ctx.Buffer_First = RFLX_Types.Index'First
-      and then Ctx.P.Outgoing_Disconnect_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095);
+     (Subscribe.Packet.Has_Buffer (Ctx.P.Outgoing_Ctx)
+      and then Ctx.P.Outgoing_Ctx.Buffer_First = RFLX_Types.Index'First
+      and then Ctx.P.Outgoing_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095
+      and then Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx)
+      and then Ctx.P.Inbound_Ctx.Buffer_First = RFLX_Types.Index'First
+      and then Ctx.P.Inbound_Ctx.Buffer_Last = RFLX_Types.Index'First + 4095);
 
    function Global_Allocated (Ctx : Context) return Boolean is
-     (Session.Client.FSM_Allocator.Global_Allocated (Ctx.P.Slots));
+     (Session.Subscribing.FSM_Allocator.Global_Allocated (Ctx.P.Slots));
 
    function Initialized (Ctx : Context) return Boolean is
      (Global_Initialized (Ctx)
@@ -187,31 +180,51 @@ private
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Connecting =>
-                    Connect.Packet.Well_Formed_Message (Ctx.P.Outgoing_Connect_Ctx)
-                    and Connect.Packet.Byte_Size (Ctx.P.Outgoing_Connect_Ctx) > 0,
-                 when S_Disconnecting =>
-                    Disconnect.Packet.Well_Formed_Message (Ctx.P.Outgoing_Disconnect_Ctx)
-                    and Disconnect.Packet.Byte_Size (Ctx.P.Outgoing_Disconnect_Ctx) > 0,
+                 when S_Sending =>
+                    Subscribe.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx)
+                    and Subscribe.Packet.Byte_Size (Ctx.P.Outgoing_Ctx) > 0,
                  when others =>
-                    False));
+                    False),
+          when C_App_Pending =>
+             (case Ctx.P.Next_State is
+                 when S_Forwarding_Inbound_Publish | S_Forwarding_Suback =>
+                    Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx)
+                    and Control_Packet.Incoming_Packet.Byte_Size (Ctx.P.Inbound_Ctx) > 0,
+                 when others =>
+                    False),
+          when C_App_Outbox =>
+             False);
 
    function Read_Buffer_Size (Ctx : Context; Chan : Channel) return RFLX_Types.Length is
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Connecting =>
-                    Connect.Packet.Byte_Size (Ctx.P.Outgoing_Connect_Ctx),
-                 when S_Disconnecting =>
-                    Disconnect.Packet.Byte_Size (Ctx.P.Outgoing_Disconnect_Ctx),
+                 when S_Sending =>
+                    Subscribe.Packet.Byte_Size (Ctx.P.Outgoing_Ctx),
                  when others =>
-                    RFLX_Types.Unreachable));
+                    RFLX_Types.Unreachable),
+          when C_App_Pending =>
+             (case Ctx.P.Next_State is
+                 when S_Forwarding_Inbound_Publish | S_Forwarding_Suback =>
+                    Control_Packet.Incoming_Packet.Byte_Size (Ctx.P.Inbound_Ctx),
+                 when others =>
+                    RFLX_Types.Unreachable),
+          when C_App_Outbox =>
+             RFLX_Types.Unreachable);
 
    function Needs_Data (Ctx : Context; Chan : Channel) return Boolean is
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Awaiting_Connack =>
+                 when S_Awaiting_Suback =>
+                    True,
+                 when others =>
+                    False),
+          when C_App_Pending =>
+             False,
+          when C_App_Outbox =>
+             (case Ctx.P.Next_State is
+                 when S_Loading =>
                     True,
                  when others =>
                     False));
@@ -220,9 +233,17 @@ private
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Awaiting_Connack =>
-                    Connack.Packet.Buffer_Length (Ctx.P.Incoming_Connack_Ctx),
+                 when S_Awaiting_Suback =>
+                    Control_Packet.Incoming_Packet.Buffer_Length (Ctx.P.Inbound_Ctx),
+                 when others =>
+                    RFLX_Types.Unreachable),
+          when C_App_Pending =>
+             0,
+          when C_App_Outbox =>
+             (case Ctx.P.Next_State is
+                 when S_Loading =>
+                    Subscribe.Packet.Buffer_Length (Ctx.P.Outgoing_Ctx),
                  when others =>
                     RFLX_Types.Unreachable));
 
-end RFLX.Session.Client.FSM;
+end RFLX.Session.Subscribing.FSM;

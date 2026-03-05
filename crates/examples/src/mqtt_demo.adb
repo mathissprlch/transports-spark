@@ -130,27 +130,34 @@ begin
    Put_Line ("mqtt_demo: round-trip 3 (near RL cap)");
    Round_Trip (Client, Topic, Big_Payload);
 
-   --  QoS 1 publish to a topic we are *not* subscribed to: isolates the
-   --  outbound QoS 1 path (PUBLISH → PUBACK) from the inbound subscriber
-   --  echo.
-   Put_Line ("mqtt_demo: QoS 1 publish via hand-written client");
+   --  QoS 1 publish to the topic we're subscribed to. The broker
+   --  will echo the PUBLISH back to us (as subscriber) AND send the
+   --  PUBACK (as publisher) on the same socket; the FSM-driven
+   --  Publish_Qos1 enqueues the PUBLISH for Receive_Publish to drain
+   --  while it waits for the PUBACK. No data dropped, dispatch
+   --  exhaustively verified at spec-compile time.
+   Put_Line ("mqtt_demo: QoS 1 publish (FSM-driven, awaits PUBACK)");
    Mqtt_Core.Client.Publish_Qos1
-     (Client, "ada/qos1-only",
-      To_Bytes ("qos-1 hello, please ack"));
-   Put_Line ("  -> publish acked (hand-written path)");
-
-   --  QoS 1 publish via the FSM-driven path. This exercises the
-   --  generated session.rflx Publish_Qos1 state machine end-to-end.
-   --  We publish to ada/test (we're still subscribed) so the broker
-   --  echoes back as a subscriber-side PUBLISH while it's also
-   --  sending PUBACK — the very interleaving that broke the
-   --  hand-written path. The FSM forwards the inbound PUBLISH on
-   --  C_App_Pending and we drain it before validating PUBACK.
-   Put_Line ("mqtt_demo: QoS 1 publish via FSM-driven path");
-   Mqtt_Core.Client.Publish_Qos1_FSM
      (Client, Topic,
-      To_Bytes ("qos-1 via FSM, dispatch verified by RecordFlux"));
-   Put_Line ("  -> publish acked (FSM path)");
+      To_Bytes ("qos-1 hello, dispatch verified by RecordFlux"));
+   Put_Line ("  -> publish acked");
+
+   --  Drain the QoS 1 echo that was queued by Publish_Qos1 (it was
+   --  forwarded on App_Pending while the FSM waited for PUBACK).
+   Put_Line ("mqtt_demo: draining queued PUBLISH from Publish_Qos1");
+   declare
+      Recv_Topic   : String (1 .. 128);
+      Recv_T_Last  : Natural;
+      Recv_Payload : RFLX.RFLX_Types.Bytes (1 .. 256);
+      Recv_P_Last  : RFLX.RFLX_Types.Length;
+   begin
+      Mqtt_Core.Client.Receive_Publish
+        (Client, Recv_Topic, Recv_T_Last,
+         Recv_Payload, Recv_P_Last);
+      Put_Line
+        ("  <- queued echo: """
+         & To_String (Recv_Payload, Recv_P_Last) & """");
+   end;
 
    Mqtt_Core.Client.Unsubscribe (Client, Topic);
    Put_Line ("mqtt_demo: unsubscribed from " & Topic);

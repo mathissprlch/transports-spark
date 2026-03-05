@@ -13,9 +13,9 @@ pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 
-package RFLX.Session.Client
+package RFLX.Session.Unsubscribing
 with
   SPARK_Mode
 is
 
-end RFLX.Session.Client;
+end RFLX.Session.Unsubscribing;

@@ -12,7 +12,7 @@ pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 
-package body RFLX.Session.Client.FSM_Allocator
+package body RFLX.Session.Receive.FSM_Allocator
 with
   SPARK_Mode
 is
@@ -24,8 +24,6 @@ is
    is
    begin
       S.Slot_Ptr_1 := M.Slot_1'Unrestricted_Access;
-      S.Slot_Ptr_2 := M.Slot_2'Unrestricted_Access;
-      S.Slot_Ptr_3 := M.Slot_3'Unrestricted_Access;
    end Initialize;
 
    procedure Finalize (S : in out Slots)
@@ -35,8 +33,6 @@ is
    is
    begin
       S.Slot_Ptr_1 := null;
-      S.Slot_Ptr_2 := null;
-      S.Slot_Ptr_3 := null;
    end Finalize;
 
-end RFLX.Session.Client.FSM_Allocator;
+end RFLX.Session.Receive.FSM_Allocator;
