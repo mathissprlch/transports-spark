@@ -147,6 +147,77 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
+   --  PUBACK (encode) — §3.4. Emit the 4-byte ack the Client owes the
+   --  broker after receiving an inbound QoS 1 PUBLISH (§4.3.2).
+   --  Wire form: 0x40 0x02 PI_high PI_low.
+   ---------------------------------------------------------------------
+
+   procedure Encode_Puback
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  PUBLISH (QoS 2) — §3.3 with QoS=2 + Packet Identifier. Same
+   --  wire shape as QoS 1; only the QoS sub-field differs (10b).
+   ---------------------------------------------------------------------
+
+   procedure Encode_Publish_Qos2
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Topic     : String;
+      Payload   : RFLX.RFLX_Types.Bytes)
+   with
+     Pre  => Buffer /= null
+             and then Topic'Length in 1 .. 122
+             and then Payload'Length <= 123 - Topic'Length
+             and then Buffer'Length >= 6 + Topic'Length + Payload'Length,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  PUBREC — §3.5. Decode the broker's response to our QoS 2 PUBLISH.
+   ---------------------------------------------------------------------
+
+   procedure Decode_Pubrec
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  PUBREL — §3.6. Encode the third leg of QoS 2 (sender releases
+   --  the Packet Identifier after PUBREC). 4 bytes (0x62 0x02 + Pid).
+   ---------------------------------------------------------------------
+
+   procedure Encode_Pubrel
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  PUBCOMP — §3.7. Decode the final QoS 2 ack from the broker.
+   ---------------------------------------------------------------------
+
+   procedure Decode_Pubcomp
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
    --  PINGRESP — §3.13. Verify a 2-byte ping response from the broker.
    ---------------------------------------------------------------------
 
@@ -159,9 +230,46 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  SUBSCRIBE (single topic) — §3.8. Subscribes to one Topic Filter
-   --  with one Requested QoS. A future multi-topic variant will take a
-   --  caller-supplied subscription list.
+   --  Multi-topic SUBSCRIBE / UNSUBSCRIBE bounds.
+   --
+   --  The 1-byte-varint Remaining-Length cap forces the full packet
+   --  body to fit in 127 bytes; with N filters that's 5 + 3*N +
+   --  sum(topic_len) <= 127 for SUBSCRIBE (per-filter overhead = 3
+   --  bytes: 2-byte length prefix + 1-byte Requested QoS) and
+   --  4 + 2*N + sum(topic_len) <= 127 for UNSUBSCRIBE.
+   ---------------------------------------------------------------------
+
+   Max_Topic_Length    : constant := 120;
+   Max_Filters_Per_Pkt : constant := 8;
+
+   type Subscription_Filter is record
+      Topic      : String (1 .. Max_Topic_Length) := (others => ' ');
+      Topic_Last : Natural := 0;
+      QoS        : QoS_Level := RFLX.Control_Packet.QOS_0;
+   end record;
+
+   type Subscription_Filters is
+     array (Positive range <>) of Subscription_Filter;
+
+   function Make_Subscription
+     (Topic : String;
+      QoS   : QoS_Level := RFLX.Control_Packet.QOS_0)
+      return Subscription_Filter
+   with Pre => Topic'Length in 1 .. Max_Topic_Length;
+
+   type Topic_Filter is record
+      Topic      : String (1 .. Max_Topic_Length) := (others => ' ');
+      Topic_Last : Natural := 0;
+   end record;
+
+   type Topic_Filters is array (Positive range <>) of Topic_Filter;
+
+   function Make_Topic_Filter (Topic : String) return Topic_Filter
+   with Pre => Topic'Length in 1 .. Max_Topic_Length;
+
+   ---------------------------------------------------------------------
+   --  SUBSCRIBE (single topic) — §3.8. Convenience wrapper around the
+   --  multi-topic encoder for the common one-filter case.
    ---------------------------------------------------------------------
 
    procedure Encode_Subscribe_Single
@@ -172,14 +280,29 @@ is
       QoS       : QoS_Level := RFLX.Control_Packet.QOS_0)
    with
      Pre  => Buffer /= null
-             and then Topic'Length in 1 .. 120
+             and then Topic'Length in 1 .. Max_Topic_Length
              and then Buffer'Length >= 7 + Topic'Length,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  SUBACK (single return code) — §3.9. Decodes the head Return Code
-   --  from the SUBACK payload. A future multi-topic variant will yield
-   --  the full sequence.
+   --  SUBSCRIBE (multi-topic) — §3.8. Encodes a list of Topic Filter +
+   --  Requested QoS pairs in a single SUBSCRIBE packet (§3.8.3).
+   ---------------------------------------------------------------------
+
+   procedure Encode_Subscribe
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Filters   : Subscription_Filters)
+   with
+     Pre  => Buffer /= null
+             and then Buffer'Length >= 130
+             and then Filters'Length in 1 .. Max_Filters_Per_Pkt,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  SUBACK return code — §3.9.3. Per-filter outcome the broker
+   --  reports back; one entry per Topic Filter sent in the SUBSCRIBE.
    ---------------------------------------------------------------------
 
    type Suback_Return_Code is
@@ -187,6 +310,13 @@ is
       Granted_QoS_1,
       Granted_QoS_2,
       Failure);
+
+   type Suback_Code_Array is array (Positive range <>) of Suback_Return_Code;
+
+   ---------------------------------------------------------------------
+   --  SUBACK (single return code) — §3.9. Convenience wrapper for the
+   --  one-filter case; pulls the head of the return-code list.
+   ---------------------------------------------------------------------
 
    procedure Decode_Suback_Single
      (Buffer    : in out Bytes_Ptr;
@@ -199,8 +329,28 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  UNSUBSCRIBE (single topic) — §3.10. Sibling of
-   --  Encode_Subscribe_Single without the Requested-QoS byte.
+   --  SUBACK (multi return code) — §3.9. Fills `Codes` with the list
+   --  of per-filter outcomes; sets `Codes_Last` to the index of the
+   --  last filled slot. Caller's array must accommodate at least the
+   --  expected number of codes (matching Filters'Length on the
+   --  preceding SUBSCRIBE).
+   ---------------------------------------------------------------------
+
+   procedure Decode_Suback
+     (Buffer     : in out Bytes_Ptr;
+      Last       : Index;
+      Valid      :    out Boolean;
+      Packet_Id  :    out Packet_Identifier;
+      Codes      : in out Suback_Code_Array;
+      Codes_Last :    out Natural)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 5
+             and then Codes'Length in 1 .. Max_Filters_Per_Pkt,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  UNSUBSCRIBE (single topic) — §3.10. Convenience wrapper around
+   --  the multi-topic encoder.
    ---------------------------------------------------------------------
 
    procedure Encode_Unsubscribe_Single
@@ -212,6 +362,22 @@ is
      Pre  => Buffer /= null
              and then Topic'Length in 1 .. 121
              and then Buffer'Length >= 6 + Topic'Length,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  UNSUBSCRIBE (multi-topic) — §3.10. Encodes a list of Topic
+   --  Filters in one packet.
+   ---------------------------------------------------------------------
+
+   procedure Encode_Unsubscribe
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Filters   : Topic_Filters)
+   with
+     Pre  => Buffer /= null
+             and then Buffer'Length >= 130
+             and then Filters'Length in 1 .. Max_Filters_Per_Pkt,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
@@ -229,23 +395,44 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  PUBLISH (decode) — extract Topic + Payload from an incoming
-   --  PUBLISH. QoS 0 only (no Packet Identifier in the variable
-   --  header); QoS 1/2 incoming will need a sibling procedure that
-   --  also returns the Packet_Identifier.
+   --  PUBLISH (decode) — extract QoS, Packet Identifier (only when
+   --  QoS > 0), Topic, and Payload from an incoming PUBLISH.
+   --
+   --  For QoS 0 the spec omits the Packet Identifier from the variable
+   --  header, so Packet_Id is set to 1 (the lowest legal value) and
+   --  must be ignored by the caller.
    --
    --  Caller supplies max-sized String/Bytes; the procedure writes the
    --  actual length into Topic_Last/Payload_Last.
    ---------------------------------------------------------------------
 
-   procedure Decode_Publish_Qos0
-     (Buffer        : in out Bytes_Ptr;
-      Last          : Index;
-      Valid         :    out Boolean;
-      Topic         : in out String;
-      Topic_Last    :    out Natural;
-      Payload       : in out RFLX.RFLX_Types.Bytes;
-      Payload_Last  :    out RFLX.RFLX_Types.Length)
+   procedure Decode_Publish
+     (Buffer       : in out Bytes_Ptr;
+      Last         : Index;
+      Valid        :    out Boolean;
+      QoS          :    out QoS_Level;
+      Packet_Id    :    out Packet_Identifier;
+      Topic        : in out String;
+      Topic_Last   :    out Natural;
+      Payload      : in out RFLX.RFLX_Types.Bytes;
+      Payload_Last :    out RFLX.RFLX_Types.Length)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;  --  ownership returned to caller after encode/decode
+
+   ---------------------------------------------------------------------
+   --  PUBLISH (decode header only) — extract QoS + Packet Identifier
+   --  without touching Topic / Payload. Used by the client to PUBACK
+   --  inbound QoS 1 PUBLISHes the moment they arrive (§4.3.2), before
+   --  the application has drained the body out of the pending queue.
+   ---------------------------------------------------------------------
+
+   procedure Decode_Publish_Header
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      QoS       :    out QoS_Level;
+      Packet_Id :    out Packet_Identifier)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 4,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode

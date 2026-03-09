@@ -6,6 +6,9 @@ with RFLX.Connack.Packet;
 with RFLX.Connect.Packet;
 with RFLX.Publish.Packet;
 with RFLX.Puback.Packet;
+with RFLX.Pubrec.Packet;
+with RFLX.Pubrel.Packet;
+with RFLX.Pubcomp.Packet;
 with RFLX.Subscribe.Packet;
 with RFLX.Subscribe.Subscription;
 with RFLX.Subscribe.Subscription_List;
@@ -21,6 +24,7 @@ with SPARK_Mode
 is
 
    use type RFLX.RFLX_Types.Index;
+   use type RFLX.RFLX_Types.Length;
    use type RFLX.RFLX_Types.Bit_Length;
 
    --  String → RFLX_Types.Bytes conversion. Used for UTF-8 fields.
@@ -234,6 +238,117 @@ is
    end Encode_Publish_Qos1;
 
    ---------------------------------------------------------------------
+   --  Encode_Publish_Qos2
+   ---------------------------------------------------------------------
+
+   procedure Encode_Publish_Qos2
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Topic     : String;
+      Payload   : RFLX.RFLX_Types.Bytes)
+   is
+      Ctx : RFLX.Publish.Packet.Context;
+      RL  : constant RFLX.Publish.Remaining_Length :=
+        RFLX.Publish.Remaining_Length
+          (4 + Topic'Length + Payload'Length);
+   begin
+      RFLX.Publish.Packet.Initialize (Ctx, Buffer);
+      RFLX.Publish.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.PUBLISH);
+      RFLX.Publish.Packet.Set_DUP    (Ctx, False);
+      RFLX.Publish.Packet.Set_QoS    (Ctx, RFLX.Control_Packet.QOS_2);
+      RFLX.Publish.Packet.Set_Retain (Ctx, 0);
+      RFLX.Publish.Packet.Set_Remaining_Length (Ctx, RL);
+      RFLX.Publish.Packet.Set_Topic_Name_Length
+        (Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
+      RFLX.Publish.Packet.Set_Topic_Name (Ctx, To_Bytes (Topic));
+      RFLX.Publish.Packet.Set_Packet_Identifier (Ctx, Packet_Id);
+      if Payload'Length = 0 then
+         RFLX.Publish.Packet.Set_Payload_Empty (Ctx);
+      else
+         RFLX.Publish.Packet.Set_Payload (Ctx, Payload);
+      end if;
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Publish.Packet.Message_Last (Ctx));
+      RFLX.Publish.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Publish_Qos2;
+
+   ---------------------------------------------------------------------
+   --  Decode_Pubrec
+   ---------------------------------------------------------------------
+
+   procedure Decode_Pubrec
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   is
+      Ctx : RFLX.Pubrec.Packet.Context;
+   begin
+      Valid     := False;
+      Packet_Id := 1;
+
+      RFLX.Pubrec.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Pubrec.Packet.Verify_Message (Ctx);
+      if RFLX.Pubrec.Packet.Well_Formed_Message (Ctx) then
+         Packet_Id := RFLX.Pubrec.Packet.Get_Packet_Identifier (Ctx);
+         Valid     := True;
+      end if;
+      RFLX.Pubrec.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Pubrec;
+
+   ---------------------------------------------------------------------
+   --  Encode_Pubrel
+   ---------------------------------------------------------------------
+
+   procedure Encode_Pubrel
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   is
+      Ctx : RFLX.Pubrel.Packet.Context;
+   begin
+      RFLX.Pubrel.Packet.Initialize (Ctx, Buffer);
+      RFLX.Pubrel.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.PUBREL);
+      RFLX.Pubrel.Packet.Set_Reserved (Ctx, 2);
+      RFLX.Pubrel.Packet.Set_Remaining_Length (Ctx, 2);
+      RFLX.Pubrel.Packet.Set_Packet_Identifier (Ctx, Packet_Id);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Pubrel.Packet.Message_Last (Ctx));
+      RFLX.Pubrel.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Pubrel;
+
+   ---------------------------------------------------------------------
+   --  Decode_Pubcomp
+   ---------------------------------------------------------------------
+
+   procedure Decode_Pubcomp
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   is
+      Ctx : RFLX.Pubcomp.Packet.Context;
+   begin
+      Valid     := False;
+      Packet_Id := 1;
+
+      RFLX.Pubcomp.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Pubcomp.Packet.Verify_Message (Ctx);
+      if RFLX.Pubcomp.Packet.Well_Formed_Message (Ctx) then
+         Packet_Id := RFLX.Pubcomp.Packet.Get_Packet_Identifier (Ctx);
+         Valid     := True;
+      end if;
+      RFLX.Pubcomp.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Pubcomp;
+
+   ---------------------------------------------------------------------
    --  Decode_Puback
    ---------------------------------------------------------------------
 
@@ -260,6 +375,28 @@ is
    end Decode_Puback;
 
    ---------------------------------------------------------------------
+   --  Encode_Puback
+   ---------------------------------------------------------------------
+
+   procedure Encode_Puback
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   is
+      Ctx : RFLX.Puback.Packet.Context;
+   begin
+      RFLX.Puback.Packet.Initialize (Ctx, Buffer);
+      RFLX.Puback.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.PUBACK);
+      RFLX.Puback.Packet.Set_Reserved (Ctx, 0);
+      RFLX.Puback.Packet.Set_Remaining_Length (Ctx, 2);
+      RFLX.Puback.Packet.Set_Packet_Identifier (Ctx, Packet_Id);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Puback.Packet.Message_Last (Ctx));
+      RFLX.Puback.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Puback;
+
+   ---------------------------------------------------------------------
    --  Decode_Pingresp
    ---------------------------------------------------------------------
 
@@ -279,13 +416,85 @@ is
    end Decode_Pingresp;
 
    ---------------------------------------------------------------------
-   --  Encode_Subscribe_Single
+   --  Make_Subscription / Make_Topic_Filter
+   ---------------------------------------------------------------------
+
+   function Make_Subscription
+     (Topic : String;
+      QoS   : QoS_Level := RFLX.Control_Packet.QOS_0)
+      return Subscription_Filter
+   is
+      Result : Subscription_Filter;
+   begin
+      Result.Topic (1 .. Topic'Length) := Topic;
+      Result.Topic_Last                := Topic'Length;
+      Result.QoS                       := QoS;
+      return Result;
+   end Make_Subscription;
+
+   function Make_Topic_Filter (Topic : String) return Topic_Filter is
+      Result : Topic_Filter;
+   begin
+      Result.Topic (1 .. Topic'Length) := Topic;
+      Result.Topic_Last                := Topic'Length;
+      return Result;
+   end Make_Topic_Filter;
+
+   ---------------------------------------------------------------------
+   --  Encode_Subscribe (multi-topic)
    --
-   --  Layout for one subscription:
-   --    fixed header: 0x82 + RL (= 5 + Topic'Length, single varint byte)
-   --    var header:   Packet Identifier (16-bit big-endian)
-   --    payload:      Topic Filter length (16-bit) + Topic_Filter bytes
-   --                + Requested QoS byte (high 6 bits = 0)
+   --  Layout per filter:
+   --    Topic Filter length (16-bit) + Topic_Filter bytes
+   --    + Requested QoS byte (high 6 bits = 0)
+   --
+   --  Each loop iteration calls Switch on the sequence to obtain a
+   --  fresh element context, populates it, and Update returns the
+   --  buffer to the sequence. Per RFLX_Message_Sequence post-
+   --  conditions, Sequence_Last advances by Element_Size each cycle,
+   --  so subsequent Switch calls write at the next free position.
+   ---------------------------------------------------------------------
+
+   procedure Encode_Subscribe
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Filters   : Subscription_Filters)
+   is
+      Pkt_Ctx  : RFLX.Subscribe.Packet.Context;
+      Seq_Ctx  : RFLX.Subscribe.Subscription_List.Context;
+      Elem_Ctx : RFLX.Subscribe.Subscription.Context;
+      Total    : Natural := 2;  --  Packet Identifier
+   begin
+      for F of Filters loop
+         Total := Total + 3 + F.Topic_Last;
+      end loop;
+
+      RFLX.Subscribe.Packet.Initialize (Pkt_Ctx, Buffer);
+      RFLX.Subscribe.Packet.Set_Packet_Type
+        (Pkt_Ctx, RFLX.Control_Packet.SUBSCRIBE);
+      RFLX.Subscribe.Packet.Set_Reserved (Pkt_Ctx, 2);
+      RFLX.Subscribe.Packet.Set_Remaining_Length
+        (Pkt_Ctx, RFLX.Subscribe.Remaining_Length (Total));
+      RFLX.Subscribe.Packet.Set_Packet_Identifier (Pkt_Ctx, Packet_Id);
+      RFLX.Subscribe.Packet.Switch_To_Subscriptions (Pkt_Ctx, Seq_Ctx);
+      for F of Filters loop
+         RFLX.Subscribe.Subscription_List.Switch (Seq_Ctx, Elem_Ctx);
+         RFLX.Subscribe.Subscription.Set_Topic_Filter_Length
+           (Elem_Ctx, RFLX.Control_Packet.String_Length (F.Topic_Last));
+         RFLX.Subscribe.Subscription.Set_Topic_Filter
+           (Elem_Ctx, To_Bytes (F.Topic (1 .. F.Topic_Last)));
+         RFLX.Subscribe.Subscription.Set_Reserved_Sub_QoS (Elem_Ctx, 0);
+         RFLX.Subscribe.Subscription.Set_Requested_QoS (Elem_Ctx, F.QoS);
+         RFLX.Subscribe.Subscription_List.Update (Seq_Ctx, Elem_Ctx);
+      end loop;
+      RFLX.Subscribe.Packet.Update_Subscriptions (Pkt_Ctx, Seq_Ctx);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Subscribe.Packet.Message_Last (Pkt_Ctx));
+      RFLX.Subscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+   end Encode_Subscribe;
+
+   ---------------------------------------------------------------------
+   --  Encode_Subscribe_Single — wraps Encode_Subscribe.
    ---------------------------------------------------------------------
 
    procedure Encode_Subscribe_Single
@@ -295,53 +504,32 @@ is
       Topic     : String;
       QoS       : QoS_Level := RFLX.Control_Packet.QOS_0)
    is
-      Pkt_Ctx  : RFLX.Subscribe.Packet.Context;
-      Seq_Ctx  : RFLX.Subscribe.Subscription_List.Context;
-      Elem_Ctx : RFLX.Subscribe.Subscription.Context;
-      RL       : constant RFLX.Subscribe.Remaining_Length :=
-        RFLX.Subscribe.Remaining_Length (5 + Topic'Length);
+      Filters : constant Subscription_Filters (1 .. 1) :=
+        (1 => Make_Subscription (Topic, QoS));
    begin
-      RFLX.Subscribe.Packet.Initialize (Pkt_Ctx, Buffer);
-      RFLX.Subscribe.Packet.Set_Packet_Type
-        (Pkt_Ctx, RFLX.Control_Packet.SUBSCRIBE);
-      RFLX.Subscribe.Packet.Set_Reserved (Pkt_Ctx, 2);
-      RFLX.Subscribe.Packet.Set_Remaining_Length (Pkt_Ctx, RL);
-      RFLX.Subscribe.Packet.Set_Packet_Identifier (Pkt_Ctx, Packet_Id);
-      --  Switch into the Subscriptions sequence; the buffer hops from
-      --  Pkt_Ctx → Seq_Ctx → Elem_Ctx and back along the same chain.
-      RFLX.Subscribe.Packet.Switch_To_Subscriptions (Pkt_Ctx, Seq_Ctx);
-      RFLX.Subscribe.Subscription_List.Switch (Seq_Ctx, Elem_Ctx);
-      RFLX.Subscribe.Subscription.Set_Topic_Filter_Length
-        (Elem_Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
-      RFLX.Subscribe.Subscription.Set_Topic_Filter
-        (Elem_Ctx, To_Bytes (Topic));
-      RFLX.Subscribe.Subscription.Set_Reserved_Sub_QoS (Elem_Ctx, 0);
-      RFLX.Subscribe.Subscription.Set_Requested_QoS (Elem_Ctx, QoS);
-      RFLX.Subscribe.Subscription_List.Update (Seq_Ctx, Elem_Ctx);
-      RFLX.Subscribe.Packet.Update_Subscriptions (Pkt_Ctx, Seq_Ctx);
-      Last := RFLX.RFLX_Types.To_Index
-        (RFLX.Subscribe.Packet.Message_Last (Pkt_Ctx));
-      RFLX.Subscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+      Encode_Subscribe (Buffer, Last, Packet_Id, Filters);
    end Encode_Subscribe_Single;
 
    ---------------------------------------------------------------------
-   --  Decode_Suback_Single
+   --  Decode_Suback (multi return code)
    ---------------------------------------------------------------------
 
-   procedure Decode_Suback_Single
-     (Buffer    : in out Bytes_Ptr;
-      Last      : Index;
-      Valid     :    out Boolean;
-      Packet_Id :    out Packet_Identifier;
-      Code      :    out Suback_Return_Code)
+   procedure Decode_Suback
+     (Buffer     : in out Bytes_Ptr;
+      Last       : Index;
+      Valid      :    out Boolean;
+      Packet_Id  :    out Packet_Identifier;
+      Codes      : in out Suback_Code_Array;
+      Codes_Last :    out Natural)
    is
       Pkt_Ctx : RFLX.Suback.Packet.Context;
       Seq_Ctx : RFLX.Suback.Return_Code_List.Context;
+      Idx     : Natural := Codes'First - 1;
       use type RFLX.Suback.Return_Code;
    begin
-      Valid     := False;
-      Packet_Id := 1;
-      Code      := Failure;
+      Valid      := False;
+      Packet_Id  := 1;
+      Codes_Last := Codes'First - 1;
 
       RFLX.Suback.Packet.Initialize
         (Pkt_Ctx, Buffer,
@@ -353,34 +541,99 @@ is
       end if;
       Packet_Id := RFLX.Suback.Packet.Get_Packet_Identifier (Pkt_Ctx);
       RFLX.Suback.Packet.Switch_To_Return_Codes (Pkt_Ctx, Seq_Ctx);
-      if RFLX.Suback.Return_Code_List.Has_Element (Seq_Ctx)
+      while RFLX.Suback.Return_Code_List.Has_Element (Seq_Ctx)
         and then RFLX.Suback.Return_Code_List.Valid_Element (Seq_Ctx)
-      then
+        and then Idx < Codes'Last
+      loop
          RFLX.Suback.Return_Code_List.Next (Seq_Ctx);
+         Idx := Idx + 1;
          declare
             Rc : constant RFLX.Suback.Return_Code :=
               RFLX.Suback.Return_Code_List.Head (Seq_Ctx);
          begin
             case Rc is
-               when RFLX.Suback.SUCCESS_QOS_0 => Code := Granted_QoS_0;
-               when RFLX.Suback.SUCCESS_QOS_1 => Code := Granted_QoS_1;
-               when RFLX.Suback.SUCCESS_QOS_2 => Code := Granted_QoS_2;
-               when RFLX.Suback.FAILURE       => Code := Failure;
+               when RFLX.Suback.SUCCESS_QOS_0 => Codes (Idx) := Granted_QoS_0;
+               when RFLX.Suback.SUCCESS_QOS_1 => Codes (Idx) := Granted_QoS_1;
+               when RFLX.Suback.SUCCESS_QOS_2 => Codes (Idx) := Granted_QoS_2;
+               when RFLX.Suback.FAILURE       => Codes (Idx) := Failure;
             end case;
-            Valid := True;
          end;
-      end if;
+      end loop;
+      Codes_Last := Idx;
+      Valid      := Idx >= Codes'First;
       RFLX.Suback.Packet.Update_Return_Codes (Pkt_Ctx, Seq_Ctx);
       RFLX.Suback.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+   end Decode_Suback;
+
+   ---------------------------------------------------------------------
+   --  Decode_Suback_Single — wraps Decode_Suback.
+   ---------------------------------------------------------------------
+
+   procedure Decode_Suback_Single
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier;
+      Code      :    out Suback_Return_Code)
+   is
+      Codes      : Suback_Code_Array (1 .. 1) := (1 => Failure);
+      Codes_Last : Natural;
+   begin
+      Decode_Suback (Buffer, Last, Valid, Packet_Id, Codes, Codes_Last);
+      if Valid and then Codes_Last >= Codes'First then
+         Code := Codes (Codes'First);
+      else
+         Code  := Failure;
+         Valid := False;
+      end if;
    end Decode_Suback_Single;
 
    ---------------------------------------------------------------------
-   --  Encode_Unsubscribe_Single
+   --  Encode_Unsubscribe (multi-topic)
    --
-   --  Layout for one Topic Filter:
-   --    fixed header: 0xA2 + RL (= 4 + Topic'Length, single varint byte)
-   --    var header:   Packet Identifier (16-bit big-endian)
-   --    payload:      Topic Filter length (16-bit) + Topic Filter bytes
+   --  Layout per filter: 16-bit length prefix + Topic Filter bytes.
+   ---------------------------------------------------------------------
+
+   procedure Encode_Unsubscribe
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Filters   : Topic_Filters)
+   is
+      Pkt_Ctx  : RFLX.Unsubscribe.Packet.Context;
+      Seq_Ctx  : RFLX.Unsubscribe.Topic_Filter_List.Context;
+      Elem_Ctx : RFLX.Control_Packet.UTF8_String.Context;
+      Total    : Natural := 2;  --  Packet Identifier
+   begin
+      for F of Filters loop
+         Total := Total + 2 + F.Topic_Last;
+      end loop;
+
+      RFLX.Unsubscribe.Packet.Initialize (Pkt_Ctx, Buffer);
+      RFLX.Unsubscribe.Packet.Set_Packet_Type
+        (Pkt_Ctx, RFLX.Control_Packet.UNSUBSCRIBE);
+      RFLX.Unsubscribe.Packet.Set_Reserved (Pkt_Ctx, 2);
+      RFLX.Unsubscribe.Packet.Set_Remaining_Length
+        (Pkt_Ctx, RFLX.Unsubscribe.Remaining_Length (Total));
+      RFLX.Unsubscribe.Packet.Set_Packet_Identifier (Pkt_Ctx, Packet_Id);
+      RFLX.Unsubscribe.Packet.Switch_To_Topic_Filters (Pkt_Ctx, Seq_Ctx);
+      for F of Filters loop
+         RFLX.Unsubscribe.Topic_Filter_List.Switch (Seq_Ctx, Elem_Ctx);
+         RFLX.Control_Packet.UTF8_String.Set_Length
+           (Elem_Ctx,
+            RFLX.Control_Packet.String_Length (F.Topic_Last));
+         RFLX.Control_Packet.UTF8_String.Set_Data
+           (Elem_Ctx, To_Bytes (F.Topic (1 .. F.Topic_Last)));
+         RFLX.Unsubscribe.Topic_Filter_List.Update (Seq_Ctx, Elem_Ctx);
+      end loop;
+      RFLX.Unsubscribe.Packet.Update_Topic_Filters (Pkt_Ctx, Seq_Ctx);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Unsubscribe.Packet.Message_Last (Pkt_Ctx));
+      RFLX.Unsubscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+   end Encode_Unsubscribe;
+
+   ---------------------------------------------------------------------
+   --  Encode_Unsubscribe_Single — wraps Encode_Unsubscribe.
    ---------------------------------------------------------------------
 
    procedure Encode_Unsubscribe_Single
@@ -389,28 +642,10 @@ is
       Packet_Id : Packet_Identifier;
       Topic     : String)
    is
-      Pkt_Ctx  : RFLX.Unsubscribe.Packet.Context;
-      Seq_Ctx  : RFLX.Unsubscribe.Topic_Filter_List.Context;
-      Elem_Ctx : RFLX.Control_Packet.UTF8_String.Context;
-      RL       : constant RFLX.Unsubscribe.Remaining_Length :=
-        RFLX.Unsubscribe.Remaining_Length (4 + Topic'Length);
+      Filters : constant Topic_Filters (1 .. 1) :=
+        (1 => Make_Topic_Filter (Topic));
    begin
-      RFLX.Unsubscribe.Packet.Initialize (Pkt_Ctx, Buffer);
-      RFLX.Unsubscribe.Packet.Set_Packet_Type
-        (Pkt_Ctx, RFLX.Control_Packet.UNSUBSCRIBE);
-      RFLX.Unsubscribe.Packet.Set_Reserved (Pkt_Ctx, 2);
-      RFLX.Unsubscribe.Packet.Set_Remaining_Length (Pkt_Ctx, RL);
-      RFLX.Unsubscribe.Packet.Set_Packet_Identifier (Pkt_Ctx, Packet_Id);
-      RFLX.Unsubscribe.Packet.Switch_To_Topic_Filters (Pkt_Ctx, Seq_Ctx);
-      RFLX.Unsubscribe.Topic_Filter_List.Switch (Seq_Ctx, Elem_Ctx);
-      RFLX.Control_Packet.UTF8_String.Set_Length
-        (Elem_Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
-      RFLX.Control_Packet.UTF8_String.Set_Data (Elem_Ctx, To_Bytes (Topic));
-      RFLX.Unsubscribe.Topic_Filter_List.Update (Seq_Ctx, Elem_Ctx);
-      RFLX.Unsubscribe.Packet.Update_Topic_Filters (Pkt_Ctx, Seq_Ctx);
-      Last := RFLX.RFLX_Types.To_Index
-        (RFLX.Unsubscribe.Packet.Message_Last (Pkt_Ctx));
-      RFLX.Unsubscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+      Encode_Unsubscribe (Buffer, Last, Packet_Id, Filters);
    end Encode_Unsubscribe_Single;
 
    ---------------------------------------------------------------------
@@ -440,21 +675,34 @@ is
    end Decode_Unsuback;
 
    ---------------------------------------------------------------------
-   --  Decode_Publish_Qos0
+   --  Decode_Publish
+   --
+   --  Single decoder that handles every QoS level the spec admits
+   --  (QoS 0/1/2 — value 3 is rejected at parse time by the
+   --  Control_Packet::QoS_Level enum). The Packet Identifier link in
+   --  publish.rflx is conditional on QoS > 0, so we only call
+   --  Get_Packet_Identifier when QoS /= QOS_0; otherwise the field is
+   --  absent from the message structure and Get_* would fail its
+   --  precondition.
    ---------------------------------------------------------------------
 
-   procedure Decode_Publish_Qos0
-     (Buffer        : in out Bytes_Ptr;
-      Last          : Index;
-      Valid         :    out Boolean;
-      Topic         : in out String;
-      Topic_Last    :    out Natural;
-      Payload       : in out RFLX.RFLX_Types.Bytes;
-      Payload_Last  :    out RFLX.RFLX_Types.Length)
+   procedure Decode_Publish
+     (Buffer       : in out Bytes_Ptr;
+      Last         : Index;
+      Valid        :    out Boolean;
+      QoS          :    out QoS_Level;
+      Packet_Id    :    out Packet_Identifier;
+      Topic        : in out String;
+      Topic_Last   :    out Natural;
+      Payload      : in out RFLX.RFLX_Types.Bytes;
+      Payload_Last :    out RFLX.RFLX_Types.Length)
    is
       Ctx : RFLX.Publish.Packet.Context;
+      use type RFLX.Control_Packet.QoS_Level;
    begin
       Valid        := False;
+      QoS          := RFLX.Control_Packet.QOS_0;
+      Packet_Id    := 1;
       Topic_Last   := Topic'First - 1;
       Payload_Last := 0;
 
@@ -467,51 +715,95 @@ is
          return;
       end if;
 
+      QoS := RFLX.Publish.Packet.Get_QoS (Ctx);
+      if QoS /= RFLX.Control_Packet.QOS_0 then
+         Packet_Id := RFLX.Publish.Packet.Get_Packet_Identifier (Ctx);
+      end if;
+
+      --  The function-form Get_Topic_Name / Get_Payload are Ghost in
+      --  the generated spec; SPARK rejects them in non-Ghost code.
+      --  Use the procedure form which fills a caller-sized buffer.
+      --  Field_Size returns bits; To_Length converts to bytes.
       declare
-         T_Bytes : constant RFLX.RFLX_Types.Bytes :=
-           RFLX.Publish.Packet.Get_Topic_Name (Ctx);
-         P_Bytes : constant RFLX.RFLX_Types.Bytes :=
-           RFLX.Publish.Packet.Get_Payload (Ctx);
-         T_Len   : constant Natural := T_Bytes'Length;
-         P_Len   : constant Natural := P_Bytes'Length;
+         T_Len : constant RFLX.RFLX_Types.Length :=
+           RFLX.RFLX_Types.To_Length
+             (RFLX.Publish.Packet.Field_Size
+                (Ctx, RFLX.Publish.Packet.F_Topic_Name));
+         P_Len : constant RFLX.RFLX_Types.Length :=
+           RFLX.RFLX_Types.To_Length
+             (RFLX.Publish.Packet.Field_Size
+                (Ctx, RFLX.Publish.Packet.F_Payload));
       begin
-         if T_Len > Topic'Length or P_Len > Payload'Length then
+         if Natural (T_Len) > Topic'Length
+           or P_Len > Payload'Length
+         then
             RFLX.Publish.Packet.Take_Buffer (Ctx, Buffer);
             return;
          end if;
-         Topic_Last := Topic'First + T_Len - 1;
-         declare
-            Src : RFLX.RFLX_Types.Index := T_Bytes'First;
-            Dst : Natural               := Topic'First;
-         begin
-            while Dst <= Topic_Last loop
-               Topic (Dst) :=
-                 Character'Val (Natural (T_Bytes (Src)));
-               exit when Dst = Topic_Last;
-               Dst := Dst + 1;
-               Src := Src + 1;
-            end loop;
-         end;
-         Payload_Last := RFLX.RFLX_Types.Length (P_Len);
-         if P_Len > 0 then
+
+         if T_Len > 0 then
             declare
-               Src : RFLX.RFLX_Types.Index := P_Bytes'First;
-               Dst : RFLX.RFLX_Types.Index := Payload'First;
-               Last_Dst : constant RFLX.RFLX_Types.Index :=
-                 Payload'First + RFLX.RFLX_Types.Index (P_Len - 1);
+               T_Bytes : RFLX.RFLX_Types.Bytes
+                 (1 .. RFLX.RFLX_Types.Index (T_Len));
+               Idx     : Natural := 0;
             begin
-               while Dst <= Last_Dst loop
-                  Payload (Dst) := P_Bytes (Src);
-                  exit when Dst = Last_Dst;
-                  Dst := Dst + 1;
-                  Src := Src + 1;
+               RFLX.Publish.Packet.Get_Topic_Name (Ctx, T_Bytes);
+               Topic_Last := Topic'First + Natural (T_Len) - 1;
+               for B of T_Bytes loop
+                  Topic (Topic'First + Idx) :=
+                    Character'Val (Natural (B));
+                  Idx := Idx + 1;
                end loop;
             end;
+         end if;
+
+         Payload_Last := P_Len;
+         if P_Len > 0 then
+            --  Get_Payload writes directly into a slice of the
+            --  caller's buffer — its precondition requires
+            --  Data'Length = Field_Size, which holds by construction.
+            RFLX.Publish.Packet.Get_Payload
+              (Ctx,
+               Payload
+                 (Payload'First ..
+                    Payload'First + RFLX.RFLX_Types.Index (P_Len) - 1));
          end if;
          Valid := True;
       end;
       RFLX.Publish.Packet.Take_Buffer (Ctx, Buffer);
-   end Decode_Publish_Qos0;
+   end Decode_Publish;
+
+   ---------------------------------------------------------------------
+   --  Decode_Publish_Header
+   ---------------------------------------------------------------------
+
+   procedure Decode_Publish_Header
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      QoS       :    out QoS_Level;
+      Packet_Id :    out Packet_Identifier)
+   is
+      Ctx : RFLX.Publish.Packet.Context;
+      use type RFLX.Control_Packet.QoS_Level;
+   begin
+      Valid     := False;
+      QoS       := RFLX.Control_Packet.QOS_0;
+      Packet_Id := 1;
+
+      RFLX.Publish.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Publish.Packet.Verify_Message (Ctx);
+      if RFLX.Publish.Packet.Well_Formed_Message (Ctx) then
+         QoS := RFLX.Publish.Packet.Get_QoS (Ctx);
+         if QoS /= RFLX.Control_Packet.QOS_0 then
+            Packet_Id := RFLX.Publish.Packet.Get_Packet_Identifier (Ctx);
+         end if;
+         Valid := True;
+      end if;
+      RFLX.Publish.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Publish_Header;
 
    ---------------------------------------------------------------------
    --  Peek_Packet_Type
