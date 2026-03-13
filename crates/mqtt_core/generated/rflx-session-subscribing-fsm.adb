@@ -43,7 +43,7 @@ is
         Ghost;
    begin
       pragma Assert (Loading_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:192:10
+      -- crates/mqtt_core/specs/session.rflx:310:10
       Subscribe.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
       if Subscribe.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx) then
          Ctx.P.Next_State := S_Sending;
@@ -69,7 +69,7 @@ is
         Ghost;
    begin
       pragma Assert (Sending_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:203:10
+      -- crates/mqtt_core/specs/session.rflx:321:10
       Ctx.P.Next_State := S_Awaiting_Suback;
       pragma Assert (Sending_Invariant);
    end Sending;
@@ -114,11 +114,11 @@ is
         Ghost;
    begin
       pragma Assert (Awaiting_Suback_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:210:10
+      -- crates/mqtt_core/specs/session.rflx:328:10
       Control_Packet.Incoming_Packet.Verify_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:213:16
+      -- crates/mqtt_core/specs/session.rflx:331:16
       T_0 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:214:20
+      -- crates/mqtt_core/specs/session.rflx:332:20
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -134,13 +134,13 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:214:20
+      -- crates/mqtt_core/specs/session.rflx:332:20
       T_1 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:214:20
+      -- crates/mqtt_core/specs/session.rflx:332:20
       T_2 := T_1 = Control_Packet.SUBACK;
-      -- crates/mqtt_core/specs/session.rflx:216:16
+      -- crates/mqtt_core/specs/session.rflx:334:16
       T_3 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:217:20
+      -- crates/mqtt_core/specs/session.rflx:335:20
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -156,13 +156,13 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:217:20
+      -- crates/mqtt_core/specs/session.rflx:335:20
       T_4 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:217:20
+      -- crates/mqtt_core/specs/session.rflx:335:20
       T_5 := T_4 = Control_Packet.PUBLISH;
-      -- crates/mqtt_core/specs/session.rflx:219:16
+      -- crates/mqtt_core/specs/session.rflx:337:16
       T_6 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -178,11 +178,11 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_7 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_8 := T_7 = Control_Packet.PINGRESP;
-      -- crates/mqtt_core/specs/session.rflx:221:24
+      -- crates/mqtt_core/specs/session.rflx:339:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -198,14 +198,14 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:221:24
+      -- crates/mqtt_core/specs/session.rflx:339:24
       T_9 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:221:24
+      -- crates/mqtt_core/specs/session.rflx:339:24
       T_10 := T_9 = Control_Packet.PUBACK;
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_11 := T_8
       or else T_10;
-      -- crates/mqtt_core/specs/session.rflx:222:24
+      -- crates/mqtt_core/specs/session.rflx:340:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -221,14 +221,14 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:222:24
+      -- crates/mqtt_core/specs/session.rflx:340:24
       T_12 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:222:24
+      -- crates/mqtt_core/specs/session.rflx:340:24
       T_13 := T_12 = Control_Packet.PUBREC;
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_14 := T_11
       or else T_13;
-      -- crates/mqtt_core/specs/session.rflx:223:24
+      -- crates/mqtt_core/specs/session.rflx:341:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -244,14 +244,14 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:223:24
+      -- crates/mqtt_core/specs/session.rflx:341:24
       T_15 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:223:24
+      -- crates/mqtt_core/specs/session.rflx:341:24
       T_16 := T_15 = Control_Packet.PUBREL;
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_17 := T_14
       or else T_16;
-      -- crates/mqtt_core/specs/session.rflx:224:24
+      -- crates/mqtt_core/specs/session.rflx:342:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -267,14 +267,14 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:224:24
+      -- crates/mqtt_core/specs/session.rflx:342:24
       T_18 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:224:24
+      -- crates/mqtt_core/specs/session.rflx:342:24
       T_19 := T_18 = Control_Packet.PUBCOMP;
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_20 := T_17
       or else T_19;
-      -- crates/mqtt_core/specs/session.rflx:225:24
+      -- crates/mqtt_core/specs/session.rflx:343:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -290,11 +290,11 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:225:24
+      -- crates/mqtt_core/specs/session.rflx:343:24
       T_21 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:225:24
+      -- crates/mqtt_core/specs/session.rflx:343:24
       T_22 := T_21 = Control_Packet.UNSUBACK;
-      -- crates/mqtt_core/specs/session.rflx:220:21
+      -- crates/mqtt_core/specs/session.rflx:338:21
       T_23 := T_20
       or else T_22;
       if
@@ -335,7 +335,7 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Inbound_Publish_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:233:10
+      -- crates/mqtt_core/specs/session.rflx:351:10
       Ctx.P.Next_State := S_Awaiting_Suback;
       pragma Assert (Forwarding_Inbound_Publish_Invariant);
    end Forwarding_Inbound_Publish;
@@ -356,7 +356,7 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Suback_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:240:10
+      -- crates/mqtt_core/specs/session.rflx:358:10
       Ctx.P.Next_State := S_Final;
       pragma Assert (Forwarding_Suback_Invariant);
    end Forwarding_Suback;

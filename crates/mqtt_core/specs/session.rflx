@@ -174,6 +174,124 @@ package Session is
    end Publish_Qos1;
 
    ---------------------------------------------------------------------
+   --  Publish_Qos2 — §3.3.4 / §4.3.3: four-step QoS 2 flow.
+   --
+   --  PUBLISH (QoS 2) → PUBREC → PUBREL → PUBCOMP. The FSM only models
+   --  the two read-and-dispatch states (Awaiting_Pubrec and
+   --  Awaiting_Pubcomp) where the verification dividend lives — the
+   --  exhaustiveness check on legal Server→Client packets per §2.2.1
+   --  Table 2.1. The PUBREL transmission itself is hand-emitted by
+   --  the Ada driver after Forwarding_Pubrec hands the inbound PUBREC
+   --  bytes back; the FSM transitions straight into Awaiting_Pubcomp,
+   --  so it is unaware of (and indifferent to) where the PUBREL came
+   --  from. This mirrors the inbound-PUBACK pattern used by the
+   --  Subscribing / Unsubscribing / Publish_Qos1 / Receive machines.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Publish_Qos2 is
+      Outgoing : Publish::Packet;
+      Inbound  : Control_Packet::Incoming_Packet;
+   begin
+
+      state Loading is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading;
+
+      state Sending is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Awaiting_Pubrec
+      end Sending;
+
+      state Awaiting_Pubrec is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Pubrec
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBREC
+         goto Forwarding_Inbound_Publish
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBLISH
+         goto Awaiting_Pubrec
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::SUBACK
+                    or Inbound.Packet_Type = Control_Packet::UNSUBACK)
+         goto null
+      exception
+         goto null
+      end Awaiting_Pubrec;
+
+      state Forwarding_Inbound_Publish is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Pubrec
+      end Forwarding_Inbound_Publish;
+
+      state Forwarding_Pubrec is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Pubcomp
+      end Forwarding_Pubrec;
+
+      state Awaiting_Pubcomp is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Pubcomp
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBCOMP
+         goto Forwarding_Inbound_Publish_2
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBLISH
+         goto Awaiting_Pubcomp
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::SUBACK
+                    or Inbound.Packet_Type = Control_Packet::UNSUBACK)
+         goto null
+      exception
+         goto null
+      end Awaiting_Pubcomp;
+
+      state Forwarding_Inbound_Publish_2 is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Pubcomp
+      end Forwarding_Inbound_Publish_2;
+
+      state Forwarding_Pubcomp is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Pubcomp;
+
+   end Publish_Qos2;
+
+   ---------------------------------------------------------------------
    --  Subscribe — §3.8: send SUBSCRIBE, await SUBACK, route inbound
    --  PUBLISH echoes back to the caller.
    ---------------------------------------------------------------------
