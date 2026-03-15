@@ -4,10 +4,10 @@ with RFLX.Connack;
 with RFLX.Connect;
 with RFLX.Session.Connect_Handshake.FSM;
 with RFLX.Session.Publish_Qos1.FSM;
+with RFLX.Session.Publish_Qos2.FSM;
 with RFLX.Session.Subscribing.FSM;
 with RFLX.Session.Unsubscribing.FSM;
 with RFLX.Session.Receive.FSM;
-with Mqtt_Core.Wire;
 
 package body Mqtt_Core.Client is
 
@@ -89,6 +89,38 @@ package body Mqtt_Core.Client is
       end loop;
       --  Queue full — drop.
    end Enqueue_Pending;
+
+   --  Decode `View` as a PUBLISH (any QoS) and, if QoS=1, encode the
+   --  matching PUBACK into C.Buf and send it to the broker. §4.3.2 of
+   --  MQTT 3.1.1 obligates the receiver of a QoS 1 PUBLISH to PUBACK;
+   --  doing it as soon as we see the bytes (rather than at delivery)
+   --  prevents the broker from retransmitting with DUP=1 while the
+   --  application is still draining its queue.
+   --
+   --  View must contain bytes already copied INTO C.Buf — the decode
+   --  contexts mutate the buffer pointer (Initialize/Take_Buffer
+   --  cycle) and the caller is expected to have written the inbound
+   --  bytes into C.Buf before calling.
+   procedure Puback_If_Qos1 (C : in out Client;
+                             View_Last : RFLX.RFLX_Types.Index);
+
+   procedure Puback_If_Qos1 (C : in out Client;
+                             View_Last : RFLX.RFLX_Types.Index)
+   is
+      use type RFLX.Control_Packet.QoS_Level;
+      Decoded_Ok  : Boolean;
+      QoS         : RFLX.Control_Packet.QoS_Level;
+      Pid         : RFLX.Control_Packet.Packet_Identifier;
+      Puback_Last : RFLX.RFLX_Types.Index;
+   begin
+      Wire.Decode_Publish_Header
+        (C.Buf, View_Last, Decoded_Ok, QoS, Pid);
+      if Decoded_Ok and then QoS = RFLX.Control_Packet.QOS_1 then
+         Wire.Encode_Puback (C.Buf, Puback_Last, Pid);
+         Transport.Send
+           (C.Trans, C.Buf.all (C.Buf'First .. Puback_Last));
+      end if;
+   end Puback_If_Qos1;
 
    ---------------------------------------------------------------------
    --  Open — drive Connect_Handshake FSM.
@@ -293,6 +325,8 @@ package body Mqtt_Core.Client is
                           = RFLX.Control_Packet.PUBLISH
                then
                   Enqueue_Pending (C, View);
+                  C.Buf.all (View'Range) := View;
+                  Puback_If_Qos1 (C, View'Last);
                end if;
             end;
          end if;
@@ -320,14 +354,153 @@ package body Mqtt_Core.Client is
    end Publish_Qos1;
 
    ---------------------------------------------------------------------
-   --  Subscribe — drive Subscribing FSM.
+   --  Publish_Qos2 — drive Publish_Qos2 FSM (4-step handshake).
+   --
+   --  The FSM models the two read-and-dispatch states; the PUBREL
+   --  emission between them is hand-written by the driver after the
+   --  PUBREC bytes are forwarded on App_Pending. From the FSM's
+   --  perspective, Awaiting_Pubcomp simply reads from Network — it
+   --  doesn't know we sent PUBREL out of band.
    ---------------------------------------------------------------------
 
-   procedure Subscribe
-     (C     : in out Client;
-      Topic : String;
-      QoS   : RFLX.Control_Packet.QoS_Level :=
-        RFLX.Control_Packet.QOS_0)
+   procedure Publish_Qos2
+     (C       : in out Client;
+      Topic   : String;
+      Payload : RFLX.RFLX_Types.Bytes)
+   is
+      package FSM renames RFLX.Session.Publish_Qos2.FSM;
+      Ctx          : FSM.Context;
+      Last         : RFLX.RFLX_Types.Index;
+      Pid          : constant Wire.Packet_Identifier := C.Next_Packet_Id;
+      Read_Ok      : Boolean;
+      Got_Pubrec   : Boolean := False;
+      Got_Pubcomp  : Boolean := False;
+      Pubrec_Pid   : Wire.Packet_Identifier := 1;
+      Pubcomp_Pid  : Wire.Packet_Identifier := 1;
+      Pubrel_Last  : RFLX.RFLX_Types.Index;
+   begin
+      C.Next_Packet_Id := C.Next_Packet_Id + 1;
+
+      Wire.Encode_Publish_Qos2 (C.Buf, Last, Pid, Topic, Payload);
+
+      FSM.Initialize (Ctx);
+      if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
+         FSM.Write
+           (Ctx, FSM.C_App_Outbox,
+            C.Buf.all (C.Buf'First .. Last));
+      end if;
+
+      Drive_Loop :
+      loop
+         FSM.Run (Ctx);
+         exit Drive_Loop when not FSM.Active (Ctx);
+
+         if FSM.Has_Data (Ctx, FSM.C_Network) then
+            declare
+               N    : constant RFLX.RFLX_Types.Length :=
+                 FSM.Read_Buffer_Size (Ctx, FSM.C_Network);
+               View : RFLX.RFLX_Types.Bytes
+                 (C.Buf'First ..
+                    C.Buf'First + RFLX.RFLX_Types.Index (N) - 1);
+            begin
+               FSM.Read (Ctx, FSM.C_Network, View);
+               Transport.Send (C.Trans, View);
+            end;
+         end if;
+
+         if FSM.Has_Data (Ctx, FSM.C_App_Pending) then
+            declare
+               N    : constant RFLX.RFLX_Types.Length :=
+                 FSM.Read_Buffer_Size (Ctx, FSM.C_App_Pending);
+               View : RFLX.RFLX_Types.Bytes
+                 (C.Buf'First ..
+                    C.Buf'First + RFLX.RFLX_Types.Index (N) - 1);
+            begin
+               FSM.Read (Ctx, FSM.C_App_Pending, View);
+               if View'Length >= 4
+                 and then Wire.Peek_Packet_Type (View)
+                          = RFLX.Control_Packet.PUBREC
+               then
+                  C.Buf.all (View'Range) := View;
+                  declare
+                     Decode_Ok : Boolean;
+                  begin
+                     Wire.Decode_Pubrec
+                       (C.Buf, View'Last, Decode_Ok, Pubrec_Pid);
+                     if Decode_Ok then
+                        Got_Pubrec := True;
+                        --  Hand-emit PUBREL on the wire; the FSM's
+                        --  next state is Awaiting_Pubcomp which just
+                        --  reads from Network.
+                        Wire.Encode_Pubrel
+                          (C.Buf, Pubrel_Last, Pubrec_Pid);
+                        Transport.Send
+                          (C.Trans,
+                           C.Buf.all (C.Buf'First .. Pubrel_Last));
+                     end if;
+                  end;
+               elsif View'Length >= 4
+                 and then Wire.Peek_Packet_Type (View)
+                          = RFLX.Control_Packet.PUBCOMP
+               then
+                  C.Buf.all (View'Range) := View;
+                  declare
+                     Decode_Ok : Boolean;
+                  begin
+                     Wire.Decode_Pubcomp
+                       (C.Buf, View'Last, Decode_Ok, Pubcomp_Pid);
+                     if Decode_Ok then
+                        Got_Pubcomp := True;
+                     end if;
+                  end;
+               elsif View'Length >= 2
+                 and then Wire.Peek_Packet_Type (View)
+                          = RFLX.Control_Packet.PUBLISH
+               then
+                  Enqueue_Pending (C, View);
+                  C.Buf.all (View'Range) := View;
+                  Puback_If_Qos1 (C, View'Last);
+               end if;
+            end;
+         end if;
+
+         if FSM.Needs_Data (Ctx, FSM.C_Network) then
+            Read_Full_Packet (C, Last, Read_Ok);
+            if not Read_Ok then
+               FSM.Finalize (Ctx);
+               raise Publish_Failure with "EOF or socket error";
+            end if;
+            if FSM.Needs_Data (Ctx, FSM.C_Network) then
+               FSM.Write
+                 (Ctx, FSM.C_Network,
+                  C.Buf.all (C.Buf'First .. Last));
+            end if;
+         end if;
+      end loop Drive_Loop;
+
+      FSM.Finalize (Ctx);
+      if not Got_Pubrec then
+         raise Publish_Failure with "no PUBREC";
+      elsif Pubrec_Pid /= Pid then
+         raise Publish_Failure with "PUBREC Packet_Identifier mismatch";
+      elsif not Got_Pubcomp then
+         raise Publish_Failure with "no PUBCOMP";
+      elsif Pubcomp_Pid /= Pid then
+         raise Publish_Failure with "PUBCOMP Packet_Identifier mismatch";
+      end if;
+   end Publish_Qos2;
+
+   ---------------------------------------------------------------------
+   --  Subscribe / Subscribe_Many — drive Subscribing FSM.
+   --
+   --  The single-topic Subscribe is a thin wrapper around Subscribe_Many
+   --  with a 1-element filter array; only one FSM driver loop to
+   --  maintain.
+   ---------------------------------------------------------------------
+
+   procedure Subscribe_Many
+     (C       : in out Client;
+      Filters : Subscription_Filters)
    is
       package FSM renames RFLX.Session.Subscribing.FSM;
       Ctx        : FSM.Context;
@@ -336,12 +509,14 @@ package body Mqtt_Core.Client is
       Read_Ok    : Boolean;
       Got_Suback : Boolean := False;
       Reply_Pid  : Wire.Packet_Identifier := 1;
-      Reply_Code : Wire.Suback_Return_Code := Wire.Failure;
+      Codes      : Wire.Suback_Code_Array (Filters'Range) :=
+        (others => Wire.Failure);
+      Codes_Last : Natural := Codes'First - 1;
       use type Wire.Suback_Return_Code;
    begin
       C.Next_Packet_Id := C.Next_Packet_Id + 1;
 
-      Wire.Encode_Subscribe_Single (C.Buf, Last, Pid, Topic, QoS);
+      Wire.Encode_Subscribe (C.Buf, Last, Pid, Filters);
 
       FSM.Initialize (Ctx);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
@@ -385,9 +560,9 @@ package body Mqtt_Core.Client is
                   declare
                      Decode_Ok : Boolean;
                   begin
-                     Wire.Decode_Suback_Single
+                     Wire.Decode_Suback
                        (C.Buf, View'Last, Decode_Ok,
-                        Reply_Pid, Reply_Code);
+                        Reply_Pid, Codes, Codes_Last);
                      if Decode_Ok then
                         Got_Suback := True;
                      end if;
@@ -397,6 +572,8 @@ package body Mqtt_Core.Client is
                           = RFLX.Control_Packet.PUBLISH
                then
                   Enqueue_Pending (C, View);
+                  C.Buf.all (View'Range) := View;
+                  Puback_If_Qos1 (C, View'Last);
                end if;
             end;
          end if;
@@ -420,18 +597,39 @@ package body Mqtt_Core.Client is
          raise Subscribe_Failure with "no SUBACK";
       elsif Reply_Pid /= Pid then
          raise Subscribe_Failure with "SUBACK Packet_Identifier mismatch";
-      elsif Reply_Code = Wire.Failure then
-         raise Subscribe_Failure with "broker refused subscription";
+      elsif Codes_Last < Codes'Last then
+         raise Subscribe_Failure
+           with "SUBACK return-code count < SUBSCRIBE filter count";
+      else
+         for I in Codes'Range loop
+            if Codes (I) = Wire.Failure then
+               raise Subscribe_Failure
+                 with "broker refused at least one subscription";
+            end if;
+         end loop;
       end if;
+   end Subscribe_Many;
+
+   procedure Subscribe
+     (C     : in out Client;
+      Topic : String;
+      QoS   : RFLX.Control_Packet.QoS_Level :=
+        RFLX.Control_Packet.QOS_0)
+   is
+      Filters : constant Subscription_Filters (1 .. 1) :=
+        (1 => Wire.Make_Subscription (Topic, QoS));
+   begin
+      Subscribe_Many (C, Filters);
    end Subscribe;
 
    ---------------------------------------------------------------------
-   --  Unsubscribe — drive Unsubscribing FSM.
+   --  Unsubscribe / Unsubscribe_Many — drive Unsubscribing FSM. Same
+   --  delegation pattern as Subscribe / Subscribe_Many.
    ---------------------------------------------------------------------
 
-   procedure Unsubscribe
-     (C     : in out Client;
-      Topic : String)
+   procedure Unsubscribe_Many
+     (C       : in out Client;
+      Filters : Topic_Filters)
    is
       package FSM renames RFLX.Session.Unsubscribing.FSM;
       Ctx          : FSM.Context;
@@ -443,7 +641,7 @@ package body Mqtt_Core.Client is
    begin
       C.Next_Packet_Id := C.Next_Packet_Id + 1;
 
-      Wire.Encode_Unsubscribe_Single (C.Buf, Last, Pid, Topic);
+      Wire.Encode_Unsubscribe (C.Buf, Last, Pid, Filters);
 
       FSM.Initialize (Ctx);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
@@ -498,6 +696,8 @@ package body Mqtt_Core.Client is
                           = RFLX.Control_Packet.PUBLISH
                then
                   Enqueue_Pending (C, View);
+                  C.Buf.all (View'Range) := View;
+                  Puback_If_Qos1 (C, View'Last);
                end if;
             end;
          end if;
@@ -523,6 +723,16 @@ package body Mqtt_Core.Client is
          raise Unsubscribe_Failure
            with "UNSUBACK Packet_Identifier mismatch";
       end if;
+   end Unsubscribe_Many;
+
+   procedure Unsubscribe
+     (C     : in out Client;
+      Topic : String)
+   is
+      Filters : constant Topic_Filters (1 .. 1) :=
+        (1 => Wire.Make_Topic_Filter (Topic));
+   begin
+      Unsubscribe_Many (C, Filters);
    end Unsubscribe;
 
    ---------------------------------------------------------------------
@@ -534,13 +744,15 @@ package body Mqtt_Core.Client is
    --  Topic / Payload buffers.
    ---------------------------------------------------------------------
 
-   --  Decode an Incoming_Packet-shaped PUBLISH from `Slot_Bytes`
-   --  (which is `View` from a Pending slot or App_Pending) into the
-   --  caller's buffers. Re-uses Wire.Decode_Publish_Qos0 by writing
-   --  the bytes through C.Buf.
+   --  Decode an Incoming_Packet-shaped PUBLISH from `View` (either a
+   --  Pending slot or App_Pending bytes) into the caller's buffers,
+   --  while also reporting QoS + Packet Identifier so the caller can
+   --  decide whether to PUBACK.
    procedure Decode_Pending_Publish
      (C            : in out Client;
       View         : RFLX.RFLX_Types.Bytes;
+      QoS          :    out RFLX.Control_Packet.QoS_Level;
+      Pid          :    out RFLX.Control_Packet.Packet_Identifier;
       Topic        : in out String;
       Topic_Last   :    out Natural;
       Payload      : in out RFLX.RFLX_Types.Bytes;
@@ -550,6 +762,8 @@ package body Mqtt_Core.Client is
    procedure Decode_Pending_Publish
      (C            : in out Client;
       View         : RFLX.RFLX_Types.Bytes;
+      QoS          :    out RFLX.Control_Packet.QoS_Level;
+      Pid          :    out RFLX.Control_Packet.Packet_Identifier;
       Topic        : in out String;
       Topic_Last   :    out Natural;
       Payload      : in out RFLX.RFLX_Types.Bytes;
@@ -560,8 +774,9 @@ package body Mqtt_Core.Client is
         C.Buf'First + RFLX.RFLX_Types.Index (View'Length) - 1;
    begin
       C.Buf.all (C.Buf'First .. Last_Idx) := View;
-      Wire.Decode_Publish_Qos0
-        (C.Buf, Last_Idx, Ok, Topic, Topic_Last, Payload, Payload_Last);
+      Wire.Decode_Publish
+        (C.Buf, Last_Idx, Ok, QoS, Pid,
+         Topic, Topic_Last, Payload, Payload_Last);
    end Decode_Pending_Publish;
 
    procedure Receive_Publish
@@ -571,9 +786,15 @@ package body Mqtt_Core.Client is
       Payload      : in out RFLX.RFLX_Types.Bytes;
       Payload_Last :    out RFLX.RFLX_Types.Length)
    is
+      use type RFLX.Control_Packet.QoS_Level;
       Decode_Ok : Boolean;
+      QoS       : RFLX.Control_Packet.QoS_Level;
+      Pid       : RFLX.Control_Packet.Packet_Identifier;
    begin
-      --  Drain one queued PUBLISH if any.
+      --  Drain one queued PUBLISH if any. PUBACK was already emitted
+      --  at enqueue time (in Subscribe / Unsubscribe / Publish_Qos1),
+      --  so a drain MUST NOT re-PUBACK — that would be a duplicate
+      --  ack on the wire.
       for I in C.Pending'Range loop
          if C.Pending (I).In_Use then
             declare
@@ -582,7 +803,7 @@ package body Mqtt_Core.Client is
                    (C.Pending (I).Buf'First .. C.Pending (I).Last);
             begin
                Decode_Pending_Publish
-                 (C, View, Topic, Topic_Last,
+                 (C, View, QoS, Pid, Topic, Topic_Last,
                   Payload, Payload_Last, Decode_Ok);
             end;
             C.Pending (I).In_Use := False;
@@ -637,10 +858,26 @@ package body Mqtt_Core.Client is
                              = RFLX.Control_Packet.PUBLISH
                   then
                      Decode_Pending_Publish
-                       (C, View, Topic, Topic_Last,
+                       (C, View, QoS, Pid, Topic, Topic_Last,
                         Payload, Payload_Last, Decode_Ok);
                      if Decode_Ok then
                         Got := True;
+                        --  Fresh delivery from the wire — PUBACK if
+                        --  QoS=1 (§4.3.2). Drain-from-queue path
+                        --  above does not, having already PUBACKed
+                        --  at enqueue.
+                        if QoS = RFLX.Control_Packet.QOS_1 then
+                           declare
+                              Puback_Last : RFLX.RFLX_Types.Index;
+                           begin
+                              Wire.Encode_Puback
+                                (C.Buf, Puback_Last, Pid);
+                              Transport.Send
+                                (C.Trans,
+                                 C.Buf.all
+                                   (C.Buf'First .. Puback_Last));
+                           end;
+                        end if;
                      end if;
                   end if;
                end;

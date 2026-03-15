@@ -27,10 +27,19 @@ with RFLX.RFLX_Types;
 with RFLX.Control_Packet;
 
 with Mqtt_Core.Transport;
+with Mqtt_Core.Wire;
 
 package Mqtt_Core.Client is
 
    type Client is limited private;
+
+   --  Re-exports of the multi-topic filter types from Mqtt_Core.Wire,
+   --  so callers don't need a second `with` clause for the simple case
+   --  of building up SUBSCRIBE / UNSUBSCRIBE payloads.
+   subtype Subscription_Filter  is Wire.Subscription_Filter;
+   subtype Subscription_Filters is Wire.Subscription_Filters;
+   subtype Topic_Filter         is Wire.Topic_Filter;
+   subtype Topic_Filters        is Wire.Topic_Filters;
 
    procedure Open
      (C             : in out Client;
@@ -54,15 +63,37 @@ package Mqtt_Core.Client is
       Topic   : String;
       Payload : RFLX.RFLX_Types.Bytes);
 
+   --  Publish QoS 2 — four-step handshake (§4.3.3): client sends
+   --  PUBLISH, awaits PUBREC, sends PUBREL, awaits PUBCOMP. Inbound
+   --  PUBLISHes interleaved at either await stage are enqueued for
+   --  Receive_Publish to drain. No data is dropped.
+   procedure Publish_Qos2
+     (C       : in out Client;
+      Topic   : String;
+      Payload : RFLX.RFLX_Types.Bytes);
+
    procedure Subscribe
      (C     : in out Client;
       Topic : String;
       QoS   : RFLX.Control_Packet.QoS_Level :=
         RFLX.Control_Packet.QOS_0);
 
+   --  Subscribe to several Topic Filters in a single SUBSCRIBE packet
+   --  (§3.8.3). Raises Subscribe_Failure if the broker returns Failure
+   --  for *any* filter — caller can rebuild Filters with the bad ones
+   --  removed and retry.
+   procedure Subscribe_Many
+     (C       : in out Client;
+      Filters : Subscription_Filters);
+
    procedure Unsubscribe
      (C     : in out Client;
       Topic : String);
+
+   --  Unsubscribe from several Topic Filters in one packet (§3.10.3).
+   procedure Unsubscribe_Many
+     (C       : in out Client;
+      Filters : Topic_Filters);
 
    --  Block until the next inbound PUBLISH is available — first
    --  draining any PUBLISHes that were queued by a concurrent
