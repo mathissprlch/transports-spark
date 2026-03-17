@@ -14,7 +14,9 @@
 with Ada.Text_IO;
 with RFLX.RFLX_Types;
 use type RFLX.RFLX_Types.Index;
+with RFLX.Control_Packet;
 with Mqtt_Core.Client;
+with Mqtt_Core.Wire;
 
 procedure Mqtt_Demo is
 
@@ -118,11 +120,32 @@ begin
       Clean_Session => True);
    Put_Line ("mqtt_demo: connected.");
 
-   Mqtt_Core.Client.Subscribe (Client, Topic);
-   Put_Line ("mqtt_demo: subscribed to " & Topic);
+   --  Subscribe to two filters in a single SUBSCRIBE packet (§3.8.3).
+   --  ada/test at QoS 1 — the broker will echo our QoS 1 publish back
+   --  at QoS 1, exercising Encode_Puback for the inbound ack.
+   --  ada/aux at QoS 0 — second filter only proves the multi-topic
+   --  encoder + Decode_Suback array path; we don't publish to it.
+   declare
+      Filters : constant Mqtt_Core.Client.Subscription_Filters :=
+        (Mqtt_Core.Wire.Make_Subscription
+           (Topic, RFLX.Control_Packet.QOS_1),
+         Mqtt_Core.Wire.Make_Subscription
+           ("ada/aux", RFLX.Control_Packet.QOS_0));
+   begin
+      Mqtt_Core.Client.Subscribe_Many (Client, Filters);
+   end;
+   Put_Line ("mqtt_demo: subscribed to " & Topic
+             & " (QoS 1) + ada/aux (QoS 0) in one SUBSCRIBE");
 
    Put_Line ("mqtt_demo: round-trip 1 (small)");
    Round_Trip (Client, Topic, "Hello, MQTT!");
+
+   --  Round-trip via the SECOND filter — this only echoes back if
+   --  Subscribe_Many actually encoded both filters in one SUBSCRIBE.
+   --  If it had silently dropped the second one, this Receive_Publish
+   --  would block forever waiting for an echo the broker isn't sending.
+   Put_Line ("mqtt_demo: round-trip on second filter (proves multi-encode)");
+   Round_Trip (Client, "ada/aux", "second-filter alive");
 
    Put_Line ("mqtt_demo: round-trip 2 (medium)");
    Round_Trip (Client, Topic, "second message - same buffer reused, no heap");
@@ -159,8 +182,40 @@ begin
          & To_String (Recv_Payload, Recv_P_Last) & """");
    end;
 
-   Mqtt_Core.Client.Unsubscribe (Client, Topic);
-   Put_Line ("mqtt_demo: unsubscribed from " & Topic);
+   --  QoS 2 publish: PUBLISH → PUBREC → PUBREL → PUBCOMP. The FSM
+   --  exhaustively dispatches inbound packets at Awaiting_Pubrec and
+   --  Awaiting_Pubcomp (verified at spec-compile time); the broker
+   --  echoes the PUBLISH back at QoS=min(2, 1)=1 (subscription QoS),
+   --  which Publish_Qos2 enqueues for Receive_Publish to drain.
+   Put_Line ("mqtt_demo: QoS 2 publish (FSM-driven, PUBREC + PUBCOMP)");
+   Mqtt_Core.Client.Publish_Qos2
+     (Client, Topic, To_Bytes ("qos-2 hello"));
+   Put_Line ("  -> publish completed (PUBCOMP received)");
+   Put_Line ("mqtt_demo: draining queued PUBLISH from Publish_Qos2");
+   declare
+      Recv_Topic   : String (1 .. 128);
+      Recv_T_Last  : Natural;
+      Recv_Payload : RFLX.RFLX_Types.Bytes (1 .. 256);
+      Recv_P_Last  : RFLX.RFLX_Types.Length;
+   begin
+      Mqtt_Core.Client.Receive_Publish
+        (Client, Recv_Topic, Recv_T_Last,
+         Recv_Payload, Recv_P_Last);
+      Put_Line
+        ("  <- queued echo: """
+         & To_String (Recv_Payload, Recv_P_Last) & """");
+   end;
+
+   --  Symmetric multi-topic UNSUBSCRIBE: drop both filters in one packet.
+   declare
+      Filters : constant Mqtt_Core.Client.Topic_Filters :=
+        (Mqtt_Core.Wire.Make_Topic_Filter (Topic),
+         Mqtt_Core.Wire.Make_Topic_Filter ("ada/aux"));
+   begin
+      Mqtt_Core.Client.Unsubscribe_Many (Client, Filters);
+   end;
+   Put_Line ("mqtt_demo: unsubscribed from " & Topic
+             & " + ada/aux in one UNSUBSCRIBE");
 
    Mqtt_Core.Client.Close (Client);
    Put_Line ("mqtt_demo: disconnected. ok.");
