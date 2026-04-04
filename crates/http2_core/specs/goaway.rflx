@@ -1,0 +1,51 @@
+--  Goaway: HTTP/2 GOAWAY frame (RFC 9113 §6.8).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.8 — GOAWAY.
+--
+--  Used to initiate connection shutdown. Carries the highest-numbered
+--  Stream Identifier the sender MAY have processed (so the peer
+--  knows which streams to retry on a new connection), an Error Code,
+--  and an optional Additional Debug Data tail.
+--
+--  Wire layout (§6.8):
+--    +-+-------------------------------------------------------------+
+--    |R|                  Last-Stream-ID (31)                        |
+--    +-+-------------------------------------------------------------+
+--    |                      Error Code (32)                          |
+--    +---------------------------------------------------------------+
+--    |                  Additional Debug Data (*)                    |
+--    +---------------------------------------------------------------+
+--
+--  GOAWAY applies only to the connection (Stream_Identifier MUST be
+--  0 per §6.8); enforced in the Ada dispatcher.
+
+package Goaway is
+
+   --  §6.8 — Reserved bit (R). MUST be 0.
+   type Reserved_Bit is range 0 .. 0 with Size => 1;
+
+   --  §6.8 — Last-Stream-ID. 31-bit unsigned, identifies the last
+   --  Stream Identifier on which frames may have been processed.
+   --  Value 0 is legal (means "no streams processed yet").
+   type Last_Stream_Id is unsigned 31;
+
+   --  §6.8 — Error Code. Same wire-width comment as in rst_stream.rflx;
+   --  the IANA enum Http2_Parameters::HTTP_2_Error_Code provides
+   --  named-value semantics, but the wire field is full 32-bit.
+   type Error_Code is unsigned 32;
+
+   type Packet is
+      message
+         Reserved : Reserved_Bit;
+         Last_Stream_Id : Last_Stream_Id;
+         Error_Code : Error_Code;
+         --  §6.8 — Additional Debug Data. Optional, opaque, may be
+         --  empty. Length is whatever's left in the frame Payload
+         --  after the fixed 8-byte prefix above; the consumer (the
+         --  Ada dispatcher) computes that residue from the Frame
+         --  layer's Length field minus 8.
+         Additional_Debug_Data : Opaque;
+      end message;
+
+end Goaway;

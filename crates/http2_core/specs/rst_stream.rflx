@@ -1,0 +1,28 @@
+--  Rst_Stream: HTTP/2 RST_STREAM frame (RFC 9113 §6.4).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.4 — RST_STREAM.
+--
+--  Fixed-shape 4-byte payload: a single 32-bit Error Code identifying
+--  why the stream is being terminated. RST_STREAM applies only to
+--  individual streams (Stream_Identifier MUST NOT be 0; the stream-0
+--  check lives in the Ada dispatcher above the spec).
+
+package Rst_Stream is
+
+   --  §6.4 — Error Code field. 32-bit unsigned big-endian.
+   --
+   --  IANA assigns names for values 0..0x0D (see http2_parameters.rflx),
+   --  but the wire field is structurally a 32-bit unsigned: §7 says
+   --  "Unknown or unsupported error codes MUST NOT trigger any special
+   --  behavior" — i.e. parsers MUST accept values outside the named
+   --  range. Mapping the raw value back to its IANA name is an Ada-
+   --  side concern; the spec preserves the full wire range.
+   type Error_Code is unsigned 32;
+
+   type Packet is
+      message
+         Error_Code : Error_Code;
+      end message;
+
+end Rst_Stream;

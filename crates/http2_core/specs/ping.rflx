@@ -1,0 +1,27 @@
+--  Ping: HTTP/2 PING frame (RFC 9113 §6.7).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.7 — PING.
+--
+--  Fixed-shape 8-byte payload: opaque data the receiver echoes back
+--  in a PING frame with the ACK flag set. Used as a connection
+--  liveness probe and round-trip-time measurement.
+--
+--  PING applies only to the connection (Stream_Identifier MUST be 0
+--  per §6.7); the stream-0 check is enforced in the Ada dispatcher.
+--  The ACK flag (0x1) distinguishes a probe from its reply; flag-bit
+--  parsing is the Ada layer's responsibility, not the spec's.
+
+package Ping is
+
+   --  §6.7 — Opaque Data. Exactly 8 octets. The "MUST be 8 bytes"
+   --  rule is enforced by the field's fixed Size; a frame whose
+   --  Length field disagrees is rejected before this body is
+   --  decoded, by the Frame layer's Payload size = Length * 8 link.
+   type Packet is
+      message
+         Opaque_Data : Opaque
+            with Size => 64;
+      end message;
+
+end Ping;

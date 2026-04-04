@@ -1,0 +1,36 @@
+--  Window_Update: HTTP/2 WINDOW_UPDATE frame (RFC 9113 §6.9).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.9 — WINDOW_UPDATE.
+--
+--  Fixed-shape 4-byte payload: 1-bit reserved + 31-bit window size
+--  increment. Used for both connection-level (stream id 0) and
+--  per-stream flow control.
+--
+--  Wire layout (§6.9):
+--    +-+-------------------------------------------------------------+
+--    |R|              Window Size Increment (31)                     |
+--    +-+-------------------------------------------------------------+
+
+package Window_Update is
+
+   --  §6.9 — Reserved bit (R). MUST be 0; senders MUST set, receivers
+   --  MUST ignore. Strict parse rejects non-zero — an illegal sender
+   --  is more useful to flag than to silently accept here.
+   type Reserved_Bit is range 0 .. 0 with Size => 1;
+
+   --  §6.9.1 — Window Size Increment. 31-bit unsigned. Value 0 is a
+   --  protocol error per §6.9.1 ("PROTOCOL_ERROR; errors on the
+   --  connection flow-control window MUST be treated as a connection
+   --  error"). The structural type permits 0 here so the parser can
+   --  identify the violation explicitly; semantic rejection lives in
+   --  the Ada dispatcher.
+   type Window_Size_Increment is unsigned 31;
+
+   type Packet is
+      message
+         Reserved : Reserved_Bit;
+         Window_Size_Increment : Window_Size_Increment;
+      end message;
+
+end Window_Update;

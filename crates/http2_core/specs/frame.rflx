@@ -1,0 +1,69 @@
+--  Frame: HTTP/2 frame fixed header (RFC 9113 §4.1).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §4.1 — Frame Format.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+--
+--  Every HTTP/2 frame begins with a 9-octet fixed header followed by
+--  a payload of the size declared in the Length field. Per-frame-type
+--  payloads are defined in sibling .rflx files (data.rflx,
+--  rst_stream.rflx, ...) and consume the Payload Opaque tail.
+--
+--  Wire layout (§4.1):
+--    +-----------------------------------------------+
+--    |                 Length (24)                   |
+--    +---------------+---------------+---------------+
+--    |   Type (8)    |   Flags (8)   |
+--    +-+-------------+---------------+-------------------------------+
+--    |R|                 Stream Identifier (31)                      |
+--    +=+=============================================================+
+--    |                   Frame Payload (0...)                      ...
+--    +---------------------------------------------------------------+
+
+with Http2_Parameters;
+
+package Frame is
+
+   --  §4.1 — Length field. 24-bit unsigned big-endian value giving
+   --  the payload length (does NOT include the 9-byte fixed header).
+   --  §6.5.2 caps default to 16384 (2**14); SETTINGS_MAX_FRAME_SIZE
+   --  may raise to 2**24 - 1. The structural type covers the full
+   --  legal range; per-frame-type checks may tighten it.
+   type Length is unsigned 24;
+
+   --  §4.1 — Flags field. 8 bits of type-specific flag bits. The
+   --  bit-level meaning depends on Frame_Type — interpretation lives
+   --  in per-frame-type packages, not here.
+   type Flags is unsigned 8;
+
+   --  §4.1 — R (reserved) bit. MUST be set to 0 by senders; receivers
+   --  MUST ignore. The range constraint enforces "MUST be 0" at
+   --  parse time, treating non-zero as malformed (stricter than the
+   --  RFC's "ignore", which is the safer choice for a verified
+   --  implementation).
+   type Reserved_Bit is range 0 .. 0 with Size => 1;
+
+   --  §4.1 / §5.1.1 — Stream Identifier. 31-bit unsigned integer.
+   --  Stream id 0 is reserved for connection-level frames
+   --  (SETTINGS, PING, GOAWAY); per-stream frames use ids 1+.
+   --  The structural type allows 0; semantic restrictions ("MUST
+   --  use stream 0", "MUST NOT use stream 0") live at the
+   --  per-frame-type layer.
+   type Stream_Identifier is unsigned 31;
+
+   --  §4.1 — frame fixed header + opaque payload. Per-frame-type
+   --  packages decode the Payload Opaque tail according to Frame_Type.
+   type Packet is
+      message
+         Length : Length;
+         Frame_Type : Http2_Parameters::HTTP_2_Frame_Type;
+         Flags : Flags;
+         Reserved : Reserved_Bit;
+         Stream_Identifier : Stream_Identifier;
+         Payload : Opaque
+            with Size => Length * 8;
+      end message;
+
+end Frame;
