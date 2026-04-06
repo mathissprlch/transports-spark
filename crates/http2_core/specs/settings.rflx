@@ -1,0 +1,66 @@
+--  Settings: HTTP/2 SETTINGS frame (RFC 9113 §6.5).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.5 — SETTINGS, §6.5.1 — Setting Format,
+--  §6.5.2 — Defined Settings, §6.5.3 — Settings Synchronization.
+--
+--  SETTINGS communicates configuration parameters that affect how
+--  endpoints communicate. Used during the connection preface and
+--  any time either side needs to update a parameter.
+--
+--  Wire layout (§6.5.1):
+--    +-------------------------------+
+--    |       Identifier (16)         |
+--    +-------------------------------+-------------------------------+
+--    |                        Value (32)                             |
+--    +---------------------------------------------------------------+
+--
+--  Body of a SETTINGS frame is zero or more such 6-octet records.
+--  An empty body with the ACK flag (0x1) set acknowledges a peer's
+--  prior SETTINGS frame (§6.5.3); ACK frames MUST have payload
+--  length 0 (enforced in the Ada dispatcher).
+--
+--  v0.2 scope: the spec models the full registry-defined Identifier
+--  space (per Http2_Parameters::HTTP_2_Settings, generated from IANA
+--  with Always_Valid). What we *advertise* is the subset documented
+--  in SCOPE.md: HEADER_TABLE_SIZE=0, ENABLE_PUSH=0,
+--  MAX_CONCURRENT_STREAMS=1, INITIAL_WINDOW_SIZE / MAX_FRAME_SIZE
+--  at their RFC defaults. Decoding must accept any registered
+--  Identifier the peer sends; semantic handling of unknown
+--  identifiers is "ignore" (§6.5.2 default).
+
+with Http2_Parameters;
+
+package Settings is
+
+   --  §6.5.1 — Setting value. 32-bit unsigned big-endian. The
+   --  registry attaches semantic ranges per identifier (e.g.
+   --  ENABLE_PUSH MUST be 0 or 1, INITIAL_WINDOW_SIZE MUST NOT
+   --  exceed 2**31 - 1); those checks live in the Ada dispatcher
+   --  because they're identifier-conditional.
+   type Setting_Value is unsigned 32;
+
+   --  §6.5.1 — One Identifier+Value pair. The registry-derived
+   --  enum has Always_Valid set so any 16-bit value parses; per
+   --  §6.5.2 receivers MUST ignore Identifiers they don't
+   --  recognize, which the Ada dispatcher implements by switching
+   --  on the parsed enum and falling through to "ignore" for
+   --  values outside the named set.
+   type Parameter is
+      message
+         Identifier : Http2_Parameters::HTTP_2_Settings;
+         Value : Setting_Value;
+      end message;
+
+   --  §6.5 — SETTINGS payload is a sequence of zero or more
+   --  Parameter records. Length of the sequence is dictated by
+   --  the Frame layer's Length field (must be a multiple of 6;
+   --  the Ada dispatcher checks this before invoking the parser).
+   type Parameter_List is sequence of Parameter;
+
+   type Packet is
+      message
+         Parameters : Parameter_List;
+      end message;
+
+end Settings;
