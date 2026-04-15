@@ -1,0 +1,17 @@
+name = "http2_core_tests"
+description = "Tests for http2_core"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+
+executables = ["http2_core_tests"]
+project-files = ["http2_core_tests.gpr"]
+
+[[depends-on]]
+http2_core = "*"
+
+[[pins]]
+http2_core = { path = "../http2_core" }

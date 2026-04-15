@@ -1,0 +1,21 @@
+with "http2_core.gpr";
+
+project Http2_Core_Tests is
+
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Create_Missing_Dirs use "True";
+   for Main use ("http2_core_tests.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g",
+         "-O0",
+         "-gnatwa",
+         "-gnatVa",
+         "-gnatyM100",
+         "-gnata");
+   end Compiler;
+
+end Http2_Core_Tests;
