@@ -132,4 +132,35 @@ is
       end if;
    end Get_Value;
 
+   procedure Find
+     (Name        : String;
+      Value       : String;
+      Found_Index : out Natural;
+      Exact_Match : out Boolean)
+   is
+      Name_Only_Match : Natural := 0;
+   begin
+      for I in Index loop
+         declare
+            E : Entry_Record renames Entries (I);
+         begin
+            if E.Name_Last = Name'Length
+              and then E.Name (1 .. E.Name_Last) = Name
+            then
+               if E.Value_Last = Value'Length
+                 and then E.Value (1 .. E.Value_Last) = Value
+               then
+                  Found_Index := I;
+                  Exact_Match := True;
+                  return;
+               elsif Name_Only_Match = 0 then
+                  Name_Only_Match := I;
+               end if;
+            end if;
+         end;
+      end loop;
+      Found_Index := Name_Only_Match;
+      Exact_Match := False;
+   end Find;
+
 end Http2_Core.Hpack.Static_Table;

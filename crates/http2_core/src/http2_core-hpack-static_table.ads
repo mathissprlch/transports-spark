@@ -45,4 +45,16 @@ is
    with Pre  => Buf'Length >= Max_Header_Length,
         Post => (if I not in Index then Last = 0);
 
+   --  Reverse lookup used by the encoder. Searches for an exact
+   --  (Name, Value) match first; if found, sets Found_Index and
+   --  Exact_Match := True. Otherwise looks for the first row whose
+   --  Name matches and sets Found_Index with Exact_Match := False.
+   --  If no row's Name matches, Found_Index = 0 and Exact_Match
+   --  := False.
+   procedure Find
+     (Name        : String;
+      Value       : String;
+      Found_Index : out Natural;
+      Exact_Match : out Boolean);
+
 end Http2_Core.Hpack.Static_Table;

@@ -1,0 +1,51 @@
+--  Headers: HTTP/2 HEADERS frame (RFC 9113 §6.2).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.2 — HEADERS.
+--
+--  Carries the request/response header set as an HPACK-encoded
+--  fragment (RFC 7541). Decoded by the hand-written
+--  Http2_Core.Hpack package, not RecordFlux — see
+--  ../specs/SCOPE.md for the hybrid rationale.
+--
+--  Wire layout (§6.2, after the 9-byte fixed Frame header):
+--    +---------------+
+--    |Pad Length? (8)|       present if PADDED flag (0x08)
+--    +-+-------------+-----------------------------------------------+
+--    |E|                 Stream Dependency? (31)                     |  PRIORITY (0x20)
+--    +-+-------------+-----------------------------------------------+
+--    |  Weight? (8)  |                                                 PRIORITY (0x20)
+--    +-+-------------+-----------------------------------------------+
+--    |                  Field Block Fragment (*)                   ...
+--    +---------------------------------------------------------------+
+--    |                          Padding (*)                        ...
+--    +---------------------------------------------------------------+
+--
+--  v0.2 scope (SCOPE.md):
+--  * PADDED flag → PROTOCOL_ERROR. Padding is not implemented;
+--    receiving it is rejected at the Ada Frame dispatcher before
+--    this body is decoded.
+--  * PRIORITY flag → tolerated on receive (deprecated in RFC 9113
+--    so most peers won't set it); the 5 priority bytes are
+--    skipped over by the dispatcher before it hands the remaining
+--    Opaque payload to Hpack.Decode.
+--  * CONTINUATION (§6.10) → not implemented; if HEADERS doesn't
+--    set END_HEADERS the dispatcher rejects.
+--
+--  In practice this means the message we model here is just the
+--  Field Block Fragment as an opaque tail — the dispatcher slices
+--  off the optional priority bytes before invoking the parser.
+
+package Headers is
+
+   --  §6.2 — HEADERS payload from the dispatcher's perspective:
+   --  raw bytes of the HPACK header block fragment. Length is
+   --  whatever's left in the frame Payload after the dispatcher
+   --  has accounted for any priority prefix; the Ada caller
+   --  computes that residue and slices appropriately.
+   type Packet is
+      message
+         Field_Block_Fragment : Opaque;
+      end message;
+
+end Headers;
