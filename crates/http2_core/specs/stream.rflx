@@ -1,0 +1,158 @@
+--  Stream: HTTP/2 single-stream lifecycle (RFC 9113 §5.1).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §5.1 — Stream States, §5.1.1 — Stream
+--  Identifiers (sequencing rules), §6.4 — RST_STREAM dispatch.
+--
+--  v0.2 scope per ../specs/SCOPE.md: single bidi stream at a time,
+--  no multiplexing, no PRIORITY, no PUSH_PROMISE, no
+--  reserved-local/reserved-remote states (those are server-push
+--  only). RFC 9113 §5.1's full state diagram simplifies to:
+--
+--      Idle ──HEADERS(client)──> Open
+--                                  │
+--                                  │ HEADERS(END_STREAM)
+--                                  │   from either side
+--                                  ▼
+--                          Half_Closed (the side that ended)
+--                                  │
+--                                  │ peer END_STREAM, or RST_STREAM,
+--                                  │ or local close
+--                                  ▼
+--                                Closed
+--
+--  Per-RPC lifecycle:
+--    1. Client: HEADERS — opens the stream (Idle → Open).
+--    2. Optional: client/server DATA frames in either direction.
+--    3. Either side ends with END_STREAM bit set.
+--    4. After both ends close, stream is Closed.
+--
+--  Verification dividend (same as mqtt_core's session machines):
+--  every Awaiting state enumerates the legal-from-peer Frame_Type
+--  set; forgetting one is a RecordFlux exhaustiveness error.
+--
+--  Channel layout (mirrors mqtt_core conventions):
+--    Network — bidi TCP byte stream
+--    App_Outbox — caller hands in pre-encoded outbound frames
+--    App_Pending — FSM forwards inbound frames to caller for
+--                  semantic handling (e.g. routing DATA to gRPC's
+--                  message decoder, mapping trailing HEADERS to
+--                  grpc-status + grpc-message)
+
+with Http2_Parameters;
+with Frame;
+
+package Stream is
+
+   ---------------------------------------------------------------------
+   --  Half_Open — one HTTP/2 stream from after our HEADERS goes out
+   --  until both ends are closed. Drives all DATA and HEADERS
+   --  exchanges; verifies the dispatch tables for each
+   --  receiving state.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Half_Open is
+      Outgoing : Frame::Packet;
+      Inbound  : Frame::Packet;
+   begin
+
+      --  state Loading: caller hands us pre-encoded HEADERS for
+      --  the request (END_STREAM=0 if we'll send DATA after, =1
+      --  for an empty-body request).
+      state Loading is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending_Headers
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading;
+
+      state Sending_Headers is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Awaiting_Reply
+      end Sending_Headers;
+
+      --  state Awaiting_Reply: read inbound, dispatch by Frame_Type.
+      --  Legal-during-stream frames per §5.1 + §6:
+      --    HEADERS         expected reply / trailers
+      --    DATA            response body chunks
+      --    RST_STREAM      stream-level error from peer
+      --    WINDOW_UPDATE   flow control update — connection or stream
+      --    PING            connection-level keepalive
+      --    SETTINGS        connection-level (peer may update mid-stream)
+      --    GOAWAY          connection shutdown
+      --
+      --  Connection-management frames (PING, SETTINGS, GOAWAY,
+      --  WINDOW_UPDATE on stream 0) loop back to Awaiting_Reply
+      --  after the Ada driver dispatches them out of band.
+      --  RST_STREAM and CONTINUATION terminate the stream.
+      state Awaiting_Reply is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Inbound
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::HEADERS
+                    or Inbound.Frame_Type = Http2_Parameters::DATA)
+         goto Forwarding_Connection_Frame
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
+                    or Inbound.Frame_Type = Http2_Parameters::PING
+                    or Inbound.Frame_Type = Http2_Parameters::WINDOW_UPDATE
+                    or Inbound.Frame_Type = Http2_Parameters::GOAWAY)
+         goto Forwarding_Reset
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::RST_STREAM
+         --  PRIORITY (deprecated), PUSH_PROMISE (out of scope),
+         --  CONTINUATION (we bound HEADERS to one frame), and
+         --  reserved frame types fall through to null — protocol
+         --  violation at this stage.
+         goto null
+      exception
+         goto null
+      end Awaiting_Reply;
+
+      --  Forward the inbound HEADERS or DATA frame to the Ada
+      --  driver via App_Pending. The driver decides whether
+      --  END_STREAM means "close" or "continue reading"; on
+      --  continue, the FSM cycles back into Awaiting_Reply.
+      state Forwarding_Inbound is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Reply
+      end Forwarding_Inbound;
+
+      --  Forward connection-management frames (PING / SETTINGS /
+      --  WINDOW_UPDATE / GOAWAY) to the Ada driver, then loop. The
+      --  driver handles ack emission (PING ACK, SETTINGS ACK)
+      --  hand-written on the wire — same out-of-band-ack pattern
+      --  mqtt_core uses for PUBACK and PUBREL.
+      state Forwarding_Connection_Frame is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Reply
+      end Forwarding_Connection_Frame;
+
+      --  RST_STREAM forwarded so the driver can surface the error
+      --  to the caller; FSM exits cleanly.
+      state Forwarding_Reset is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Reset;
+
+   end Half_Open;
+
+end Stream;
