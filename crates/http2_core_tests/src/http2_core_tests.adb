@@ -12,10 +12,14 @@
 
 with Ada.Text_IO;
 with Interfaces;
+with RFLX.RFLX_Types;
+with RFLX.RFLX_Builtin_Types;
+with RFLX.Http2_Parameters;
 with Http2_Core.Hpack;
 with Http2_Core.Hpack.Static_Table;
 with Http2_Core.Hpack.Huffman;
 with Http2_Core.Hpack.Int_Codec;
+with Http2_Core.Wire;
 
 procedure Http2_Core_Tests is
    use Ada.Text_IO;
@@ -251,12 +255,139 @@ procedure Http2_Core_Tests is
 
    pragma Unreferenced (To_Octet);
 
+   ----------------------------------------------------------------------
+   --  Wire-layer encoder spot checks. Encode each frame, then decode
+   --  the fixed header back, then for fixed-shape bodies (RST_STREAM,
+   --  WINDOW_UPDATE, PING, GOAWAY) re-extract the body fields.
+   ----------------------------------------------------------------------
+
+   procedure Test_Wire;
+   procedure Test_Wire is
+      use Http2_Core;
+      use type RFLX.RFLX_Builtin_Types.Bit_Length;
+      use type RFLX.RFLX_Builtin_Types.Index;
+      use type RFLX.RFLX_Builtin_Types.Byte;
+      use type RFLX.Http2_Parameters.HTTP_2_Frame_Type_Enum;
+      use type RFLX.Http2_Parameters.HTTP_2_Settings_Enum;
+
+      Buf  : RFLX.RFLX_Types.Bytes_Ptr := new RFLX.RFLX_Types.Bytes'
+        (1 .. 256 => 0);
+      Last : RFLX.RFLX_Types.Index;
+
+      procedure Decode_And_Check
+        (Label    : String;
+         Expected_Length : RFLX.RFLX_Builtin_Types.Bit_Length;
+         Expected_Type   : RFLX.Http2_Parameters.HTTP_2_Frame_Type_Enum;
+         Expected_Stream : RFLX.RFLX_Builtin_Types.Bit_Length);
+
+      procedure Decode_And_Check
+        (Label    : String;
+         Expected_Length : RFLX.RFLX_Builtin_Types.Bit_Length;
+         Expected_Type   : RFLX.Http2_Parameters.HTTP_2_Frame_Type_Enum;
+         Expected_Stream : RFLX.RFLX_Builtin_Types.Bit_Length)
+      is
+         Header : Wire.Frame_Header;
+         OK     : Boolean;
+      begin
+         Wire.Decode_Frame_Header
+           (Buffer => Buf.all (Buf'First .. Last),
+            Header => Header,
+            Valid  => OK);
+         Check (Label & " decode OK", OK);
+         Check (Label & " length", Header.Length = Expected_Length);
+         Check (Label & " type",
+                Header.Frame_Type_Value = Expected_Type);
+         Check (Label & " stream",
+                Header.Stream_Identifier = Expected_Stream);
+      end Decode_And_Check;
+
+   begin
+      Put_Line ("wire encoders:");
+
+      --  RST_STREAM stream 7, error CANCEL (8).
+      Wire.Encode_Rst_Stream
+        (Buffer => Buf, Last => Last,
+         Stream_Id => 7, Error_Code => 8);
+      Decode_And_Check ("RST_STREAM", 4,
+                        RFLX.Http2_Parameters.RST_STREAM, 7);
+      Check ("RST_STREAM body error_code = 8",
+             RFLX.RFLX_Builtin_Types.Bit_Length
+               (Buf (Buf'First + 12)) = 8);
+
+      --  WINDOW_UPDATE connection-level (stream 0), increment 65535.
+      Wire.Encode_Window_Update
+        (Buffer => Buf, Last => Last,
+         Stream_Id => 0, Increment => 65535);
+      Decode_And_Check ("WINDOW_UPDATE", 4,
+                        RFLX.Http2_Parameters.WINDOW_UPDATE, 0);
+
+      --  PING with 8 bytes of pattern data, ACK = False.
+      declare
+         Ping_Data : constant RFLX.RFLX_Types.Bytes (1 .. 8) :=
+           (1 => 1, 2 => 2, 3 => 3, 4 => 4,
+            5 => 5, 6 => 6, 7 => 7, 8 => 8);
+      begin
+         Wire.Encode_Ping
+           (Buffer => Buf, Last => Last,
+            Opaque_Data => Ping_Data, Ack => False);
+      end;
+      Decode_And_Check ("PING", 8,
+                        RFLX.Http2_Parameters.PING, 0);
+      Check ("PING flag ACK clear", Buf (Buf'First + 4) = 0);
+
+      Wire.Encode_Settings_Ack (Buffer => Buf, Last => Last);
+      Decode_And_Check ("SETTINGS-ACK", 0,
+                        RFLX.Http2_Parameters.SETTINGS, 0);
+      Check ("SETTINGS-ACK flag ACK set",
+             (Buf (Buf'First + 4) and 16#01#) /= 0);
+
+      --  SETTINGS with 2 parameters: ENABLE_PUSH=0, MAX_CONCURRENT_STREAMS=1.
+      declare
+         Params : constant Wire.Settings_List (1 .. 2) :=
+           ((Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
+             Value      => 0),
+            (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
+             Value      => 1));
+      begin
+         Wire.Encode_Settings (Buffer => Buf, Last => Last,
+                               Params => Params);
+      end;
+      Decode_And_Check ("SETTINGS", 12,
+                        RFLX.Http2_Parameters.SETTINGS, 0);
+
+      --  Round-trip the SETTINGS body.
+      declare
+         Round_Trip : Wire.Settings_List (1 .. 4);
+         Round_Last : Natural;
+         OK         : Boolean;
+      begin
+         Wire.Decode_Settings_Payload
+           (Buffer => Buf.all (Buf'First + 9 .. Last),
+            Valid  => OK,
+            Params => Round_Trip,
+            Params_Last => Round_Last);
+         Check ("SETTINGS payload decode", OK);
+         Check ("SETTINGS round-trip count = 2",
+                Round_Last = 2);
+         Check ("SETTINGS round-trip [1] = ENABLE_PUSH",
+                Round_Trip (1).Identifier =
+                  RFLX.Http2_Parameters.ENABLE_PUSH);
+         Check ("SETTINGS round-trip [2] = MAX_CONCURRENT_STREAMS=1",
+                Round_Trip (2).Identifier =
+                  RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS
+                and then Round_Trip (2).Value = 1);
+      end;
+
+      RFLX.RFLX_Types.Free (Buf);
+   end Test_Wire;
+
 begin
    Put_Line ("http2_core_tests");
    Test_Static_Table;
    Test_Int_Codec;
    Test_Huffman;
    Test_Hpack_Round_Trip;
+   Test_Wire;
    New_Line;
    Put_Line ("summary: " & Pass_Count'Image & " passed,"
              & Fail_Count'Image & " failed");
