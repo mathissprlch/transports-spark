@@ -1,3 +1,5 @@
+with "rflx_runtime.gpr";
+
 library project Mqtt_Core is
 
    for Library_Name use "mqtt_core";

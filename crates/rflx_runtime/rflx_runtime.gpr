@@ -1,0 +1,41 @@
+--  Shared RecordFlux runtime support library.
+--
+--  Every `rflx generate` invocation emits the same set of support
+--  files (rflx-rflx_arithmetic, rflx-rflx_builtin_types,
+--  rflx-rflx_generic_types*, rflx-rflx_message_sequence,
+--  rflx-rflx_scalar_sequence, rflx-rflx_types*, rflx.ads). When a
+--  binary `with`s two crates that each carry their own copy
+--  (e.g. mqtt_core + http2_core in one demo), gprbuild rejects the
+--  build with "unit X cannot belong to several projects".
+--
+--  This crate centralises those files so every *_core crate
+--  withs `rflx_runtime.gpr` instead of generating its own copy.
+--  Per-protocol generated files (rflx-publish-*, rflx-frame-*, etc.)
+--  remain in their owning *_core crate.
+--
+--  Source provenance: files copied verbatim from a fresh
+--  `rflx generate` output. Update procedure: regenerate any *_core
+--  crate, then `cp` its newly-emitted runtime files into
+--  src/, replacing what's here. They are upstream-stable across
+--  RecordFlux releases that share the same major version.
+
+library project Rflx_Runtime is
+
+   for Library_Name use "rflx_runtime";
+   for Library_Kind use "static";
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Library_Dir use "lib";
+   for Create_Missing_Dirs use "True";
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g",
+         "-O0",
+         "-gnatwa",
+         "-gnatVa",
+         "-gnatyM100",
+         "-gnata");
+   end Compiler;
+
+end Rflx_Runtime;

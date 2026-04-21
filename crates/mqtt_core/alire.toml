@@ -9,3 +9,9 @@ licenses = "MIT"
 tags = ["mqtt", "spark", "verified", "iot", "recordflux"]
 
 project-files = ["mqtt_core.gpr"]
+
+[[depends-on]]
+rflx_runtime = "*"
+
+[[pins]]
+rflx_runtime = { path = "../rflx_runtime" }

@@ -1,5 +1,6 @@
 with "grpc_ada.gpr";
 with "mqtt_core.gpr";
+with "http2_core.gpr";
 
 project Examples is
 

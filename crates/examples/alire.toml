@@ -18,8 +18,14 @@ grpc_ada = "*"
 [[depends-on]]
 mqtt_core = "*"
 
+[[depends-on]]
+http2_core = "*"
+
 [[pins]]
 grpc_ada = { path = "../grpc_ada" }
 
 [pins.mqtt_core]
 path = "../mqtt_core"
+
+[pins.http2_core]
+path = "../http2_core"

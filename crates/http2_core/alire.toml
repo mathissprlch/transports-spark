@@ -9,3 +9,9 @@ licenses = "MIT"
 tags = ["http2", "spark", "verified", "recordflux"]
 
 project-files = ["http2_core.gpr"]
+
+[[depends-on]]
+rflx_runtime = "*"
+
+[[pins]]
+rflx_runtime = { path = "../rflx_runtime" }

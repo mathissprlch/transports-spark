@@ -1,0 +1,10 @@
+name = "rflx_runtime"
+description = "Shared RecordFlux runtime support files"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+
+project-files = ["rflx_runtime.gpr"]
