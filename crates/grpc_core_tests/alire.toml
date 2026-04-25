@@ -1,0 +1,17 @@
+name = "grpc_core_tests"
+description = "Tests for grpc_core"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+
+executables = ["grpc_core_tests"]
+project-files = ["grpc_core_tests.gpr"]
+
+[[depends-on]]
+grpc_core = "*"
+
+[[pins]]
+grpc_core = { path = "../grpc_core" }
