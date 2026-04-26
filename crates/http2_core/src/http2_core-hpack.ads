@@ -26,7 +26,9 @@
 
 with Interfaces;
 
-package Http2_Core.Hpack is
+package Http2_Core.Hpack
+with SPARK_Mode
+is
 
    --  Maximum number of header fields per request (bounded; v0.2
    --  scope says "no per-RPC heap"). Sized for the gRPC header set:

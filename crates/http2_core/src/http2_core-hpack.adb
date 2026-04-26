@@ -2,7 +2,9 @@ with Http2_Core.Hpack.Static_Table;
 with Http2_Core.Hpack.Int_Codec;
 with Http2_Core.Hpack.String_Literal;
 
-package body Http2_Core.Hpack is
+package body Http2_Core.Hpack
+with SPARK_Mode
+is
 
    use type Interfaces.Unsigned_8;
 
