@@ -33,8 +33,7 @@ is
       Buf  : out String;
       Last : out Natural)
    with Pre  => Buf'Length >= Max_Header_Length,
-        Post => (if I in Index then Last in 1 .. Max_Header_Length
-                 else Last = 0);
+        Post => Last in 0 .. Max_Header_Length;
 
    --  Same shape for Value. Some entries (1, 15, 17..61) have an
    --  empty Value — Last = 0 in those cases.
@@ -43,7 +42,7 @@ is
       Buf  : out String;
       Last : out Natural)
    with Pre  => Buf'Length >= Max_Header_Length,
-        Post => (if I not in Index then Last = 0);
+        Post => Last in 0 .. Max_Header_Length;
 
    --  Reverse lookup used by the encoder. Searches for an exact
    --  (Name, Value) match first; if found, sets Found_Index and

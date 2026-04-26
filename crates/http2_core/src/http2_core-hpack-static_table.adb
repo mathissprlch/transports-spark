@@ -2,13 +2,19 @@ package body Http2_Core.Hpack.Static_Table
 with SPARK_Mode
 is
 
-   --  Internal record for the table.
+   --  Internal record for the table. Both *_Last fields are bounded
+   --  to Max_Header_Length via a type predicate so gnatprove can
+   --  discharge the slice-bound obligations on every Get_* /
+   --  Find call site without each one needing its own precondition.
    type Entry_Record is record
       Name       : String (1 .. Max_Header_Length) := (others => ' ');
       Name_Last  : Natural := 0;
       Value      : String (1 .. Max_Header_Length) := (others => ' ');
       Value_Last : Natural := 0;
-   end record;
+   end record
+     with Predicate =>
+       Name_Last in 0 .. Max_Header_Length
+       and then Value_Last in 0 .. Max_Header_Length;
 
    type Table is array (Index) of Entry_Record;
 
@@ -107,7 +113,7 @@ is
    is
    begin
       Buf := (others => ' ');
-      if I in Index then
+      if I in Index and then Entries (I).Name_Last > 0 then
          Buf (Buf'First .. Buf'First + Entries (I).Name_Last - 1) :=
            Entries (I).Name (1 .. Entries (I).Name_Last);
          Last := Entries (I).Name_Last;

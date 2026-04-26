@@ -13,43 +13,58 @@ is
    --  the wire (RFC 9113 §4.1); these centralize the shifts so the
    --  per-type encoders stay readable.
 
+   --  Bit_Len's upper bound (RFLX_Builtin_Types.Bit_Length goes up
+   --  to Length'Last * 8) is far above what any HTTP/2 frame field
+   --  can carry. The Put_Be* helpers explicitly bound their input V
+   --  to the wire-field width so gnatprove can discharge the
+   --  arithmetic obligations; the Get_Be* helpers post-condition
+   --  the same bound on their result.
+
    procedure Put_U8
-     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len);
+     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
+   with Pre => V <= 16#FF#;
+
    procedure Put_U8
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
    is
    begin
-      Buffer (At_Idx) := U8 (V mod 256);
+      Buffer (At_Idx) := U8 (V);
    end Put_U8;
 
    procedure Put_Be16
-     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len);
+     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
+   with Pre => V <= 16#FFFF#;
+
    procedure Put_Be16
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
    is
    begin
-      Buffer (At_Idx)     := U8 ((V / 256) mod 256);
+      Buffer (At_Idx)     := U8 (V / 256);
       Buffer (At_Idx + 1) := U8 (V mod 256);
    end Put_Be16;
 
    procedure Put_Be24
-     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len);
+     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
+   with Pre => V <= 16#FF_FFFF#;
+
    procedure Put_Be24
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
    is
    begin
-      Buffer (At_Idx)     := U8 ((V / 65536) mod 256);
+      Buffer (At_Idx)     := U8 (V / 65536);
       Buffer (At_Idx + 1) := U8 ((V / 256) mod 256);
       Buffer (At_Idx + 2) := U8 (V mod 256);
    end Put_Be24;
 
    procedure Put_Be32
-     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len);
+     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
+   with Pre => V <= 16#FFFF_FFFF#;
+
    procedure Put_Be32
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
    is
    begin
-      Buffer (At_Idx)     := U8 ((V / 16777216) mod 256);
+      Buffer (At_Idx)     := U8 (V / 16777216);
       Buffer (At_Idx + 1) := U8 ((V / 65536) mod 256);
       Buffer (At_Idx + 2) := U8 ((V / 256) mod 256);
       Buffer (At_Idx + 3) := U8 (V mod 256);
@@ -59,20 +74,23 @@ is
    function Get_Be16 (Buffer : RFLX.RFLX_Types.Bytes;
                       At_Idx : Index) return Bit_Len
    is (Bit_Len (Buffer (At_Idx)) * 256
-       + Bit_Len (Buffer (At_Idx + 1)));
+       + Bit_Len (Buffer (At_Idx + 1)))
+   with Post => Get_Be16'Result <= 16#FFFF#;
 
    function Get_Be24 (Buffer : RFLX.RFLX_Types.Bytes;
                       At_Idx : Index) return Bit_Len
    is (Bit_Len (Buffer (At_Idx)) * 65536
        + Bit_Len (Buffer (At_Idx + 1)) * 256
-       + Bit_Len (Buffer (At_Idx + 2)));
+       + Bit_Len (Buffer (At_Idx + 2)))
+   with Post => Get_Be24'Result <= 16#FF_FFFF#;
 
    function Get_Be32 (Buffer : RFLX.RFLX_Types.Bytes;
                       At_Idx : Index) return Bit_Len
    is (Bit_Len (Buffer (At_Idx)) * 16777216
        + Bit_Len (Buffer (At_Idx + 1)) * 65536
        + Bit_Len (Buffer (At_Idx + 2)) * 256
-       + Bit_Len (Buffer (At_Idx + 3)));
+       + Bit_Len (Buffer (At_Idx + 3)))
+   with Post => Get_Be32'Result <= 16#FFFF_FFFF#;
 
    --  Convert an HTTP_2_Frame_Type enum value into the 8-bit wire
    --  representation. The IANA-derived enum has Always_Valid, so
@@ -119,7 +137,12 @@ is
       Length            : Bit_Len;
       F_Type            : Frame_Type;
       Flags             : Byte;
-      Stream_Identifier : Bit_Len);
+      Stream_Identifier : Bit_Len)
+   with
+     Pre => Buffer /= null
+            and then Buffer'Length >= 9
+            and then Length <= 16#FF_FFFF#
+            and then Stream_Identifier <= 16#FFFF_FFFF#;
 
    procedure Put_Header
      (Buffer            : Bytes_Ptr;
