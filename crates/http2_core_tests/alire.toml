@@ -7,7 +7,7 @@ maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
 maintainers-logins = ["mathis"]
 licenses = "MIT"
 
-executables = ["http2_core_tests"]
+executables = ["http2_core_tests", "http2_core_fuzz"]
 project-files = ["http2_core_tests.gpr"]
 
 [[depends-on]]
