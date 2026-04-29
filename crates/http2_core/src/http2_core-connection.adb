@@ -362,12 +362,17 @@ package body Http2_Core.Connection is
                            raise RPC_Error
                              with "response body overflow";
                         end if;
-                        for I in 0 .. Integer (Header.Length) - 1 loop
+                        --  Loop from 1 instead of 0 to avoid the
+                        --  Index(0) underflow that crashed every
+                        --  iteration of iteration-01's http2_soak
+                        --  (RFLX.RFLX_Types.Index'First = 1, so
+                        --  Index(0) raises Constraint_Error).
+                        for I in 1 .. Integer (Header.Length) loop
                            Body_Cursor := Body_Cursor + 1;
                            Response_Body
                              (RFLX.RFLX_Types.Index (Body_Cursor)) :=
                              C.Buf.all
-                               (C.Buf'First + 9
+                               (C.Buf'First + 8
                                 + RFLX.RFLX_Types.Index (I));
                         end loop;
                      end;

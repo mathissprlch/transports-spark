@@ -329,7 +329,17 @@ is
                      end;
                      Idx := IC_Last + 1;
                   else
-                     --  Literal name follows the prefix byte.
+                     --  Literal name follows the prefix byte. Bound-
+                     --  check before delegating to String_Literal.Decode
+                     --  whose precondition is `First in Input'Range`;
+                     --  fuzz iteration 01 found that a malformed
+                     --  fragment ending exactly at the prefix byte
+                     --  triggers Assertion_Error here without this
+                     --  guard.
+                     if IC_Last + 1 > Input'Last then
+                        Output_OK := False;
+                        return;
+                     end if;
                      declare
                         Name_Buf  : String_Literal.Octet_Array (Headers (Hdr_Idx + 0).Name'Range);
                         SL_Out    : Natural;
@@ -356,7 +366,13 @@ is
                      end;
                   end if;
 
-                  --  Value is always literal in §6.2.*.
+                  --  Value is always literal in §6.2.*. Same
+                  --  bound-check as for the literal name above —
+                  --  same fuzz-found assertion failure.
+                  if Idx > Input'Last then
+                     Output_OK := False;
+                     return;
+                  end if;
                   declare
                      Val_Buf  : String_Literal.Octet_Array
                        (Headers (Hdr_Idx).Value'Range);
