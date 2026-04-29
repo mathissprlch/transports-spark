@@ -1,0 +1,3 @@
+*.log
+*.pid
+crashes_summary.txt
