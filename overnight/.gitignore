@@ -1,3 +1,8 @@
 *.log
 *.pid
 crashes_summary.txt
+
+# Archive iteration logs ARE committed (their contents document
+# what we found). Just track them under iteration_NN/ subdirs.
+!iteration_*/*.log
+!iteration_*/*.pid
