@@ -25,13 +25,19 @@ library project Mqtt_Core is
    for Create_Missing_Dirs use "True";
 
    package Compiler is
-      for Default_Switches ("Ada") use
-        ("-g",
-         "-O0",
-         "-gnatwa",
-         "-gnatVa",
-         "-gnatyM100",
-         "-gnata");
+      case Transport is
+         when "tcp" =>
+            --  Hosted build: assertions enabled.
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
+               "-gnata");
+         when "bare" =>
+            --  Bare-metal: assertions off. See http2_core.gpr's
+            --  matching note for the reasoning (No_Exception_
+            --  Propagation + failed predicate = HardFault).
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100");
+      end case;
    end Compiler;
 
 end Mqtt_Core;

@@ -18,6 +18,8 @@
 --  Standard "scripts/baremetal-build.sh" + "scripts/baremetal-run.sh"
 --  wrappers automate both.
 
+with "http2_core.gpr";
+
 project Baremetal_Pic is
 
    for Target use "arm-eabi";

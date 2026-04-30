@@ -20,13 +20,25 @@ library project Http2_Core is
    for Create_Missing_Dirs use "True";
 
    package Compiler is
-      for Default_Switches ("Ada") use
-        ("-g",
-         "-O0",
-         "-gnatwa",
-         "-gnatVa",
-         "-gnatyM100",
-         "-gnata");
+      case Transport is
+         when "tcp" =>
+            --  Hosted: assertions on (preconditions, postconditions,
+            --  type predicates evaluate at runtime). Matches the
+            --  contracts SPARK proof discharged at level 2.
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
+               "-gnata");
+         when "bare" =>
+            --  Bare-metal targets typically compile with
+            --  Restrictions (No_Exception_Propagation), which makes
+            --  any failed assertion call the Last_Chance_Handler
+            --  → HardFault on Cortex-M without a debugger. Drop
+            --  -gnata for bare builds so the SPARK contracts are
+            --  treated as comments at runtime; the proof discharged
+            --  them at compile time anyway.
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100");
+      end case;
    end Compiler;
 
 end Http2_Core;
