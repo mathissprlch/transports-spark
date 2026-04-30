@@ -2,9 +2,24 @@ with "rflx_runtime.gpr";
 
 library project Mqtt_Core is
 
+   --  Transport implementation: tcp (default — GNAT.Sockets,
+   --  hosted Linux/Darwin) or bare (stub for bare-metal builds;
+   --  real Cortex-M / Cortex-R / Zynq Transport bodies will
+   --  replace `src/transport_bare/mqtt_core-transport.adb` once
+   --  the runtime + driver layer is in place).
+   --
+   --  Set via -XTRANSPORT=bare on the gprbuild / alr build
+   --  command line. The two transport_* subdirectories are
+   --  mutually exclusive — only one is added to Source_Dirs.
+   type Transport_Kind is ("tcp", "bare");
+   Transport : Transport_Kind := external ("TRANSPORT", "tcp");
+
    for Library_Name use "mqtt_core";
    for Library_Kind use "static";
-   for Source_Dirs use ("src", "generated");
+   for Source_Dirs use
+     ("src",
+      "src/transport_" & Transport,
+      "generated");
    for Object_Dir use "obj";
    for Library_Dir use "lib";
    for Create_Missing_Dirs use "True";

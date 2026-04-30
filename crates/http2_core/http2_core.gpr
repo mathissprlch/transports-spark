@@ -2,9 +2,19 @@ with "rflx_runtime.gpr";
 
 library project Http2_Core is
 
+   --  Transport implementation: tcp (default — GNAT.Sockets) or
+   --  bare (stub, no GNAT.Sockets, for bare-metal cross builds).
+   --  Mirrors mqtt_core.gpr; set TRANSPORT=bare on both crates
+   --  together when building for Cortex-M / Zynq.
+   type Transport_Kind is ("tcp", "bare");
+   Transport : Transport_Kind := external ("TRANSPORT", "tcp");
+
    for Library_Name use "http2_core";
    for Library_Kind use "static";
-   for Source_Dirs use ("src", "generated");
+   for Source_Dirs use
+     ("src",
+      "src/transport_" & Transport,
+      "generated");
    for Object_Dir use "obj";
    for Library_Dir use "lib";
    for Create_Missing_Dirs use "True";
