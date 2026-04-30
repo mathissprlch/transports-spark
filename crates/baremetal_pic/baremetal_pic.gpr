@@ -1,0 +1,45 @@
+--  baremetal_pic — bare-metal Cortex-M3 PoC.
+--
+--  Builds for TI Stellaris LM3S811 with the AdaCore light-lm3s
+--  runtime. Currently a standalone "hello world" — the next step
+--  is to wire in http2_core (built with TRANSPORT=bare) so we
+--  can exercise the SPARK protocol code on a real bare-metal
+--  target. See `src/baremetal_pic.adb` for the wiring blocker.
+--
+--  Build:
+--    PATH=...gnat_arm_elf...:...gprbuild...:$PATH \
+--    gprbuild --target=arm-eabi --RTS=light-lm3s \
+--             -P baremetal_pic.gpr
+--
+--  Run:
+--    qemu-system-arm -M lm3s6965evb -nographic \
+--                    -kernel obj/baremetal_pic
+--
+--  Standard "scripts/baremetal-build.sh" + "scripts/baremetal-run.sh"
+--  wrappers automate both.
+
+project Baremetal_Pic is
+
+   for Target use "arm-eabi";
+   for Runtime ("Ada") use "light-lm3s";
+
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Exec_Dir use "obj";
+   for Create_Missing_Dirs use "True";
+   for Main use ("baremetal_pic.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g",
+         "-O0",
+         "-gnatwa",
+         "-mcpu=cortex-m3",
+         "-mthumb");
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use ();
+   end Linker;
+
+end Baremetal_Pic;
