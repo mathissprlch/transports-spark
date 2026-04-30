@@ -1,20 +1,33 @@
---  baremetal_pic — Proof-In-Concrete that the SPARK protocol code
---  in http2_core actually runs on a bare-metal ARM Cortex-M3.
+--  baremetal_pic — SPARK protocol code on bare-metal Cortex-M3,
+--  ZERO heap allocation.
 --
---  Target: TI Stellaris LM3S811 (Cortex-M3) under
---  `qemu-system-arm -M lm3s6965evb -nographic`. The light-lm3s
---  runtime ships with the gnat_arm_elf toolchain. UART0 maps
---  to QEMU's stdio so Ada.Text_IO output goes to the host.
+--  Target: TI Stellaris LM3S811 / QEMU lm3s6965evb. light-lm3s
+--  runtime. UART0 → host stdio.
 --
---  Test surface:
---    1. Static_Table.Get_Name on indices 1..5 of RFC 7541 §A
---    2. Hpack.Huffman.Encode on a short ASCII string
---    3. Hpack.Huffman.Decode round-trip
---    4. Hpack.Int_Codec.Encode/Decode at N=5 (RFC §C.1.2)
+--  What this binary exercises (all heap-free):
+--    1. Static_Table.Get_Name on RFC 7541 §A indices 1..5
+--    2. Huffman.Encode + Decode round-trip (caller-supplied
+--       Octet_Array buffers, no Bytes_Ptr)
+--    3. Int_Codec.Encode + Decode at N=5 (RFC 7541 §C.1.2)
+--    4. Hpack.Encode of a realistic gRPC request header set,
+--       then Hpack.Decode of the same bytes — full encode/
+--       decode "round-trip on the wire" simulated by passing
+--       the buffer between two procedure calls in process.
 --
---  All inputs are in-memory; no transport. The protocol code
---  itself is what's being smoke-tested on bare metal — not the
---  I/O layer.
+--  What this binary does NOT exercise (yet):
+--    * mqtt_core.Wire codecs — those take Bytes_Ptr (access-to-
+--      unconstrained), which on Ada requires either heap
+--      allocation or a custom storage pool. Refactoring the
+--      MQTT API to take `in out Bytes` slices is on the
+--      bare-metal track roadmap (CLAUDE.md).
+--    * A real network transport — that's transport_bare's
+--      stub for now; UART loopback or LWIP over Ethernet is
+--      the next chunk after the API refactor lands.
+--
+--  Stack: linker bumps __stack_size to 0x4000 (16 KB) because
+--  Hpack.Decode's Header_Block-of-32 record alone is several
+--  hundred bytes. The default 2 KB light-lm3s stack would
+--  overflow.
 
 with Ada.Text_IO;
 
@@ -33,7 +46,7 @@ procedure Baremetal_Pic is
       Put_Line ("baremetal_pic: SPARK on bare-metal Cortex-M3");
       Put_Line ("  target  = QEMU lm3s6965evb (TI Stellaris LM3S)");
       Put_Line ("  runtime = light-lm3s (no OS, no heap, no tasking)");
-      Put_Line ("  test surface = http2_core.Hpack codecs");
+      Put_Line ("  scope   = http2_core.Hpack codecs (heap-free)");
       New_Line;
    end Banner;
 
@@ -42,7 +55,7 @@ procedure Baremetal_Pic is
       Buf  : String (1 .. Max_Header_Length);
       Last : Natural;
    begin
-      Put_Line ("static table:");
+      Put_Line ("static table (RFC 7541 §A):");
       for I in 1 .. 5 loop
          Static_Table.Get_Name (I, Buf, Last);
          Put_Line ("  #" & I'Image & " name=" & Buf (1 .. Last));
@@ -100,8 +113,6 @@ procedure Baremetal_Pic is
       V    : Natural;
    begin
       Put_Line ("integer codec (RFC 7541 §C.1.2):");
-      --  1337 with N=5 → 3 bytes 0x1F 0x9A 0x0A
-      Buf := (others => 0);
       Int_Codec.Encode
         (Value       => 1337,
          N           => 5,
@@ -120,6 +131,66 @@ procedure Baremetal_Pic is
       Put_Line ("  decode -> " & V'Image & " ok=" & OK'Image);
    end Test_Int_Codec;
 
+   --  In-process simulated wire round trip: encode a realistic
+   --  gRPC request header set with Hpack.Encode into a stack
+   --  buffer, hand the same bytes to Hpack.Decode (representing
+   --  "the other side" of an HTTP/2 connection), verify every
+   --  (name, value) pair matches.
+   --
+   --  This is the closest we can get to "bare-metal network
+   --  exercise" without an actual transport: the SPARK protocol
+   --  code transforms application data into wire bytes and back,
+   --  on Cortex-M3, with no heap involved.
+   procedure Test_Hpack_Round_Trip;
+   procedure Test_Hpack_Round_Trip is
+      Request_Headers : constant Header_Block (1 .. 4) :=
+        (Make_Header (":method", "POST"),
+         Make_Header (":scheme", "http"),
+         Make_Header (":path", "/grpc.Hello/Say"),
+         Make_Header ("content-type", "application/grpc"));
+      Wire        : Octet_Array (1 .. 256) := (others => 0);
+      Wire_Last   : Natural;
+      Enc_OK      : Boolean;
+      Out_Headers : Header_Block (1 .. 8);
+      Out_Last    : Natural;
+      Dec_OK      : Boolean;
+      Match_Count : Natural := 0;
+   begin
+      Put_Line ("hpack round-trip (gRPC-style header set):");
+      Encode
+        (Headers     => Request_Headers,
+         Output      => Wire,
+         Output_Last => Wire_Last,
+         Output_OK   => Enc_OK);
+      Put_Line ("  encode -> " & Wire_Last'Image
+                & " wire bytes, ok=" & Enc_OK'Image);
+
+      Decode
+        (Input        => Wire (1 .. Wire_Last),
+         Headers      => Out_Headers,
+         Headers_Last => Out_Last,
+         Output_OK    => Dec_OK);
+      Put_Line ("  decode -> " & Out_Last'Image
+                & " headers, ok=" & Dec_OK'Image);
+
+      for I in Request_Headers'Range loop
+         declare
+            A : Header_Field renames Request_Headers (I);
+            B : Header_Field renames Out_Headers (I);
+         begin
+            if A.Name (1 .. A.Name_Last) = B.Name (1 .. B.Name_Last)
+              and then
+              A.Value (1 .. A.Value_Last) = B.Value (1 .. B.Value_Last)
+            then
+               Match_Count := Match_Count + 1;
+            end if;
+         end;
+      end loop;
+      Put_Line ("  matched " & Match_Count'Image
+                & " of" & Request_Headers'Length'Image
+                & " (name, value) pairs after round-trip");
+   end Test_Hpack_Round_Trip;
+
 begin
    Banner;
    Test_Static_Table;
@@ -127,6 +198,8 @@ begin
    Test_Huffman;
    New_Line;
    Test_Int_Codec;
+   New_Line;
+   Test_Hpack_Round_Trip;
    New_Line;
    Put_Line ("baremetal_pic: all tests done; halting in idle loop.");
 

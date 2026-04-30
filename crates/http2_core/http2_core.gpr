@@ -29,15 +29,15 @@ library project Http2_Core is
               ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
                "-gnata");
          when "bare" =>
-            --  Bare-metal targets typically compile with
-            --  Restrictions (No_Exception_Propagation), which makes
-            --  any failed assertion call the Last_Chance_Handler
-            --  → HardFault on Cortex-M without a debugger. Drop
-            --  -gnata for bare builds so the SPARK contracts are
-            --  treated as comments at runtime; the proof discharged
-            --  them at compile time anyway.
+            --  Bare-metal: assertions off (No_Exception_Propagation
+            --  restriction means a failed contract → HardFault).
+            --  -O2 + no debug info to fit Cortex-M flash budgets;
+            --  -g + -O0 doubles+ the binary size and overflows the
+            --  256KB LM3S6965 flash when both http2_core and
+            --  mqtt_core are linked into one image.
             for Default_Switches ("Ada") use
-              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100");
+              ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
+               "-ffunction-sections", "-fdata-sections");
       end case;
    end Compiler;
 

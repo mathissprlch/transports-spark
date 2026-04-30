@@ -26,6 +26,18 @@ is
    type Bytes is array (Index range <>) of Byte;
 
    type Bytes_Ptr is access Bytes;
+   --  Original RecordFlux-generated declaration. Pool-specific
+   --  access type → heap allocation only. For bare-metal targets
+   --  this means any code that takes a Bytes_Ptr parameter
+   --  cannot be called with a static buffer. The clean fix is to
+   --  refactor the protocol API to take `in out Bytes` slices
+   --  instead of `Bytes_Ptr`; tracked as a separate follow-up
+   --  on the bare-metal track. An earlier attempt to relax this
+   --  to `access all Bytes` plus 'Unchecked_Access / address-cast
+   --  failed because Bytes_Ptr designates an UNCONSTRAINED array
+   --  type — the bounds (dope vector) live IN the access value
+   --  itself, not in the pointee, and bare 'Address conversion
+   --  doesn't carry them.
 
    type Bit_Length is range 0 .. Length'Last * 8;
 

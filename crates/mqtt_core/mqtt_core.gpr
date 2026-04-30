@@ -32,11 +32,12 @@ library project Mqtt_Core is
               ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
                "-gnata");
          when "bare" =>
-            --  Bare-metal: assertions off. See http2_core.gpr's
-            --  matching note for the reasoning (No_Exception_
-            --  Propagation + failed predicate = HardFault).
+            --  Bare-metal: assertions off, optimization on, no
+            --  debug info — fit Cortex-M flash budgets. See
+            --  http2_core.gpr's matching note.
             for Default_Switches ("Ada") use
-              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100");
+              ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
+               "-ffunction-sections", "-fdata-sections");
       end case;
    end Compiler;
 

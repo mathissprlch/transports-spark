@@ -19,6 +19,12 @@
 --  wrappers automate both.
 
 with "http2_core.gpr";
+--  mqtt_core temporarily not wired in. Mqtt_Core.Wire takes a
+--  Bytes_Ptr (access-to-unconstrained Bytes), which on Ada
+--  requires heap allocation or a custom storage pool — neither
+--  acceptable for the v0.2 bare-metal scope. Refactoring the
+--  MQTT wire API to take `in out Bytes` slices is on the
+--  bare-metal track roadmap.
 
 project Baremetal_Pic is
 
@@ -33,15 +39,27 @@ project Baremetal_Pic is
 
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-g",
-         "-O0",
+        ("-O2",
          "-gnatwa",
          "-mcpu=cortex-m3",
-         "-mthumb");
+         "-mthumb",
+         "-ffunction-sections",
+         "-fdata-sections");
    end Compiler;
 
    package Linker is
-      for Default_Switches ("Ada") use ();
+      --  --gc-sections drops unused code; pairs with the
+      --  -ffunction-sections / -fdata-sections compiler flags so
+      --  unreferenced procedures from the with'd libraries don't
+      --  consume flash.
+      --
+      --  --defsym=__stack_size=0x4000 raises the stack to 16 KB.
+      --  light-lm3s defaults to 2 KB which overflows on the very
+      --  first RFLX message-context record (those are several
+      --  hundred bytes each, and the codecs declare 2-3 nested).
+      for Default_Switches ("Ada") use
+        ("-Wl,--gc-sections",
+         "-Wl,--defsym=__stack_size=0x4000");
    end Linker;
 
 end Baremetal_Pic;
