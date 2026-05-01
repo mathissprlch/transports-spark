@@ -19,12 +19,11 @@
 --  wrappers automate both.
 
 with "http2_core.gpr";
---  mqtt_core temporarily not wired in. Mqtt_Core.Wire takes a
---  Bytes_Ptr (access-to-unconstrained Bytes), which on Ada
---  requires heap allocation or a custom storage pool — neither
---  acceptable for the v0.2 bare-metal scope. Refactoring the
---  MQTT wire API to take `in out Bytes` slices is on the
---  bare-metal track roadmap.
+with "mqtt_core.gpr";
+--  Both *_core libs are wired in with TRANSPORT=bare. They
+--  contain ZERO `new` calls (verified) — the application owns
+--  all buffers and hands them in via Attach_Buffers / Attach_
+--  Buffer. Bare-metal-clean.
 
 project Baremetal_Pic is
 

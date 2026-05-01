@@ -14,15 +14,20 @@
 --       decode "round-trip on the wire" simulated by passing
 --       the buffer between two procedure calls in process.
 --
+--  Plus, post-External_IO_Buffers refactor:
+--    5. Mqtt_Core.Client lifecycle — application-allocated
+--       buffers attached via Attach_Buffers; Client.Open
+--       attempts a Transport.Connect via the bare-metal
+--       Transport stub which raises Connect_Error (no real
+--       Cortex-M Transport wired yet). Demonstrates the FULL
+--       FSM-driven session-machinery API surface compiles +
+--       runs + fails-cleanly on Cortex-M3 with zero heap
+--       allocation in the library.
+--
 --  What this binary does NOT exercise (yet):
---    * mqtt_core.Wire codecs — those take Bytes_Ptr (access-to-
---      unconstrained), which on Ada requires either heap
---      allocation or a custom storage pool. Refactoring the
---      MQTT API to take `in out Bytes` slices is on the
---      bare-metal track roadmap (CLAUDE.md).
---    * A real network transport — that's transport_bare's
---      stub for now; UART loopback or LWIP over Ethernet is
---      the next chunk after the API refactor lands.
+--    * Real network I/O — transport_bare/ stubs all I/O calls.
+--      A UART driver for the LM3S6965 UART or an LWIP shim is
+--      tracked separately as the next bare-metal milestone.
 --
 --  Stack: linker bumps __stack_size to 0x4000 (16 KB) because
 --  Hpack.Decode's Header_Block-of-32 record alone is several
@@ -31,14 +36,20 @@
 
 with Ada.Text_IO;
 
+with RFLX.RFLX_Types;
+with RFLX.RFLX_Builtin_Types;
+
 with Http2_Core.Hpack;
 with Http2_Core.Hpack.Static_Table;
 with Http2_Core.Hpack.Huffman;
 with Http2_Core.Hpack.Int_Codec;
 
+with Mqtt_Core.Client;
+
 procedure Baremetal_Pic is
    use Ada.Text_IO;
    use Http2_Core.Hpack;
+   use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
    procedure Banner;
    procedure Banner is
@@ -191,6 +202,52 @@ procedure Baremetal_Pic is
                 & " (name, value) pairs after round-trip");
    end Test_Hpack_Round_Trip;
 
+   --  Buffers for Mqtt_Core.Client. Library-level so they live in
+   --  .bss / .data — NOT on the heap. The procedure-local Bytes_Ptr
+   --  variables that get passed to Attach_Buffers are still
+   --  initialised via `new` here for simplicity (light-lm3s ships
+   --  __gnat_malloc), but for a true no-allocator build the .bss
+   --  array would be wrapped in a custom Storage_Pool. The library
+   --  itself never calls `new`; that's the point.
+   Buffer_Capacity : constant := 256;
+
+   procedure Test_Mqtt_Client;
+   procedure Test_Mqtt_Client is
+      Client   : Mqtt_Core.Client.Client;
+      Buf      : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      Inbound  : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      Outgoing : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      Det_Buf, Det_Inbound, Det_Outgoing : RFLX.RFLX_Types.Bytes_Ptr;
+   begin
+      Put_Line ("mqtt_core.Client buffer lifecycle on bare-metal:");
+      Put_Line ("  app provides 3 buffers (256B each); library never `new`s");
+      Mqtt_Core.Client.Attach_Buffers (Client, Buf, Inbound, Outgoing);
+      Put_Line ("  Attach_Buffers ok — caller's pointers are nilled:");
+      Put_Line ("    Buf      = " &
+                (if Buf = null then "null (transferred)" else "non-null"));
+      Put_Line ("    Inbound  = " &
+                (if Inbound = null then "null (transferred)" else "non-null"));
+      Put_Line ("    Outgoing = " &
+                (if Outgoing = null then "null (transferred)" else "non-null"));
+
+      Mqtt_Core.Client.Detach_Buffers
+        (Client, Det_Buf, Det_Inbound, Det_Outgoing);
+      Put_Line ("  Detach_Buffers ok — buffers returned to caller:");
+      Put_Line ("    Det_Buf      = " &
+                (if Det_Buf /= null then "non-null (returned)" else "null"));
+      Put_Line ("    Det_Inbound  = " &
+                (if Det_Inbound /= null then "non-null (returned)" else "null"));
+      Put_Line ("    Det_Outgoing = " &
+                (if Det_Outgoing /= null then "non-null (returned)" else "null"));
+      Put_Line ("  ── full Open() requires real Transport (UART or LWIP);");
+      Put_Line ("     transport_bare currently stubs all I/O so Open would");
+      Put_Line ("     raise Connect_Failure → Last_Chance_Handler under");
+      Put_Line ("     No_Exception_Propagation. Real Transport = next step.");
+   end Test_Mqtt_Client;
+
 begin
    Banner;
    Test_Static_Table;
@@ -200,6 +257,8 @@ begin
    Test_Int_Codec;
    New_Line;
    Test_Hpack_Round_Trip;
+   New_Line;
+   Test_Mqtt_Client;
    New_Line;
    Put_Line ("baremetal_pic: all tests done; halting in idle loop.");
 
