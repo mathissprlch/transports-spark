@@ -134,6 +134,15 @@ private
    type Client is limited record
       Trans          : Transport.Channel;
       Buf            : RFLX.RFLX_Types.Bytes_Ptr := null;
+      --  Inbound + Outgoing buffers required by the External_IO_
+      --  Buffers state-machine API (.rfi files set this on every
+      --  session machine). The FSM takes ownership of these at
+      --  Initialize, returns at Finalize. Allocated once at Open,
+      --  freed at Close. NOTE: between Initialize and Finalize
+      --  these fields are null (FSM has them); the field is
+      --  re-populated at Finalize.
+      Inbound_Buf    : RFLX.RFLX_Types.Bytes_Ptr := null;
+      Outgoing_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
       Next_Packet_Id :
         RFLX.Control_Packet.Packet_Identifier := 1;
       Pending        : Pending_Array;

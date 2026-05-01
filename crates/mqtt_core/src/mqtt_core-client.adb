@@ -147,6 +147,14 @@ package body Mqtt_Core.Client is
       if C.Buf = null then
          C.Buf := new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
       end if;
+      if C.Inbound_Buf = null then
+         C.Inbound_Buf :=
+           new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      end if;
+      if C.Outgoing_Buf = null then
+         C.Outgoing_Buf :=
+           new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      end if;
 
       Transport.Connect (C.Trans, Host, Port);
 
@@ -157,7 +165,7 @@ package body Mqtt_Core.Client is
          Keep_Alive_S  => RFLX.Connect.Keep_Alive (Keep_Alive_S),
          Clean_Session => Clean_Session);
 
-      FSM.Initialize (Ctx);
+      FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
          FSM.Write
            (Ctx, FSM.C_App_Outbox,
@@ -209,7 +217,7 @@ package body Mqtt_Core.Client is
          if FSM.Needs_Data (Ctx, FSM.C_Network) then
             Read_Full_Packet (C, Last, Read_Ok);
             if not Read_Ok then
-               FSM.Finalize (Ctx);
+               FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
                Transport.Close (C.Trans);
                raise Connect_Failure with "no CONNACK";
             end if;
@@ -221,7 +229,7 @@ package body Mqtt_Core.Client is
          end if;
       end loop Drive_Loop;
 
-      FSM.Finalize (Ctx);
+      FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
 
       if not Got_Connack or not Connack_Ok then
          Transport.Close (C.Trans);
@@ -270,7 +278,7 @@ package body Mqtt_Core.Client is
 
       Wire.Encode_Publish_Qos1 (C.Buf, Last, Pid, Topic, Payload);
 
-      FSM.Initialize (Ctx);
+      FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
          FSM.Write
            (Ctx, FSM.C_App_Outbox,
@@ -334,7 +342,7 @@ package body Mqtt_Core.Client is
          if FSM.Needs_Data (Ctx, FSM.C_Network) then
             Read_Full_Packet (C, Last, Read_Ok);
             if not Read_Ok then
-               FSM.Finalize (Ctx);
+               FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
                raise Publish_Failure with "EOF or socket error";
             end if;
             if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -345,7 +353,7 @@ package body Mqtt_Core.Client is
          end if;
       end loop Drive_Loop;
 
-      FSM.Finalize (Ctx);
+      FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if not Got_Puback then
          raise Publish_Failure with "no PUBACK";
       elsif Puback_Pid /= Pid then
@@ -383,7 +391,7 @@ package body Mqtt_Core.Client is
 
       Wire.Encode_Publish_Qos2 (C.Buf, Last, Pid, Topic, Payload);
 
-      FSM.Initialize (Ctx);
+      FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
          FSM.Write
            (Ctx, FSM.C_App_Outbox,
@@ -467,7 +475,7 @@ package body Mqtt_Core.Client is
          if FSM.Needs_Data (Ctx, FSM.C_Network) then
             Read_Full_Packet (C, Last, Read_Ok);
             if not Read_Ok then
-               FSM.Finalize (Ctx);
+               FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
                raise Publish_Failure with "EOF or socket error";
             end if;
             if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -478,7 +486,7 @@ package body Mqtt_Core.Client is
          end if;
       end loop Drive_Loop;
 
-      FSM.Finalize (Ctx);
+      FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if not Got_Pubrec then
          raise Publish_Failure with "no PUBREC";
       elsif Pubrec_Pid /= Pid then
@@ -518,7 +526,7 @@ package body Mqtt_Core.Client is
 
       Wire.Encode_Subscribe (C.Buf, Last, Pid, Filters);
 
-      FSM.Initialize (Ctx);
+      FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
          FSM.Write
            (Ctx, FSM.C_App_Outbox,
@@ -581,7 +589,7 @@ package body Mqtt_Core.Client is
          if FSM.Needs_Data (Ctx, FSM.C_Network) then
             Read_Full_Packet (C, Last, Read_Ok);
             if not Read_Ok then
-               FSM.Finalize (Ctx);
+               FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
                raise Subscribe_Failure with "EOF or socket error";
             end if;
             if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -592,7 +600,7 @@ package body Mqtt_Core.Client is
          end if;
       end loop Drive_Loop;
 
-      FSM.Finalize (Ctx);
+      FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if not Got_Suback then
          raise Subscribe_Failure with "no SUBACK";
       elsif Reply_Pid /= Pid then
@@ -643,7 +651,7 @@ package body Mqtt_Core.Client is
 
       Wire.Encode_Unsubscribe (C.Buf, Last, Pid, Filters);
 
-      FSM.Initialize (Ctx);
+      FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
          FSM.Write
            (Ctx, FSM.C_App_Outbox,
@@ -705,7 +713,7 @@ package body Mqtt_Core.Client is
          if FSM.Needs_Data (Ctx, FSM.C_Network) then
             Read_Full_Packet (C, Last, Read_Ok);
             if not Read_Ok then
-               FSM.Finalize (Ctx);
+               FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
                raise Unsubscribe_Failure with "EOF or socket error";
             end if;
             if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -716,7 +724,7 @@ package body Mqtt_Core.Client is
          end if;
       end loop Drive_Loop;
 
-      FSM.Finalize (Ctx);
+      FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if not Got_Unsuback then
          raise Unsubscribe_Failure with "no UNSUBACK";
       elsif Reply_Pid /= Pid then
@@ -824,13 +832,16 @@ package body Mqtt_Core.Client is
          Read_Ok : Boolean;
          Got     : Boolean := False;
       begin
-         FSM.Initialize (Ctx);
+         --  Receive machine has only an Inbound message variable
+         --  (no Outgoing) — its Initialize/Finalize take a single
+         --  Bytes_Ptr.
+         FSM.Initialize (Ctx, C.Inbound_Buf);
 
          --  Pre-feed Network data so the first Reading transition
          --  has bytes to Verify against.
          Read_Full_Packet (C, Last, Read_Ok);
          if not Read_Ok then
-            FSM.Finalize (Ctx);
+            FSM.Finalize (Ctx, C.Inbound_Buf);
             raise Receive_Failure with "EOF or socket error";
          end if;
          if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -886,7 +897,7 @@ package body Mqtt_Core.Client is
             if FSM.Needs_Data (Ctx, FSM.C_Network) then
                Read_Full_Packet (C, Last, Read_Ok);
                if not Read_Ok then
-                  FSM.Finalize (Ctx);
+                  FSM.Finalize (Ctx, C.Inbound_Buf);
                   raise Receive_Failure with "EOF or socket error";
                end if;
                if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -897,7 +908,7 @@ package body Mqtt_Core.Client is
             end if;
          end loop Drive_Loop;
 
-         FSM.Finalize (Ctx);
+         FSM.Finalize (Ctx, C.Inbound_Buf);
          if not Got then
             raise Receive_Failure with "FSM exited without PUBLISH";
          end if;
@@ -925,6 +936,12 @@ package body Mqtt_Core.Client is
       end if;
       if C.Buf /= null then
          RFLX.RFLX_Types.Free (C.Buf);
+      end if;
+      if C.Inbound_Buf /= null then
+         RFLX.RFLX_Types.Free (C.Inbound_Buf);
+      end if;
+      if C.Outgoing_Buf /= null then
+         RFLX.RFLX_Types.Free (C.Outgoing_Buf);
       end if;
    end Close;
 
