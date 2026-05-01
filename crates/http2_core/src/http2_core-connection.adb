@@ -94,9 +94,11 @@ package body Http2_Core.Connection is
       Got_Peer_Settings : Boolean := False;
       Got_Settings_Ack  : Boolean := False;
    begin
+      --  Buffer is caller-supplied via Attach_Buffer. The library
+      --  never calls `new`; the application owns the bytes.
       if C.Buf = null then
-         C.Buf :=
-           new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+         raise Connect_Error
+           with "Http2_Core.Connection.Attach_Buffer must be called before Open";
       end if;
 
       Transport.Connect (C.Trans, Host, Port);
@@ -421,9 +423,24 @@ package body Http2_Core.Connection is
       if Transport.Is_Open (C.Trans) then
          Transport.Close (C.Trans);
       end if;
-      if C.Buf /= null then
-         RFLX.RFLX_Types.Free (C.Buf);
-      end if;
+      --  Buffer ownership stays with the application; Close does
+      --  NOT free. Use Detach_Buffer to recover.
    end Close;
+
+   procedure Attach_Buffer
+     (C   : in out Connection;
+      Buf : in out RFLX.RFLX_Types.Bytes_Ptr) is
+   begin
+      C.Buf := Buf;
+      Buf   := null;
+   end Attach_Buffer;
+
+   procedure Detach_Buffer
+     (C   : in out Connection;
+      Buf : out RFLX.RFLX_Types.Bytes_Ptr) is
+   begin
+      Buf   := C.Buf;
+      C.Buf := null;
+   end Detach_Buffer;
 
 end Http2_Core.Connection;

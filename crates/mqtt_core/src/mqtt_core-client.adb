@@ -144,16 +144,15 @@ package body Mqtt_Core.Client is
       Code        : Wire.Return_Code := RFLX.Connack.ACCEPTED;
       use type Wire.Return_Code;
    begin
-      if C.Buf = null then
-         C.Buf := new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
-      end if;
-      if C.Inbound_Buf = null then
-         C.Inbound_Buf :=
-           new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
-      end if;
-      if C.Outgoing_Buf = null then
-         C.Outgoing_Buf :=
-           new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+      --  Buffers are caller-supplied via Attach_Buffers. The
+      --  library NEVER calls `new`. Fail loudly if Open is called
+      --  without the buffers being attached first.
+      if C.Buf = null
+        or else C.Inbound_Buf = null
+        or else C.Outgoing_Buf = null
+      then
+         raise Connect_Failure
+           with "Mqtt_Core.Client.Attach_Buffers must be called before Open";
       end if;
 
       Transport.Connect (C.Trans, Host, Port);
@@ -934,15 +933,32 @@ package body Mqtt_Core.Client is
       if Transport.Is_Open (C.Trans) then
          Transport.Close (C.Trans);
       end if;
-      if C.Buf /= null then
-         RFLX.RFLX_Types.Free (C.Buf);
-      end if;
-      if C.Inbound_Buf /= null then
-         RFLX.RFLX_Types.Free (C.Inbound_Buf);
-      end if;
-      if C.Outgoing_Buf /= null then
-         RFLX.RFLX_Types.Free (C.Outgoing_Buf);
-      end if;
+      --  Buffer ownership stays with the application; Close does
+      --  NOT free. Use Detach_Buffers to recover the buffers and
+      --  let the application free them (or re-use them for a new
+      --  session).
    end Close;
+
+   procedure Attach_Buffers
+     (C            : in out Client;
+      Buf          : in out RFLX.RFLX_Types.Bytes_Ptr;
+      Inbound_Buf  : in out RFLX.RFLX_Types.Bytes_Ptr;
+      Outgoing_Buf : in out RFLX.RFLX_Types.Bytes_Ptr) is
+   begin
+      C.Buf          := Buf;          Buf          := null;
+      C.Inbound_Buf  := Inbound_Buf;  Inbound_Buf  := null;
+      C.Outgoing_Buf := Outgoing_Buf; Outgoing_Buf := null;
+   end Attach_Buffers;
+
+   procedure Detach_Buffers
+     (C            : in out Client;
+      Buf          : out RFLX.RFLX_Types.Bytes_Ptr;
+      Inbound_Buf  : out RFLX.RFLX_Types.Bytes_Ptr;
+      Outgoing_Buf : out RFLX.RFLX_Types.Bytes_Ptr) is
+   begin
+      Buf          := C.Buf;          C.Buf          := null;
+      Inbound_Buf  := C.Inbound_Buf;  C.Inbound_Buf  := null;
+      Outgoing_Buf := C.Outgoing_Buf; C.Outgoing_Buf := null;
+   end Detach_Buffers;
 
 end Mqtt_Core.Client;

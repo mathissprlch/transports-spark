@@ -38,9 +38,23 @@ package Http2_Core.Connection is
 
    type Connection is limited private;
 
+   --  Caller-supplied buffer. The Connection takes ownership on
+   --  Attach (move semantics — the caller's pointer is nilled).
+   --  Detach returns it. The library NEVER calls `new`; on bare-
+   --  metal the application can back this with a static `aliased
+   --  Bytes` array via a custom storage pool.
+   procedure Attach_Buffer
+     (C   : in out Connection;
+      Buf : in out RFLX.RFLX_Types.Bytes_Ptr);
+
+   procedure Detach_Buffer
+     (C   : in out Connection;
+      Buf : out RFLX.RFLX_Types.Bytes_Ptr);
+
    --  Open a connection to host:port and complete the §3.4 preface +
    --  §6.5.3 SETTINGS handshake. Raises Connect_Error on socket
    --  failure or if the peer sends a malformed initial SETTINGS.
+   --  Requires Attach_Buffer to have been called first.
    procedure Open
      (C    : in out Connection;
       Host : String;

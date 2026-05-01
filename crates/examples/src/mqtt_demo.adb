@@ -109,8 +109,24 @@ procedure Mqtt_Demo is
    Topic  : constant String := "ada/test";
    Client : Mqtt_Core.Client.Client;
 
+   --  Application-owned buffers. The library never allocates;
+   --  per External_IO_Buffers semantics in the .rfi files, the
+   --  caller provides the storage. On bare-metal this would come
+   --  from a static `aliased Bytes` array via a custom storage
+   --  pool; on hosted Linux/Darwin we just `new` once and free
+   --  on shutdown (or never — process lifetime).
+   Buffer_Capacity : constant := 256;
+   Buf      : RFLX.RFLX_Types.Bytes_Ptr :=
+     new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+   Inbound  : RFLX.RFLX_Types.Bytes_Ptr :=
+     new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+   Outgoing : RFLX.RFLX_Types.Bytes_Ptr :=
+     new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
+
 begin
    Put_Line ("mqtt_demo: connecting to localhost:1883...");
+   Mqtt_Core.Client.Attach_Buffers
+     (Client, Buf, Inbound, Outgoing);
    Mqtt_Core.Client.Open
      (Client,
       Host          => "127.0.0.1",

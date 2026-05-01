@@ -85,6 +85,11 @@ procedure Http2_Soak is
    procedure One_Iteration (I : Natural);
    procedure One_Iteration (I : Natural) is
       C : Http2_Core.Connection.Connection;
+      --  Per-iteration buffer. Heap is fine in the test harness;
+      --  production code paths in http2_core itself never call `new`.
+      Buffer_Capacity : constant := 16 * 1024 + 64;
+      Conn_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
 
       --  Vary body size: deterministic from iteration index, but
       --  bounded so the soak never asks for more than the
@@ -124,6 +129,7 @@ procedure Http2_Soak is
          Path_Len := Prefix'Length + Idx_Str'Length;
       end;
 
+      Http2_Core.Connection.Attach_Buffer (C, Conn_Buf);
       Http2_Core.Connection.Open
         (C    => C,
          Host => Host (1 .. Host_Last),
@@ -186,6 +192,8 @@ procedure Http2_Soak is
       end;
 
       Http2_Core.Connection.Close (C);
+      Http2_Core.Connection.Detach_Buffer (C, Conn_Buf);
+      RFLX.RFLX_Types.Free (Conn_Buf);
 
    exception
       when E : Http2_Core.Connection.Connect_Error =>

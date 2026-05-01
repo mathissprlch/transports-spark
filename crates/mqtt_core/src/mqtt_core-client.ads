@@ -41,6 +41,31 @@ package Mqtt_Core.Client is
    subtype Topic_Filter         is Wire.Topic_Filter;
    subtype Topic_Filters        is Wire.Topic_Filters;
 
+   --  Caller-supplied buffers. The Client takes ownership of all
+   --  three on Attach (move semantics: caller's Bytes_Ptr variables
+   --  are nilled). Detach returns them. The library NEVER calls
+   --  `new`; the application decides where the bytes live (heap on
+   --  hosted, .bss on bare-metal via custom storage pool).
+   --
+   --  Sizing: Buf is the Wire-encoder scratch; Inbound_Buf and
+   --  Outgoing_Buf back the FSM's internal message contexts (per
+   --  External_IO_Buffers in session.rfi). All three should be at
+   --  least Buffer_Capacity bytes (256 in the current build).
+   procedure Attach_Buffers
+     (C            : in out Client;
+      Buf          : in out RFLX.RFLX_Types.Bytes_Ptr;
+      Inbound_Buf  : in out RFLX.RFLX_Types.Bytes_Ptr;
+      Outgoing_Buf : in out RFLX.RFLX_Types.Bytes_Ptr);
+
+   --  Reverse of Attach_Buffers. Call after Close (or instead of
+   --  Close) to recover the buffers for re-use or deallocation by
+   --  the application.
+   procedure Detach_Buffers
+     (C            : in out Client;
+      Buf          : out RFLX.RFLX_Types.Bytes_Ptr;
+      Inbound_Buf  : out RFLX.RFLX_Types.Bytes_Ptr;
+      Outgoing_Buf : out RFLX.RFLX_Types.Bytes_Ptr);
+
    procedure Open
      (C             : in out Client;
       Host          : String;
