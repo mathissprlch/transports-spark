@@ -9,3 +9,9 @@ licenses = "MIT"
 tags = ["protobuf", "spark", "verified", "embedded"]
 
 project-files = ["protobuf_core.gpr"]
+
+[[depends-on]]
+rflx_runtime = "*"
+
+[[pins]]
+rflx_runtime = { path = "../rflx_runtime" }
