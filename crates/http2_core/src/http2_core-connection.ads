@@ -38,23 +38,35 @@ package Http2_Core.Connection is
 
    type Connection is limited private;
 
-   --  Caller-supplied buffer. The Connection takes ownership on
-   --  Attach (move semantics — the caller's pointer is nilled).
-   --  Detach returns it. The library NEVER calls `new`; on bare-
-   --  metal the application can back this with a static `aliased
-   --  Bytes` array via a custom storage pool.
-   procedure Attach_Buffer
-     (C   : in out Connection;
-      Buf : in out RFLX.RFLX_Types.Bytes_Ptr);
+   --  Caller-supplied buffers. The Connection takes ownership on
+   --  Attach (move semantics — the caller's pointers are nilled).
+   --  Detach returns them. The library NEVER calls `new`; on bare-
+   --  metal the application can back these with static `aliased
+   --  Bytes` arrays via a custom storage pool.
+   --
+   --  Three buffers, mirroring Mqtt_Core.Client:
+   --    * Buf          — driver working buffer (HPACK fragments,
+   --                     outbound frames, hand-written ACKs)
+   --    * Inbound_Buf  — external buffer attached to the
+   --                     Stream::Half_Open FSM's B_Inbound slot
+   --    * Outgoing_Buf — external buffer attached to the
+   --                     Stream::Half_Open FSM's B_Outgoing slot
+   procedure Attach_Buffers
+     (C            : in out Connection;
+      Buf          : in out RFLX.RFLX_Types.Bytes_Ptr;
+      Inbound_Buf  : in out RFLX.RFLX_Types.Bytes_Ptr;
+      Outgoing_Buf : in out RFLX.RFLX_Types.Bytes_Ptr);
 
-   procedure Detach_Buffer
-     (C   : in out Connection;
-      Buf : out RFLX.RFLX_Types.Bytes_Ptr);
+   procedure Detach_Buffers
+     (C            : in out Connection;
+      Buf          : out RFLX.RFLX_Types.Bytes_Ptr;
+      Inbound_Buf  : out RFLX.RFLX_Types.Bytes_Ptr;
+      Outgoing_Buf : out RFLX.RFLX_Types.Bytes_Ptr);
 
    --  Open a connection to host:port and complete the §3.4 preface +
    --  §6.5.3 SETTINGS handshake. Raises Connect_Error on socket
    --  failure or if the peer sends a malformed initial SETTINGS.
-   --  Requires Attach_Buffer to have been called first.
+   --  Requires Attach_Buffers to have been called first.
    procedure Open
      (C    : in out Connection;
       Host : String;
@@ -99,6 +111,8 @@ private
    type Connection is limited record
       Trans          : Transport.Channel;
       Buf            : RFLX.RFLX_Types.Bytes_Ptr := null;
+      Inbound_Buf    : RFLX.RFLX_Types.Bytes_Ptr := null;
+      Outgoing_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
       --  Client stream ids start at 1 and increment by 2 (§5.1.1).
       Next_Stream_Id : RFLX.RFLX_Builtin_Types.Bit_Length := 1;
    end record;

@@ -199,7 +199,13 @@ begin
          --  payload. We'll hand it as Request_Body to Round_Trip.
          declare
             C       : Http2_Core.Connection.Connection;
-            Conn_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+            Conn_Buf     : RFLX.RFLX_Types.Bytes_Ptr :=
+              new RFLX.RFLX_Types.Bytes'
+                (1 .. 16 * 1024 + 64 => 0);
+            Inbound_Buf  : RFLX.RFLX_Types.Bytes_Ptr :=
+              new RFLX.RFLX_Types.Bytes'
+                (1 .. 16 * 1024 + 64 => 0);
+            Outgoing_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
               new RFLX.RFLX_Types.Bytes'
                 (1 .. 16 * 1024 + 64 => 0);
 
@@ -223,7 +229,8 @@ begin
               (others => 0);
             Body_Last : Natural;
          begin
-            Http2_Core.Connection.Attach_Buffer (C, Conn_Buf);
+            Http2_Core.Connection.Attach_Buffers
+              (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
             Http2_Core.Connection.Open
               (C    => C,
                Host => Host (1 .. Host_Last),
@@ -243,8 +250,11 @@ begin
                       & Natural'Image (Body_Last) & "B body)");
 
             Http2_Core.Connection.Close (C);
-            Http2_Core.Connection.Detach_Buffer (C, Conn_Buf);
+            Http2_Core.Connection.Detach_Buffers
+              (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
             RFLX.RFLX_Types.Free (Conn_Buf);
+            RFLX.RFLX_Types.Free (Inbound_Buf);
+            RFLX.RFLX_Types.Free (Outgoing_Buf);
 
             ----------------------------------------------------------
             --  Inspect headers (server's trailing HEADERS overwrites
