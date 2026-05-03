@@ -23,12 +23,17 @@ is
       Buffer (F + 2) := U8 ((Len / 65536) mod 256);
       Buffer (F + 3) := U8 ((Len / 256) mod 256);
       Buffer (F + 4) := U8 (Len mod 256);
+      --  Branch on Len = 0 because Index'First = 1, so Index (0)
+      --  raises Constraint_Error. Same trap as the iteration-01
+      --  fix in http2_core-connection.adb body copy.
       if Len > 0 then
          Buffer (F + 5 .. F + 4 + RFLX.RFLX_Types.Index (Len)) :=
            Message;
+         Output_Last := F + 4 + RFLX.RFLX_Types.Index (Len);
+      else
+         Output_Last := F + 4;
       end if;
-      Output_Last := F + 4 + RFLX.RFLX_Types.Index (Len);
-      Output_OK   := True;
+      Output_OK := True;
    end Encode;
 
    procedure Decode
@@ -60,6 +65,11 @@ is
       --  Even with a 64-bit accumulator we cap the message at the
       --  caller-provided Message buffer; oversize lengths become
       --  Output_OK = False rather than a partial copy.
+      if Len64 < 0 then
+         --  Defensive: each byte * coefficient is non-negative, so
+         --  the sum is too. Make the bound visible to the prover.
+         return;
+      end if;
       if Len64 > Long_Long_Integer (Input'Length) - 5 then
          return;  --  declared length exceeds available input
       end if;
@@ -73,6 +83,12 @@ is
             Message (Message'First ..
                        Message'First + RFLX.RFLX_Types.Index (Len) - 1) :=
               Input (F + 5 .. F + 4 + RFLX.RFLX_Types.Index (Len));
+            --  Note: 1 medium VC remains on this slice (Message'First +
+            --  Index(Len) might overflow Index'Base when Message'Last
+            --  approaches Natural'Last — unrealistic in practice but
+            --  not provable from the runtime checks alone). Tracking
+            --  as a known un-discharged obligation; not a soundness
+            --  hole given the realistic Message'Last bounds.
          end if;
          Message_Length := RFLX.RFLX_Types.Length (Len);
       end;

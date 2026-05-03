@@ -124,7 +124,8 @@ is
       Error_Code : Bit_Len)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 13
-             and then Stream_Id in 1 .. 2 ** 31 - 1,
+             and then Stream_Id in 1 .. 2 ** 31 - 1
+             and then Error_Code <= 2 ** 32 - 1,
      Post => Buffer /= null;
 
    ---------------------------------------------------------------------
@@ -155,7 +156,9 @@ is
    with
      Pre  => Buffer /= null
              and then Buffer'Length >= 17 + Debug_Data'Length
-             and then Last_Stream_Id <= 2 ** 31 - 1,
+             and then Last_Stream_Id <= 2 ** 31 - 1
+             and then Error_Code <= 2 ** 32 - 1
+             and then Debug_Data'Length <= 2 ** 24 - 18,
      Post => Buffer /= null;
 
    ---------------------------------------------------------------------

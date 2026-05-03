@@ -15,6 +15,7 @@ is
          return;
       end if;
       for Ch of S loop
+         pragma Loop_Invariant (N <= 99);  --  S is at most 2 chars
          if Ch not in '0' .. '9' then
             return;
          end if;

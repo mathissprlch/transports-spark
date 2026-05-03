@@ -20,9 +20,21 @@ is
    --  arithmetic obligations; the Get_Be* helpers post-condition
    --  the same bound on their result.
 
+   --  Pre conditions on every helper, formulated so the prover can
+   --  discharge the index arithmetic without overflow:
+   --    * Buffer /= null (where applicable)
+   --    * At_Idx in Buffer.all'Range
+   --    * Buffer.all'Last - At_Idx >= N-1   (room for N bytes total
+   --      starting at At_Idx; expressed as subtraction so the
+   --      precondition itself never evaluates At_Idx + N)
+   --    * V is bounded to the wire-field width
+
    procedure Put_U8
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
-   with Pre => V <= 16#FF#;
+   with
+     Pre => Buffer /= null
+            and then At_Idx in Buffer.all'Range
+            and then V <= 16#FF#;
 
    procedure Put_U8
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
@@ -33,7 +45,11 @@ is
 
    procedure Put_Be16
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
-   with Pre => V <= 16#FFFF#;
+   with
+     Pre => Buffer /= null
+            and then At_Idx in Buffer.all'Range
+            and then Buffer.all'Last - At_Idx >= 1
+            and then V <= 16#FFFF#;
 
    procedure Put_Be16
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
@@ -45,7 +61,11 @@ is
 
    procedure Put_Be24
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
-   with Pre => V <= 16#FF_FFFF#;
+   with
+     Pre => Buffer /= null
+            and then At_Idx in Buffer.all'Range
+            and then Buffer.all'Last - At_Idx >= 2
+            and then V <= 16#FF_FFFF#;
 
    procedure Put_Be24
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
@@ -58,7 +78,11 @@ is
 
    procedure Put_Be32
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
-   with Pre => V <= 16#FFFF_FFFF#;
+   with
+     Pre => Buffer /= null
+            and then At_Idx in Buffer.all'Range
+            and then Buffer.all'Last - At_Idx >= 3
+            and then V <= 16#FFFF_FFFF#;
 
    procedure Put_Be32
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
@@ -75,14 +99,20 @@ is
                       At_Idx : Index) return Bit_Len
    is (Bit_Len (Buffer (At_Idx)) * 256
        + Bit_Len (Buffer (At_Idx + 1)))
-   with Post => Get_Be16'Result <= 16#FFFF#;
+   with
+     Pre  => At_Idx in Buffer'Range
+             and then Buffer'Last - At_Idx >= 1,
+     Post => Get_Be16'Result <= 16#FFFF#;
 
    function Get_Be24 (Buffer : RFLX.RFLX_Types.Bytes;
                       At_Idx : Index) return Bit_Len
    is (Bit_Len (Buffer (At_Idx)) * 65536
        + Bit_Len (Buffer (At_Idx + 1)) * 256
        + Bit_Len (Buffer (At_Idx + 2)))
-   with Post => Get_Be24'Result <= 16#FF_FFFF#;
+   with
+     Pre  => At_Idx in Buffer'Range
+             and then Buffer'Last - At_Idx >= 2,
+     Post => Get_Be24'Result <= 16#FF_FFFF#;
 
    function Get_Be32 (Buffer : RFLX.RFLX_Types.Bytes;
                       At_Idx : Index) return Bit_Len
@@ -90,7 +120,10 @@ is
        + Bit_Len (Buffer (At_Idx + 1)) * 65536
        + Bit_Len (Buffer (At_Idx + 2)) * 256
        + Bit_Len (Buffer (At_Idx + 3)))
-   with Post => Get_Be32'Result <= 16#FFFF_FFFF#;
+   with
+     Pre  => At_Idx in Buffer'Range
+             and then Buffer'Last - At_Idx >= 3,
+     Post => Get_Be32'Result <= 16#FFFF_FFFF#;
 
    --  Convert an HTTP_2_Frame_Type enum value into the 8-bit wire
    --  representation. The IANA-derived enum has Always_Valid, so
@@ -316,13 +349,17 @@ is
          RFLX.Http2_Parameters.GOAWAY, 0, 0);
       Put_Be32 (Buffer, Buffer'First + 9, Last_Stream_Id);
       Put_Be32 (Buffer, Buffer'First + 13, Error_Code);
+      --  Branch on Length = 0; Index(0) would raise Constraint_Error
+      --  (Index'First = 1). Same trap as Grpc_Core.Framing.Encode.
       if Debug_Data'Length > 0 then
          Buffer
            (Buffer'First + 17 ..
               Buffer'First + 16 + Index (Debug_Data'Length)) :=
            Debug_Data;
+         Last := Buffer'First + 16 + Index (Debug_Data'Length);
+      else
+         Last := Buffer'First + 16;
       end if;
-      Last := Buffer'First + 16 + Index (Debug_Data'Length);
    end Encode_Goaway;
 
    ---------------------------------------------------------------------
@@ -347,8 +384,10 @@ is
          Buffer
            (Buffer'First + 9 ..
               Buffer'First + 8 + Index (Fragment'Length)) := Fragment;
+         Last := Buffer'First + 8 + Index (Fragment'Length);
+      else
+         Last := Buffer'First + 8;
       end if;
-      Last := Buffer'First + 8 + Index (Fragment'Length);
    end Encode_Headers;
 
    ---------------------------------------------------------------------
@@ -372,8 +411,10 @@ is
          Buffer
            (Buffer'First + 9 ..
               Buffer'First + 8 + Index (Payload'Length)) := Payload;
+         Last := Buffer'First + 8 + Index (Payload'Length);
+      else
+         Last := Buffer'First + 8;
       end if;
-      Last := Buffer'First + 8 + Index (Payload'Length);
    end Encode_Data;
 
    ---------------------------------------------------------------------
