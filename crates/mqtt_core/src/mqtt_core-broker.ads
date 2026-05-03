@@ -1,30 +1,44 @@
---  Mqtt_Core.Broker — minimal MQTT 3.1.1 broker (single-client v0.2).
+--  Mqtt_Core.Broker — multi-client MQTT 3.1.1 broker.
 --
---  Accepts one TCP connection, drives the Session::Broker_Reading FSM
---  through CONNECT/CONNACK + the post-CONNECT dispatch loop, and
---  surfaces each inbound application packet to the caller via a
---  generic handler subprogram.
+--  Single-task event-loop architecture: one Selector watches the
+--  listening socket plus all active client sockets. When any socket
+--  has data, the broker reads a frame and feeds it to that client's
+--  Session::Broker_Reading FSM. Inbound PUBLISH is routed via a
+--  topic-matcher to all subscribed clients (mqtt_core.Topics for
+--  + / # wildcards per §4.7.1).
 --
---  v0.2 limits:
---    * One client at a time (no accept-and-spawn).
---    * No topic routing — handler decides what to do with each
---      PUBLISH; a real broker would route to subscribed sessions.
---    * Single-filter SUBSCRIBE only (multi-filter is v0.3 work).
---    * QoS 0 + QoS 1 only on inbound PUBLISH; QoS 2 inbound stub.
---    * No persistent session, no will message, no retained.
+--  v0.2 broker capabilities:
+--    * Up to Max_Clients concurrent clients (compile-time bound).
+--    * Per-client subscription list (Max_Subscriptions slots total).
+--    * QoS 0 + QoS 1 in both directions (q1 inbound → PUBACK to
+--      publisher; q1 outbound to subscribers when their granted
+--      QoS allows).
+--    * Topic matching with `+` and `#` wildcards.
+--    * Multi-filter SUBSCRIBE (each filter granted its requested QoS).
+--    * UNSUBSCRIBE removes matching subscriptions.
 --
---  Verification dividend lives in the Session::Broker_Reading FSM
---  (RFLX-generated): the post-CONNECT dispatch table enumerates
---  every legal client→server packet type from MQTT 3.1.1 §2.2.1
---  Table 2.1, exhaustiveness-checked at spec time.
+--  Out of v0.2:
+--    * QoS 2 routing (currently treated as q1 by capping outbound).
+--    * Persistent sessions (Clean_Session=0).
+--    * Will message / retained.
+--    * TLS.
+--    * MQTT 5.0 (Protocol_Level=5) — this is 3.1.1 only.
+--
+--  Verification dividend lives in the per-client
+--  Session::Broker_Reading FSM (RFLX-generated): the dispatch table
+--  enforces "CONNECT first, then any of 9 client→server packet
+--  types". Multi-client routing + topic matching is hand-written
+--  Ada glue.
 
 with RFLX.RFLX_Types;
-with RFLX.RFLX_Builtin_Types;
 with RFLX.Control_Packet;
 
 with Mqtt_Core.Transport;
 
 package Mqtt_Core.Broker is
+
+   Max_Clients       : constant := 16;
+   Max_Subscriptions : constant := 64;
 
    type Listener is limited private;
 
@@ -33,54 +47,40 @@ package Mqtt_Core.Broker is
       Host : String;
       Port : Natural := 1883);
 
-   procedure Attach_Buffers
-     (L            : in out Listener;
-      Buf          : in out RFLX.RFLX_Types.Bytes_Ptr;
-      Inbound_Buf  : in out RFLX.RFLX_Types.Bytes_Ptr;
-      Outgoing_Buf : in out RFLX.RFLX_Types.Bytes_Ptr);
-
-   procedure Detach_Buffers
-     (L            : in out Listener;
-      Buf          : out RFLX.RFLX_Types.Bytes_Ptr;
-      Inbound_Buf  : out RFLX.RFLX_Types.Bytes_Ptr;
-      Outgoing_Buf : out RFLX.RFLX_Types.Bytes_Ptr);
-
    procedure Stop (L : in out Listener);
 
-   --  Handler invoked once per inbound application packet (PUBLISH /
-   --  SUBSCRIBE / etc.). The Ada driver has already done the wire-
-   --  level decode and any required ACK emission (PUBACK, SUBACK,
-   --  PINGRESP) before calling the handler — handler is purely the
-   --  application-level callback.
+   --  Run the event loop until Stop_Flag is True (set externally,
+   --  e.g. via SIGINT). On_Event is invoked once per significant
+   --  application-level event for the caller's logging /
+   --  observation. The broker has already done all protocol-level
+   --  ACKs (CONNACK / SUBACK / UNSUBACK / PUBACK / PINGRESP) and
+   --  routing before calling On_Event.
    type Event_Kind is
-     (Client_Connected,    --  CONNECT received, CONNACK sent
-      Client_Subscribed,   --  SUBSCRIBE received, SUBACK sent
-      Publish_Received,    --  PUBLISH received, PUBACK sent if q1
-      Pingreq_Received,    --  PINGREQ received, PINGRESP sent
-      Client_Disconnected); --  DISCONNECT received
+     (Client_Connected,
+      Client_Subscribed,
+      Client_Unsubscribed,
+      Publish_Received,
+      Publish_Forwarded,
+      Pingreq_Received,
+      Client_Disconnected);
 
    generic
       with procedure On_Event
         (Kind         : Event_Kind;
          Client_Id    : String;
-         Client_Id_Last : Natural;
          Topic        : String;
-         Topic_Last   : Natural;
          Payload      : RFLX.RFLX_Types.Bytes;
-         Payload_Last : RFLX.RFLX_Types.Length;
          QoS          : RFLX.Control_Packet.QoS_Level;
-         Packet_Id    : RFLX.RFLX_Builtin_Types.Bit_Length);
-   procedure Accept_And_Serve (L : in out Listener);
+         Subscriber_Count : Natural);
+   procedure Run (L : in out Listener);
 
    Server_Error : exception;
 
 private
 
    type Listener is limited record
-      Trans         : Transport.Listener;
-      Buf           : RFLX.RFLX_Types.Bytes_Ptr := null;
-      Inbound_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
-      Outgoing_Buf  : RFLX.RFLX_Types.Bytes_Ptr := null;
+      Trans     : Transport.Listener;
+      Stopping  : Boolean := False;
    end record;
 
 end Mqtt_Core.Broker;

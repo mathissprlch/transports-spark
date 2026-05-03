@@ -9,7 +9,7 @@
 --  a black box on bare metal.
 
 with RFLX.RFLX_Types;
-private with GNAT.Sockets;
+with GNAT.Sockets;
 
 package Mqtt_Core.Transport is
 
@@ -77,6 +77,12 @@ package Mqtt_Core.Transport is
    with
      Pre  => Is_Listening (L),
      Post => not Is_Listening (L);
+
+   --  Hosted-only escape hatch — broker uses GNAT.Sockets.Selector
+   --  directly across multiple sockets, so it needs the underlying
+   --  socket handle. Bare-metal Transport returns a sentinel.
+   function Native_Socket (L : Listener) return GNAT.Sockets.Socket_Type;
+   function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type;
 
    Connect_Error : exception;
    Send_Error    : exception;

@@ -755,6 +755,54 @@ is
    end Encode_Pingresp;
 
    ---------------------------------------------------------------------
+   --  Decode_Unsubscribe_Pid (broker side)
+   ---------------------------------------------------------------------
+
+   procedure Decode_Unsubscribe_Pid
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id : out Packet_Identifier)
+   is
+      Ctx : RFLX.Unsubscribe.Packet.Context;
+   begin
+      Valid     := False;
+      Packet_Id := 1;
+      RFLX.Unsubscribe.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Unsubscribe.Packet.Verify_Message (Ctx);
+      if RFLX.Unsubscribe.Packet.Well_Formed_Message (Ctx) then
+         Packet_Id :=
+           RFLX.Unsubscribe.Packet.Get_Packet_Identifier (Ctx);
+         Valid := True;
+      end if;
+      RFLX.Unsubscribe.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Unsubscribe_Pid;
+
+   ---------------------------------------------------------------------
+   --  Encode_Unsuback (broker side)
+   ---------------------------------------------------------------------
+
+   procedure Encode_Unsuback
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   is
+      Ctx : RFLX.Unsuback.Packet.Context;
+   begin
+      RFLX.Unsuback.Packet.Initialize (Ctx, Buffer);
+      RFLX.Unsuback.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.UNSUBACK);
+      RFLX.Unsuback.Packet.Set_Reserved (Ctx, 0);
+      RFLX.Unsuback.Packet.Set_Remaining_Length (Ctx, 2);
+      RFLX.Unsuback.Packet.Set_Packet_Identifier (Ctx, Packet_Id);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Unsuback.Packet.Message_Last (Ctx));
+      RFLX.Unsuback.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Unsuback;
+
+   ---------------------------------------------------------------------
    --  Encode_Subscribe_Single — wraps Encode_Subscribe.
    ---------------------------------------------------------------------
 

@@ -415,6 +415,28 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 2,
      Post => Buffer /= null;
 
+   --  §3.10 — broker side: decode an inbound UNSUBSCRIBE. Just
+   --  surfaces the packet identifier; the broker uses Client_Id +
+   --  topic-filter scan to drop matching subscriptions (caller
+   --  loops over Decode_Unsubscribe_Filter).
+   procedure Decode_Unsubscribe_Pid
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id : out Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 5,
+     Post => Buffer /= null;
+
+   --  §3.11 — broker side: encode UNSUBACK echoing packet_id.
+   procedure Encode_Unsuback
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;
+
    procedure Decode_Suback_Single
      (Buffer    : in out Bytes_Ptr;
       Last      : Index;

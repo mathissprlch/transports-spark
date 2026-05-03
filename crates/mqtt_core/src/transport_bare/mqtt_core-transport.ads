@@ -80,6 +80,16 @@ package Mqtt_Core.Transport is
    procedure Stop (L : in out Listener)
    with Pre  => Is_Listening (L), Post => not Is_Listening (L);
 
+   --  Bare-metal: no GNAT.Sockets, no native socket. Function
+   --  exists only to satisfy the API surface the hosted broker
+   --  uses; calling it on bare-metal raises Send_Error. Broker
+   --  itself doesn't run on bare-metal in v0.2.
+   type Native_Socket_Stub is null record;
+   function Native_Socket (L : Listener) return Native_Socket_Stub
+   is ((null record));
+   function Native_Socket (Chan : Channel) return Native_Socket_Stub
+   is ((null record));
+
    Connect_Error : exception;
    Send_Error    : exception;
 

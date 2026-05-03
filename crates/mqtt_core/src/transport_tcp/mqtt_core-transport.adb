@@ -215,4 +215,10 @@ package body Mqtt_Core.Transport is
       L.Listening := False;
    end Stop;
 
+   function Native_Socket (L : Listener) return GNAT.Sockets.Socket_Type is
+     (L.Socket);
+
+   function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type is
+     (Chan.Socket);
+
 end Mqtt_Core.Transport;
