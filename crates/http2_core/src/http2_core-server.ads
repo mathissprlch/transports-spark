@@ -91,10 +91,44 @@ package Http2_Core.Server is
          return Boolean;
    procedure Accept_And_Serve_Server_Stream (L : in out Listener);
 
-   --  Client-streaming + bidi-streaming server-side variants are v0.3
-   --  follow-ups. The Stream::Open FSM (server-side) already supports
-   --  the read-multiple-DATA-frames pattern that client-streaming
-   --  needs; the work is hand-written response composition glue.
+   --  Client-streaming: each inbound DATA frame's gRPC message
+   --  (stripped 5-byte prefix) is delivered to On_Request_Message;
+   --  after END_STREAM, Build_Response is invoked to fill the single
+   --  reply (gRPC-framed in Response_Body by the caller).
+   generic
+      with procedure On_Request_Message
+        (Message : RFLX.RFLX_Types.Bytes);
+      with procedure Build_Response
+        (Request_Headers       : Hpack.Header_Block;
+         Request_Headers_Last  : Natural;
+         Response_Headers      : in out Hpack.Header_Block;
+         Response_Headers_Last : out Natural;
+         Response_Body         : in out RFLX.RFLX_Types.Bytes;
+         Response_Body_Last    : out Natural;
+         Trailers              : in out Hpack.Header_Block;
+         Trailers_Last         : out Natural);
+   procedure Accept_And_Serve_Client_Stream (L : in out Listener);
+
+   --  Bidi-streaming: response HEADERS sent up front (after request
+   --  HEADERS arrived). Then both directions stream interleaved —
+   --  driver alternates "have an inbound frame? On_Request_Message"
+   --  with "have a reply? send DATA". Loop ends when Next_Reply
+   --  returns False AND client has END_STREAM'd. Trailers sent after.
+   generic
+      with procedure Setup_Response
+        (Request_Headers       : Hpack.Header_Block;
+         Request_Headers_Last  : Natural;
+         Response_Headers      : in out Hpack.Header_Block;
+         Response_Headers_Last : out Natural;
+         Trailers              : in out Hpack.Header_Block;
+         Trailers_Last         : out Natural);
+      with procedure On_Request_Message
+        (Message : RFLX.RFLX_Types.Bytes);
+      with function Next_Reply
+        (Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+         Out_Last : out RFLX.RFLX_Types.Index)
+         return Boolean;
+   procedure Accept_And_Serve_Bidi_Stream (L : in out Listener);
 
    procedure Stop (L : in out Listener);
 
