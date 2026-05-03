@@ -8,6 +8,7 @@ maintainers-logins = ["mathis"]
 licenses = "MIT"
 
 executables = ["greeter_server", "greeter_client",
+               "greeter_client_v02",
                "listfeatures_server", "listfeatures_client",
                "mqtt_demo"]
 project-files = ["examples.gpr"]
@@ -21,6 +22,9 @@ mqtt_core = "*"
 [[depends-on]]
 http2_core = "*"
 
+[[depends-on]]
+grpc_core = "*"
+
 [[pins]]
 grpc_ada = { path = "../grpc_ada" }
 
@@ -29,3 +33,6 @@ path = "../mqtt_core"
 
 [pins.http2_core]
 path = "../http2_core"
+
+[pins.grpc_core]
+path = "../grpc_core"

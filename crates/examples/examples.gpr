@@ -1,6 +1,7 @@
 with "grpc_ada.gpr";
 with "mqtt_core.gpr";
 with "http2_core.gpr";
+with "grpc_core.gpr";
 
 project Examples is
 
@@ -9,6 +10,7 @@ project Examples is
    for Exec_Dir use "bin";
    for Create_Missing_Dirs use "True";
    for Main use ("greeter_server.adb", "greeter_client.adb",
+                 "greeter_client_v02.adb",
                  "listfeatures_server.adb", "listfeatures_client.adb",
                  "mqtt_demo.adb");
 
