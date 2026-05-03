@@ -4,7 +4,7 @@ package body Protobuf_Core.Wire
 with SPARK_Mode
 is
 
-   use type RFLX.RFLX_Types.Index;
+   use type RFLX.RFLX_Types.Length;
 
    subtype U8 is RFLX.RFLX_Types.Byte;
 
@@ -22,11 +22,20 @@ is
       V   : Unsigned_64 := Value;
       Cur : Index := First;
    begin
-      Last := First;
-      OK   := False;
+      OK := False;
 
-      loop
+      --  Bounded loop: a 64-bit varint never exceeds Max_Varint_Bytes
+      --  bytes (the high byte holds at most 1 data bit), so we
+      --  always exit either by writing a final non-continuation
+      --  byte or by running out of buffer.
+      for I in 1 .. Max_Varint_Bytes loop
+         pragma Loop_Invariant (Cur >= First);
+         pragma Loop_Invariant
+           (Cur - First = RFLX.RFLX_Types.Index'Base (I - 1));
+         pragma Loop_Invariant (not OK);
+
          if Cur > Buffer'Last then
+            Last := First;
             return;
          end if;
 
@@ -38,9 +47,24 @@ is
          end if;
 
          Buffer (Cur) := U8 ((V and 16#7F#) or 16#80#);
-         V   := Shift_Right (V, 7);
-         Cur := Cur + 1;
+         V := Shift_Right (V, 7);
+
+         --  Need room to advance for the next byte. If we're at
+         --  Buffer'Last and V is still continuation, the value
+         --  doesn't fit.
+         if Cur = Buffer'Last then
+            Last := First;
+            return;
+         end if;
+
+         exit when I = Max_Varint_Bytes;
+         Cur := Cur + 1;  --  safe: Cur < Buffer'Last ≤ Index'Last
       end loop;
+
+      --  Fell through the loop without finding a terminating byte
+      --  (would require V > 0 after 10 7-bit shifts, impossible for
+      --  a 64-bit value, but we keep the safe-fail branch).
+      Last := First;
    end Encode_Varint;
 
    ----------------------------------------------------------------
@@ -60,12 +84,17 @@ is
       B     : U8;
    begin
       Value := 0;
-      Last  := First;
       OK    := False;
 
       for I in 1 .. Max_Varint_Bytes loop
          pragma Loop_Invariant (Cur >= First);
+         pragma Loop_Invariant
+           (Cur - First = RFLX.RFLX_Types.Index'Base (I - 1));
+         pragma Loop_Invariant (Shift = 7 * (I - 1));
+         pragma Loop_Invariant (not OK);
+
          if Cur > Input'Last then
+            Last := First;
             return;
          end if;
 
@@ -80,12 +109,20 @@ is
             return;
          end if;
 
+         --  Cur must advance for the next iteration; if we're at
+         --  Input'Last we can't, so the varint is truncated.
+         if Cur = Input'Last then
+            Last := First;
+            return;
+         end if;
+
          Shift := Shift + 7;
-         Cur   := Cur + 1;
+         exit when I = Max_Varint_Bytes;
+         Cur := Cur + 1;
       end loop;
 
       --  More than 10 continuation bytes: malformed.
-      return;
+      Last := First;
    end Decode_Varint;
 
    ----------------------------------------------------------------
@@ -124,11 +161,27 @@ is
          return;
       end if;
 
-      Wire      := Natural (Tag and 7);
-      Field_Num := Natural (Shift_Right (Tag, 3));
-      if Field_Num = 0 then
-         OK := False;
-      end if;
+      Wire := Natural (Tag and 7);
+      --  Field_Num is bounded above by 2**29-1 (Field_Number range);
+      --  varint of any 32-bit value fits in 5 bytes, so the shift
+      --  yields at most 2**61-1, which fits Natural on a 64-bit host
+      --  but NOT on 32-bit. Cap before converting.
+      declare
+         Shifted : constant Unsigned_64 := Shift_Right (Tag, 3);
+         Max_FN  : constant Unsigned_64 :=
+           Unsigned_64 (Natural'Last);
+      begin
+         if Shifted = 0 or else Shifted > Max_FN then
+            --  Reject: zero field number is reserved; > Natural'Last
+            --  doesn't fit our public type. Reset Last so the Post's
+            --  "OK = False ⇒ Last = First" holds.
+            Last := First;
+            Wire := 0;
+            OK   := False;
+            return;
+         end if;
+         Field_Num := Natural (Shifted);
+      end;
    end Decode_Tag;
 
    ----------------------------------------------------------------
@@ -146,17 +199,18 @@ is
       Tag_Last : Index;
       Len_Last : Index;
    begin
-      Last := First;
-      OK   := False;
-
+      --  Every path below assigns Last + OK explicitly, so we don't
+      --  pre-initialise here; gnatprove's flow analysis covers it.
       Encode_Tag
         (Buffer, First, Field_Num, Wire_Length_Delim, Tag_Last, OK);
       if not OK then
+         Last := First;
          return;
       end if;
 
-      if Tag_Last = Buffer'Last then
-         OK := False;
+      if Tag_Last >= Buffer'Last then
+         Last := First;
+         OK   := False;
          return;
       end if;
 
@@ -164,6 +218,7 @@ is
         (Buffer, Tag_Last + 1,
          Unsigned_64 (Value'Length), Len_Last, OK);
       if not OK then
+         Last := First;
          return;
       end if;
 
@@ -173,8 +228,13 @@ is
          return;
       end if;
 
-      if Index (Value'Length) > Buffer'Last - Len_Last then
-         OK := False;
+      --  Bounds check: Value'Length must fit in the remaining buffer
+      --  AFTER Len_Last. Note Len_Last is in Buffer'Range.
+      if RFLX.RFLX_Types.Length (Value'Length) >
+           RFLX.RFLX_Types.Length (Buffer'Last - Len_Last)
+      then
+         Last := First;
+         OK   := False;
          return;
       end if;
 
@@ -182,11 +242,13 @@ is
       --  so Index (0) raises Constraint_Error. Same trap as the
       --  iteration-01 bug in http2_core-connection.adb body copy.
       for I in 1 .. Value'Length loop
-         Buffer (Len_Last + Index (I)) :=
-           U8 (Character'Pos (Value (Value'First + I - 1)));
+         pragma Loop_Invariant
+           (Len_Last + RFLX.RFLX_Types.Index'Base (I) <= Buffer'Last);
+         Buffer (Len_Last + RFLX.RFLX_Types.Index'Base (I)) :=
+           U8 (Character'Pos (Value (Value'First + (I - 1))));
       end loop;
 
-      Last := Len_Last + Index (Value'Length);
+      Last := Len_Last + RFLX.RFLX_Types.Index'Base (Value'Length);
       OK   := True;
    end Encode_String_Field;
 
@@ -205,13 +267,14 @@ is
       Len_Val  : Unsigned_64;
       Len_Last : Index;
    begin
+      --  Every path assigns Last, Value_Last and OK explicitly. Value
+      --  is `out String`, must be fully initialised by the procedure.
       Value      := (others => Character'Val (0));
       Value_Last := 0;
-      Last       := First;
-      OK         := False;
 
       Decode_Varint (Input, First, Len_Val, Len_Last, OK);
       if not OK then
+         Last := First;
          return;
       end if;
 
@@ -222,12 +285,21 @@ is
          return;
       end if;
 
-      if Len_Val > Unsigned_64 (Input'Last - Len_Last) then
-         OK := False;
+      --  Two bound checks: encoded length must fit in remaining
+      --  Input AND in caller's Value buffer.
+      if Len_Val > Unsigned_64
+                     (RFLX.RFLX_Types.Length (Input'Last)
+                      - RFLX.RFLX_Types.Length (Len_Last))
+      then
+         Last       := First;
+         Value_Last := 0;
+         OK         := False;
          return;
       end if;
       if Len_Val > Unsigned_64 (Value'Length) then
-         OK := False;
+         Last       := First;
+         Value_Last := 0;
+         OK         := False;
          return;
       end if;
 
@@ -235,12 +307,17 @@ is
          L : constant Natural := Natural (Len_Val);
       begin
          for I in 1 .. L loop
-            Value (Value'First + I - 1) :=
+            pragma Loop_Invariant
+              (Len_Last + RFLX.RFLX_Types.Index'Base (I) <= Input'Last);
+            pragma Loop_Invariant
+              (Value'First + (I - 1) <= Value'Last);
+            Value (Value'First + (I - 1)) :=
               Character'Val
-                (Natural (Input (Len_Last + Index (I))));
+                (Natural (Input (Len_Last +
+                                   RFLX.RFLX_Types.Index'Base (I))));
          end loop;
-         Value_Last := Value'First + L - 1;
-         Last       := Len_Last + Index (L);
+         Value_Last := Value'First + (L - 1);
+         Last       := Len_Last + RFLX.RFLX_Types.Index'Base (L);
          OK         := True;
       end;
    end Decode_String_Value;
