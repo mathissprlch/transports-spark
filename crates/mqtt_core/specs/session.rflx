@@ -41,6 +41,7 @@ with Suback;
 with Unsubscribe;
 with Unsuback;
 with Publish;
+with Pubrec;
 with Control_Packet;
 
 package Session is
@@ -475,5 +476,86 @@ package Session is
       end Forwarding_Publish;
 
    end Receive;
+
+   ---------------------------------------------------------------------
+   --  Receive_Qos2 — §3.3.4 / §4.3.3 inbound QoS 2 acknowledgement
+   --  flow. Driver invokes this AFTER the Receive machine has already
+   --  delivered an inbound QoS 2 PUBLISH to the caller (the driver
+   --  inspects the QoS bits in the PUBLISH header to dispatch).
+   --
+   --  Mirrors outbound Publish_Qos2's split: the FSM models the part
+   --  with verification dividend (the inbound dispatch table for
+   --  Awaiting_Pubrel), and the trailing ACK emission (PUBCOMP) is
+   --  hand-written in the Ada driver — same pattern as Publish_Qos2
+   --  outbound's hand-written PUBREL emission.
+   --
+   --  Flow:
+   --    1. Loading_Pubrec — driver pre-encodes PUBREC for the just-
+   --       received PUBLISH's Packet Identifier; FSM reads bytes from
+   --       App_Outbox.
+   --    2. Sending_Pubrec — write to Network.
+   --    3. Awaiting_Pubrel — read inbound; tolerate any in-band
+   --       traffic, dispatch on PUBREL.
+   --    4. Forwarding_Pubrel — write the PUBREL bytes to App_Pending,
+   --       then exit. Driver picks up, decodes packet identifier,
+   --       hand-writes PUBCOMP via Wire.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Receive_Qos2 is
+      Pubrec  : Pubrec::Packet;
+      Inbound : Control_Packet::Incoming_Packet;
+   begin
+
+      state Loading_Pubrec is
+      begin
+         App_Outbox'Read (Pubrec);
+      transition
+         goto Sending_Pubrec
+            if Pubrec'Valid
+         goto null
+      exception
+         goto null
+      end Loading_Pubrec;
+
+      state Sending_Pubrec is
+      begin
+         Network'Write (Pubrec);
+      transition
+         goto Awaiting_Pubrel
+      end Sending_Pubrec;
+
+      state Awaiting_Pubrel is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Pubrel
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::PUBREL
+         goto Awaiting_Pubrel
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PINGRESP
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::PUBLISH
+                    or Inbound.Packet_Type = Control_Packet::SUBACK
+                    or Inbound.Packet_Type = Control_Packet::UNSUBACK)
+         goto null
+      exception
+         goto null
+      end Awaiting_Pubrel;
+
+      state Forwarding_Pubrel is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Pubrel;
+
+   end Receive_Qos2;
 
 end Session;

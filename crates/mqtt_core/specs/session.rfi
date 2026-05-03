@@ -23,3 +23,7 @@ Machine:
     Buffer_Size:
       Default: 256
     External_IO_Buffers: True
+  Receive_Qos2:
+    Buffer_Size:
+      Default: 256
+    External_IO_Buffers: True

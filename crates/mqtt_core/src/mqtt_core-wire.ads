@@ -191,6 +191,16 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 4,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
+   --  §3.5 — encode our PUBREC reply to the broker for an inbound q2
+   --  PUBLISH. Echoes the Packet Identifier from the PUBLISH.
+   procedure Encode_Pubrec
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;
+
    ---------------------------------------------------------------------
    --  PUBREL — §3.6. Encode the third leg of QoS 2 (sender releases
    --  the Packet Identifier after PUBREC). 4 bytes (0x62 0x02 + Pid).
@@ -204,9 +214,28 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 4,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
+   --  §3.6 — decode an inbound PUBREL (broker→us, third leg of inbound q2).
+   procedure Decode_Pubrel
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;
+
    ---------------------------------------------------------------------
    --  PUBCOMP — §3.7. Decode the final QoS 2 ack from the broker.
    ---------------------------------------------------------------------
+
+   --  §3.7 — encode our PUBCOMP, the final leg of inbound q2.
+   procedure Encode_Pubcomp
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;
 
    procedure Decode_Pubcomp
      (Buffer    : in out Bytes_Ptr;

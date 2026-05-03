@@ -14,7 +14,7 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types.Operators;
 
-package body RFLX.Session.Subscribing.FSM
+package body RFLX.Session.Receive_Qos2.FSM
 with
   SPARK_Mode
 is
@@ -23,53 +23,53 @@ is
 
    use type RFLX.Control_Packet.Packet_Type;
 
-   procedure Loading (Ctx : in out Context)
+   procedure Loading_Pubrec (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
      Post =>
        Initialized (Ctx)
    is
-      function Loading_Invariant return Boolean is
+      function Loading_Pubrec_Invariant return Boolean is
         (True)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Loading_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:311:10
-      Subscribe.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
-      if Subscribe.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx) then
-         Ctx.P.Next_State := S_Sending;
+      pragma Assert (Loading_Pubrec_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:515:10
+      Pubrec.Packet.Verify_Message (Ctx.P.Pubrec_Ctx);
+      if Pubrec.Packet.Well_Formed_Message (Ctx.P.Pubrec_Ctx) then
+         Ctx.P.Next_State := S_Sending_Pubrec;
       else
          Ctx.P.Next_State := S_Final;
       end if;
-      pragma Assert (Loading_Invariant);
-   end Loading;
+      pragma Assert (Loading_Pubrec_Invariant);
+   end Loading_Pubrec;
 
-   procedure Sending (Ctx : in out Context)
+   procedure Sending_Pubrec (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
      Post =>
        Initialized (Ctx)
    is
-      function Sending_Invariant return Boolean is
+      function Sending_Pubrec_Invariant return Boolean is
         (True)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Sending_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:322:10
-      Subscribe.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
-      Ctx.P.Next_State := S_Awaiting_Suback;
-      pragma Assert (Sending_Invariant);
-   end Sending;
+      pragma Assert (Sending_Pubrec_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:526:10
+      Pubrec.Packet.Verify_Message (Ctx.P.Pubrec_Ctx);
+      Ctx.P.Next_State := S_Awaiting_Pubrel;
+      pragma Assert (Sending_Pubrec_Invariant);
+   end Sending_Pubrec;
 
-   procedure Awaiting_Suback (Ctx : in out Context)
+   procedure Awaiting_Pubrel (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
@@ -82,8 +82,8 @@ is
       T_3 : Boolean;
       T_4 : Control_Packet.Packet_Type;
       T_5 : Boolean;
-      T_6 : Boolean;
-      T_7 : Control_Packet.Packet_Type;
+      T_6 : Control_Packet.Packet_Type;
+      T_7 : Boolean;
       T_8 : Boolean;
       T_9 : Control_Packet.Packet_Type;
       T_10 : Boolean;
@@ -100,19 +100,19 @@ is
       T_21 : Control_Packet.Packet_Type;
       T_22 : Boolean;
       T_23 : Boolean;
-      function Awaiting_Suback_Invariant return Boolean is
+      function Awaiting_Pubrel_Invariant return Boolean is
         (True)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Awaiting_Suback_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:329:10
+      pragma Assert (Awaiting_Pubrel_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:533:10
       Control_Packet.Incoming_Packet.Verify_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:332:16
+      -- crates/mqtt_core/specs/session.rflx:536:16
       T_0 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:333:20
+      -- crates/mqtt_core/specs/session.rflx:537:20
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -120,21 +120,21 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:333:20
+      -- crates/mqtt_core/specs/session.rflx:537:20
       T_1 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:333:20
-      T_2 := T_1 = Control_Packet.SUBACK;
-      -- crates/mqtt_core/specs/session.rflx:335:16
+      -- crates/mqtt_core/specs/session.rflx:537:20
+      T_2 := T_1 = Control_Packet.PUBREL;
+      -- crates/mqtt_core/specs/session.rflx:539:16
       T_3 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:336:20
+      -- crates/mqtt_core/specs/session.rflx:540:21
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -142,21 +142,19 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:336:20
+      -- crates/mqtt_core/specs/session.rflx:540:21
       T_4 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:336:20
-      T_5 := T_4 = Control_Packet.PUBLISH;
-      -- crates/mqtt_core/specs/session.rflx:338:16
-      T_6 := Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:339:21
+      -- crates/mqtt_core/specs/session.rflx:540:21
+      T_5 := T_4 = Control_Packet.PINGRESP;
+      -- crates/mqtt_core/specs/session.rflx:541:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -164,19 +162,22 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:339:21
-      T_7 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:339:21
-      T_8 := T_7 = Control_Packet.PINGRESP;
-      -- crates/mqtt_core/specs/session.rflx:340:24
+      -- crates/mqtt_core/specs/session.rflx:541:24
+      T_6 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
+      -- crates/mqtt_core/specs/session.rflx:541:24
+      T_7 := T_6 = Control_Packet.PUBACK;
+      -- crates/mqtt_core/specs/session.rflx:540:21
+      T_8 := T_5
+      or else T_7;
+      -- crates/mqtt_core/specs/session.rflx:542:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -184,22 +185,22 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:340:24
+      -- crates/mqtt_core/specs/session.rflx:542:24
       T_9 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:340:24
-      T_10 := T_9 = Control_Packet.PUBACK;
-      -- crates/mqtt_core/specs/session.rflx:339:21
+      -- crates/mqtt_core/specs/session.rflx:542:24
+      T_10 := T_9 = Control_Packet.PUBREC;
+      -- crates/mqtt_core/specs/session.rflx:540:21
       T_11 := T_8
       or else T_10;
-      -- crates/mqtt_core/specs/session.rflx:341:24
+      -- crates/mqtt_core/specs/session.rflx:543:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -207,22 +208,22 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:341:24
+      -- crates/mqtt_core/specs/session.rflx:543:24
       T_12 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:341:24
-      T_13 := T_12 = Control_Packet.PUBREC;
-      -- crates/mqtt_core/specs/session.rflx:339:21
+      -- crates/mqtt_core/specs/session.rflx:543:24
+      T_13 := T_12 = Control_Packet.PUBCOMP;
+      -- crates/mqtt_core/specs/session.rflx:540:21
       T_14 := T_11
       or else T_13;
-      -- crates/mqtt_core/specs/session.rflx:342:24
+      -- crates/mqtt_core/specs/session.rflx:544:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -230,22 +231,22 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:342:24
+      -- crates/mqtt_core/specs/session.rflx:544:24
       T_15 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:342:24
-      T_16 := T_15 = Control_Packet.PUBREL;
-      -- crates/mqtt_core/specs/session.rflx:339:21
+      -- crates/mqtt_core/specs/session.rflx:544:24
+      T_16 := T_15 = Control_Packet.PUBLISH;
+      -- crates/mqtt_core/specs/session.rflx:540:21
       T_17 := T_14
       or else T_16;
-      -- crates/mqtt_core/specs/session.rflx:343:24
+      -- crates/mqtt_core/specs/session.rflx:545:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -253,22 +254,22 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:343:24
+      -- crates/mqtt_core/specs/session.rflx:545:24
       T_18 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:343:24
-      T_19 := T_18 = Control_Packet.PUBCOMP;
-      -- crates/mqtt_core/specs/session.rflx:339:21
+      -- crates/mqtt_core/specs/session.rflx:545:24
+      T_19 := T_18 = Control_Packet.SUBACK;
+      -- crates/mqtt_core/specs/session.rflx:540:21
       T_20 := T_17
       or else T_19;
-      -- crates/mqtt_core/specs/session.rflx:344:24
+      -- crates/mqtt_core/specs/session.rflx:546:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -276,99 +277,73 @@ is
       pragma Warnings (Off, "this statement is never reached");
       if not Control_Packet.Incoming_Packet.Valid (Ctx.P.Inbound_Ctx, Control_Packet.Incoming_Packet.F_Packet_Type) then
          Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Suback_Invariant);
-         goto Finalize_Awaiting_Suback;
+         pragma Assert (Awaiting_Pubrel_Invariant);
+         goto Finalize_Awaiting_Pubrel;
       end if;
       pragma Warnings (On, "this statement is never reached");
       pragma Warnings (On, "statement has no effect");
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/mqtt_core/specs/session.rflx:344:24
+      -- crates/mqtt_core/specs/session.rflx:546:24
       T_21 := Control_Packet.Incoming_Packet.Get_Packet_Type (Ctx.P.Inbound_Ctx);
-      -- crates/mqtt_core/specs/session.rflx:344:24
+      -- crates/mqtt_core/specs/session.rflx:546:24
       T_22 := T_21 = Control_Packet.UNSUBACK;
-      -- crates/mqtt_core/specs/session.rflx:339:21
+      -- crates/mqtt_core/specs/session.rflx:540:21
       T_23 := T_20
       or else T_22;
       if
          T_0
          and then T_2
       then
-         Ctx.P.Next_State := S_Forwarding_Suback;
+         Ctx.P.Next_State := S_Forwarding_Pubrel;
       elsif
          T_3
-         and then T_5
-      then
-         Ctx.P.Next_State := S_Forwarding_Inbound_Publish;
-      elsif
-         T_6
          and then T_23
       then
-         Ctx.P.Next_State := S_Awaiting_Suback;
+         Ctx.P.Next_State := S_Awaiting_Pubrel;
       else
          Ctx.P.Next_State := S_Final;
       end if;
-      pragma Assert (Awaiting_Suback_Invariant);
-      <<Finalize_Awaiting_Suback>>
-   end Awaiting_Suback;
+      pragma Assert (Awaiting_Pubrel_Invariant);
+      <<Finalize_Awaiting_Pubrel>>
+   end Awaiting_Pubrel;
 
-   procedure Forwarding_Inbound_Publish (Ctx : in out Context)
+   procedure Forwarding_Pubrel (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
      Post =>
        Initialized (Ctx)
    is
-      function Forwarding_Inbound_Publish_Invariant return Boolean is
+      function Forwarding_Pubrel_Invariant return Boolean is
         (True)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Forwarding_Inbound_Publish_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:352:10
-      Control_Packet.Incoming_Packet.Verify_Message (Ctx.P.Inbound_Ctx);
-      Ctx.P.Next_State := S_Awaiting_Suback;
-      pragma Assert (Forwarding_Inbound_Publish_Invariant);
-   end Forwarding_Inbound_Publish;
-
-   procedure Forwarding_Suback (Ctx : in out Context)
-   with
-     Pre =>
-       Initialized (Ctx),
-     Post =>
-       Initialized (Ctx)
-   is
-      function Forwarding_Suback_Invariant return Boolean is
-        (True)
-      with
-        Annotate =>
-          (GNATprove, Inline_For_Proof),
-        Ghost;
-   begin
-      pragma Assert (Forwarding_Suback_Invariant);
-      -- crates/mqtt_core/specs/session.rflx:359:10
+      pragma Assert (Forwarding_Pubrel_Invariant);
+      -- crates/mqtt_core/specs/session.rflx:554:10
       Control_Packet.Incoming_Packet.Verify_Message (Ctx.P.Inbound_Ctx);
       Ctx.P.Next_State := S_Final;
-      pragma Assert (Forwarding_Suback_Invariant);
-   end Forwarding_Suback;
+      pragma Assert (Forwarding_Pubrel_Invariant);
+   end Forwarding_Pubrel;
 
-   procedure Initialize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Outgoing_Buffer : in out RFLX_Types.Bytes_Ptr) is
+   procedure Initialize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Pubrec_Buffer : in out RFLX_Types.Bytes_Ptr) is
    begin
-      Subscribe.Packet.Initialize (Ctx.P.Outgoing_Ctx, Outgoing_Buffer);
-      Outgoing_Buffer := null;
+      Pubrec.Packet.Initialize (Ctx.P.Pubrec_Ctx, Pubrec_Buffer);
+      Pubrec_Buffer := null;
       Control_Packet.Incoming_Packet.Initialize (Ctx.P.Inbound_Ctx, Inbound_Buffer);
       Inbound_Buffer := null;
-      Ctx.P.Next_State := S_Loading;
+      Ctx.P.Next_State := S_Loading_Pubrec;
    end Initialize;
 
-   procedure Finalize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Outgoing_Buffer : in out RFLX_Types.Bytes_Ptr) is
+   procedure Finalize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Pubrec_Buffer : in out RFLX_Types.Bytes_Ptr) is
    begin
-      pragma Warnings (Off, """Ctx.P.Outgoing_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-      Subscribe.Packet.Take_Buffer (Ctx.P.Outgoing_Ctx, Outgoing_Buffer);
-      pragma Warnings (On, """Ctx.P.Outgoing_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+      pragma Warnings (Off, """Ctx.P.Pubrec_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+      Pubrec.Packet.Take_Buffer (Ctx.P.Pubrec_Ctx, Pubrec_Buffer);
+      pragma Warnings (On, """Ctx.P.Pubrec_Ctx"" is set by ""Take_Buffer"" but not used after the call");
       pragma Warnings (Off, """Ctx.P.Inbound_Ctx"" is set by ""Take_Buffer"" but not used after the call");
       Control_Packet.Incoming_Packet.Take_Buffer (Ctx.P.Inbound_Ctx, Inbound_Buffer);
       pragma Warnings (On, """Ctx.P.Inbound_Ctx"" is set by ""Take_Buffer"" but not used after the call");
@@ -384,13 +359,13 @@ is
    is
    begin
       case Ctx.P.Next_State is
-         when S_Loading =>
-            Subscribe.Packet.Reset (Ctx.P.Outgoing_Ctx, Ctx.P.Outgoing_Ctx.First, Ctx.P.Outgoing_Ctx.First - 1);
-         when S_Sending =>
+         when S_Loading_Pubrec =>
+            Pubrec.Packet.Reset (Ctx.P.Pubrec_Ctx, Ctx.P.Pubrec_Ctx.First, Ctx.P.Pubrec_Ctx.First - 1);
+         when S_Sending_Pubrec =>
             null;
-         when S_Awaiting_Suback =>
+         when S_Awaiting_Pubrel =>
             Control_Packet.Incoming_Packet.Reset (Ctx.P.Inbound_Ctx, Ctx.P.Inbound_Ctx.First, Ctx.P.Inbound_Ctx.First - 1);
-         when S_Forwarding_Inbound_Publish | S_Forwarding_Suback | S_Final =>
+         when S_Forwarding_Pubrel | S_Final =>
             null;
       end case;
    end Reset_Messages_Before_Write;
@@ -398,16 +373,14 @@ is
    procedure Tick (Ctx : in out Context) is
    begin
       case Ctx.P.Next_State is
-         when S_Loading =>
-            Loading (Ctx);
-         when S_Sending =>
-            Sending (Ctx);
-         when S_Awaiting_Suback =>
-            Awaiting_Suback (Ctx);
-         when S_Forwarding_Inbound_Publish =>
-            Forwarding_Inbound_Publish (Ctx);
-         when S_Forwarding_Suback =>
-            Forwarding_Suback (Ctx);
+         when S_Loading_Pubrec =>
+            Loading_Pubrec (Ctx);
+         when S_Sending_Pubrec =>
+            Sending_Pubrec (Ctx);
+         when S_Awaiting_Pubrel =>
+            Awaiting_Pubrel (Ctx);
+         when S_Forwarding_Pubrel =>
+            Forwarding_Pubrel (Ctx);
          when S_Final =>
             null;
       end case;
@@ -415,7 +388,7 @@ is
    end Tick;
 
    function In_IO_State (Ctx : Context) return Boolean is
-     (Ctx.P.Next_State in S_Loading | S_Sending | S_Awaiting_Suback | S_Forwarding_Inbound_Publish | S_Forwarding_Suback);
+     (Ctx.P.Next_State in S_Loading_Pubrec | S_Sending_Pubrec | S_Awaiting_Pubrel | S_Forwarding_Pubrel);
 
    procedure Run (Ctx : in out Context) is
    begin
@@ -434,8 +407,8 @@ is
       case Ext_Buf is
          when B_Inbound =>
             Control_Packet.Incoming_Packet.Initialize (Ctx.P.Inbound_Ctx, Buffer, Written_Last => Written_Last);
-         when B_Outgoing =>
-            Subscribe.Packet.Initialize (Ctx.P.Outgoing_Ctx, Buffer, Written_Last => Written_Last);
+         when B_Pubrec =>
+            Pubrec.Packet.Initialize (Ctx.P.Pubrec_Ctx, Buffer, Written_Last => Written_Last);
       end case;
       Buffer := null;
    end Add_Buffer;
@@ -447,10 +420,10 @@ is
             pragma Warnings (Off, """Ctx.P.Inbound_Ctx"" is set by ""Take_Buffer"" but not used after the call");
             Control_Packet.Incoming_Packet.Take_Buffer (Ctx.P.Inbound_Ctx, Buffer);
             pragma Warnings (On, """Ctx.P.Inbound_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-         when B_Outgoing =>
-            pragma Warnings (Off, """Ctx.P.Outgoing_Ctx"" is set by ""Take_Buffer"" but not used after the call");
-            Subscribe.Packet.Take_Buffer (Ctx.P.Outgoing_Ctx, Buffer);
-            pragma Warnings (On, """Ctx.P.Outgoing_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+         when B_Pubrec =>
+            pragma Warnings (Off, """Ctx.P.Pubrec_Ctx"" is set by ""Take_Buffer"" but not used after the call");
+            Pubrec.Packet.Take_Buffer (Ctx.P.Pubrec_Ctx, Buffer);
+            pragma Warnings (On, """Ctx.P.Pubrec_Ctx"" is set by ""Take_Buffer"" but not used after the call");
       end case;
    end Remove_Buffer;
 
@@ -469,14 +442,14 @@ is
          Buffer (Buffer'First .. RFLX_Types.Index (Buffer_Last)) := Message_Buffer (RFLX_Types.Index (RFLX_Types.Length (Message_Buffer'First) + Offset) .. Message_Buffer'First + Offset + (Length - RFLX_Types.Length'(1)));
       end Read;
       procedure Control_Packet_Incoming_Packet_Read is new Control_Packet.Incoming_Packet.Generic_Read (Read, Read_Pre);
-      procedure Subscribe_Packet_Read is new Subscribe.Packet.Generic_Read (Read, Read_Pre);
+      procedure Pubrec_Packet_Read is new Pubrec.Packet.Generic_Read (Read, Read_Pre);
    begin
       Buffer := (others => 0);
       case Chan is
          when C_Network =>
             case Ctx.P.Next_State is
-               when S_Sending =>
-                  Subscribe_Packet_Read (Ctx.P.Outgoing_Ctx);
+               when S_Sending_Pubrec =>
+                  Pubrec_Packet_Read (Ctx.P.Pubrec_Ctx);
                when others =>
                   pragma Warnings (Off, "unreachable code");
                   null;
@@ -484,7 +457,7 @@ is
             end case;
          when C_App_Pending =>
             case Ctx.P.Next_State is
-               when S_Forwarding_Inbound_Publish | S_Forwarding_Suback =>
+               when S_Forwarding_Pubrel =>
                   Control_Packet_Incoming_Packet_Read (Ctx.P.Inbound_Ctx);
                when others =>
                   pragma Warnings (Off, "unreachable code");
@@ -520,12 +493,12 @@ is
          Message_Buffer (Message_Buffer'First .. RFLX_Types.Index (RFLX_Types.Length (Message_Buffer'First) - 1 + Length)) := Buffer;
       end Write;
       procedure Control_Packet_Incoming_Packet_Write is new Control_Packet.Incoming_Packet.Generic_Write (Write, Write_Pre);
-      procedure Subscribe_Packet_Write is new Subscribe.Packet.Generic_Write (Write, Write_Pre);
+      procedure Pubrec_Packet_Write is new Pubrec.Packet.Generic_Write (Write, Write_Pre);
    begin
       case Chan is
          when C_Network =>
             case Ctx.P.Next_State is
-               when S_Awaiting_Suback =>
+               when S_Awaiting_Pubrel =>
                   Control_Packet_Incoming_Packet_Write (Ctx.P.Inbound_Ctx, Offset);
                when others =>
                   pragma Warnings (Off, "unreachable code");
@@ -538,8 +511,8 @@ is
             pragma Warnings (On, "unreachable code");
          when C_App_Outbox =>
             case Ctx.P.Next_State is
-               when S_Loading =>
-                  Subscribe_Packet_Write (Ctx.P.Outgoing_Ctx, Offset);
+               when S_Loading_Pubrec =>
+                  Pubrec_Packet_Write (Ctx.P.Pubrec_Ctx, Offset);
                when others =>
                   pragma Warnings (Off, "unreachable code");
                   null;
@@ -548,4 +521,4 @@ is
       end case;
    end Write;
 
-end RFLX.Session.Subscribing.FSM;
+end RFLX.Session.Receive_Qos2.FSM;

@@ -8,6 +8,7 @@ with RFLX.Session.Publish_Qos2.FSM;
 with RFLX.Session.Subscribing.FSM;
 with RFLX.Session.Unsubscribing.FSM;
 with RFLX.Session.Receive.FSM;
+with RFLX.Session.Receive_Qos2.FSM;
 
 package body Mqtt_Core.Client is
 
@@ -786,6 +787,112 @@ package body Mqtt_Core.Client is
          Topic, Topic_Last, Payload, Payload_Last);
    end Decode_Pending_Publish;
 
+   --  Drive Receive_Qos2 FSM through PUBREC → await PUBREL →
+   --  hand-write PUBCOMP. Mirrors Publish_Qos2 outbound's split:
+   --  the FSM enforces the dispatch table for Awaiting_Pubrel; the
+   --  driver hand-writes the trailing PUBCOMP after the FSM exits.
+   procedure Drive_Qos2_Inbound_Ack
+     (C   : in out Client;
+      Pid : RFLX.Control_Packet.Packet_Identifier);
+
+   procedure Drive_Qos2_Inbound_Ack
+     (C   : in out Client;
+      Pid : RFLX.Control_Packet.Packet_Identifier)
+   is
+      package FSM renames RFLX.Session.Receive_Qos2.FSM;
+      Ctx          : FSM.Context;
+      Last         : RFLX.RFLX_Types.Index;
+      Read_Ok      : Boolean;
+      Got_Pubrel   : Boolean := False;
+      Pubrel_Pid   : RFLX.Control_Packet.Packet_Identifier := Pid;
+   begin
+      --  Encode PUBREC into C.Buf, hand to FSM.C_App_Outbox.
+      Wire.Encode_Pubrec (C.Buf, Last, Pid);
+
+      FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
+      if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
+         FSM.Write
+           (Ctx, FSM.C_App_Outbox,
+            C.Buf.all (C.Buf'First .. Last));
+      end if;
+
+      Drive_Loop :
+      loop
+         FSM.Run (Ctx);
+         exit Drive_Loop when not FSM.Active (Ctx);
+
+         if FSM.Has_Data (Ctx, FSM.C_Network) then
+            declare
+               N    : constant RFLX.RFLX_Types.Length :=
+                 FSM.Read_Buffer_Size (Ctx, FSM.C_Network);
+               View : RFLX.RFLX_Types.Bytes
+                 (C.Buf'First ..
+                    C.Buf'First + RFLX.RFLX_Types.Index (N) - 1);
+            begin
+               FSM.Read (Ctx, FSM.C_Network, View);
+               Transport.Send (C.Trans, View);
+            end;
+         end if;
+
+         if FSM.Has_Data (Ctx, FSM.C_App_Pending) then
+            declare
+               N    : constant RFLX.RFLX_Types.Length :=
+                 FSM.Read_Buffer_Size (Ctx, FSM.C_App_Pending);
+               View : RFLX.RFLX_Types.Bytes
+                 (C.Buf'First ..
+                    C.Buf'First + RFLX.RFLX_Types.Index (N) - 1);
+               Decode_Ok : Boolean;
+            begin
+               FSM.Read (Ctx, FSM.C_App_Pending, View);
+               --  FSM only forwards PUBREL to App_Pending in this
+               --  machine; verify and pull the Packet Identifier.
+               if View'Length >= 4
+                 and then Wire.Peek_Packet_Type (View)
+                          = RFLX.Control_Packet.PUBREL
+               then
+                  C.Buf.all (View'Range) := View;
+                  Wire.Decode_Pubrel
+                    (C.Buf, View'Last, Decode_Ok, Pubrel_Pid);
+                  if Decode_Ok then
+                     Got_Pubrel := True;
+                  end if;
+               end if;
+            end;
+         end if;
+
+         if FSM.Needs_Data (Ctx, FSM.C_Network) then
+            Read_Full_Packet (C, Last, Read_Ok);
+            if not Read_Ok then
+               FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
+               raise Receive_Failure
+                 with "QoS 2 inbound: EOF awaiting PUBREL";
+            end if;
+            if FSM.Needs_Data (Ctx, FSM.C_Network) then
+               FSM.Write
+                 (Ctx, FSM.C_Network,
+                  C.Buf.all (C.Buf'First .. Last));
+            end if;
+         end if;
+      end loop Drive_Loop;
+
+      FSM.Finalize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
+
+      if not Got_Pubrel then
+         raise Receive_Failure
+           with "QoS 2 inbound: FSM exited without PUBREL";
+      end if;
+
+      --  Hand-written final leg: PUBCOMP with the same Packet
+      --  Identifier (echo) goes back to broker.
+      declare
+         Pubcomp_Last : RFLX.RFLX_Types.Index;
+      begin
+         Wire.Encode_Pubcomp (C.Buf, Pubcomp_Last, Pubrel_Pid);
+         Transport.Send
+           (C.Trans, C.Buf.all (C.Buf'First .. Pubcomp_Last));
+      end;
+   end Drive_Qos2_Inbound_Ack;
+
    procedure Receive_Publish
      (C            : in out Client;
       Topic        : in out String;
@@ -798,10 +905,13 @@ package body Mqtt_Core.Client is
       QoS       : RFLX.Control_Packet.QoS_Level;
       Pid       : RFLX.Control_Packet.Packet_Identifier;
    begin
-      --  Drain one queued PUBLISH if any. PUBACK was already emitted
-      --  at enqueue time (in Subscribe / Unsubscribe / Publish_Qos1),
-      --  so a drain MUST NOT re-PUBACK — that would be a duplicate
-      --  ack on the wire.
+      --  Drain one queued PUBLISH if any.
+      --
+      --  QoS 1: PUBACK was already emitted at enqueue time
+      --     (in Subscribe / Unsubscribe / Publish_Qos1), so a drain
+      --     MUST NOT re-PUBACK — that would be a duplicate ack.
+      --  QoS 2: no ack has been sent yet — the four-step
+      --     PUBREC/PUBREL/PUBCOMP flow runs on drain.
       for I in C.Pending'Range loop
          if C.Pending (I).In_Use then
             declare
@@ -816,6 +926,9 @@ package body Mqtt_Core.Client is
             C.Pending (I).In_Use := False;
             if not Decode_Ok then
                raise Receive_Failure with "malformed queued PUBLISH";
+            end if;
+            if QoS = RFLX.Control_Packet.QOS_2 then
+               Drive_Qos2_Inbound_Ack (C, Pid);
             end if;
             return;
          end if;
@@ -888,6 +1001,9 @@ package body Mqtt_Core.Client is
                                    (C.Buf'First .. Puback_Last));
                            end;
                         end if;
+                        --  QoS 2 case is dispatched AFTER FSM.Finalize
+                        --  below — Receive_Qos2 needs C.Inbound_Buf
+                        --  back from the Receive FSM first.
                      end if;
                   end if;
                end;
@@ -912,6 +1028,12 @@ package body Mqtt_Core.Client is
             raise Receive_Failure with "FSM exited without PUBLISH";
          end if;
       end;
+
+      --  QoS 2 inbound ack (deferred until after Receive FSM Finalize
+      --  returned C.Inbound_Buf — Receive_Qos2 needs it).
+      if QoS = RFLX.Control_Packet.QOS_2 then
+         Drive_Qos2_Inbound_Ack (C, Pid);
+      end if;
    end Receive_Publish;
 
    ---------------------------------------------------------------------

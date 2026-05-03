@@ -12,6 +12,7 @@
 --    docker run --rm -p 1883:1883 eclipse-mosquitto
 
 with Ada.Text_IO;
+with Ada.Command_Line;
 with RFLX.RFLX_Types;
 use type RFLX.RFLX_Types.Index;
 with RFLX.Control_Packet;
@@ -137,21 +138,23 @@ begin
    Put_Line ("mqtt_demo: connected.");
 
    --  Subscribe to two filters in a single SUBSCRIBE packet (§3.8.3).
-   --  ada/test at QoS 1 — the broker will echo our QoS 1 publish back
-   --  at QoS 1, exercising Encode_Puback for the inbound ack.
-   --  ada/aux at QoS 0 — second filter only proves the multi-topic
-   --  encoder + Decode_Suback array path; we don't publish to it.
+   --  ada/test at QoS 2 — broker echoes our q1/q2 publishes back at
+   --  the publisher's QoS (capped at our subscription QoS), so q1
+   --  exercises Encode_Puback and q2 exercises the full
+   --  PUBREC/PUBREL/PUBCOMP flow via the Receive_Qos2 FSM.
+   --  ada/aux at QoS 0 — proves the multi-topic encoder + Decode_Suback
+   --  array path; not republished to.
    declare
       Filters : constant Mqtt_Core.Client.Subscription_Filters :=
         (Mqtt_Core.Wire.Make_Subscription
-           (Topic, RFLX.Control_Packet.QOS_1),
+           (Topic, RFLX.Control_Packet.QOS_2),
          Mqtt_Core.Wire.Make_Subscription
            ("ada/aux", RFLX.Control_Packet.QOS_0));
    begin
       Mqtt_Core.Client.Subscribe_Many (Client, Filters);
    end;
    Put_Line ("mqtt_demo: subscribed to " & Topic
-             & " (QoS 1) + ada/aux (QoS 0) in one SUBSCRIBE");
+             & " (QoS 2) + ada/aux (QoS 0) in one SUBSCRIBE");
 
    Put_Line ("mqtt_demo: round-trip 1 (small)");
    Round_Trip (Client, Topic, "Hello, MQTT!");
@@ -221,6 +224,32 @@ begin
         ("  <- queued echo: """
          & To_String (Recv_Payload, Recv_P_Last) & """");
    end;
+
+   --  External QoS 2 publisher → us. Proves Receive_Qos2 FSM against
+   --  a broker→us q2 message that we did NOT originate. Use docker
+   --  exec mqtt-soak-mosq mosquitto_pub -q 2 -t ada/test -m '...'
+   --  in another shell to feed this; demo will block here until a
+   --  q2 PUBLISH arrives.
+   if Ada.Command_Line.Argument_Count >= 1
+     and then Ada.Command_Line.Argument (1) = "wait-q2"
+   then
+      Put_Line ("mqtt_demo: awaiting external QoS 2 PUBLISH on " & Topic & "...");
+      Put_Line ("           publish from another shell, e.g.:");
+      Put_Line ("             docker exec mqtt-soak-mosq \");
+      Put_Line ("               mosquitto_pub -q 2 -t " & Topic & " -m hello-q2");
+      declare
+         Recv_Topic   : String (1 .. 128);
+         Recv_T_Last  : Natural;
+         Recv_Payload : RFLX.RFLX_Types.Bytes (1 .. 256);
+         Recv_P_Last  : RFLX.RFLX_Types.Length;
+      begin
+         Mqtt_Core.Client.Receive_Publish
+           (Client, Recv_Topic, Recv_T_Last,
+            Recv_Payload, Recv_P_Last);
+         Put_Line ("  <- external q2 PUBLISH: """
+                   & To_String (Recv_Payload, Recv_P_Last) & """");
+      end;
+   end if;
 
    --  Symmetric multi-topic UNSUBSCRIBE: drop both filters in one packet.
    declare

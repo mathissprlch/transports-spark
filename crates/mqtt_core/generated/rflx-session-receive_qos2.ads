@@ -8,9 +8,14 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+pragma Restrictions (No_Streams);
+pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
-pragma SPARK_Mode;
-with RFLX.RFLX_Types.Operators;
-with RFLX.RFLX_Generic_Types.Generic_Operations;
+pragma Warnings (Off, "redundant conversion");
 
-package RFLX.RFLX_Types.Operations is new RFLX.RFLX_Types.Generic_Operations (RFLX.RFLX_Types.Operators);
+package RFLX.Session.Receive_Qos2
+with
+  SPARK_Mode
+is
+
+end RFLX.Session.Receive_Qos2;

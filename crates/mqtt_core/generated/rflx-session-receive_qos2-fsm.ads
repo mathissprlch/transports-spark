@@ -13,10 +13,12 @@ pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types;
+with RFLX.Pubrec;
+with RFLX.Pubrec.Packet;
 with RFLX.Control_Packet;
 with RFLX.Control_Packet.Incoming_Packet;
 
-package RFLX.Session.Receive.FSM
+package RFLX.Session.Receive_Qos2.FSM
 with
   SPARK_Mode
 is
@@ -29,11 +31,11 @@ is
 
    use type RFLX.RFLX_Types.Length;
 
-   type Channel is (C_Network, C_App_Pending);
+   type Channel is (C_Network, C_App_Pending, C_App_Outbox);
 
-   type State is (S_Reading, S_Forwarding_Publish, S_Final);
+   type State is (S_Loading_Pubrec, S_Sending_Pubrec, S_Awaiting_Pubrel, S_Forwarding_Pubrel, S_Final);
 
-   type External_Buffer is (B_Inbound);
+   type External_Buffer is (B_Inbound, B_Pubrec);
 
    type Private_Context is private;
 
@@ -54,28 +56,35 @@ is
 
    function Active (Ctx : Context) return Boolean;
 
-   procedure Initialize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr)
+   procedure Initialize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Pubrec_Buffer : in out RFLX_Types.Bytes_Ptr)
    with
      Pre =>
        Uninitialized (Ctx)
        and then Inbound_Buffer /= null
        and then Inbound_Buffer'Length > 0
-       and then Inbound_Buffer'Last < RFLX_Types.Index'Last,
+       and then Inbound_Buffer'Last < RFLX_Types.Index'Last
+       and then Pubrec_Buffer /= null
+       and then Pubrec_Buffer'Length > 0
+       and then Pubrec_Buffer'Last < RFLX_Types.Index'Last,
      Post =>
        Initialized (Ctx)
        and Active (Ctx)
        and Has_Buffer (Ctx, B_Inbound)
-       and Inbound_Buffer = null;
+       and Inbound_Buffer = null
+       and Has_Buffer (Ctx, B_Pubrec)
+       and Pubrec_Buffer = null;
 
-   procedure Finalize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr)
+   procedure Finalize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Pubrec_Buffer : in out RFLX_Types.Bytes_Ptr)
    with
      Pre =>
        Initialized (Ctx)
-       and then Inbound_Buffer = null,
+       and then Inbound_Buffer = null
+       and then Pubrec_Buffer = null,
      Post =>
        Uninitialized (Ctx)
        and not Active (Ctx)
-       and Inbound_Buffer /= null;
+       and Inbound_Buffer /= null
+       and Pubrec_Buffer /= null;
 
    pragma Warnings (Off, "subprogram ""Tick"" has no effect");
 
@@ -103,7 +112,7 @@ is
 
    function Next_State (Ctx : Context) return State;
 
-   function Buffer_Accessible (St : State; Unused_Ext_Buf : External_Buffer) return Boolean;
+   function Buffer_Accessible (St : State; Ext_Buf : External_Buffer) return Boolean;
 
    function Channel_Accessible (St : State; Chan : Channel) return Boolean;
 
@@ -138,8 +147,14 @@ is
                     Ext_Buf /= B_Inbound
                  then
                     Has_Buffer (Ctx, B_Inbound) = Has_Buffer (Ctx, B_Inbound)'Old
-                    and Session.Receive.FSM.Written_Last (Ctx, B_Inbound) = Session.Receive.FSM.Written_Last (Ctx, B_Inbound)'Old)
+                    and Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Inbound) = Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Inbound)'Old)
+       and then (if
+                    Ext_Buf /= B_Pubrec
+                 then
+                    Has_Buffer (Ctx, B_Pubrec) = Has_Buffer (Ctx, B_Pubrec)'Old
+                    and Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Pubrec) = Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Pubrec)'Old)
        and then Buffer_Accessible (Next_State (Ctx), B_Inbound) = Buffer_Accessible (Next_State (Ctx), B_Inbound)'Old
+       and then Buffer_Accessible (Next_State (Ctx), B_Pubrec) = Buffer_Accessible (Next_State (Ctx), B_Pubrec)'Old
        and then Next_State (Ctx) = Next_State (Ctx)'Old;
 
    procedure Remove_Buffer (Ctx : in out Context; Ext_Buf : External_Buffer; Buffer : out RFLX_Types.Bytes_Ptr)
@@ -163,8 +178,14 @@ is
                     Ext_Buf /= B_Inbound
                  then
                     Has_Buffer (Ctx, B_Inbound) = Has_Buffer (Ctx, B_Inbound)'Old
-                    and Session.Receive.FSM.Written_Last (Ctx, B_Inbound) = Session.Receive.FSM.Written_Last (Ctx, B_Inbound)'Old)
+                    and Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Inbound) = Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Inbound)'Old)
+       and then (if
+                    Ext_Buf /= B_Pubrec
+                 then
+                    Has_Buffer (Ctx, B_Pubrec) = Has_Buffer (Ctx, B_Pubrec)'Old
+                    and Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Pubrec) = Session.Receive_Qos2.FSM.Written_Last (Ctx, B_Pubrec)'Old)
        and then Buffer_Accessible (Next_State (Ctx), B_Inbound) = Buffer_Accessible (Next_State (Ctx), B_Inbound)'Old
+       and then Buffer_Accessible (Next_State (Ctx), B_Pubrec) = Buffer_Accessible (Next_State (Ctx), B_Pubrec)'Old
        and then Next_State (Ctx) = Next_State (Ctx)'Old;
 
    function Has_Data (Ctx : Context; Chan : Channel) return Boolean
@@ -217,18 +238,21 @@ private
 
    type Private_Context is
       record
-         Next_State : State := S_Reading;
+         Next_State : State := S_Loading_Pubrec;
+         Pubrec_Ctx : Pubrec.Packet.Context;
          Inbound_Ctx : Control_Packet.Incoming_Packet.Context;
       end record;
 
    function Uninitialized (Ctx : Context) return Boolean is
-     (not Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx));
+     (not Pubrec.Packet.Has_Buffer (Ctx.P.Pubrec_Ctx)
+      and not Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx));
 
    function Global_Initialized (Unused_Ctx : Context) return Boolean is
      (True);
 
    function Buffers_Initialized (Ctx : Context) return Boolean is
-     (Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx));
+     (Pubrec.Packet.Has_Buffer (Ctx.P.Pubrec_Ctx)
+      and then Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx));
 
    function Initialized (Ctx : Context) return Boolean is
      (Global_Initialized (Ctx)
@@ -240,21 +264,28 @@ private
    function Next_State (Ctx : Context) return State is
      (Ctx.P.Next_State);
 
-   function Buffer_Accessible (St : State; Unused_Ext_Buf : External_Buffer) return Boolean is
+   function Buffer_Accessible (St : State; Ext_Buf : External_Buffer) return Boolean is
      ((for some C in Channel =>
-          Channel_Accessible (St, C)));
+          Channel_Accessible (St, C)
+          and then Accessible_Buffer (St, C) = Ext_Buf));
 
    function Channel_Accessible (St : State; Chan : Channel) return Boolean is
      (case Chan is
           when C_Network =>
              (case St is
-                 when S_Reading =>
+                 when S_Sending_Pubrec | S_Awaiting_Pubrel =>
                     True,
                  when others =>
                     False),
           when C_App_Pending =>
              (case St is
-                 when S_Forwarding_Publish =>
+                 when S_Forwarding_Pubrel =>
+                    True,
+                 when others =>
+                    False),
+          when C_App_Outbox =>
+             (case St is
+                 when S_Loading_Pubrec =>
                     True,
                  when others =>
                     False));
@@ -269,70 +300,107 @@ private
      (case Chan is
           when C_Network =>
              (case St is
-                 when S_Reading =>
+                 when S_Sending_Pubrec =>
+                    B_Pubrec,
+                 when S_Awaiting_Pubrel =>
                     B_Inbound,
                  when others =>
                     Unreachable_External_Buffer),
           when C_App_Pending =>
              (case St is
-                 when S_Forwarding_Publish =>
+                 when S_Forwarding_Pubrel =>
                     B_Inbound,
+                 when others =>
+                    Unreachable_External_Buffer),
+          when C_App_Outbox =>
+             (case St is
+                 when S_Loading_Pubrec =>
+                    B_Pubrec,
                  when others =>
                     Unreachable_External_Buffer));
 
    function Has_Buffer (Ctx : Context; Ext_Buf : External_Buffer) return Boolean is
      (case Ext_Buf is
           when B_Inbound =>
-             Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx));
+             Control_Packet.Incoming_Packet.Has_Buffer (Ctx.P.Inbound_Ctx),
+          when B_Pubrec =>
+             Pubrec.Packet.Has_Buffer (Ctx.P.Pubrec_Ctx));
 
    function Written_Last (Ctx : Context; Ext_Buf : External_Buffer) return RFLX_Types.Bit_Length is
      (case Ext_Buf is
           when B_Inbound =>
-             Control_Packet.Incoming_Packet.Written_Last (Ctx.P.Inbound_Ctx));
+             Control_Packet.Incoming_Packet.Written_Last (Ctx.P.Inbound_Ctx),
+          when B_Pubrec =>
+             Pubrec.Packet.Written_Last (Ctx.P.Pubrec_Ctx));
 
    function Has_Data (Ctx : Context; Chan : Channel) return Boolean is
      (case Chan is
           when C_Network =>
-             False,
+             (case Ctx.P.Next_State is
+                 when S_Sending_Pubrec =>
+                    Pubrec.Packet.Well_Formed_Message (Ctx.P.Pubrec_Ctx)
+                    and Pubrec.Packet.Byte_Size (Ctx.P.Pubrec_Ctx) > 0,
+                 when others =>
+                    False),
           when C_App_Pending =>
              (case Ctx.P.Next_State is
-                 when S_Forwarding_Publish =>
+                 when S_Forwarding_Pubrel =>
                     Control_Packet.Incoming_Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx)
                     and Control_Packet.Incoming_Packet.Byte_Size (Ctx.P.Inbound_Ctx) > 0,
                  when others =>
-                    False));
+                    False),
+          when C_App_Outbox =>
+             False);
 
    function Read_Buffer_Size (Ctx : Context; Chan : Channel) return RFLX_Types.Length is
      (case Chan is
           when C_Network =>
-             RFLX_Types.Unreachable,
+             (case Ctx.P.Next_State is
+                 when S_Sending_Pubrec =>
+                    Pubrec.Packet.Byte_Size (Ctx.P.Pubrec_Ctx),
+                 when others =>
+                    RFLX_Types.Unreachable),
           when C_App_Pending =>
              (case Ctx.P.Next_State is
-                 when S_Forwarding_Publish =>
+                 when S_Forwarding_Pubrel =>
                     Control_Packet.Incoming_Packet.Byte_Size (Ctx.P.Inbound_Ctx),
                  when others =>
-                    RFLX_Types.Unreachable));
+                    RFLX_Types.Unreachable),
+          when C_App_Outbox =>
+             RFLX_Types.Unreachable);
 
    function Needs_Data (Ctx : Context; Chan : Channel) return Boolean is
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Reading =>
+                 when S_Awaiting_Pubrel =>
                     True,
                  when others =>
                     False),
           when C_App_Pending =>
-             False);
+             False,
+          when C_App_Outbox =>
+             (case Ctx.P.Next_State is
+                 when S_Loading_Pubrec =>
+                    True,
+                 when others =>
+                    False));
 
    function Write_Buffer_Size (Ctx : Context; Chan : Channel) return RFLX_Types.Length is
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Reading =>
+                 when S_Awaiting_Pubrel =>
                     Control_Packet.Incoming_Packet.Buffer_Length (Ctx.P.Inbound_Ctx),
                  when others =>
                     RFLX_Types.Unreachable),
           when C_App_Pending =>
-             0);
+             0,
+          when C_App_Outbox =>
+             (case Ctx.P.Next_State is
+                 when S_Loading_Pubrec =>
+                    Pubrec.Packet.Buffer_Length (Ctx.P.Pubrec_Ctx),
+                 when others =>
+                    RFLX_Types.Unreachable));
 
-end RFLX.Session.Receive.FSM;
+end RFLX.Session.Receive_Qos2.FSM;

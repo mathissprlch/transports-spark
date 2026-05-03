@@ -301,6 +301,28 @@ is
    end Decode_Pubrec;
 
    ---------------------------------------------------------------------
+   --  Encode_Pubrec
+   ---------------------------------------------------------------------
+
+   procedure Encode_Pubrec
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   is
+      Ctx : RFLX.Pubrec.Packet.Context;
+   begin
+      RFLX.Pubrec.Packet.Initialize (Ctx, Buffer);
+      RFLX.Pubrec.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.PUBREC);
+      RFLX.Pubrec.Packet.Set_Reserved (Ctx, 0);
+      RFLX.Pubrec.Packet.Set_Remaining_Length (Ctx, 2);
+      RFLX.Pubrec.Packet.Set_Packet_Identifier (Ctx, Packet_Id);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Pubrec.Packet.Message_Last (Ctx));
+      RFLX.Pubrec.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Pubrec;
+
+   ---------------------------------------------------------------------
    --  Encode_Pubrel
    ---------------------------------------------------------------------
 
@@ -321,6 +343,54 @@ is
         (RFLX.Pubrel.Packet.Message_Last (Ctx));
       RFLX.Pubrel.Packet.Take_Buffer (Ctx, Buffer);
    end Encode_Pubrel;
+
+   ---------------------------------------------------------------------
+   --  Decode_Pubrel
+   ---------------------------------------------------------------------
+
+   procedure Decode_Pubrel
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Packet_Id :    out Packet_Identifier)
+   is
+      Ctx : RFLX.Pubrel.Packet.Context;
+   begin
+      Valid     := False;
+      Packet_Id := 1;
+
+      RFLX.Pubrel.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Pubrel.Packet.Verify_Message (Ctx);
+      if RFLX.Pubrel.Packet.Well_Formed_Message (Ctx) then
+         Packet_Id := RFLX.Pubrel.Packet.Get_Packet_Identifier (Ctx);
+         Valid     := True;
+      end if;
+      RFLX.Pubrel.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Pubrel;
+
+   ---------------------------------------------------------------------
+   --  Encode_Pubcomp
+   ---------------------------------------------------------------------
+
+   procedure Encode_Pubcomp
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier)
+   is
+      Ctx : RFLX.Pubcomp.Packet.Context;
+   begin
+      RFLX.Pubcomp.Packet.Initialize (Ctx, Buffer);
+      RFLX.Pubcomp.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.PUBCOMP);
+      RFLX.Pubcomp.Packet.Set_Reserved (Ctx, 0);
+      RFLX.Pubcomp.Packet.Set_Remaining_Length (Ctx, 2);
+      RFLX.Pubcomp.Packet.Set_Packet_Identifier (Ctx, Packet_Id);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Pubcomp.Packet.Message_Last (Ctx));
+      RFLX.Pubcomp.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Pubcomp;
 
    ---------------------------------------------------------------------
    --  Decode_Pubcomp
