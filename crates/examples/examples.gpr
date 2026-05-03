@@ -12,6 +12,7 @@ project Examples is
    for Main use ("greeter_server.adb", "greeter_client.adb",
                  "greeter_client_v02.adb",
                  "greeter_streaming_demo.adb",
+                 "greeter_server_v02.adb",
                  "listfeatures_server.adb", "listfeatures_client.adb",
                  "mqtt_demo.adb");
 

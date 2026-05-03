@@ -163,4 +163,35 @@ package body Http2_Core.Transport is
       FIFO := (others => 0);
    end Reset_Queue;
 
+   ----------------------------------------------------------------
+   --  Listener stubs — bare-metal has no listening sockets; the
+   --  loopback Transport's single shared FIFO already handles the
+   --  in-image case. These exist only to keep the API surface
+   --  uniform between hosted and bare builds.
+   ----------------------------------------------------------------
+
+   function Is_Listening (L : Listener) return Boolean is
+     (L.Listening);
+
+   procedure Listen
+     (L : in out Listener; Host : String; Port : Natural)
+   is
+      pragma Unreferenced (Host);
+      pragma Unreferenced (Port);
+   begin
+      L.Listening := True;
+   end Listen;
+
+   procedure Accept_One
+     (L : in out Listener; Chan : in out Channel) is
+      pragma Unreferenced (L);
+   begin
+      Chan.Open := True;
+   end Accept_One;
+
+   procedure Stop (L : in out Listener) is
+   begin
+      L.Listening := False;
+   end Stop;
+
 end Http2_Core.Transport;

@@ -10,6 +10,7 @@ licenses = "MIT"
 executables = ["greeter_server", "greeter_client",
                "greeter_client_v02",
                "greeter_streaming_demo",
+               "greeter_server_v02",
                "listfeatures_server", "listfeatures_client",
                "mqtt_demo"]
 project-files = ["examples.gpr"]

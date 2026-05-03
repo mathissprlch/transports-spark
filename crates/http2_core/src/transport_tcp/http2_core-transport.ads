@@ -54,6 +54,31 @@ package Http2_Core.Transport is
      Pre  => Is_Open (Chan),
      Post => not Is_Open (Chan);
 
+   --  Server side: a Listener owns a bound + listening TCP socket.
+   --  Accept_One blocks until a client connects, then fills `Chan`
+   --  with the accepted connection. Single-stream-per-connection in
+   --  v0.2; a real server would loop and spawn handlers.
+   type Listener is limited private;
+
+   procedure Listen
+     (L    : in out Listener;
+      Host : String;
+      Port : Natural);
+
+   function Is_Listening (L : Listener) return Boolean;
+
+   procedure Accept_One
+     (L    : in out Listener;
+      Chan : in out Channel)
+   with
+     Pre  => Is_Listening (L),
+     Post => Is_Open (Chan);
+
+   procedure Stop (L : in out Listener)
+   with
+     Pre  => Is_Listening (L),
+     Post => not Is_Listening (L);
+
    Connect_Error : exception;
    Send_Error    : exception;
 
@@ -62,6 +87,11 @@ private
    type Channel is limited record
       Socket : GNAT.Sockets.Socket_Type;
       Open   : Boolean := False;
+   end record;
+
+   type Listener is limited record
+      Socket    : GNAT.Sockets.Socket_Type;
+      Listening : Boolean := False;
    end record;
 
 end Http2_Core.Transport;

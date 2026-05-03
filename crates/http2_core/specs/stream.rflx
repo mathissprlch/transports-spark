@@ -409,4 +409,133 @@ package Stream is
 
    end Bidi_Stream;
 
+   ---------------------------------------------------------------------
+   --  Open — server-side single-stream lifecycle. The mirror of
+   --  Half_Open: the client opens the stream by sending HEADERS;
+   --  the server reads HEADERS, optionally reads DATA frames until
+   --  END_STREAM, then sends its response (HEADERS + DATA +
+   --  trailing HEADERS).
+   --
+   --  Verification dividend: every state that reads from the
+   --  network enumerates the legal-from-client packet types. A
+   --  client breaking protocol (sending DATA before HEADERS, etc.)
+   --  drives the FSM to Final, surfaced to the driver.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Open is
+      Inbound  : Frame::Packet;
+      Outgoing : Frame::Packet;
+   begin
+
+      --  Awaiting_Headers: server sees nothing on this stream until
+      --  the client's request HEADERS frame arrives. Connection-
+      --  management frames (PING / SETTINGS / WINDOW / GOAWAY) are
+      --  legal at any time and forwarded to the driver for inline
+      --  ACK emission. Anything else from the client is a protocol
+      --  violation.
+      state Awaiting_Headers is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Headers
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::HEADERS
+         goto Forwarding_Connection_Frame
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
+                    or Inbound.Frame_Type = Http2_Parameters::PING
+                    or Inbound.Frame_Type = Http2_Parameters::WINDOW_UPDATE
+                    or Inbound.Frame_Type = Http2_Parameters::GOAWAY)
+         goto null
+      exception
+         goto null
+      end Awaiting_Headers;
+
+      state Forwarding_Headers is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Body
+      end Forwarding_Headers;
+
+      --  Awaiting_Body: optional DATA frames until END_STREAM. The
+      --  driver tracks END_STREAM bit and exits the FSM via
+      --  Loading_Response when the request is complete.
+      state Awaiting_Body is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Body
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::DATA
+         goto Forwarding_Connection_Frame
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
+                    or Inbound.Frame_Type = Http2_Parameters::PING
+                    or Inbound.Frame_Type = Http2_Parameters::WINDOW_UPDATE
+                    or Inbound.Frame_Type = Http2_Parameters::GOAWAY)
+         goto Forwarding_Reset
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::RST_STREAM
+         goto null
+      exception
+         goto null
+      end Awaiting_Body;
+
+      state Forwarding_Body is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Loading_Response
+            if Inbound.Flags mod 2 = 1
+         goto Awaiting_Body
+      exception
+         goto null
+      end Forwarding_Body;
+
+      state Forwarding_Connection_Frame is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Headers
+      end Forwarding_Connection_Frame;
+
+      state Forwarding_Reset is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Reset;
+
+      --  After the request is fully consumed, driver hands us
+      --  pre-encoded response frames (HEADERS, optional DATA,
+      --  trailing HEADERS) one at a time via App_Outbox.
+      state Loading_Response is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending_Response
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading_Response;
+
+      state Sending_Response is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto null
+            if Outgoing.Flags mod 2 = 1
+         goto Loading_Response
+      exception
+         goto null
+      end Sending_Response;
+
+   end Open;
+
 end Stream;

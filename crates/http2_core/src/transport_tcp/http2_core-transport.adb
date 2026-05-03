@@ -155,4 +155,64 @@ package body Http2_Core.Transport is
       Chan.Open := False;
    end Close;
 
+   ---------------------------------------------------------------------
+   --  Listener side
+   ---------------------------------------------------------------------
+
+   function Is_Listening (L : Listener) return Boolean is (L.Listening);
+
+   procedure Listen
+     (L    : in out Listener;
+      Host : String;
+      Port : Natural)
+   is
+      use GNAT.Sockets;
+      Address : constant Sock_Addr_Type :=
+        (Family => Family_Inet,
+         Addr   => (if Host = "0.0.0.0" then Any_Inet_Addr
+                    else Inet_Addr (Host)),
+         Port   => Port_Type (Port));
+   begin
+      Create_Socket (L.Socket, Family_Inet, Socket_Stream);
+      Set_Socket_Option
+        (L.Socket, Socket_Level, (Reuse_Address, True));
+      Bind_Socket (L.Socket, Address);
+      Listen_Socket (L.Socket, 8);
+      L.Listening := True;
+   exception
+      when others =>
+         begin
+            Close_Socket (L.Socket);
+         exception
+            when others => null;
+         end;
+         L.Listening := False;
+         raise Connect_Error;
+   end Listen;
+
+   procedure Accept_One
+     (L    : in out Listener;
+      Chan : in out Channel)
+   is
+      use GNAT.Sockets;
+      Peer : Sock_Addr_Type;
+   begin
+      Accept_Socket (L.Socket, Chan.Socket, Peer);
+      Chan.Open := True;
+   exception
+      when others =>
+         Chan.Open := False;
+         raise Connect_Error;
+   end Accept_One;
+
+   procedure Stop (L : in out Listener) is
+   begin
+      begin
+         GNAT.Sockets.Close_Socket (L.Socket);
+      exception
+         when others => null;
+      end;
+      L.Listening := False;
+   end Stop;
+
 end Http2_Core.Transport;
