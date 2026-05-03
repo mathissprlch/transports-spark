@@ -1,0 +1,5 @@
+helloworld_pb2.py
+helloworld_pb2_grpc.py
+__pycache__/
+server.log
+venv/
