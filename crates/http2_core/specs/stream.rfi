@@ -3,3 +3,11 @@ Machine:
     Buffer_Size:
       Default: 16384
     External_IO_Buffers: True
+  Client_Stream:
+    Buffer_Size:
+      Default: 16384
+    External_IO_Buffers: True
+  Bidi_Stream:
+    Buffer_Size:
+      Default: 16384
+    External_IO_Buffers: True

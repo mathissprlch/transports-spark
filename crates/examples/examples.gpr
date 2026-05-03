@@ -11,6 +11,7 @@ project Examples is
    for Create_Missing_Dirs use "True";
    for Main use ("greeter_server.adb", "greeter_client.adb",
                  "greeter_client_v02.adb",
+                 "greeter_streaming_demo.adb",
                  "listfeatures_server.adb", "listfeatures_client.adb",
                  "mqtt_demo.adb");
 

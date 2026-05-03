@@ -43,6 +43,27 @@ class Greeter(helloworld_pb2_grpc.GreeterServicer):
         log(f"  user-agent: {ua}")
         return helloworld_pb2.HelloReply(message=f"Hello, {request.name}!")
 
+    def LotsOfReplies(self, request, context):
+        """Server-streaming: yield 5 replies for the one request."""
+        log(f"LotsOfReplies name={request.name!r}")
+        for i in range(1, 6):
+            yield helloworld_pb2.HelloReply(message=f"Hello, {request.name}! [{i}/5]")
+
+    def LotsOfGreetings(self, request_iterator, context):
+        """Client-streaming: collect all names, return single combined reply."""
+        names = []
+        for req in request_iterator:
+            log(f"LotsOfGreetings: got name={req.name!r}")
+            names.append(req.name)
+        joined = ", ".join(names) if names else "(none)"
+        return helloworld_pb2.HelloReply(message=f"Hello to all: {joined}!")
+
+    def BidiHello(self, request_iterator, context):
+        """Bidi: for each request emit a reply (1:1 interleaved here)."""
+        for req in request_iterator:
+            log(f"BidiHello: got name={req.name!r}")
+            yield helloworld_pb2.HelloReply(message=f"Hi, {req.name}!")
+
 
 def main():
     ap = argparse.ArgumentParser()

@@ -155,4 +155,258 @@ package Stream is
 
    end Half_Open;
 
+   ---------------------------------------------------------------------
+   --  Client_Stream — gRPC client-streaming RPC: caller emits HEADERS
+   --  followed by N DATA frames, then awaits the server's response.
+   --  Wire flow:
+   --    HEADERS(no END_STREAM) → DATA, DATA, ..., DATA(END_STREAM)
+   --      → server: HEADERS, [DATA], trailing HEADERS(END_STREAM)
+   --
+   --  Differences from Half_Open: Loading_Headers transitions to
+   --  Loading_Data after the HEADERS write; Loading_Data /
+   --  Sending_Data loop until the driver writes a Frame whose
+   --  END_STREAM flag (bit 0 of Flags) is set.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Client_Stream is
+      Outgoing : Frame::Packet;
+      Inbound  : Frame::Packet;
+   begin
+
+      state Loading_Headers is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending_Headers
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading_Headers;
+
+      state Sending_Headers is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Loading_Data
+      end Sending_Headers;
+
+      state Loading_Data is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending_Data
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading_Data;
+
+      --  After writing one DATA frame, branch on END_STREAM (bit 0
+      --  of Flags per RFC 9113 §6.1). When set, the request stream
+      --  is half-closed (local) and we move into Awaiting_Reply.
+      state Sending_Data is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Awaiting_Reply
+            if Outgoing.Flags mod 2 = 1
+         goto Loading_Data
+      exception
+         goto null
+      end Sending_Data;
+
+      state Awaiting_Reply is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Inbound
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::HEADERS
+                    or Inbound.Frame_Type = Http2_Parameters::DATA)
+         goto Forwarding_Connection_Frame
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
+                    or Inbound.Frame_Type = Http2_Parameters::PING
+                    or Inbound.Frame_Type = Http2_Parameters::WINDOW_UPDATE
+                    or Inbound.Frame_Type = Http2_Parameters::GOAWAY)
+         goto Forwarding_Reset
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::RST_STREAM
+         goto null
+      exception
+         goto null
+      end Awaiting_Reply;
+
+      state Forwarding_Inbound is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Reply
+      end Forwarding_Inbound;
+
+      state Forwarding_Connection_Frame is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Reply
+      end Forwarding_Connection_Frame;
+
+      state Forwarding_Reset is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Reset;
+
+   end Client_Stream;
+
+   ---------------------------------------------------------------------
+   --  Bidi_Stream — gRPC bidi-streaming RPC: full duplex DATA in
+   --  either direction after HEADERS exchange.
+   --
+   --  Wire flow:
+   --    HEADERS(no END_STREAM) → both sides emit DATA in any order
+   --    until one ends → trailing HEADERS(END_STREAM) closes.
+   --
+   --  RFLX session machines run sequentially (one transition at a
+   --  time), so true concurrency is the driver's job. The FSM
+   --  declares the alternation: a Multiplex state polls App_Outbox
+   --  first; if empty the driver advances to Receiving which polls
+   --  Network. Driver uses Has_Data / Needs_Data on each channel
+   --  to decide which side to feed at each Run iteration.
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+      App_Outbox  : Channel with Readable;
+   machine Bidi_Stream is
+      Outgoing : Frame::Packet;
+      Inbound  : Frame::Packet;
+   begin
+
+      state Loading_Headers is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending_Headers
+            if Outgoing'Valid
+         goto null
+      exception
+         goto null
+      end Loading_Headers;
+
+      state Sending_Headers is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Try_Send
+      end Sending_Headers;
+
+      --  Try_Send: read App_Outbox if the driver fed a frame; else
+      --  fall through to Try_Recv. Driver alternates by writing
+      --  to App_Outbox only when there's app-side DATA to emit.
+      state Try_Send is
+      begin
+         App_Outbox'Read (Outgoing);
+      transition
+         goto Sending_Data
+            if Outgoing'Valid
+         goto Try_Recv
+      exception
+         goto Try_Recv
+      end Try_Send;
+
+      state Sending_Data is
+      begin
+         Network'Write (Outgoing);
+      transition
+         goto Closing_Local
+            if Outgoing.Flags mod 2 = 1
+         goto Try_Send
+      exception
+         goto null
+      end Sending_Data;
+
+      --  After the local END_STREAM has been sent, drain remaining
+      --  inbound frames until the peer also END_STREAMs.
+      state Closing_Local is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Inbound_End
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::HEADERS
+                    or Inbound.Frame_Type = Http2_Parameters::DATA)
+         goto Forwarding_Connection_Frame
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
+                    or Inbound.Frame_Type = Http2_Parameters::PING
+                    or Inbound.Frame_Type = Http2_Parameters::WINDOW_UPDATE
+                    or Inbound.Frame_Type = Http2_Parameters::GOAWAY)
+         goto Forwarding_Reset
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::RST_STREAM
+         goto null
+      exception
+         goto null
+      end Closing_Local;
+
+      state Forwarding_Inbound_End is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Closing_Local
+      end Forwarding_Inbound_End;
+
+      state Try_Recv is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Inbound
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::HEADERS
+                    or Inbound.Frame_Type = Http2_Parameters::DATA)
+         goto Forwarding_Connection_Frame
+            if Inbound'Valid
+               and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
+                    or Inbound.Frame_Type = Http2_Parameters::PING
+                    or Inbound.Frame_Type = Http2_Parameters::WINDOW_UPDATE
+                    or Inbound.Frame_Type = Http2_Parameters::GOAWAY)
+         goto Forwarding_Reset
+            if Inbound'Valid
+               and Inbound.Frame_Type = Http2_Parameters::RST_STREAM
+         goto null
+      exception
+         goto null
+      end Try_Recv;
+
+      state Forwarding_Inbound is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Try_Send
+      end Forwarding_Inbound;
+
+      state Forwarding_Connection_Frame is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Try_Send
+      end Forwarding_Connection_Frame;
+
+      state Forwarding_Reset is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto null
+      end Forwarding_Reset;
+
+   end Bidi_Stream;
+
 end Stream;

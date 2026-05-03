@@ -15,7 +15,7 @@ pragma Warnings (Off, "redundant conversion");
 with RFLX.Http2_Parameters;
 with RFLX.RFLX_Types.Operators;
 
-package body RFLX.Stream.Half_Open.FSM
+package body RFLX.Stream.Client_Stream.FSM
 with
   SPARK_Mode
 is
@@ -24,30 +24,40 @@ is
 
    use type RFLX.Http2_Parameters.HTTP_2_Frame_Type;
 
-   procedure Loading (Ctx : in out Context)
+   pragma Warnings (Off, """*"" is already use-visible through previous use_type_clause");
+
+   pragma Warnings (Off, "use clause for type ""*"" defined at * has no effect");
+
+   use type RFLX.RFLX_Types.Base_Integer;
+
+   pragma Warnings (On, "use clause for type ""*"" defined at * has no effect");
+
+   pragma Warnings (On, """*"" is already use-visible through previous use_type_clause");
+
+   procedure Loading_Headers (Ctx : in out Context)
    with
      Pre =>
        Initialized (Ctx),
      Post =>
        Initialized (Ctx)
    is
-      function Loading_Invariant return Boolean is
+      function Loading_Headers_Invariant return Boolean is
         (True)
       with
         Annotate =>
           (GNATprove, Inline_For_Proof),
         Ghost;
    begin
-      pragma Assert (Loading_Invariant);
-      -- crates/http2_core/specs/stream.rflx:68:10
+      pragma Assert (Loading_Headers_Invariant);
+      -- crates/http2_core/specs/stream.rflx:182:10
       Frame.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
       if Frame.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx) then
          Ctx.P.Next_State := S_Sending_Headers;
       else
          Ctx.P.Next_State := S_Final;
       end if;
-      pragma Assert (Loading_Invariant);
-   end Loading;
+      pragma Assert (Loading_Headers_Invariant);
+   end Loading_Headers;
 
    procedure Sending_Headers (Ctx : in out Context)
    with
@@ -64,11 +74,130 @@ is
         Ghost;
    begin
       pragma Assert (Sending_Headers_Invariant);
-      -- crates/http2_core/specs/stream.rflx:79:10
+      -- crates/http2_core/specs/stream.rflx:193:10
       Frame.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
-      Ctx.P.Next_State := S_Awaiting_Reply;
+      Ctx.P.Next_State := S_Loading_Data;
       pragma Assert (Sending_Headers_Invariant);
    end Sending_Headers;
+
+   procedure Loading_Data (Ctx : in out Context)
+   with
+     Pre =>
+       Initialized (Ctx),
+     Post =>
+       Initialized (Ctx)
+   is
+      function Loading_Data_Invariant return Boolean is
+        (True)
+      with
+        Annotate =>
+          (GNATprove, Inline_For_Proof),
+        Ghost;
+   begin
+      pragma Assert (Loading_Data_Invariant);
+      -- crates/http2_core/specs/stream.rflx:200:10
+      Frame.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
+      if Frame.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx) then
+         Ctx.P.Next_State := S_Sending_Data;
+      else
+         Ctx.P.Next_State := S_Final;
+      end if;
+      pragma Assert (Loading_Data_Invariant);
+   end Loading_Data;
+
+   procedure Sending_Data (Ctx : in out Context)
+   with
+     Pre =>
+       Initialized (Ctx),
+     Post =>
+       Initialized (Ctx)
+   is
+      T_0 : Frame.Flags;
+      T_1 : RFLX.RFLX_Types.Base_Integer;
+      function Sending_Data_Invariant return Boolean is
+        (True)
+      with
+        Annotate =>
+          (GNATprove, Inline_For_Proof),
+        Ghost;
+   begin
+      pragma Assert (Sending_Data_Invariant);
+      -- crates/http2_core/specs/stream.rflx:214:10
+      Frame.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
+      -- crates/http2_core/specs/stream.rflx:217:16
+      pragma Warnings (Off, "condition can only be False if invalid values present");
+      pragma Warnings (Off, "condition is always False");
+      pragma Warnings (Off, "this code can never be executed and has been deleted");
+      pragma Warnings (Off, "statement has no effect");
+      pragma Warnings (Off, "this statement is never reached");
+      if not Frame.Packet.Valid (Ctx.P.Outgoing_Ctx, Frame.Packet.F_Flags) then
+         Ctx.P.Next_State := S_Final;
+         pragma Assert (Sending_Data_Invariant);
+         goto Finalize_Sending_Data;
+      end if;
+      pragma Warnings (On, "this statement is never reached");
+      pragma Warnings (On, "statement has no effect");
+      pragma Warnings (On, "this code can never be executed and has been deleted");
+      pragma Warnings (On, "condition is always False");
+      pragma Warnings (On, "condition can only be False if invalid values present");
+      -- crates/http2_core/specs/stream.rflx:217:16
+      T_0 := Frame.Packet.Get_Flags (Ctx.P.Outgoing_Ctx);
+      pragma Warnings (Off, "condition can only be False if invalid values present");
+      pragma Warnings (Off, "condition is always False");
+      pragma Warnings (Off, "this code can never be executed and has been deleted");
+      pragma Warnings (Off, "statement has no effect");
+      pragma Warnings (Off, "this statement is never reached");
+      if not (RFLX.RFLX_Types.Base_Integer (RFLX.RFLX_Types.Base_Integer'First) <= RFLX.RFLX_Types.Base_Integer (T_0)) then
+         Ctx.P.Next_State := S_Final;
+         pragma Assert (Sending_Data_Invariant);
+         goto Finalize_Sending_Data;
+      end if;
+      pragma Warnings (On, "this statement is never reached");
+      pragma Warnings (On, "statement has no effect");
+      pragma Warnings (On, "this code can never be executed and has been deleted");
+      pragma Warnings (On, "condition is always False");
+      pragma Warnings (On, "condition can only be False if invalid values present");
+      pragma Warnings (Off, "condition can only be False if invalid values present");
+      pragma Warnings (Off, "condition is always False");
+      pragma Warnings (Off, "this code can never be executed and has been deleted");
+      pragma Warnings (Off, "statement has no effect");
+      pragma Warnings (Off, "this statement is never reached");
+      if not (RFLX.RFLX_Types.Base_Integer (T_0) <= RFLX.RFLX_Types.Base_Integer (RFLX.RFLX_Types.Base_Integer'Last)) then
+         Ctx.P.Next_State := S_Final;
+         pragma Assert (Sending_Data_Invariant);
+         goto Finalize_Sending_Data;
+      end if;
+      pragma Warnings (On, "this statement is never reached");
+      pragma Warnings (On, "statement has no effect");
+      pragma Warnings (On, "this code can never be executed and has been deleted");
+      pragma Warnings (On, "condition is always False");
+      pragma Warnings (On, "condition can only be False if invalid values present");
+      -- crates/http2_core/specs/stream.rflx:217:35
+      pragma Warnings (Off, "condition can only be False if invalid values present");
+      pragma Warnings (Off, "condition is always False");
+      pragma Warnings (Off, "this code can never be executed and has been deleted");
+      pragma Warnings (Off, "statement has no effect");
+      pragma Warnings (Off, "this statement is never reached");
+      if not (2 /= 0) then
+         Ctx.P.Next_State := S_Final;
+         pragma Assert (Sending_Data_Invariant);
+         goto Finalize_Sending_Data;
+      end if;
+      pragma Warnings (On, "this statement is never reached");
+      pragma Warnings (On, "statement has no effect");
+      pragma Warnings (On, "this code can never be executed and has been deleted");
+      pragma Warnings (On, "condition is always False");
+      pragma Warnings (On, "condition can only be False if invalid values present");
+      -- crates/http2_core/specs/stream.rflx:217:16
+      T_1 := RFLX.RFLX_Types.Base_Integer (T_0) mod 2;
+      if T_1 = 1 then
+         Ctx.P.Next_State := S_Awaiting_Reply;
+      else
+         Ctx.P.Next_State := S_Loading_Data;
+      end if;
+      pragma Assert (Sending_Data_Invariant);
+      <<Finalize_Sending_Data>>
+   end Sending_Data;
 
    procedure Awaiting_Reply (Ctx : in out Context)
    with
@@ -77,27 +206,27 @@ is
      Post =>
        Initialized (Ctx)
    is
-      T_0 : Boolean;
-      T_1 : Http2_Parameters.HTTP_2_Frame_Type;
       T_2 : Boolean;
       T_3 : Http2_Parameters.HTTP_2_Frame_Type;
       T_4 : Boolean;
-      T_5 : Boolean;
+      T_5 : Http2_Parameters.HTTP_2_Frame_Type;
       T_6 : Boolean;
-      T_7 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_7 : Boolean;
       T_8 : Boolean;
       T_9 : Http2_Parameters.HTTP_2_Frame_Type;
       T_10 : Boolean;
-      T_11 : Boolean;
-      T_12 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_11 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_12 : Boolean;
       T_13 : Boolean;
-      T_14 : Boolean;
-      T_15 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_14 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_15 : Boolean;
       T_16 : Boolean;
-      T_17 : Boolean;
+      T_17 : Http2_Parameters.HTTP_2_Frame_Type;
       T_18 : Boolean;
-      T_19 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_19 : Boolean;
       T_20 : Boolean;
+      T_21 : Http2_Parameters.HTTP_2_Frame_Type;
+      T_22 : Boolean;
       function Awaiting_Reply_Invariant return Boolean is
         (True)
       with
@@ -106,11 +235,11 @@ is
         Ghost;
    begin
       pragma Assert (Awaiting_Reply_Invariant);
-      -- crates/http2_core/specs/stream.rflx:100:10
+      -- crates/http2_core/specs/stream.rflx:225:10
       Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:103:16
-      T_0 := Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:104:21
+      -- crates/http2_core/specs/stream.rflx:228:16
+      T_2 := Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:229:21
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -126,36 +255,11 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:104:21
-      T_1 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:104:21
-      T_2 := T_1 = (Known => True, Enum => Http2_Parameters.HEADERS);
-      -- crates/http2_core/specs/stream.rflx:105:24
-      pragma Warnings (Off, "condition can only be False if invalid values present");
-      pragma Warnings (Off, "condition is always False");
-      pragma Warnings (Off, "this code can never be executed and has been deleted");
-      pragma Warnings (Off, "statement has no effect");
-      pragma Warnings (Off, "this statement is never reached");
-      if not Frame.Packet.Valid (Ctx.P.Inbound_Ctx, Frame.Packet.F_Frame_Type) then
-         Ctx.P.Next_State := S_Final;
-         pragma Assert (Awaiting_Reply_Invariant);
-         goto Finalize_Awaiting_Reply;
-      end if;
-      pragma Warnings (On, "this statement is never reached");
-      pragma Warnings (On, "statement has no effect");
-      pragma Warnings (On, "this code can never be executed and has been deleted");
-      pragma Warnings (On, "condition is always False");
-      pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:105:24
+      -- crates/http2_core/specs/stream.rflx:229:21
       T_3 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:105:24
-      T_4 := T_3 = (Known => True, Enum => Http2_Parameters.DATA);
-      -- crates/http2_core/specs/stream.rflx:104:21
-      T_5 := T_2
-      or else T_4;
-      -- crates/http2_core/specs/stream.rflx:107:16
-      T_6 := Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:108:21
+      -- crates/http2_core/specs/stream.rflx:229:21
+      T_4 := T_3 = (Known => True, Enum => Http2_Parameters.HEADERS);
+      -- crates/http2_core/specs/stream.rflx:230:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -171,11 +275,16 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:108:21
-      T_7 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:108:21
-      T_8 := T_7 = (Known => True, Enum => Http2_Parameters.SETTINGS);
-      -- crates/http2_core/specs/stream.rflx:109:24
+      -- crates/http2_core/specs/stream.rflx:230:24
+      T_5 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:230:24
+      T_6 := T_5 = (Known => True, Enum => Http2_Parameters.DATA);
+      -- crates/http2_core/specs/stream.rflx:229:21
+      T_7 := T_4
+      or else T_6;
+      -- crates/http2_core/specs/stream.rflx:232:16
+      T_8 := Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:233:21
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -191,14 +300,11 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:109:24
+      -- crates/http2_core/specs/stream.rflx:233:21
       T_9 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:109:24
-      T_10 := T_9 = (Known => True, Enum => Http2_Parameters.PING);
-      -- crates/http2_core/specs/stream.rflx:108:21
-      T_11 := T_8
-      or else T_10;
-      -- crates/http2_core/specs/stream.rflx:110:24
+      -- crates/http2_core/specs/stream.rflx:233:21
+      T_10 := T_9 = (Known => True, Enum => Http2_Parameters.SETTINGS);
+      -- crates/http2_core/specs/stream.rflx:234:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -214,14 +320,14 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:110:24
-      T_12 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:110:24
-      T_13 := T_12 = (Known => True, Enum => Http2_Parameters.WINDOW_UPDATE);
-      -- crates/http2_core/specs/stream.rflx:108:21
-      T_14 := T_11
-      or else T_13;
-      -- crates/http2_core/specs/stream.rflx:111:24
+      -- crates/http2_core/specs/stream.rflx:234:24
+      T_11 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:234:24
+      T_12 := T_11 = (Known => True, Enum => Http2_Parameters.PING);
+      -- crates/http2_core/specs/stream.rflx:233:21
+      T_13 := T_10
+      or else T_12;
+      -- crates/http2_core/specs/stream.rflx:235:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -237,16 +343,14 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:111:24
-      T_15 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:111:24
-      T_16 := T_15 = (Known => True, Enum => Http2_Parameters.GOAWAY);
-      -- crates/http2_core/specs/stream.rflx:108:21
-      T_17 := T_14
-      or else T_16;
-      -- crates/http2_core/specs/stream.rflx:113:16
-      T_18 := Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:114:20
+      -- crates/http2_core/specs/stream.rflx:235:24
+      T_14 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:235:24
+      T_15 := T_14 = (Known => True, Enum => Http2_Parameters.WINDOW_UPDATE);
+      -- crates/http2_core/specs/stream.rflx:233:21
+      T_16 := T_13
+      or else T_15;
+      -- crates/http2_core/specs/stream.rflx:236:24
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -262,23 +366,48 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:114:20
-      T_19 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
-      -- crates/http2_core/specs/stream.rflx:114:20
-      T_20 := T_19 = (Known => True, Enum => Http2_Parameters.RST_STREAM);
+      -- crates/http2_core/specs/stream.rflx:236:24
+      T_17 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:236:24
+      T_18 := T_17 = (Known => True, Enum => Http2_Parameters.GOAWAY);
+      -- crates/http2_core/specs/stream.rflx:233:21
+      T_19 := T_16
+      or else T_18;
+      -- crates/http2_core/specs/stream.rflx:238:16
+      T_20 := Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:239:20
+      pragma Warnings (Off, "condition can only be False if invalid values present");
+      pragma Warnings (Off, "condition is always False");
+      pragma Warnings (Off, "this code can never be executed and has been deleted");
+      pragma Warnings (Off, "statement has no effect");
+      pragma Warnings (Off, "this statement is never reached");
+      if not Frame.Packet.Valid (Ctx.P.Inbound_Ctx, Frame.Packet.F_Frame_Type) then
+         Ctx.P.Next_State := S_Final;
+         pragma Assert (Awaiting_Reply_Invariant);
+         goto Finalize_Awaiting_Reply;
+      end if;
+      pragma Warnings (On, "this statement is never reached");
+      pragma Warnings (On, "statement has no effect");
+      pragma Warnings (On, "this code can never be executed and has been deleted");
+      pragma Warnings (On, "condition is always False");
+      pragma Warnings (On, "condition can only be False if invalid values present");
+      -- crates/http2_core/specs/stream.rflx:239:20
+      T_21 := Frame.Packet.Get_Frame_Type (Ctx.P.Inbound_Ctx);
+      -- crates/http2_core/specs/stream.rflx:239:20
+      T_22 := T_21 = (Known => True, Enum => Http2_Parameters.RST_STREAM);
       if
-         T_0
-         and then T_5
+         T_2
+         and then T_7
       then
          Ctx.P.Next_State := S_Forwarding_Inbound;
       elsif
-         T_6
-         and then T_17
+         T_8
+         and then T_19
       then
          Ctx.P.Next_State := S_Forwarding_Connection_Frame;
       elsif
-         T_18
-         and then T_20
+         T_20
+         and then T_22
       then
          Ctx.P.Next_State := S_Forwarding_Reset;
       else
@@ -303,7 +432,7 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Inbound_Invariant);
-      -- crates/http2_core/specs/stream.rflx:130:10
+      -- crates/http2_core/specs/stream.rflx:247:10
       Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
       Ctx.P.Next_State := S_Awaiting_Reply;
       pragma Assert (Forwarding_Inbound_Invariant);
@@ -324,7 +453,7 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Connection_Frame_Invariant);
-      -- crates/http2_core/specs/stream.rflx:142:10
+      -- crates/http2_core/specs/stream.rflx:254:10
       Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
       Ctx.P.Next_State := S_Awaiting_Reply;
       pragma Assert (Forwarding_Connection_Frame_Invariant);
@@ -345,7 +474,7 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Reset_Invariant);
-      -- crates/http2_core/specs/stream.rflx:151:10
+      -- crates/http2_core/specs/stream.rflx:261:10
       Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
       Ctx.P.Next_State := S_Final;
       pragma Assert (Forwarding_Reset_Invariant);
@@ -357,7 +486,7 @@ is
       Outgoing_Buffer := null;
       Frame.Packet.Initialize (Ctx.P.Inbound_Ctx, Inbound_Buffer);
       Inbound_Buffer := null;
-      Ctx.P.Next_State := S_Loading;
+      Ctx.P.Next_State := S_Loading_Headers;
    end Initialize;
 
    procedure Finalize (Ctx : in out Context; Inbound_Buffer : in out RFLX_Types.Bytes_Ptr; Outgoing_Buffer : in out RFLX_Types.Bytes_Ptr) is
@@ -380,9 +509,13 @@ is
    is
    begin
       case Ctx.P.Next_State is
-         when S_Loading =>
+         when S_Loading_Headers =>
             Frame.Packet.Reset (Ctx.P.Outgoing_Ctx, Ctx.P.Outgoing_Ctx.First, Ctx.P.Outgoing_Ctx.First - 1);
          when S_Sending_Headers =>
+            null;
+         when S_Loading_Data =>
+            Frame.Packet.Reset (Ctx.P.Outgoing_Ctx, Ctx.P.Outgoing_Ctx.First, Ctx.P.Outgoing_Ctx.First - 1);
+         when S_Sending_Data =>
             null;
          when S_Awaiting_Reply =>
             Frame.Packet.Reset (Ctx.P.Inbound_Ctx, Ctx.P.Inbound_Ctx.First, Ctx.P.Inbound_Ctx.First - 1);
@@ -394,10 +527,14 @@ is
    procedure Tick (Ctx : in out Context) is
    begin
       case Ctx.P.Next_State is
-         when S_Loading =>
-            Loading (Ctx);
+         when S_Loading_Headers =>
+            Loading_Headers (Ctx);
          when S_Sending_Headers =>
             Sending_Headers (Ctx);
+         when S_Loading_Data =>
+            Loading_Data (Ctx);
+         when S_Sending_Data =>
+            Sending_Data (Ctx);
          when S_Awaiting_Reply =>
             Awaiting_Reply (Ctx);
          when S_Forwarding_Inbound =>
@@ -413,7 +550,7 @@ is
    end Tick;
 
    function In_IO_State (Ctx : Context) return Boolean is
-     (Ctx.P.Next_State in S_Loading | S_Sending_Headers | S_Awaiting_Reply | S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset);
+     (Ctx.P.Next_State in S_Loading_Headers | S_Sending_Headers | S_Loading_Data | S_Sending_Data | S_Awaiting_Reply | S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset);
 
    procedure Run (Ctx : in out Context) is
    begin
@@ -472,7 +609,7 @@ is
       case Chan is
          when C_Network =>
             case Ctx.P.Next_State is
-               when S_Sending_Headers =>
+               when S_Sending_Headers | S_Sending_Data =>
                   Frame_Packet_Read (Ctx.P.Outgoing_Ctx);
                when others =>
                   pragma Warnings (Off, "unreachable code");
@@ -534,7 +671,7 @@ is
             pragma Warnings (On, "unreachable code");
          when C_App_Outbox =>
             case Ctx.P.Next_State is
-               when S_Loading =>
+               when S_Loading_Headers | S_Loading_Data =>
                   Frame_Packet_Write (Ctx.P.Outgoing_Ctx, Offset);
                when others =>
                   pragma Warnings (Off, "unreachable code");
@@ -544,4 +681,4 @@ is
       end case;
    end Write;
 
-end RFLX.Stream.Half_Open.FSM;
+end RFLX.Stream.Client_Stream.FSM;

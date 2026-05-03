@@ -8,13 +8,14 @@
 --                                                                          --
 ------------------------------------------------------------------------------
 
+pragma Restrictions (No_Streams);
 pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 
-package RFLX.Stream
+package RFLX.Stream.Bidi_Stream
 with
   SPARK_Mode
 is
 
-end RFLX.Stream;
+end RFLX.Stream.Bidi_Stream;

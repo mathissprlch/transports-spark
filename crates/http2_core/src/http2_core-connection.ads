@@ -98,6 +98,61 @@ package Http2_Core.Connection is
 
    procedure Close (C : in out Connection);
 
+   --  ===================================================================
+   --  Streaming RPCs.
+   --
+   --  All four gRPC stream types share the same connection model:
+   --  one HTTP/2 stream per RPC, request HEADERS + DATA + trailing
+   --  HEADERS, with the difference being whether DATA messages
+   --  flow one-shot or as a stream in either direction.
+   --
+   --    Round_Trip       — unary (1 req → 1 resp)
+   --    Server_Stream    — 1 req → N resp     (Stream::Half_Open FSM)
+   --    Client_Stream    — N req → 1 resp     (Stream::Client_Stream FSM)
+   --    Bidi_Stream      — N req ↔ N resp     (Stream::Bidi_Stream FSM)
+   --
+   --  Callbacks use access-to-subprogram. The FSM remains SPARK-
+   --  proven; this glue layer is hand-written.
+   --  ===================================================================
+
+   --  Generic procedures with formal subprogram parameters — lets
+   --  callers pass nested procs / functions without Ada's library-
+   --  level-only access-to-subprogram restriction.
+
+   generic
+      with procedure On_Message (Message : RFLX.RFLX_Types.Bytes);
+   procedure Server_Stream
+     (C                     : in out Connection;
+      Request_Headers       : Hpack.Header_Block;
+      Request_Body          : RFLX.RFLX_Types.Bytes;
+      Response_Headers      : in out Hpack.Header_Block;
+      Response_Headers_Last : out Natural);
+
+   generic
+      with function Next_Message
+        (Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+         Out_Last : out RFLX.RFLX_Types.Index)
+         return Boolean;
+   procedure Client_Stream
+     (C                     : in out Connection;
+      Request_Headers       : Hpack.Header_Block;
+      Response_Headers      : in out Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Response_Body         : in out RFLX.RFLX_Types.Bytes;
+      Response_Body_Last    : out Natural);
+
+   generic
+      with function Next_Outbound
+        (Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+         Out_Last : out RFLX.RFLX_Types.Index)
+         return Boolean;
+      with procedure On_Inbound (Message : RFLX.RFLX_Types.Bytes);
+   procedure Bidi_Stream
+     (C                     : in out Connection;
+      Request_Headers       : Hpack.Header_Block;
+      Response_Headers      : in out Hpack.Header_Block;
+      Response_Headers_Last : out Natural);
+
    Connect_Error : exception;
    RPC_Error     : exception;
 

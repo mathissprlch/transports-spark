@@ -16,7 +16,7 @@ with RFLX.RFLX_Types;
 with RFLX.Frame;
 with RFLX.Frame.Packet;
 
-package RFLX.Stream.Half_Open.FSM
+package RFLX.Stream.Bidi_Stream.FSM
 with
   SPARK_Mode
 is
@@ -31,7 +31,7 @@ is
 
    type Channel is (C_Network, C_App_Pending, C_App_Outbox);
 
-   type State is (S_Loading, S_Sending_Headers, S_Awaiting_Reply, S_Forwarding_Inbound, S_Forwarding_Connection_Frame, S_Forwarding_Reset, S_Final);
+   type State is (S_Loading_Headers, S_Sending_Headers, S_Try_Send, S_Sending_Data, S_Closing_Local, S_Forwarding_Inbound_End, S_Try_Recv, S_Forwarding_Inbound, S_Forwarding_Connection_Frame, S_Forwarding_Reset, S_Final);
 
    type External_Buffer is (B_Inbound, B_Outgoing);
 
@@ -145,12 +145,12 @@ is
                     Ext_Buf /= B_Inbound
                  then
                     Has_Buffer (Ctx, B_Inbound) = Has_Buffer (Ctx, B_Inbound)'Old
-                    and Stream.Half_Open.FSM.Written_Last (Ctx, B_Inbound) = Stream.Half_Open.FSM.Written_Last (Ctx, B_Inbound)'Old)
+                    and Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Inbound) = Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Inbound)'Old)
        and then (if
                     Ext_Buf /= B_Outgoing
                  then
                     Has_Buffer (Ctx, B_Outgoing) = Has_Buffer (Ctx, B_Outgoing)'Old
-                    and Stream.Half_Open.FSM.Written_Last (Ctx, B_Outgoing) = Stream.Half_Open.FSM.Written_Last (Ctx, B_Outgoing)'Old)
+                    and Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Outgoing) = Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Outgoing)'Old)
        and then Buffer_Accessible (Next_State (Ctx), B_Inbound) = Buffer_Accessible (Next_State (Ctx), B_Inbound)'Old
        and then Buffer_Accessible (Next_State (Ctx), B_Outgoing) = Buffer_Accessible (Next_State (Ctx), B_Outgoing)'Old
        and then Next_State (Ctx) = Next_State (Ctx)'Old;
@@ -176,12 +176,12 @@ is
                     Ext_Buf /= B_Inbound
                  then
                     Has_Buffer (Ctx, B_Inbound) = Has_Buffer (Ctx, B_Inbound)'Old
-                    and Stream.Half_Open.FSM.Written_Last (Ctx, B_Inbound) = Stream.Half_Open.FSM.Written_Last (Ctx, B_Inbound)'Old)
+                    and Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Inbound) = Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Inbound)'Old)
        and then (if
                     Ext_Buf /= B_Outgoing
                  then
                     Has_Buffer (Ctx, B_Outgoing) = Has_Buffer (Ctx, B_Outgoing)'Old
-                    and Stream.Half_Open.FSM.Written_Last (Ctx, B_Outgoing) = Stream.Half_Open.FSM.Written_Last (Ctx, B_Outgoing)'Old)
+                    and Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Outgoing) = Stream.Bidi_Stream.FSM.Written_Last (Ctx, B_Outgoing)'Old)
        and then Buffer_Accessible (Next_State (Ctx), B_Inbound) = Buffer_Accessible (Next_State (Ctx), B_Inbound)'Old
        and then Buffer_Accessible (Next_State (Ctx), B_Outgoing) = Buffer_Accessible (Next_State (Ctx), B_Outgoing)'Old
        and then Next_State (Ctx) = Next_State (Ctx)'Old;
@@ -236,7 +236,7 @@ private
 
    type Private_Context is
       record
-         Next_State : State := S_Loading;
+         Next_State : State := S_Loading_Headers;
          Outgoing_Ctx : Frame.Packet.Context;
          Inbound_Ctx : Frame.Packet.Context;
       end record;
@@ -271,19 +271,19 @@ private
      (case Chan is
           when C_Network =>
              (case St is
-                 when S_Sending_Headers | S_Awaiting_Reply =>
+                 when S_Sending_Headers | S_Sending_Data | S_Closing_Local | S_Try_Recv =>
                     True,
                  when others =>
                     False),
           when C_App_Pending =>
              (case St is
-                 when S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Inbound_End | S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
                     True,
                  when others =>
                     False),
           when C_App_Outbox =>
              (case St is
-                 when S_Loading =>
+                 when S_Loading_Headers | S_Try_Send =>
                     True,
                  when others =>
                     False));
@@ -298,21 +298,21 @@ private
      (case Chan is
           when C_Network =>
              (case St is
-                 when S_Sending_Headers =>
+                 when S_Sending_Headers | S_Sending_Data =>
                     B_Outgoing,
-                 when S_Awaiting_Reply =>
+                 when S_Closing_Local | S_Try_Recv =>
                     B_Inbound,
                  when others =>
                     Unreachable_External_Buffer),
           when C_App_Pending =>
              (case St is
-                 when S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Inbound_End | S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
                     B_Inbound,
                  when others =>
                     Unreachable_External_Buffer),
           when C_App_Outbox =>
              (case St is
-                 when S_Loading =>
+                 when S_Loading_Headers | S_Try_Send =>
                     B_Outgoing,
                  when others =>
                     Unreachable_External_Buffer));
@@ -335,14 +335,14 @@ private
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Sending_Headers =>
+                 when S_Sending_Headers | S_Sending_Data =>
                     Frame.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx)
                     and Frame.Packet.Byte_Size (Ctx.P.Outgoing_Ctx) > 0,
                  when others =>
                     False),
           when C_App_Pending =>
              (case Ctx.P.Next_State is
-                 when S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Inbound_End | S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
                     Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx)
                     and Frame.Packet.Byte_Size (Ctx.P.Inbound_Ctx) > 0,
                  when others =>
@@ -354,13 +354,13 @@ private
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Sending_Headers =>
+                 when S_Sending_Headers | S_Sending_Data =>
                     Frame.Packet.Byte_Size (Ctx.P.Outgoing_Ctx),
                  when others =>
                     RFLX_Types.Unreachable),
           when C_App_Pending =>
              (case Ctx.P.Next_State is
-                 when S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Inbound_End | S_Forwarding_Inbound | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
                     Frame.Packet.Byte_Size (Ctx.P.Inbound_Ctx),
                  when others =>
                     RFLX_Types.Unreachable),
@@ -371,7 +371,7 @@ private
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Awaiting_Reply =>
+                 when S_Closing_Local | S_Try_Recv =>
                     True,
                  when others =>
                     False),
@@ -379,7 +379,7 @@ private
              False,
           when C_App_Outbox =>
              (case Ctx.P.Next_State is
-                 when S_Loading =>
+                 when S_Loading_Headers | S_Try_Send =>
                     True,
                  when others =>
                     False));
@@ -388,7 +388,7 @@ private
      (case Chan is
           when C_Network =>
              (case Ctx.P.Next_State is
-                 when S_Awaiting_Reply =>
+                 when S_Closing_Local | S_Try_Recv =>
                     Frame.Packet.Buffer_Length (Ctx.P.Inbound_Ctx),
                  when others =>
                     RFLX_Types.Unreachable),
@@ -396,9 +396,9 @@ private
              0,
           when C_App_Outbox =>
              (case Ctx.P.Next_State is
-                 when S_Loading =>
+                 when S_Loading_Headers | S_Try_Send =>
                     Frame.Packet.Buffer_Length (Ctx.P.Outgoing_Ctx),
                  when others =>
                     RFLX_Types.Unreachable));
 
-end RFLX.Stream.Half_Open.FSM;
+end RFLX.Stream.Bidi_Stream.FSM;
