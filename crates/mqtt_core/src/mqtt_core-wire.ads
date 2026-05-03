@@ -17,6 +17,7 @@ with RFLX.RFLX_Builtin_Types;
 with RFLX.Connect;
 with RFLX.Connack;
 with RFLX.Control_Packet;
+with RFLX.Suback;
 
 package Mqtt_Core.Wire
 with SPARK_Mode
@@ -80,6 +81,36 @@ is
    ---------------------------------------------------------------------
 
    subtype Return_Code is RFLX.Connack.Connect_Return_Code;
+
+   --  §3.1 — broker side: decode an inbound CONNECT. v0.2 surfaces
+   --  client_id only; clean_session, keep-alive and other fields are
+   --  parsed by the underlying RFLX message but we only echo the
+   --  client id back. Returns Valid=False if the packet doesn't
+   --  parse as a Connect::Packet.
+   procedure Decode_Connect
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Client_Id : out String;
+      Cid_Last  : out Natural)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 12
+             and then Client_Id'Length > 0,
+     Post => Buffer /= null;
+
+   --  §3.2 — broker side: encode a CONNACK with given session-present
+   --  bit + return code. v0.2 broker always emits Session_Present=0
+   --  + ACCEPTED; the helper preserves the full surface for refused-
+   --  CONNECT use.
+   procedure Encode_Connack
+     (Buffer          : in out Bytes_Ptr;
+      Last            :    out Index;
+      Session_Present : Boolean := False;
+      Return_Code     : RFLX.Connack.Connect_Return_Code :=
+                          RFLX.Connack.ACCEPTED)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 4,
+     Post => Buffer /= null;
 
    procedure Decode_Connack
      (Buffer          : in out Bytes_Ptr;
@@ -346,6 +377,43 @@ is
    --  SUBACK (single return code) — §3.9. Convenience wrapper for the
    --  one-filter case; pulls the head of the return-code list.
    ---------------------------------------------------------------------
+
+   --  §3.8 — broker side: decode an inbound SUBSCRIBE, surface the
+   --  packet identifier + first topic filter. v0.2 supports only
+   --  single-filter subscribe in the broker's decode path; multi-
+   --  filter SUBSCRIBE handling is a v0.3 feature.
+   procedure Decode_Subscribe
+     (Buffer       : in out Bytes_Ptr;
+      Last         : Index;
+      Valid        :    out Boolean;
+      Packet_Id    :    out Packet_Identifier;
+      Topic_Filter : out String;
+      Filter_Last  : out Natural;
+      Requested_QoS : out RFLX.Control_Packet.QoS_Level)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 8
+             and then Topic_Filter'Length > 0,
+     Post => Buffer /= null;
+
+   --  §3.9 — broker side: encode a SUBACK with one return code
+   --  echoing the granted QoS. v0.2 broker grants whatever the
+   --  client requested.
+   procedure Encode_Suback_Single
+     (Buffer      : in out Bytes_Ptr;
+      Last        :    out Index;
+      Packet_Id   : Packet_Identifier;
+      Granted_QoS : RFLX.Suback.Return_Code := RFLX.Suback.SUCCESS_QOS_0)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 5,
+     Post => Buffer /= null;
+
+   --  §3.13 — broker side: respond to PINGREQ. Fixed 2-byte response.
+   procedure Encode_Pingresp
+     (Buffer : in out Bytes_Ptr;
+      Last   :    out Index)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 2,
+     Post => Buffer /= null;
 
    procedure Decode_Suback_Single
      (Buffer    : in out Bytes_Ptr;

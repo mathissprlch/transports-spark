@@ -54,6 +54,30 @@ package Mqtt_Core.Transport is
      Pre  => Is_Open (Chan),
      Post => not Is_Open (Chan);
 
+   --  Server-side: same API shape as Http2_Core.Transport. Listener
+   --  binds + listens; Accept_One blocks for the next client TCP
+   --  connection.
+   type Listener is limited private;
+
+   procedure Listen
+     (L    : in out Listener;
+      Host : String;
+      Port : Natural);
+
+   function Is_Listening (L : Listener) return Boolean;
+
+   procedure Accept_One
+     (L    : in out Listener;
+      Chan : in out Channel)
+   with
+     Pre  => Is_Listening (L),
+     Post => Is_Open (Chan);
+
+   procedure Stop (L : in out Listener)
+   with
+     Pre  => Is_Listening (L),
+     Post => not Is_Listening (L);
+
    Connect_Error : exception;
    Send_Error    : exception;
 
@@ -62,6 +86,11 @@ private
    type Channel is limited record
       Socket : GNAT.Sockets.Socket_Type;
       Open   : Boolean := False;
+   end record;
+
+   type Listener is limited record
+      Socket    : GNAT.Sockets.Socket_Type;
+      Listening : Boolean := False;
    end record;
 
 end Mqtt_Core.Transport;

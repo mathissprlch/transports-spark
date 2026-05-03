@@ -164,6 +164,77 @@ is
    end Decode_Connack;
 
    ---------------------------------------------------------------------
+   --  Decode_Connect (broker side)
+   ---------------------------------------------------------------------
+
+   procedure Decode_Connect
+     (Buffer    : in out Bytes_Ptr;
+      Last      : Index;
+      Valid     :    out Boolean;
+      Client_Id : out String;
+      Cid_Last  : out Natural)
+   is
+      Ctx : RFLX.Connect.Packet.Context;
+   begin
+      Valid    := False;
+      Client_Id := (others => ' ');
+      Cid_Last := 0;
+      RFLX.Connect.Packet.Initialize
+        (Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Connect.Packet.Verify_Message (Ctx);
+      if RFLX.Connect.Packet.Well_Formed_Message (Ctx) then
+         declare
+            Cid_Bytes : RFLX.RFLX_Types.Bytes (1 .. 256) :=
+              (others => 0);
+            CL : constant Natural := Natural
+              (RFLX.Connect.Packet.Get_Client_Id_Length (Ctx));
+         begin
+            if CL > 0 and then CL <= Client_Id'Length
+              and then CL <= Cid_Bytes'Length
+            then
+               RFLX.Connect.Packet.Get_Client_Id
+                 (Ctx, Cid_Bytes (1 .. RFLX.RFLX_Types.Index (CL)));
+               for I in 1 .. CL loop
+                  Client_Id (Client_Id'First + I - 1) :=
+                    Character'Val (Natural (Cid_Bytes
+                      (RFLX.RFLX_Types.Index (I))));
+               end loop;
+               Cid_Last := CL;
+               Valid := True;
+            end if;
+         end;
+      end if;
+      RFLX.Connect.Packet.Take_Buffer (Ctx, Buffer);
+   end Decode_Connect;
+
+   ---------------------------------------------------------------------
+   --  Encode_Connack (broker side)
+   ---------------------------------------------------------------------
+
+   procedure Encode_Connack
+     (Buffer          : in out Bytes_Ptr;
+      Last            :    out Index;
+      Session_Present : Boolean := False;
+      Return_Code     : RFLX.Connack.Connect_Return_Code :=
+                          RFLX.Connack.ACCEPTED)
+   is
+      Ctx : RFLX.Connack.Packet.Context;
+   begin
+      RFLX.Connack.Packet.Initialize (Ctx, Buffer);
+      RFLX.Connack.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.CONNACK);
+      RFLX.Connack.Packet.Set_Reserved (Ctx, 0);
+      RFLX.Connack.Packet.Set_Remaining_Length (Ctx, 2);
+      RFLX.Connack.Packet.Set_Reserved_Ack_Flags (Ctx, 0);
+      RFLX.Connack.Packet.Set_Session_Present (Ctx, Session_Present);
+      RFLX.Connack.Packet.Set_Return_Code (Ctx, Return_Code);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Connack.Packet.Message_Last (Ctx));
+      RFLX.Connack.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Connack;
+
+   ---------------------------------------------------------------------
    --  Encode_Publish_Qos0
    ---------------------------------------------------------------------
 
@@ -562,6 +633,126 @@ is
         (RFLX.Subscribe.Packet.Message_Last (Pkt_Ctx));
       RFLX.Subscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
    end Encode_Subscribe;
+
+   ---------------------------------------------------------------------
+   --  Decode_Subscribe (broker side, single-filter only for v0.2)
+   ---------------------------------------------------------------------
+
+   procedure Decode_Subscribe
+     (Buffer       : in out Bytes_Ptr;
+      Last         : Index;
+      Valid        :    out Boolean;
+      Packet_Id    :    out Packet_Identifier;
+      Topic_Filter : out String;
+      Filter_Last  : out Natural;
+      Requested_QoS : out RFLX.Control_Packet.QoS_Level)
+   is
+      Pkt_Ctx  : RFLX.Subscribe.Packet.Context;
+      Seq_Ctx  : RFLX.Subscribe.Subscription_List.Context;
+      Elem_Ctx : RFLX.Subscribe.Subscription.Context;
+   begin
+      Valid         := False;
+      Packet_Id     := 1;
+      Topic_Filter  := (others => ' ');
+      Filter_Last   := 0;
+      Requested_QoS := RFLX.Control_Packet.QOS_0;
+
+      RFLX.Subscribe.Packet.Initialize
+        (Pkt_Ctx, Buffer,
+         Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
+      RFLX.Subscribe.Packet.Verify_Message (Pkt_Ctx);
+      if not RFLX.Subscribe.Packet.Well_Formed_Message (Pkt_Ctx) then
+         RFLX.Subscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+         return;
+      end if;
+      Packet_Id := RFLX.Subscribe.Packet.Get_Packet_Identifier (Pkt_Ctx);
+      RFLX.Subscribe.Packet.Switch_To_Subscriptions (Pkt_Ctx, Seq_Ctx);
+
+      if RFLX.Subscribe.Subscription_List.Has_Element (Seq_Ctx) then
+         RFLX.Subscribe.Subscription_List.Switch (Seq_Ctx, Elem_Ctx);
+         RFLX.Subscribe.Subscription.Verify_Message (Elem_Ctx);
+         if RFLX.Subscribe.Subscription.Well_Formed_Message (Elem_Ctx) then
+            declare
+               TL : constant Natural := Natural
+                 (RFLX.Subscribe.Subscription.Get_Topic_Filter_Length
+                    (Elem_Ctx));
+               Topic_Bytes : RFLX.RFLX_Types.Bytes (1 .. 256) :=
+                 (others => 0);
+            begin
+               if TL > 0 and then TL <= Topic_Filter'Length
+                 and then TL <= Topic_Bytes'Length
+               then
+                  RFLX.Subscribe.Subscription.Get_Topic_Filter
+                    (Elem_Ctx,
+                     Topic_Bytes (1 .. RFLX.RFLX_Types.Index (TL)));
+                  for I in 1 .. TL loop
+                     Topic_Filter (Topic_Filter'First + I - 1) :=
+                       Character'Val (Natural (Topic_Bytes
+                         (RFLX.RFLX_Types.Index (I))));
+                  end loop;
+                  Filter_Last := TL;
+                  Requested_QoS :=
+                    RFLX.Subscribe.Subscription.Get_Requested_QoS
+                      (Elem_Ctx);
+                  Valid := True;
+               end if;
+            end;
+         end if;
+         RFLX.Subscribe.Subscription_List.Update
+           (Seq_Ctx, Elem_Ctx);
+      end if;
+
+      RFLX.Subscribe.Packet.Update_Subscriptions (Pkt_Ctx, Seq_Ctx);
+      RFLX.Subscribe.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+   end Decode_Subscribe;
+
+   ---------------------------------------------------------------------
+   --  Encode_Suback_Single (broker side)
+   ---------------------------------------------------------------------
+
+   procedure Encode_Suback_Single
+     (Buffer      : in out Bytes_Ptr;
+      Last        :    out Index;
+      Packet_Id   : Packet_Identifier;
+      Granted_QoS : RFLX.Suback.Return_Code := RFLX.Suback.SUCCESS_QOS_0)
+   is
+      Pkt_Ctx  : RFLX.Suback.Packet.Context;
+      Seq_Ctx  : RFLX.Suback.Return_Code_List.Context;
+   begin
+      RFLX.Suback.Packet.Initialize (Pkt_Ctx, Buffer);
+      RFLX.Suback.Packet.Set_Packet_Type
+        (Pkt_Ctx, RFLX.Control_Packet.SUBACK);
+      RFLX.Suback.Packet.Set_Reserved (Pkt_Ctx, 0);
+      --  RL = 2 (packet id) + 1 (one return code)
+      RFLX.Suback.Packet.Set_Remaining_Length (Pkt_Ctx, 3);
+      RFLX.Suback.Packet.Set_Packet_Identifier (Pkt_Ctx, Packet_Id);
+      RFLX.Suback.Packet.Switch_To_Return_Codes (Pkt_Ctx, Seq_Ctx);
+      RFLX.Suback.Return_Code_List.Append_Element (Seq_Ctx, Granted_QoS);
+      RFLX.Suback.Packet.Update_Return_Codes (Pkt_Ctx, Seq_Ctx);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Suback.Packet.Message_Last (Pkt_Ctx));
+      RFLX.Suback.Packet.Take_Buffer (Pkt_Ctx, Buffer);
+   end Encode_Suback_Single;
+
+   ---------------------------------------------------------------------
+   --  Encode_Pingresp (broker side)
+   ---------------------------------------------------------------------
+
+   procedure Encode_Pingresp
+     (Buffer : in out Bytes_Ptr;
+      Last   :    out Index)
+   is
+      Ctx : RFLX.Pingresp.Packet.Context;
+   begin
+      RFLX.Pingresp.Packet.Initialize (Ctx, Buffer);
+      RFLX.Pingresp.Packet.Set_Packet_Type
+        (Ctx, RFLX.Control_Packet.PINGRESP);
+      RFLX.Pingresp.Packet.Set_Reserved (Ctx, 0);
+      RFLX.Pingresp.Packet.Set_Remaining_Length (Ctx, 0);
+      Last := RFLX.RFLX_Types.To_Index
+        (RFLX.Pingresp.Packet.Message_Last (Ctx));
+      RFLX.Pingresp.Packet.Take_Buffer (Ctx, Buffer);
+   end Encode_Pingresp;
 
    ---------------------------------------------------------------------
    --  Encode_Subscribe_Single — wraps Encode_Subscribe.

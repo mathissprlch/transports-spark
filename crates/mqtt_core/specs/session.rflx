@@ -558,4 +558,80 @@ package Session is
 
    end Receive_Qos2;
 
+   ---------------------------------------------------------------------
+   --  Broker_Reading — server-side dispatch loop. Mirror of client
+   --  Receive: accepts the initial CONNECT, then loops on any
+   --  client→server packet type, forwarding to the Ada driver for
+   --  per-type handling.
+   --
+   --  Verification dividend: the post-CONNECT Reading state
+   --  enumerates every legal client→server packet type from MQTT
+   --  3.1.1 §2.2.1 Table 2.1. A client sending an out-of-band
+   --  packet (e.g. CONNACK from client→broker, which is
+   --  server→client only) drives the FSM to S_Final → driver
+   --  surfaces "protocol violation".
+   ---------------------------------------------------------------------
+
+   generic
+      Network     : Channel with Readable, Writable;
+      App_Pending : Channel with Writable;
+   machine Broker_Reading is
+      Inbound : Control_Packet::Incoming_Packet;
+   begin
+
+      --  §3.1 — CONNECT MUST be the first packet from client to
+      --  server. Any other packet type at this stage is a
+      --  protocol violation per §3.1.4.
+      state Awaiting_Connect is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding_Connect
+            if Inbound'Valid
+               and Inbound.Packet_Type = Control_Packet::CONNECT
+         goto null
+      exception
+         goto null
+      end Awaiting_Connect;
+
+      state Forwarding_Connect is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Reading
+      end Forwarding_Connect;
+
+      --  After CONNECT, accept any of the 9 client→server packet
+      --  types. Server→client packets (CONNACK / SUBACK / PUBACK /
+      --  PUBREC / etc.) shouldn't appear from the client; receiving
+      --  one drives the FSM to null.
+      state Reading is
+      begin
+         Network'Read (Inbound);
+      transition
+         goto Forwarding
+            if Inbound'Valid
+               and (Inbound.Packet_Type = Control_Packet::PUBLISH
+                    or Inbound.Packet_Type = Control_Packet::PUBACK
+                    or Inbound.Packet_Type = Control_Packet::PUBREC
+                    or Inbound.Packet_Type = Control_Packet::PUBREL
+                    or Inbound.Packet_Type = Control_Packet::PUBCOMP
+                    or Inbound.Packet_Type = Control_Packet::SUBSCRIBE
+                    or Inbound.Packet_Type = Control_Packet::UNSUBSCRIBE
+                    or Inbound.Packet_Type = Control_Packet::PINGREQ
+                    or Inbound.Packet_Type = Control_Packet::DISCONNECT)
+         goto null
+      exception
+         goto null
+      end Reading;
+
+      state Forwarding is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Reading
+      end Forwarding;
+
+   end Broker_Reading;
+
 end Session;

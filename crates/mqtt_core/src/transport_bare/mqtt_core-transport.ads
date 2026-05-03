@@ -70,6 +70,16 @@ package Mqtt_Core.Transport is
    procedure Inject_Inbound (Data : RFLX.RFLX_Types.Bytes);
    procedure Reset_Queue;
 
+   --  Server-side stubs (no-op on bare metal).
+   type Listener is limited private;
+   procedure Listen
+     (L : in out Listener; Host : String; Port : Natural);
+   function Is_Listening (L : Listener) return Boolean;
+   procedure Accept_One (L : in out Listener; Chan : in out Channel)
+   with Pre  => Is_Listening (L), Post => Is_Open (Chan);
+   procedure Stop (L : in out Listener)
+   with Pre  => Is_Listening (L), Post => not Is_Listening (L);
+
    Connect_Error : exception;
    Send_Error    : exception;
 
@@ -77,6 +87,10 @@ private
 
    type Channel is limited record
       Open : Boolean := False;
+   end record;
+
+   type Listener is limited record
+      Listening : Boolean := False;
    end record;
 
 end Mqtt_Core.Transport;

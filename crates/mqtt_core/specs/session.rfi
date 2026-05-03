@@ -27,3 +27,7 @@ Machine:
     Buffer_Size:
       Default: 256
     External_IO_Buffers: True
+  Broker_Reading:
+    Buffer_Size:
+      Default: 256
+    External_IO_Buffers: True
