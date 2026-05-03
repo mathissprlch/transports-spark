@@ -396,7 +396,7 @@ is
          T_18
          and then T_29
       then
-         Ctx.P.Next_State := S_Forwarding_Connection_Frame;
+         Ctx.P.Next_State := S_Forwarding_Connection_Frame_Body;
       elsif
          T_30
          and then T_32
@@ -518,11 +518,32 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Connection_Frame_Invariant);
-      -- crates/http2_core/specs/stream.rflx:502:10
+      -- crates/http2_core/specs/stream.rflx:504:10
       Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
       Ctx.P.Next_State := S_Awaiting_Headers;
       pragma Assert (Forwarding_Connection_Frame_Invariant);
    end Forwarding_Connection_Frame;
+
+   procedure Forwarding_Connection_Frame_Body (Ctx : in out Context)
+   with
+     Pre =>
+       Initialized (Ctx),
+     Post =>
+       Initialized (Ctx)
+   is
+      function Forwarding_Connection_Frame_Body_Invariant return Boolean is
+        (True)
+      with
+        Annotate =>
+          (GNATprove, Inline_For_Proof),
+        Ghost;
+   begin
+      pragma Assert (Forwarding_Connection_Frame_Body_Invariant);
+      -- crates/http2_core/specs/stream.rflx:515:10
+      Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
+      Ctx.P.Next_State := S_Awaiting_Body;
+      pragma Assert (Forwarding_Connection_Frame_Body_Invariant);
+   end Forwarding_Connection_Frame_Body;
 
    procedure Forwarding_Reset (Ctx : in out Context)
    with
@@ -539,7 +560,7 @@ is
         Ghost;
    begin
       pragma Assert (Forwarding_Reset_Invariant);
-      -- crates/http2_core/specs/stream.rflx:509:10
+      -- crates/http2_core/specs/stream.rflx:522:10
       Frame.Packet.Verify_Message (Ctx.P.Inbound_Ctx);
       Ctx.P.Next_State := S_Final;
       pragma Assert (Forwarding_Reset_Invariant);
@@ -560,7 +581,7 @@ is
         Ghost;
    begin
       pragma Assert (Loading_Response_Invariant);
-      -- crates/http2_core/specs/stream.rflx:519:10
+      -- crates/http2_core/specs/stream.rflx:532:10
       Frame.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
       if Frame.Packet.Well_Formed_Message (Ctx.P.Outgoing_Ctx) then
          Ctx.P.Next_State := S_Sending_Response;
@@ -587,9 +608,9 @@ is
         Ghost;
    begin
       pragma Assert (Sending_Response_Invariant);
-      -- crates/http2_core/specs/stream.rflx:530:10
+      -- crates/http2_core/specs/stream.rflx:543:10
       Frame.Packet.Verify_Message (Ctx.P.Outgoing_Ctx);
-      -- crates/http2_core/specs/stream.rflx:533:16
+      -- crates/http2_core/specs/stream.rflx:546:16
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -605,7 +626,7 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:533:16
+      -- crates/http2_core/specs/stream.rflx:546:16
       T_35 := Frame.Packet.Get_Flags (Ctx.P.Outgoing_Ctx);
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
@@ -637,7 +658,7 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:533:35
+      -- crates/http2_core/specs/stream.rflx:546:35
       pragma Warnings (Off, "condition can only be False if invalid values present");
       pragma Warnings (Off, "condition is always False");
       pragma Warnings (Off, "this code can never be executed and has been deleted");
@@ -653,7 +674,7 @@ is
       pragma Warnings (On, "this code can never be executed and has been deleted");
       pragma Warnings (On, "condition is always False");
       pragma Warnings (On, "condition can only be False if invalid values present");
-      -- crates/http2_core/specs/stream.rflx:533:16
+      -- crates/http2_core/specs/stream.rflx:546:16
       T_36 := RFLX.RFLX_Types.Base_Integer (T_35) mod 2;
       if T_36 = 1 then
          Ctx.P.Next_State := S_Final;
@@ -699,7 +720,7 @@ is
             null;
          when S_Awaiting_Body =>
             Frame.Packet.Reset (Ctx.P.Inbound_Ctx, Ctx.P.Inbound_Ctx.First, Ctx.P.Inbound_Ctx.First - 1);
-         when S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+         when S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset =>
             null;
          when S_Loading_Response =>
             Frame.Packet.Reset (Ctx.P.Outgoing_Ctx, Ctx.P.Outgoing_Ctx.First, Ctx.P.Outgoing_Ctx.First - 1);
@@ -721,6 +742,8 @@ is
             Forwarding_Body (Ctx);
          when S_Forwarding_Connection_Frame =>
             Forwarding_Connection_Frame (Ctx);
+         when S_Forwarding_Connection_Frame_Body =>
+            Forwarding_Connection_Frame_Body (Ctx);
          when S_Forwarding_Reset =>
             Forwarding_Reset (Ctx);
          when S_Loading_Response =>
@@ -734,7 +757,7 @@ is
    end Tick;
 
    function In_IO_State (Ctx : Context) return Boolean is
-     (Ctx.P.Next_State in S_Awaiting_Headers | S_Forwarding_Headers | S_Awaiting_Body | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset | S_Loading_Response | S_Sending_Response);
+     (Ctx.P.Next_State in S_Awaiting_Headers | S_Forwarding_Headers | S_Awaiting_Body | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset | S_Loading_Response | S_Sending_Response);
 
    procedure Run (Ctx : in out Context) is
    begin
@@ -802,7 +825,7 @@ is
             end case;
          when C_App_Pending =>
             case Ctx.P.Next_State is
-               when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+               when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset =>
                   Frame_Packet_Read (Ctx.P.Inbound_Ctx);
                when others =>
                   pragma Warnings (Off, "unreachable code");

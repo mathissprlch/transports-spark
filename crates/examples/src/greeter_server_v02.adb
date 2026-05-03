@@ -168,7 +168,6 @@ procedure Greeter_Server_V02 is
          Put_Line ("  decoded name: " & Name_Buf (1 .. Name_Last));
       end if;
 
-      --  Build response headers.
       Response_Headers (Response_Headers'First) :=
         Http2_Core.Hpack.Make_Header (":status", "200");
       Response_Headers (Response_Headers'First + 1) :=

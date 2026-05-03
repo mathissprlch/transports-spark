@@ -31,7 +31,7 @@ is
 
    type Channel is (C_Network, C_App_Pending, C_App_Outbox);
 
-   type State is (S_Awaiting_Headers, S_Forwarding_Headers, S_Awaiting_Body, S_Forwarding_Body, S_Forwarding_Connection_Frame, S_Forwarding_Reset, S_Loading_Response, S_Sending_Response, S_Final);
+   type State is (S_Awaiting_Headers, S_Forwarding_Headers, S_Awaiting_Body, S_Forwarding_Body, S_Forwarding_Connection_Frame, S_Forwarding_Connection_Frame_Body, S_Forwarding_Reset, S_Loading_Response, S_Sending_Response, S_Final);
 
    type External_Buffer is (B_Inbound, B_Outgoing);
 
@@ -277,7 +277,7 @@ private
                     False),
           when C_App_Pending =>
              (case St is
-                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset =>
                     True,
                  when others =>
                     False),
@@ -306,7 +306,7 @@ private
                     Unreachable_External_Buffer),
           when C_App_Pending =>
              (case St is
-                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset =>
                     B_Inbound,
                  when others =>
                     Unreachable_External_Buffer),
@@ -342,7 +342,7 @@ private
                     False),
           when C_App_Pending =>
              (case Ctx.P.Next_State is
-                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset =>
                     Frame.Packet.Well_Formed_Message (Ctx.P.Inbound_Ctx)
                     and Frame.Packet.Byte_Size (Ctx.P.Inbound_Ctx) > 0,
                  when others =>
@@ -360,7 +360,7 @@ private
                     RFLX_Types.Unreachable),
           when C_App_Pending =>
              (case Ctx.P.Next_State is
-                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Reset =>
+                 when S_Forwarding_Headers | S_Forwarding_Body | S_Forwarding_Connection_Frame | S_Forwarding_Connection_Frame_Body | S_Forwarding_Reset =>
                     Frame.Packet.Byte_Size (Ctx.P.Inbound_Ctx),
                  when others =>
                     RFLX_Types.Unreachable),

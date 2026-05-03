@@ -573,6 +573,62 @@ package body Http2_Core.Server is
          pragma Unreferenced (Got_End_Of_Request);
       end;
 
+      --  Drain post-response frames and answer PING with PING-ACK.
+      --  Python grpcio sends a PING after the response and waits
+      --  for the ACK before treating the RPC as cleanly complete;
+      --  without it the client surfaces "Socket closed" on TCP-FIN.
+      for K in 1 .. 5 loop
+         declare
+            Hdr2 : Wire.Frame_Header;
+            Last2 : RFLX.RFLX_Types.Index;
+            OK2 : Boolean;
+         begin
+            Read_Frame (Chan, L.Buf, Hdr2, Last2, OK2);
+            exit when not OK2;
+            if Hdr2.Frame_Type_Value = RFLX.Http2_Parameters.PING
+              and (Hdr2.Flags and Wire.Flag_ACK) = 0
+              and Hdr2.Length = 8
+            then
+               declare
+                  Ack_Last : RFLX.RFLX_Types.Index;
+                  Echo : constant RFLX.RFLX_Types.Bytes :=
+                    L.Buf.all (L.Buf'First + 9 .. L.Buf'First + 16);
+               begin
+                  Wire.Encode_Ping
+                    (Buffer => L.Buf, Last => Ack_Last,
+                     Opaque_Data => Echo, Ack => True);
+                  Transport.Send
+                    (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
+               end;
+               exit;  --  PING-ACK sent, we're done
+            end if;
+            --  WINDOW_UPDATE / GOAWAY / RST_STREAM — log + continue
+         exception
+            when others => exit;
+         end;
+      end loop;
+
+      --  §6.8 — emit GOAWAY before closing so the client sees a
+      --  clean shutdown instead of a "socket closed" error. Python
+      --  grpcio reads frames eagerly and surfaces the bare TCP-FIN
+      --  as transport.Status.UNAVAILABLE; GOAWAY tells it the
+      --  shutdown is intentional.
+      declare
+         Goaway_Last : RFLX.RFLX_Types.Index;
+         Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
+           (others => 0);
+      begin
+         Wire.Encode_Goaway
+           (Buffer         => L.Buf,
+            Last           => Goaway_Last,
+            Last_Stream_Id => Stream_Id,
+            Error_Code     => 0,  --  NO_ERROR
+            Debug_Data     => Empty);
+         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Goaway_Last));
+      exception
+         when others => null;  --  best effort; client may have already gone
+      end;
+
       Transport.Close (Chan);
    end Accept_And_Serve;
 

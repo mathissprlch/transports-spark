@@ -472,7 +472,7 @@ package Stream is
          goto Forwarding_Body
             if Inbound'Valid
                and Inbound.Frame_Type = Http2_Parameters::DATA
-         goto Forwarding_Connection_Frame
+         goto Forwarding_Connection_Frame_Body
             if Inbound'Valid
                and (Inbound.Frame_Type = Http2_Parameters::SETTINGS
                     or Inbound.Frame_Type = Http2_Parameters::PING
@@ -497,12 +497,25 @@ package Stream is
          goto null
       end Forwarding_Body;
 
+      --  Connection-management frame seen during Awaiting_Headers:
+      --  forward + loop back to Awaiting_Headers.
       state Forwarding_Connection_Frame is
       begin
          App_Pending'Write (Inbound);
       transition
          goto Awaiting_Headers
       end Forwarding_Connection_Frame;
+
+      --  Same as above but seen during Awaiting_Body — loop back
+      --  to Awaiting_Body so we don't re-expect HEADERS. Without
+      --  this, a WINDOW_UPDATE between HEADERS and DATA stalls the
+      --  request indefinitely (Python grpcio sends one).
+      state Forwarding_Connection_Frame_Body is
+      begin
+         App_Pending'Write (Inbound);
+      transition
+         goto Awaiting_Body
+      end Forwarding_Connection_Frame_Body;
 
       state Forwarding_Reset is
       begin

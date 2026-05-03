@@ -157,24 +157,28 @@ is
                   Value         => Found_Index);
 
             elsif Found_Index > 0 then
-               --  §6.2.3 Literal Never Indexed, name from index.
-               --  Discriminator: 0001xxxx (high nibble = 0x10).
+               --  §6.2.2 Literal Without Indexing, name from index.
+               --  Discriminator: 0000xxxx (high nibble = 0x00). v0.2
+               --  used Never-Indexed (0x10) here, but Python grpcio
+               --  RST_STREAMs on receiving 0x10 for response headers
+               --  even though it's spec-legal. Switching to Without-
+               --  Indexing (0x00) is interoperable with both grpcurl
+               --  and grpcio and matches what they emit themselves.
                Emit_Integer
-                 (Discriminator => 16#10#,
+                 (Discriminator => 16#00#,
                   N             => 4,
                   Value         => Found_Index);
                Emit_String_Raw
                  (H.Value (1 .. H.Value_Last));
 
             else
-               --  §6.2.3 Literal Never Indexed, literal name.
-               --  Discriminator byte is just 0x10; name index = 0.
+               --  §6.2.2 Literal Without Indexing, literal name.
                if Out_Idx >= Output'Last then
                   Output_OK := False;
                   exit;
                end if;
                Out_Idx := Out_Idx + 1;
-               Output (Out_Idx) := 16#10#;
+               Output (Out_Idx) := 16#00#;
                Emit_String_Raw
                  (H.Name (1 .. H.Name_Last));
                Emit_String_Raw
