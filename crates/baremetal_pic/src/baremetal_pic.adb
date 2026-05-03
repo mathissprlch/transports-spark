@@ -24,10 +24,23 @@
 --       runs + fails-cleanly on Cortex-M3 with zero heap
 --       allocation in the library.
 --
+--  Plus, post-memory-loopback Transport refactor:
+--    6. End-to-end Wire+Transport round trip — encode a real
+--       MQTT CONNECT packet via Mqtt_Core.Wire, push it through
+--       the bare-metal loopback Transport (a static FIFO inside
+--       transport_bare/mqtt_core-transport.adb), pop the bytes
+--       back, and verify byte-for-byte equality. This is the
+--       first time the SPARK protocol code drives I/O calls on
+--       Cortex-M3 — no GNAT.Sockets, no light-* runtime task,
+--       just statically-allocated bytes moving through the
+--       Transport layer.
+--
 --  What this binary does NOT exercise (yet):
---    * Real network I/O — transport_bare/ stubs all I/O calls.
---      A UART driver for the LM3S6965 UART or an LWIP shim is
---      tracked separately as the next bare-metal milestone.
+--    * Real peer-to-peer protocol exchange. The loopback Transport
+--      only echoes bytes; it doesn't synthesise broker responses,
+--      so a full CONNECT/CONNACK handshake with the FSM-driven
+--      Client requires either a co-routine scheduler or external
+--      I/O hardware (UART, Ethernet PHY+LWIP). Tracked separately.
 --
 --  Stack: linker bumps __stack_size to 0x4000 (16 KB) because
 --  Hpack.Decode's Header_Block-of-32 record alone is several
@@ -45,11 +58,14 @@ with Http2_Core.Hpack.Huffman;
 with Http2_Core.Hpack.Int_Codec;
 
 with Mqtt_Core.Client;
+with Mqtt_Core.Transport;
+with Mqtt_Core.Wire;
 
 procedure Baremetal_Pic is
    use Ada.Text_IO;
    use Http2_Core.Hpack;
    use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
+   use type RFLX.RFLX_Builtin_Types.Byte;
 
    procedure Banner;
    procedure Banner is
@@ -242,11 +258,73 @@ procedure Baremetal_Pic is
                 (if Det_Inbound /= null then "non-null (returned)" else "null"));
       Put_Line ("    Det_Outgoing = " &
                 (if Det_Outgoing /= null then "non-null (returned)" else "null"));
-      Put_Line ("  ── full Open() requires real Transport (UART or LWIP);");
-      Put_Line ("     transport_bare currently stubs all I/O so Open would");
-      Put_Line ("     raise Connect_Failure → Last_Chance_Handler under");
-      Put_Line ("     No_Exception_Propagation. Real Transport = next step.");
    end Test_Mqtt_Client;
+
+   --  Bytes-on-the-wire round trip on Cortex-M3, NO GNAT.Sockets:
+   --
+   --    1. Open a Channel through the bare-metal loopback Transport.
+   --    2. Use Mqtt_Core.Wire to encode a real CONNECT packet
+   --       into a stack-allocated buffer.
+   --    3. Send the bytes via Transport — they land in the static
+   --       FIFO inside transport_bare/mqtt_core-transport.adb.
+   --    4. Receive_Full the same number of bytes back.
+   --    5. Compare every byte; report match.
+   --
+   --  This is the simplest possible proof that the SPARK protocol
+   --  layer + bare-metal Transport API can move bytes through a
+   --  wire-format encoder/decoder pipeline on Cortex-M3.
+   procedure Test_Transport_Loopback;
+   procedure Test_Transport_Loopback is
+      Chan : Mqtt_Core.Transport.Channel;
+      Buf  : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. 64 => 0);
+      Sent_Last : RFLX.RFLX_Types.Index;
+      Got_Buf   : RFLX.RFLX_Types.Bytes (1 .. 64) := (others => 0);
+      Got_OK    : Boolean;
+      All_Match : Boolean := True;
+   begin
+      Put_Line ("transport loopback (in-image FIFO, no GNAT.Sockets):");
+
+      --  Encode a real CONNECT packet via SPARK Wire.
+      Mqtt_Core.Wire.Encode_Connect
+        (Buf, Sent_Last,
+         Client_Id     => "ada-baremetal",
+         Keep_Alive_S  => 0,
+         Clean_Session => True);
+      Put_Line ("  encoded CONNECT (" &
+                Natural'Image (Natural (Sent_Last)) & "B) via Mqtt_Core.Wire");
+
+      --  Push to the loopback FIFO.
+      Mqtt_Core.Transport.Connect (Chan, "loopback", 0);
+      Mqtt_Core.Transport.Send
+        (Chan, Buf.all (Buf'First .. Sent_Last));
+      Put_Line ("  Send ok; queued bytes =" &
+                Natural'Image (Mqtt_Core.Transport.Queued_Bytes));
+
+      --  Pop them back.
+      declare
+         Slice : RFLX.RFLX_Types.Bytes
+           (1 .. RFLX.RFLX_Types.Index (Sent_Last));
+      begin
+         Mqtt_Core.Transport.Receive_Full (Chan, Slice, Got_OK);
+         Got_Buf (1 .. RFLX.RFLX_Types.Index (Sent_Last)) := Slice;
+      end;
+      Put_Line ("  Receive_Full ok =" & Got_OK'Image &
+                "; queued bytes after =" &
+                Natural'Image (Mqtt_Core.Transport.Queued_Bytes));
+
+      --  Bytewise compare.
+      for I in 1 .. RFLX.RFLX_Types.Index (Sent_Last) loop
+         if Got_Buf (I) /= Buf.all (I) then
+            All_Match := False;
+            exit;
+         end if;
+      end loop;
+      Put_Line ("  bytes match = " & All_Match'Image);
+
+      Mqtt_Core.Transport.Close (Chan);
+      RFLX.RFLX_Types.Free (Buf);
+   end Test_Transport_Loopback;
 
 begin
    Banner;
@@ -259,6 +337,8 @@ begin
    Test_Hpack_Round_Trip;
    New_Line;
    Test_Mqtt_Client;
+   New_Line;
+   Test_Transport_Loopback;
    New_Line;
    Put_Line ("baremetal_pic: all tests done; halting in idle loop.");
 

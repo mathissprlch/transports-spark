@@ -1,7 +1,7 @@
---  Http2_Core.Transport — bare-metal stub.
+--  Http2_Core.Transport — bare-metal memory-loopback.
 --  Mirror of Mqtt_Core.Transport's bare variant; same rationale.
---  Operations all return errors so the rest of http2_core can
---  build for a Cortex-M / Cortex-R target without GNAT.Sockets.
+--  In-image FIFO so http2_core can do byte round-trips on a
+--  Cortex-M / Cortex-R target without GNAT.Sockets.
 
 with RFLX.RFLX_Types;
 
@@ -38,6 +38,11 @@ package Http2_Core.Transport is
    with
      Pre  => Is_Open (Chan),
      Post => not Is_Open (Chan);
+
+   --  Test helpers — same shape as Mqtt_Core.Transport's.
+   function Queued_Bytes return Natural;
+   procedure Inject_Inbound (Data : RFLX.RFLX_Types.Bytes);
+   procedure Reset_Queue;
 
    Connect_Error : exception;
    Send_Error    : exception;

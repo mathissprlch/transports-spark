@@ -1,28 +1,31 @@
---  Mqtt_Core.Transport — bare-metal stub.
+--  Mqtt_Core.Transport — bare-metal memory-loopback.
 --
---  Same API surface as the TCP variant in `../transport_tcp/`,
---  but with no GNAT.Sockets dependency so the entire mqtt_core
---  graph can build for a Cortex-M / Cortex-R target without
---  pulling in hosted-OS networking.
+--  Same API surface as the TCP variant in `../transport_tcp/`, but
+--  the body uses a fixed-size in-image FIFO instead of GNAT.Sockets.
+--  Bare-metal-clean: no hosted-OS dependency.
 --
---  Every operation currently raises `Connect_Error` so a caller
---  trying to actually communicate over this Transport gets a
---  clear runtime failure rather than silent corruption. Real
---  bare-metal Transport implementations (UART loopback for
---  smoke tests, LWIP for IP-over-Ethernet on Zynq, MQTT-SN over
---  serial for Cortex-M IoT, etc.) replace this body without
---  touching the spec or any client code.
+--    Send (Chan, Bytes)        →  pushes Bytes into a static FIFO
+--    Receive (Chan, Buffer, …) →  pops bytes from the same FIFO
 --
---  Build selection: `mqtt_core.gpr` has a scenario variable
---  TRANSPORT={tcp|bare} that picks which subdirectory of
---  `src/` is compiled. Default is `tcp`; bare-metal builds set
---  TRANSPORT=bare.
+--  Single shared FIFO at package-body scope; bare-metal targets
+--  are single-threaded under the light-* runtime so contention is
+--  a non-issue. All Channels read the same queue — a Channel
+--  sending bytes and the same (or another) Channel reading them
+--  back is the round-trip topology this Transport supports.
 --
---  This stub exists to PROVE the API surface is implementation-
---  agnostic. Once it builds and links cleanly without any
---  hosted-OS dependency, the next-layer crates (mqtt_core proper,
---  examples, http2_core, grpc_core) are unblocked for bare-metal
---  cross-compilation.
+--  Useful for: exercising Wire encoders+decoders on bare-metal
+--  ("encode CONNECT, push to queue, pop, decode → assert equal"),
+--  or seeding fixed broker-response bytes with `Inject_Inbound`
+--  before driving a Client request.
+--
+--  NOT useful for: a real two-peer protocol exchange where the
+--  responder must compute its reply from the inbound message —
+--  that needs a co-routine scheduler or real I/O hardware (UART,
+--  Ethernet PHY+LWIP). Those are tracked separately on the
+--  bare-metal roadmap.
+--
+--  Build selection: `mqtt_core.gpr` has scenario variable
+--  TRANSPORT={tcp|bare} picking which `src/` subdirectory compiles.
 
 with RFLX.RFLX_Types;
 
@@ -60,15 +63,18 @@ package Mqtt_Core.Transport is
      Pre  => Is_Open (Chan),
      Post => not Is_Open (Chan);
 
+   --  Queued-byte count helpers — useful for tests that want to
+   --  assert "queue is empty after the round trip" or seed inbound
+   --  bytes for a request the FSM is about to make.
+   function Queued_Bytes return Natural;
+   procedure Inject_Inbound (Data : RFLX.RFLX_Types.Bytes);
+   procedure Reset_Queue;
+
    Connect_Error : exception;
    Send_Error    : exception;
 
 private
 
-   --  Placeholder fields — the real bare-metal Transport
-   --  implementations will replace this body and may need
-   --  different storage. Keeping the spec minimal so a UART
-   --  driver, LWIP socket, or memory-loopback can substitute.
    type Channel is limited record
       Open : Boolean := False;
    end record;
