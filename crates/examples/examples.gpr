@@ -13,6 +13,7 @@ project Examples is
                  "greeter_client_v02.adb",
                  "greeter_streaming_demo.adb",
                  "greeter_server_v02.adb",
+                 "greeter_streaming_server.adb",
                  "mqtt_broker_demo.adb",
                  "listfeatures_server.adb", "listfeatures_client.adb",
                  "mqtt_demo.adb");

@@ -70,6 +70,32 @@ package Http2_Core.Server is
          Trailers_Last         : out Natural);
    procedure Accept_And_Serve (L : in out Listener);
 
+   --  Server-streaming: handler is invoked once with the request,
+   --  then yields N response messages via Next_Reply. Each reply
+   --  is gRPC-framed and sent as one DATA frame. Caller is
+   --  responsible for putting the 5-byte gRPC framing prefix +
+   --  protobuf body into Out_Buf.
+   generic
+      with procedure Setup_Response
+        (Request_Headers       : Hpack.Header_Block;
+         Request_Headers_Last  : Natural;
+         Request_Body          : RFLX.RFLX_Types.Bytes;
+         Request_Body_Last     : Natural;
+         Response_Headers      : in out Hpack.Header_Block;
+         Response_Headers_Last : out Natural;
+         Trailers              : in out Hpack.Header_Block;
+         Trailers_Last         : out Natural);
+      with function Next_Reply
+        (Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+         Out_Last : out RFLX.RFLX_Types.Index)
+         return Boolean;
+   procedure Accept_And_Serve_Server_Stream (L : in out Listener);
+
+   --  Client-streaming + bidi-streaming server-side variants are v0.3
+   --  follow-ups. The Stream::Open FSM (server-side) already supports
+   --  the read-multiple-DATA-frames pattern that client-streaming
+   --  needs; the work is hand-written response composition glue.
+
    procedure Stop (L : in out Listener);
 
    Server_Error : exception;
