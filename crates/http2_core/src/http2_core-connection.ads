@@ -170,6 +170,13 @@ private
       Outgoing_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
       --  Client stream ids start at 1 and increment by 2 (§5.1.1).
       Next_Stream_Id : RFLX.RFLX_Builtin_Types.Bit_Length := 1;
+      --  RFC 9113 §6.9 flow-control accounting for the inbound
+      --  side (server → client DATA). When ≥ Refill_At bytes have
+      --  arrived since the last WINDOW_UPDATE, emit one to refresh
+      --  by exactly that amount on stream 0 + the current stream.
+      --  Without this, persistent connections hang once the peer's
+      --  default 65 535-byte outbound window is exhausted.
+      Conn_Bytes_Owed : RFLX.RFLX_Builtin_Types.Bit_Length := 0;
    end record;
 
 end Http2_Core.Connection;

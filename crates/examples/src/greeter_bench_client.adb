@@ -1,8 +1,10 @@
 --  greeter_bench_client — looping unary client for benchmarks.
---  Each iteration opens a fresh HTTP/2 connection, sends one
---  SayHello, closes. v0.2 Connection doesn't reuse connections,
---  so this measures full-cycle (TCP + preface + SETTINGS + RPC +
---  GOAWAY + close) per call.
+--  Opens a single HTTP/2 connection at startup and re-uses it
+--  for every SayHello — Http2_Core.Connection.Round_Trip
+--  increments the per-connection stream-id (1, 3, 5, …) so
+--  arbitrarily many round-trips share one TCP/SETTINGS handshake.
+--  This measures steady-state per-RPC cost rather than connection
+--  setup.
 --
 --  Args: <host:port> <duration-seconds> <name-length>
 --  Output: JSON to stdout matching the Go bench client's shape.
@@ -151,69 +153,71 @@ begin
    begin
       Build_Body (Body_Buf, Body_Last);
 
-      while Clock < Deadline and N_Samples < Max_Samples loop
-         declare
-            T_Start : constant Time := Clock;
+      declare
+         C            : Http2_Core.Connection.Connection;
+         Conn_Buf     : RFLX.RFLX_Types.Bytes_Ptr :=
+           new RFLX.RFLX_Types.Bytes' (1 .. 32 * 1024 + 64 => 0);
+         Inbound_Buf  : RFLX.RFLX_Types.Bytes_Ptr :=
+           new RFLX.RFLX_Types.Bytes' (1 .. 32 * 1024 + 64 => 0);
+         Outgoing_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+           new RFLX.RFLX_Types.Bytes' (1 .. 32 * 1024 + 64 => 0);
+      begin
+         --  One TCP connection + HTTP/2 preface + SETTINGS for the
+         --  whole bench. Every Round_Trip below uses the next
+         --  client-initiated stream id (1, 3, 5, …).
+         Http2_Core.Connection.Attach_Buffers
+           (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
+         Http2_Core.Connection.Open
+           (C => C, Host => Host (1 .. Host_Last), Port => Port);
 
-            C       : Http2_Core.Connection.Connection;
-            Conn_Buf     : RFLX.RFLX_Types.Bytes_Ptr :=
-              new RFLX.RFLX_Types.Bytes'
-                (1 .. 32 * 1024 + 64 => 0);
-            Inbound_Buf  : RFLX.RFLX_Types.Bytes_Ptr :=
-              new RFLX.RFLX_Types.Bytes'
-                (1 .. 32 * 1024 + 64 => 0);
-            Outgoing_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
-              new RFLX.RFLX_Types.Bytes'
-                (1 .. 32 * 1024 + 64 => 0);
+         while Clock < Deadline and N_Samples < Max_Samples loop
+            declare
+               T_Start : constant Time := Clock;
+               Resp_Hdrs : Http2_Core.Hpack.Header_Block (1 .. 16);
+               Hdrs_Last : Natural;
+               Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 16384) :=
+                 (others => 0);
+               Resp_Body_Last : Natural;
+               T_End : Time;
+            begin
+               Http2_Core.Connection.Round_Trip
+                 (C                     => C,
+                  Request_Headers       => Headers,
+                  Request_Body          =>
+                    Body_Buf (Body_Buf'First .. Body_Last),
+                  Response_Headers      => Resp_Hdrs,
+                  Response_Headers_Last => Hdrs_Last,
+                  Response_Body         => Resp_Body,
+                  Response_Body_Last    => Resp_Body_Last);
 
-            Resp_Hdrs : Http2_Core.Hpack.Header_Block (1 .. 16);
-            Hdrs_Last : Natural;
-            Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 16384) :=
-              (others => 0);
-            Resp_Body_Last : Natural;
-            T_End : Time;
+               T_End := Clock;
+               N_Samples := N_Samples + 1;
+               Samples (N_Samples) :=
+                 Natural
+                   (Float (To_Duration (T_End - T_Start)) * 1_000_000.0);
+            exception
+               when others =>
+                  Errors := Errors + 1;
+                  exit;  --  Connection is likely toast — bail.
+            end;
+         end loop;
+
          begin
-            Http2_Core.Connection.Attach_Buffers
-              (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
-            Http2_Core.Connection.Open
-              (C => C, Host => Host (1 .. Host_Last), Port => Port);
-            Http2_Core.Connection.Round_Trip
-              (C                     => C,
-               Request_Headers       => Headers,
-               Request_Body          =>
-                 Body_Buf (Body_Buf'First .. Body_Last),
-               Response_Headers      => Resp_Hdrs,
-               Response_Headers_Last => Hdrs_Last,
-               Response_Body         => Resp_Body,
-               Response_Body_Last    => Resp_Body_Last);
             Http2_Core.Connection.Close (C);
-            Http2_Core.Connection.Detach_Buffers
-              (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
-            RFLX.RFLX_Types.Free (Conn_Buf);
-            RFLX.RFLX_Types.Free (Inbound_Buf);
-            RFLX.RFLX_Types.Free (Outgoing_Buf);
-
-            T_End := Clock;
-            N_Samples := N_Samples + 1;
-            Samples (N_Samples) :=
-              Natural (Float (To_Duration (T_End - T_Start)) * 1_000_000.0);
-         exception
-            when others =>
-               Errors := Errors + 1;
-               begin
-                  if Conn_Buf /= null then
-                     RFLX.RFLX_Types.Free (Conn_Buf);
-                  end if;
-                  if Inbound_Buf /= null then
-                     RFLX.RFLX_Types.Free (Inbound_Buf);
-                  end if;
-                  if Outgoing_Buf /= null then
-                     RFLX.RFLX_Types.Free (Outgoing_Buf);
-                  end if;
-               exception when others => null;
-               end;
+         exception when others => null;
          end;
-      end loop;
+         Http2_Core.Connection.Detach_Buffers
+           (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
+         if Conn_Buf /= null then
+            RFLX.RFLX_Types.Free (Conn_Buf);
+         end if;
+         if Inbound_Buf /= null then
+            RFLX.RFLX_Types.Free (Inbound_Buf);
+         end if;
+         if Outgoing_Buf /= null then
+            RFLX.RFLX_Types.Free (Outgoing_Buf);
+         end if;
+      end;
 
       declare
          Wall_Span : constant Time_Span := Clock - T0;

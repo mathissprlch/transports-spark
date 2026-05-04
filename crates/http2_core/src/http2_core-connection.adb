@@ -420,6 +420,32 @@ package body Http2_Core.Connection is
                                    + RFLX.RFLX_Types.Index (I));
                            end loop;
                         end;
+
+                        --  RFC 9113 §6.9: refresh the connection-
+                        --  level inbound window. Without this,
+                        --  persistent connections stall once 65 535
+                        --  cumulative response bytes have arrived.
+                        --  Per-stream window is fine for unary
+                        --  (single response < window), so we only
+                        --  refill the connection here.
+                        C.Conn_Bytes_Owed :=
+                          C.Conn_Bytes_Owed + Hdr.Length;
+                        if C.Conn_Bytes_Owed >= 32_768 then
+                           declare
+                              Wu_Last : RFLX.RFLX_Types.Index;
+                           begin
+                              Wire.Encode_Window_Update
+                                (Buffer    => C.Buf,
+                                 Last      => Wu_Last,
+                                 Stream_Id => 0,
+                                 Increment => C.Conn_Bytes_Owed);
+                              Transport.Send
+                                (C.Trans,
+                                 C.Buf.all
+                                   (C.Buf'First .. Wu_Last));
+                              C.Conn_Bytes_Owed := 0;
+                           end;
+                        end if;
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
