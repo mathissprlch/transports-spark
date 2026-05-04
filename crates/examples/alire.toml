@@ -13,6 +13,7 @@ executables = ["greeter_server", "greeter_client",
                "greeter_server_v02",
                "greeter_streaming_server",
                "greeter_mux_server",
+               "http1_demo",
                "mqtt_broker_demo",
                "listfeatures_server", "listfeatures_client",
                "mqtt_demo"]
@@ -28,6 +29,9 @@ mqtt_core = "*"
 http2_core = "*"
 
 [[depends-on]]
+http1_core = "*"
+
+[[depends-on]]
 grpc_core = "*"
 
 [[pins]]
@@ -38,6 +42,9 @@ path = "../mqtt_core"
 
 [pins.http2_core]
 path = "../http2_core"
+
+[pins.http1_core]
+path = "../http1_core"
 
 [pins.grpc_core]
 path = "../grpc_core"

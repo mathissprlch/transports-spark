@@ -1,6 +1,7 @@
 with "grpc_ada.gpr";
 with "mqtt_core.gpr";
 with "http2_core.gpr";
+with "http1_core.gpr";
 with "grpc_core.gpr";
 
 project Examples is
@@ -15,6 +16,7 @@ project Examples is
                  "greeter_server_v02.adb",
                  "greeter_streaming_server.adb",
                  "greeter_mux_server.adb",
+                 "http1_demo.adb",
                  "mqtt_broker_demo.adb",
                  "listfeatures_server.adb", "listfeatures_client.adb",
                  "mqtt_demo.adb");

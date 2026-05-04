@@ -1,0 +1,11 @@
+name = "http1_core"
+description = "Minimal HTTP/1.1 server (RFC 9112 §3-4 subset)"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+tags = ["http", "http1", "spark"]
+
+project-files = ["http1_core.gpr"]
