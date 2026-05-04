@@ -129,6 +129,12 @@ package body Http2_Core.Transport is
       Chan.Open := False;
    end Close;
 
+   function Has_Pending (Chan : Channel) return Boolean is
+      pragma Unreferenced (Chan);
+   begin
+      return Queued_Bytes > 0;
+   end Has_Pending;
+
    function Queued_Bytes return Natural is
    begin
       if Head = 0 then

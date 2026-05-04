@@ -41,6 +41,14 @@ package Http2_Core.Transport is
       Success : out Boolean)
    with Pre => Is_Open (Chan);
 
+   --  Non-blocking poll: returns True iff a subsequent Receive would
+   --  not block (either bytes are queued or the peer has FIN'd).
+   --  Implementation uses select(2) with a zero timeout. Used by the
+   --  bidi-streaming server to interleave inbound frames with
+   --  outbound replies.
+   function Has_Pending (Chan : Channel) return Boolean
+   with Pre => Is_Open (Chan);
+
    --  Read exactly `Buffer'Length` bytes (loops over Receive).
    --  Sets Success := False if EOF arrives before the buffer fills.
    procedure Receive_Full

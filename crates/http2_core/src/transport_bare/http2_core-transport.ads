@@ -34,6 +34,11 @@ package Http2_Core.Transport is
       Success : out Boolean)
    with Pre => Is_Open (Chan);
 
+   --  Bare metal: the loopback FIFO is synchronous, so any pending
+   --  bytes are immediately visible. Returns True iff Queued_Bytes > 0.
+   function Has_Pending (Chan : Channel) return Boolean
+   with Pre => Is_Open (Chan);
+
    procedure Close (Chan : in out Channel)
    with
      Pre  => Is_Open (Chan),

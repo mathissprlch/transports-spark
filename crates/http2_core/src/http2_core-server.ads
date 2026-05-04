@@ -110,9 +110,11 @@ package Http2_Core.Server is
    procedure Accept_And_Serve_Client_Stream (L : in out Listener);
 
    --  Bidi-streaming: response HEADERS sent up front (after request
-   --  HEADERS arrived). Then both directions stream interleaved —
-   --  driver alternates "have an inbound frame? On_Request_Message"
-   --  with "have a reply? send DATA". Loop ends when Next_Reply
+   --  HEADERS arrived). Then both directions stream interleaved.
+   --  Driver uses non-blocking select-style polling on the socket so
+   --  the server can push replies independently of inbound frame
+   --  timing — reply latency is bounded by the 1 ms idle backoff,
+   --  not by the next client message. Loop ends when Next_Reply
    --  returns False AND client has END_STREAM'd. Trailers sent after.
    generic
       with procedure Setup_Response

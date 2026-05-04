@@ -1501,104 +1501,118 @@ package body Http2_Core.Server is
             Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
             End_Stream => False);
 
-         --  Bidi loop. v0.2 limitation: Read_Frame is blocking, so
-         --  this is half-duplex bidi — the driver alternates "read
-         --  one inbound frame, then drain replies via Next_Reply".
-         --  Pure-interleave bidi (server pushes replies without
-         --  waiting for matching client input) needs select-based
-         --  non-blocking reads or a separate task; v0.3 work.
-         --
-         --  This implementation handles request/response patterns
-         --  where the server's reply timing depends on the client's
-         --  input (e.g. echo-style chat). It can deadlock if the
-         --  client expects a reply before sending its next input.
+         --  Pure-interleave bidi loop. Each iteration:
+         --    1. If a client frame is queued (Has_Pending poll), read
+         --       it, feed FSM. We don't try to drain socket bytes in
+         --       this step — one frame per iteration keeps inbound
+         --       and outbound balanced.
+         --    2. Drive FSM. Drain *all* queued App_Pending frames:
+         --       multiple frames may have been demuxed from a single
+         --       Network write, and re-checking once isn't enough.
+         --       For each DATA frame, deliver payload to
+         --       On_Request_Message; track END_STREAM flag.
+         --    3. Pull one reply from Next_Reply; if available, send
+         --       as a DATA frame.
+         --    4. If nothing happened this iteration, sleep 1 ms so
+         --       we don't busy-spin while waiting on the client.
+         --  Loop ends when the client has END_STREAM'd AND
+         --  Next_Reply returned False (no more replies queued).
          pragma Unreferenced (No_More_Replies);
          Bidi_Loop :
          loop
-            exit Bidi_Loop when Got_End_Of_Request;
-
-            --  Read the next client frame (blocking). For each
-            --  inbound DATA frame, deliver to On_Request_Message,
-            --  then immediately give the handler a chance to emit
-            --  a reply via Next_Reply. END_STREAM bit on the
-            --  client's DATA frame ends the loop after one final
-            --  Next_Reply round.
-            if not Got_End_Of_Request then
-               declare
-                  Frame_Last : RFLX.RFLX_Types.Index;
-                  Frame_Hdr  : Wire.Frame_Header;
-                  Read_OK    : Boolean;
-               begin
-                  Read_Frame
-                    (Chan, L.Buf, Frame_Hdr, Frame_Last, Read_OK);
-                  if not Read_OK then
-                     Got_End_Of_Request := True;
-                  else
-                     if FSM.Needs_Data (Ctx, FSM.C_Network) then
-                        FSM.Write
-                          (Ctx, FSM.C_Network,
-                           L.Buf.all (L.Buf'First .. Frame_Last));
+            declare
+               Made_Progress : Boolean := False;
+               Reply_Pending : Boolean := False;
+            begin
+               --  (1) Inbound: only read if the channel has bytes
+               --  ready, else we'd block while the app has replies
+               --  to send.
+               if not Got_End_Of_Request
+                 and then Transport.Has_Pending (Chan)
+               then
+                  declare
+                     Frame_Last : RFLX.RFLX_Types.Index;
+                     Frame_Hdr  : Wire.Frame_Header;
+                     Read_OK    : Boolean;
+                  begin
+                     Read_Frame
+                       (Chan, L.Buf, Frame_Hdr, Frame_Last, Read_OK);
+                     if not Read_OK then
+                        Got_End_Of_Request := True;
+                     else
+                        Made_Progress := True;
+                        if FSM.Needs_Data (Ctx, FSM.C_Network) then
+                           FSM.Write
+                             (Ctx, FSM.C_Network,
+                              L.Buf.all (L.Buf'First .. Frame_Last));
+                        end if;
                      end if;
-                     --  Drive FSM to dispatch the frame.
-                     FSM.Run (Ctx);
-                     if FSM.Has_Data (Ctx, FSM.C_App_Pending) then
-                        declare
-                           N : constant RFLX.RFLX_Types.Length :=
-                             FSM.Read_Buffer_Size
-                               (Ctx, FSM.C_App_Pending);
-                           View : RFLX.RFLX_Types.Bytes
-                             (L.Buf'First ..
-                                L.Buf'First +
-                                  RFLX.RFLX_Types.Index (N) - 1);
-                           Hdr : Wire.Frame_Header;
-                           Hdr_Valid : Boolean;
-                        begin
-                           FSM.Read
-                             (Ctx, FSM.C_App_Pending, View);
-                           Wire.Decode_Frame_Header
-                             (Buffer =>
-                                View (View'First .. View'First + 8),
-                              Header => Hdr,
-                              Valid  => Hdr_Valid);
-                           if Hdr_Valid
-                             and then Hdr.Frame_Type_Value =
-                                        RFLX.Http2_Parameters.DATA
-                           then
-                              if Hdr.Length > 0 then
-                                 declare
-                                    Payload : constant
-                                      RFLX.RFLX_Types.Bytes :=
-                                        View
-                                          (View'First + 9
-                                           .. View'First + 8
-                                              + RFLX.RFLX_Types.Index
-                                                  (Hdr.Length));
-                                    Msg : constant
-                                      RFLX.RFLX_Types.Bytes :=
-                                        Strip_Grpc_Frame (Payload);
-                                 begin
-                                    if Msg'Length > 0 then
-                                       On_Request_Message (Msg);
-                                    end if;
-                                 end;
-                              end if;
-                              if (Hdr.Flags and Wire.Flag_END_STREAM)
-                                /= 0
-                              then
-                                 Got_End_Of_Request := True;
-                              end if;
-                           end if;
-                        end;
-                     end if;
-                  end if;
-               end;
-            end if;
+                  end;
+               end if;
 
-            --  After processing an inbound message, give the
-            --  handler a chance to emit a reply. Drain replies
-            --  until Next_Reply returns False.
-            Drain_Replies :
-            loop
+               --  (2) Drive FSM and drain every queued App_Pending
+               --  frame. The single-Read_Frame above can deliver a
+               --  buffered burst that produces N App_Pending events
+               --  in a row.
+               FSM.Run (Ctx);
+               Drain_App :
+               loop
+                  exit Drain_App when
+                    not FSM.Has_Data (Ctx, FSM.C_App_Pending);
+                  declare
+                     N : constant RFLX.RFLX_Types.Length :=
+                       FSM.Read_Buffer_Size (Ctx, FSM.C_App_Pending);
+                     View : RFLX.RFLX_Types.Bytes
+                       (L.Buf'First ..
+                          L.Buf'First +
+                            RFLX.RFLX_Types.Index (N) - 1);
+                     Hdr : Wire.Frame_Header;
+                     Hdr_Valid : Boolean;
+                  begin
+                     FSM.Read (Ctx, FSM.C_App_Pending, View);
+                     Wire.Decode_Frame_Header
+                       (Buffer => View (View'First .. View'First + 8),
+                        Header => Hdr,
+                        Valid  => Hdr_Valid);
+                     if Hdr_Valid
+                       and then Hdr.Frame_Type_Value =
+                                  RFLX.Http2_Parameters.DATA
+                     then
+                        if Hdr.Length > 0 then
+                           declare
+                              Payload : constant
+                                RFLX.RFLX_Types.Bytes :=
+                                  View
+                                    (View'First + 9
+                                     .. View'First + 8
+                                        + RFLX.RFLX_Types.Index
+                                            (Hdr.Length));
+                              Msg : constant RFLX.RFLX_Types.Bytes :=
+                                Strip_Grpc_Frame (Payload);
+                           begin
+                              if Msg'Length > 0 then
+                                 On_Request_Message (Msg);
+                                 Made_Progress := True;
+                              end if;
+                           end;
+                        end if;
+                        if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0
+                        then
+                           Got_End_Of_Request := True;
+                        end if;
+                     end if;
+                  end;
+                  --  After delivering a request message, give the
+                  --  application a chance to enqueue its reply for
+                  --  the next outbound step. Re-Run so further
+                  --  buffered network bytes can produce more
+                  --  App_Pending entries.
+                  FSM.Run (Ctx);
+               end loop Drain_App;
+
+               --  (3) Outbound: pull one reply per iteration. We
+               --  don't drain to exhaustion here — that would let
+               --  a chatty server starve inbound polling.
                declare
                   Msg_Buf  : RFLX.RFLX_Types.Bytes (1 .. 16384) :=
                     (others => 0);
@@ -1606,13 +1620,23 @@ package body Http2_Core.Server is
                   Has_Msg  : Boolean;
                begin
                   Has_Msg := Next_Reply (Msg_Buf, Msg_Last);
-                  exit Drain_Replies when not Has_Msg;
-                  Send_Data_Frame
-                    (L, Chan, Stream_Id,
-                     Msg_Buf (Msg_Buf'First .. Msg_Last),
-                     End_Stream => False);
+                  if Has_Msg then
+                     Send_Data_Frame
+                       (L, Chan, Stream_Id,
+                        Msg_Buf (Msg_Buf'First .. Msg_Last),
+                        End_Stream => False);
+                     Made_Progress := True;
+                     Reply_Pending := True;
+                  end if;
                end;
-            end loop Drain_Replies;
+
+               exit Bidi_Loop when
+                 Got_End_Of_Request and not Reply_Pending;
+
+               if not Made_Progress then
+                  delay 0.001;
+               end if;
+            end;
          end loop Bidi_Loop;
 
          Encode_And_Send_Headers

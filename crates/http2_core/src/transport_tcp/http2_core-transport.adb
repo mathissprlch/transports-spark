@@ -142,6 +142,42 @@ package body Http2_Core.Transport is
    end Receive_Full;
 
    ---------------------------------------------------------------------
+   --  Has_Pending — non-blocking poll via Check_Selector(0).
+   ---------------------------------------------------------------------
+
+   function Has_Pending (Chan : Channel) return Boolean is
+      use GNAT.Sockets;
+      use type Selector_Status;
+      Sel      : Selector_Type;
+      Read_Set : Socket_Set_Type;
+      Write_Set : Socket_Set_Type;
+      Status   : Selector_Status;
+   begin
+      Create_Selector (Sel);
+      Empty (Read_Set);
+      Empty (Write_Set);
+      Set (Read_Set, Chan.Socket);
+      Check_Selector
+        (Sel, Read_Set, Write_Set, Status, Timeout => 0.0);
+      declare
+         Ready : constant Boolean :=
+           Status = Completed
+             and then Is_Set (Read_Set, Chan.Socket);
+      begin
+         Close_Selector (Sel);
+         return Ready;
+      end;
+   exception
+      when others =>
+         begin
+            Close_Selector (Sel);
+         exception
+            when others => null;
+         end;
+         return False;
+   end Has_Pending;
+
+   ---------------------------------------------------------------------
    --  Close
    ---------------------------------------------------------------------
 
