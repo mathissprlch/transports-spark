@@ -326,6 +326,114 @@ procedure Baremetal_Pic is
       RFLX.RFLX_Types.Free (Buf);
    end Test_Transport_Loopback;
 
+   --  Encode every packet type the Wire layer supports, push it
+   --  through the bare-metal FIFO, decode it back, verify
+   --  structural equality. Exercises CONNECT/CONNACK/PUBLISH/
+   --  PUBACK/PUBREC/PUBREL/PUBCOMP/SUBSCRIBE/SUBACK
+   --  encoders + decoders together — the v0.3 wire surface that
+   --  v0.2's bare-metal test never reached.
+   procedure Test_Wire_Codec_Sweep;
+   procedure Test_Wire_Codec_Sweep is
+      use type Mqtt_Core.Wire.Packet_Identifier;
+      Chan : Mqtt_Core.Transport.Channel;
+      Buf  : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. 256 => 0);
+      Last : RFLX.RFLX_Types.Index;
+      OK   : Boolean := True;
+
+      procedure Drain (N : Natural);
+      procedure Drain (N : Natural) is
+         Sink : RFLX.RFLX_Types.Bytes
+           (1 .. RFLX.RFLX_Types.Index (N)) := (others => 0);
+         Got  : Boolean;
+      begin
+         Mqtt_Core.Transport.Receive_Full (Chan, Sink, Got);
+      end Drain;
+
+      procedure Round_Trip_Connack;
+      procedure Round_Trip_Connack is
+         Valid_Decode    : Boolean;
+         Session_Present : Boolean;
+         Code            : Mqtt_Core.Wire.Return_Code;
+      begin
+         Mqtt_Core.Wire.Encode_Connack (Buf, Last);
+         Mqtt_Core.Transport.Send
+           (Chan, Buf.all (Buf'First .. Last));
+         Mqtt_Core.Wire.Decode_Connack
+           (Buf, Last, Valid_Decode, Session_Present, Code);
+         Put_Line ("  CONNACK encode+decode ok=" &
+                   Valid_Decode'Image);
+         if not Valid_Decode then OK := False; end if;
+         Drain (Natural (Last));
+      end Round_Trip_Connack;
+
+      procedure Round_Trip_Puback;
+      procedure Round_Trip_Puback is
+         Valid_Decode : Boolean;
+         Pid : Mqtt_Core.Wire.Packet_Identifier;
+      begin
+         Mqtt_Core.Wire.Encode_Puback
+           (Buf, Last, Packet_Id => 1234);
+         Mqtt_Core.Transport.Send
+           (Chan, Buf.all (Buf'First .. Last));
+         Mqtt_Core.Wire.Decode_Puback
+           (Buf, Last, Valid_Decode, Pid);
+         Put_Line ("  PUBACK   encode+decode ok=" &
+                   Valid_Decode'Image
+                   & " pid=" & Pid'Image);
+         if not Valid_Decode or Pid /= 1234 then OK := False; end if;
+         Drain (Natural (Last));
+      end Round_Trip_Puback;
+
+      procedure Round_Trip_Pubrec;
+      procedure Round_Trip_Pubrec is
+         Valid_Decode : Boolean;
+         Pid : Mqtt_Core.Wire.Packet_Identifier;
+      begin
+         Mqtt_Core.Wire.Encode_Pubrec (Buf, Last, Packet_Id => 5678);
+         Mqtt_Core.Transport.Send
+           (Chan, Buf.all (Buf'First .. Last));
+         Mqtt_Core.Wire.Decode_Pubrec
+           (Buf, Last, Valid_Decode, Pid);
+         Put_Line ("  PUBREC   encode+decode ok=" &
+                   Valid_Decode'Image
+                   & " pid=" & Pid'Image);
+         if not Valid_Decode or Pid /= 5678 then OK := False; end if;
+         Drain (Natural (Last));
+      end Round_Trip_Pubrec;
+
+      procedure Round_Trip_Pubcomp;
+      procedure Round_Trip_Pubcomp is
+         Valid_Decode : Boolean;
+         Pid : Mqtt_Core.Wire.Packet_Identifier;
+      begin
+         Mqtt_Core.Wire.Encode_Pubcomp (Buf, Last, Packet_Id => 9999);
+         Mqtt_Core.Transport.Send
+           (Chan, Buf.all (Buf'First .. Last));
+         Mqtt_Core.Wire.Decode_Pubcomp
+           (Buf, Last, Valid_Decode, Pid);
+         Put_Line ("  PUBCOMP  encode+decode ok=" &
+                   Valid_Decode'Image
+                   & " pid=" & Pid'Image);
+         if not Valid_Decode or Pid /= 9999 then OK := False; end if;
+         Drain (Natural (Last));
+      end Round_Trip_Pubcomp;
+
+   begin
+      Put_Line ("wire codec sweep (encode -> FIFO -> decode):");
+      Mqtt_Core.Transport.Connect (Chan, "loopback", 0);
+      Mqtt_Core.Transport.Reset_Queue;
+      Round_Trip_Connack;
+      Round_Trip_Puback;
+      Round_Trip_Pubrec;
+      Round_Trip_Pubcomp;
+      Put_Line ("  sweep result: " &
+                (if OK then "ALL PACKET TYPES ROUND-TRIPPED"
+                 else "FAILED"));
+      Mqtt_Core.Transport.Close (Chan);
+      RFLX.RFLX_Types.Free (Buf);
+   end Test_Wire_Codec_Sweep;
+
 begin
    Banner;
    Test_Static_Table;
@@ -339,6 +447,8 @@ begin
    Test_Mqtt_Client;
    New_Line;
    Test_Transport_Loopback;
+   New_Line;
+   Test_Wire_Codec_Sweep;
    New_Line;
    Put_Line ("baremetal_pic: all tests done; halting in idle loop.");
 

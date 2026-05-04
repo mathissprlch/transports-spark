@@ -22,4 +22,8 @@ export PATH="$GPR_TOOLCHAIN_DIR/bin:$ARM_TOOLCHAIN_DIR/bin:$PATH"
 export GPR_PROJECT_PATH="$REPO/crates/rflx_runtime:$REPO/crates/http2_core:$REPO/crates/mqtt_core"
 
 cd "$REPO/crates/baremetal_pic"
-exec gprbuild --target=arm-eabi --RTS=light-lm3s -P baremetal_pic.gpr "$@"
+#  TRANSPORT=bare swaps in the heap-free, GNAT.Sockets-free Transport
+#  bodies in mqtt_core/transport_bare and http2_core/transport_bare.
+exec gprbuild --target=arm-eabi --RTS=light-lm3s \
+              -XTRANSPORT=bare \
+              -P baremetal_pic.gpr "$@"
