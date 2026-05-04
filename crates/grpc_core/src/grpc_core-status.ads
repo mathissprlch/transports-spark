@@ -54,10 +54,14 @@ is
    --  Parse `grpc-status` trailer value (ASCII decimal, 1-2 chars).
    --  Returns OK/True on success, OK/False on malformed input or
    --  out-of-range value (caller treats as Unknown).
+   --  Pre bounds S'Last so the index arithmetic
+   --  `S'First + K - 1` cannot overflow Natural'Last. Any realistic
+   --  caller passes a 1- or 2-char slice well below the limit.
    procedure From_String
      (S    : String;
       C    : out Code;
-      Valid : out Boolean);
+      Valid : out Boolean)
+   with Pre => S'Last < Natural'Last;
 
    --  Format Code as ASCII decimal into Buf; Last is the last
    --  filled index. Buf must be at least 2 chars.

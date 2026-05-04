@@ -28,6 +28,8 @@
 --  will need an iterator-style API; deferred.
 
 with RFLX.RFLX_Types;
+with RFLX.RFLX_Builtin_Types;
+use type RFLX.RFLX_Types.Index;
 
 package Grpc_Core.Framing
 with SPARK_Mode
@@ -55,6 +57,15 @@ is
       Message_Length   : out RFLX.RFLX_Types.Length;
       Compressed_Flag  : out Boolean;
       Output_OK        : out Boolean)
-   with Pre => Input'Length >= 5;
+   with
+     Pre =>
+       Input'Length >= 5
+       --  Bound Message'First so the slice arithmetic
+       --  `Message'First + Index(Len) - 1` cannot overflow
+       --  Index'Base. Real callers always pass Message'First = 1.
+       --  Bound Message'Last so the slice end-index can be
+       --  computed without overflowing Index'Base. Real callers
+       --  always pass Message starting near 1 with modest length.
+       and then Message'Last < RFLX.RFLX_Types.Index'Last;
 
 end Grpc_Core.Framing;

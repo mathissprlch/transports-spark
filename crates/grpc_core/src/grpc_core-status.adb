@@ -14,12 +14,23 @@ is
       if S'Length not in 1 .. 2 then
          return;
       end if;
-      for Ch of S loop
-         pragma Loop_Invariant (N <= 99);  --  S is at most 2 chars
-         if Ch not in '0' .. '9' then
-            return;
-         end if;
-         N := N * 10 + Character'Pos (Ch) - Character'Pos ('0');
+      --  Indexed form so the prover can correlate iteration count
+      --  with N's possible values: after K iterations N < 10**K.
+      --  S'Length is bounded to 2 above, so the loop runs at most
+      --  twice, hence N stays ≤ 99.
+      for K in 1 .. S'Length loop
+         pragma Loop_Invariant (K in 1 .. S'Length);
+         pragma Loop_Invariant
+           (if K = 1 then N = 0 else N in 0 .. 9);
+         declare
+            Ch : constant Character :=
+              S (S'First + K - 1);
+         begin
+            if Ch not in '0' .. '9' then
+               return;
+            end if;
+            N := N * 10 + Character'Pos (Ch) - Character'Pos ('0');
+         end;
       end loop;
       if N > 16 then
          return;

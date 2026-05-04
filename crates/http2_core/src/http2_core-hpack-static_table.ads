@@ -32,7 +32,8 @@ is
      (I    : Positive;
       Buf  : out String;
       Last : out Natural)
-   with Pre  => Buf'Length >= Max_Header_Length,
+   with Pre  => Buf'Length >= Max_Header_Length
+                and then Buf'Last < Natural'Last,
         Post => Last in 0 .. Max_Header_Length;
 
    --  Same shape for Value. Some entries (1, 15, 17..61) have an
@@ -41,7 +42,8 @@ is
      (I    : Positive;
       Buf  : out String;
       Last : out Natural)
-   with Pre  => Buf'Length >= Max_Header_Length,
+   with Pre  => Buf'Length >= Max_Header_Length
+                and then Buf'Last < Natural'Last,
         Post => Last in 0 .. Max_Header_Length;
 
    --  Reverse lookup used by the encoder. Searches for an exact
