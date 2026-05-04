@@ -10,6 +10,7 @@ licenses = "MIT"
 executables = ["greeter_server", "greeter_client",
                "greeter_client_v02",
                "greeter_streaming_demo",
+               "greeter_bench_client",
                "greeter_server_v02",
                "greeter_streaming_server",
                "greeter_mux_server",

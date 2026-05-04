@@ -13,6 +13,7 @@ project Examples is
    for Main use ("greeter_server.adb", "greeter_client.adb",
                  "greeter_client_v02.adb",
                  "greeter_streaming_demo.adb",
+                 "greeter_bench_client.adb",
                  "greeter_server_v02.adb",
                  "greeter_streaming_server.adb",
                  "greeter_mux_server.adb",
