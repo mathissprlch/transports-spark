@@ -10,6 +10,8 @@
 --                                         calls, each producing 5 replies.
 --    client-stream   LotsOfGreetings    — N concurrent client-streaming
 --                                         calls, each summarizing the names.
+--    bidi            BidiHello          — N concurrent bidi streams,
+--                                         each request → one reply.
 --  Port via argv[2] (default 50051).
 --
 --  Run:
@@ -377,6 +379,107 @@ procedure Greeter_Mux_Server is
         Build_Response     => CS_Build);
 
    ----------------------------------------------------------------
+   --  Bidi mode: BidiHello (each ping → one pong, full duplex).
+   ----------------------------------------------------------------
+
+   --  Per-slot pending name from the latest inbound message,
+   --  plus a "have-pending" flag the Next_Reply can drain.
+   Slot_Pending_Name : array (Slot_Index) of String (1 .. 256) :=
+     (others => (others => ' '));
+   Slot_Pending_Last : array (Slot_Index) of Natural := (others => 0);
+
+   procedure Bidi_Setup
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
+      Request_Headers_Last  : Natural;
+      Response_Headers      : in out Http2_Core.Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Trailers              : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last         : out Natural);
+
+   procedure Bidi_Setup
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
+      Request_Headers_Last  : Natural;
+      Response_Headers      : in out Http2_Core.Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Trailers              : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last         : out Natural)
+   is
+      pragma Unreferenced (Request_Headers);
+      pragma Unreferenced (Request_Headers_Last);
+      S : constant Slot_Index := Slot_Index (Slot);
+   begin
+      Slot_Pending_Last (S) := 0;
+      Set_Headers_And_Trailers
+        (Response_Headers, Response_Headers_Last,
+         Trailers, Trailers_Last);
+   end Bidi_Setup;
+
+   procedure Bidi_On_Message
+     (Slot    : Positive;
+      Message : RFLX.RFLX_Types.Bytes);
+
+   procedure Bidi_On_Message
+     (Slot    : Positive;
+      Message : RFLX.RFLX_Types.Bytes)
+   is
+      Field_Num : Natural;
+      Wire_Tp   : Natural;
+      Tag_Last  : RFLX.RFLX_Types.Index;
+      Tag_OK    : Boolean;
+      Str_End   : RFLX.RFLX_Types.Index;
+      OK        : Boolean;
+      S         : constant Slot_Index := Slot_Index (Slot);
+   begin
+      if Message'Length < 2 then return; end if;
+      Protobuf_Core.Wire.Decode_Tag
+        (Message, Message'First, Field_Num, Wire_Tp, Tag_Last, Tag_OK);
+      if not Tag_OK or else Field_Num /= 1
+        or else Wire_Tp /= Protobuf_Core.Wire.Wire_Length_Delim
+      then return; end if;
+      Protobuf_Core.Wire.Decode_String_Value
+        (Message, Tag_Last + 1,
+         Slot_Pending_Name (S), Slot_Pending_Last (S),
+         Str_End, OK);
+      if OK and then Slot_Pending_Last (S) > 0 then
+         Put_Line ("  ← slot" & Slot'Image & " ping "
+                   & Slot_Pending_Name (S) (1 .. Slot_Pending_Last (S)));
+      end if;
+   end Bidi_On_Message;
+
+   function Bidi_Next
+     (Slot     : Positive;
+      Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+      Out_Last : out RFLX.RFLX_Types.Index)
+      return Boolean;
+
+   function Bidi_Next
+     (Slot     : Positive;
+      Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+      Out_Last : out RFLX.RFLX_Types.Index)
+      return Boolean
+   is
+      OK : Boolean;
+      S  : constant Slot_Index := Slot_Index (Slot);
+   begin
+      Out_Last := Out_Buf'First;
+      if Slot_Pending_Last (S) = 0 then return False; end if;
+      Encode_Reply_Bytes
+        ("Hi, " & Slot_Pending_Name (S) (1 .. Slot_Pending_Last (S))
+         & "!",
+         Out_Buf, Out_Last, OK);
+      Slot_Pending_Last (S) := 0;
+      return OK;
+   end Bidi_Next;
+
+   procedure Mux_Run_Bidi is new
+     Http2_Core.Mux_Server.Accept_And_Serve_Multi_Bidi_Stream
+       (Setup_Response     => Bidi_Setup,
+        On_Request_Message => Bidi_On_Message,
+        Next_Reply         => Bidi_Next);
+
+   ----------------------------------------------------------------
 
    L : Http2_Core.Mux_Server.Listener;
 
@@ -417,6 +520,8 @@ begin
             Mux_Run_SS (L);
          elsif Mode (1 .. Mode_Last) = "client-stream" then
             Mux_Run_CS (L);
+         elsif Mode (1 .. Mode_Last) = "bidi" then
+            Mux_Run_Bidi (L);
          else
             Mux_Run_Unary (L);
          end if;
