@@ -37,6 +37,41 @@ package body Mqtt_Core.Broker is
    type Client_Index is range 0 .. Max_Clients;
    subtype Active_Client is Client_Index range 1 .. Max_Clients;
 
+   --  QoS inflight tracking — per client, both directions.
+   --
+   --  Outbound: when we forward a QoS≥1 PUBLISH to this subscriber
+   --  we mint a fresh packet-id, store it as Awaiting_Puback (q1) or
+   --  Awaiting_Pubrec (q2), and clear the slot when the matching ack
+   --  arrives. v0.3 has no retransmit timer — a dropped ack just
+   --  leaves the slot occupied until the client reconnects.
+   --
+   --  Inbound: when this client sends a QoS 2 PUBLISH we record the
+   --  packet-id so a duplicate-DUP retransmission isn't re-routed,
+   --  and clear it on the matching PUBREL.
+   Max_Inflight : constant := 16;
+
+   type Inflight_Stage is
+     (Free, Awaiting_Puback, Awaiting_Pubrec, Awaiting_Pubcomp);
+
+   --  Pid range is 1..65535 (0 is reserved by §2.3.1). The slot's
+   --  Stage / In_Use flag is the source of truth for occupancy; the
+   --  Pid field is meaningful only when the slot is non-Free.
+   type Outbound_Inflight_Slot is record
+      Stage : Inflight_Stage := Free;
+      Pid   : Wire.Packet_Identifier := 1;
+   end record;
+
+   type Outbound_Inflight_Array is
+     array (1 .. Max_Inflight) of Outbound_Inflight_Slot;
+
+   type Inbound_Pid_Slot is record
+      In_Use : Boolean := False;
+      Pid    : Wire.Packet_Identifier := 1;
+   end record;
+
+   type Inbound_Pid_Array is
+     array (1 .. Max_Inflight) of Inbound_Pid_Slot;
+
    type Client_State is record
       In_Use      : Boolean := False;
       Sock        : GNAT.Sockets.Socket_Type :=
@@ -47,6 +82,11 @@ package body Mqtt_Core.Broker is
       Working_Buf : RFLX.RFLX_Types.Bytes_Ptr := null;
       Ctx         : FSM.Context;
       Connected   : Boolean := False;  --  CONNACK already sent?
+      --  Wraps from 65535 → 1, so initialize at 65535 and the first
+      --  Next_Outbound_Pid call yields 1.
+      Out_Pid_Counter : Wire.Packet_Identifier := 65535;
+      Outbound_Inflight : Outbound_Inflight_Array;
+      Inbound_QoS2 : Inbound_Pid_Array;
    end record;
 
    type Client_Array is array (Active_Client) of Client_State;
@@ -271,7 +311,103 @@ package body Mqtt_Core.Broker is
          Clients (CI).Inbound_Buf := null;
          Clients (CI).Working_Buf := null;
          Clients (CI).Connected   := False;
+         Clients (CI).Out_Pid_Counter := 65535;
+         for I in Clients (CI).Outbound_Inflight'Range loop
+            Clients (CI).Outbound_Inflight (I) :=
+              (Stage => Free, Pid => 1);
+         end loop;
+         for I in Clients (CI).Inbound_QoS2'Range loop
+            Clients (CI).Inbound_QoS2 (I) :=
+              (In_Use => False, Pid => 1);
+         end loop;
       end Disconnect_Client;
+
+      ---------------------------------------------------------------
+      --  Inflight helpers — packet-id allocation, slot lookup.
+      ---------------------------------------------------------------
+
+      function Next_Outbound_Pid (CI : Active_Client)
+        return Wire.Packet_Identifier;
+
+      function Next_Outbound_Pid (CI : Active_Client)
+        return Wire.Packet_Identifier
+      is
+         use type Wire.Packet_Identifier;
+      begin
+         --  Pid range is 1..65535 (0 reserved). Wrap at the top.
+         if Clients (CI).Out_Pid_Counter >= 65535 then
+            Clients (CI).Out_Pid_Counter := 1;
+         else
+            Clients (CI).Out_Pid_Counter :=
+              Clients (CI).Out_Pid_Counter + 1;
+         end if;
+         return Clients (CI).Out_Pid_Counter;
+      end Next_Outbound_Pid;
+
+      function Find_Free_Outbound (CI : Active_Client) return Natural;
+
+      function Find_Free_Outbound (CI : Active_Client) return Natural is
+      begin
+         for I in Clients (CI).Outbound_Inflight'Range loop
+            if Clients (CI).Outbound_Inflight (I).Stage = Free then
+               return I;
+            end if;
+         end loop;
+         return 0;
+      end Find_Free_Outbound;
+
+      function Find_Outbound_By_Pid
+        (CI : Active_Client; Pid : Wire.Packet_Identifier)
+         return Natural;
+
+      function Find_Outbound_By_Pid
+        (CI : Active_Client; Pid : Wire.Packet_Identifier)
+         return Natural
+      is
+         use type Wire.Packet_Identifier;
+      begin
+         for I in Clients (CI).Outbound_Inflight'Range loop
+            if Clients (CI).Outbound_Inflight (I).Stage /= Free
+              and then Clients (CI).Outbound_Inflight (I).Pid = Pid
+            then
+               return I;
+            end if;
+         end loop;
+         return 0;
+      end Find_Outbound_By_Pid;
+
+      function Find_Inbound_QoS2_Slot
+        (CI : Active_Client; Pid : Wire.Packet_Identifier)
+         return Natural;
+
+      function Find_Inbound_QoS2_Slot
+        (CI : Active_Client; Pid : Wire.Packet_Identifier)
+         return Natural
+      is
+         use type Wire.Packet_Identifier;
+      begin
+         for I in Clients (CI).Inbound_QoS2'Range loop
+            if Clients (CI).Inbound_QoS2 (I).In_Use
+              and then Clients (CI).Inbound_QoS2 (I).Pid = Pid
+            then
+               return I;
+            end if;
+         end loop;
+         return 0;
+      end Find_Inbound_QoS2_Slot;
+
+      function Find_Free_Inbound_QoS2 (CI : Active_Client) return Natural;
+
+      function Find_Free_Inbound_QoS2 (CI : Active_Client) return Natural
+      is
+      begin
+         for I in Clients (CI).Inbound_QoS2'Range loop
+            if not Clients (CI).Inbound_QoS2 (I).In_Use then
+               return I;
+            end if;
+         end loop;
+         return 0;
+      end Find_Free_Inbound_QoS2;
 
       ---------------------------------------------------------------
       --  Route a published message to all matching subscribers.
@@ -291,8 +427,6 @@ package body Mqtt_Core.Broker is
          Pub_QoS : RFLX.Control_Packet.QoS_Level;
          Sub_Count : out Natural)
       is
-         Pid_Counter : RFLX.RFLX_Builtin_Types.Bit_Length := 1;
-         pragma Unreferenced (Pid_Counter);
          Out_Last : RFLX.RFLX_Types.Index;
       begin
          Sub_Count := 0;
@@ -305,12 +439,16 @@ package body Mqtt_Core.Broker is
             then
                declare
                   Owner : constant Active_Client := Subs (I).Owner;
+                  --  §3.8.4 (3): outbound QoS = min(publish, granted).
                   Effective_QoS : constant
                     RFLX.Control_Packet.QoS_Level :=
                       (if Pub_QoS = RFLX.Control_Packet.QOS_0
                          or else Subs (I).QoS = RFLX.Control_Packet.QOS_0
                        then RFLX.Control_Packet.QOS_0
-                       else RFLX.Control_Packet.QOS_1);
+                       elsif Pub_QoS = RFLX.Control_Packet.QOS_1
+                         or else Subs (I).QoS = RFLX.Control_Packet.QOS_1
+                       then RFLX.Control_Packet.QOS_1
+                       else RFLX.Control_Packet.QOS_2);
                begin
                   if Clients (Owner).In_Use
                     and then Clients (Owner).Connected
@@ -321,26 +459,78 @@ package body Mqtt_Core.Broker is
                              (Clients (Owner).Working_Buf,
                               Out_Last,
                               Topic, Payload);
+                           Send_All
+                             (Clients (Owner).Sock,
+                              Clients (Owner).Working_Buf.all
+                                (Clients (Owner).Working_Buf'First
+                                 .. Out_Last));
+                           Sub_Count := Sub_Count + 1;
+
                         when RFLX.Control_Packet.QOS_1 =>
-                           --  v0.2 doesn't track outbound q1 PUBACKs,
-                           --  so the packet id is informational.
-                           Wire.Encode_Publish_Qos1
-                             (Buffer    => Clients (Owner).Working_Buf,
-                              Last      => Out_Last,
-                              Packet_Id => 1,
-                              Topic     => Topic,
-                              Payload   => Payload);
-                        when others =>
-                           Wire.Encode_Publish_Qos0
-                             (Clients (Owner).Working_Buf,
-                              Out_Last,
-                              Topic, Payload);
+                           declare
+                              Slot : constant Natural :=
+                                Find_Free_Outbound (Owner);
+                              Pid : Wire.Packet_Identifier;
+                           begin
+                              --  No free slot → backpressure (we'd
+                              --  drop the message). v0.3 doesn't
+                              --  retry; subscriber gets nothing this
+                              --  round. Bumping Max_Inflight or
+                              --  adding a queue is v0.4.
+                              if Slot = 0 then
+                                 null;
+                              else
+                                 Pid := Next_Outbound_Pid (Owner);
+                                 Wire.Encode_Publish_Qos1
+                                   (Buffer    =>
+                                      Clients (Owner).Working_Buf,
+                                    Last      => Out_Last,
+                                    Packet_Id => Pid,
+                                    Topic     => Topic,
+                                    Payload   => Payload);
+                                 Clients (Owner).Outbound_Inflight
+                                   (Slot) :=
+                                     (Stage => Awaiting_Puback,
+                                      Pid   => Pid);
+                                 Send_All
+                                   (Clients (Owner).Sock,
+                                    Clients (Owner).Working_Buf.all
+                                      (Clients (Owner).Working_Buf'First
+                                       .. Out_Last));
+                                 Sub_Count := Sub_Count + 1;
+                              end if;
+                           end;
+
+                        when RFLX.Control_Packet.QOS_2 =>
+                           declare
+                              Slot : constant Natural :=
+                                Find_Free_Outbound (Owner);
+                              Pid : Wire.Packet_Identifier;
+                           begin
+                              if Slot = 0 then
+                                 null;
+                              else
+                                 Pid := Next_Outbound_Pid (Owner);
+                                 Wire.Encode_Publish_Qos2
+                                   (Buffer    =>
+                                      Clients (Owner).Working_Buf,
+                                    Last      => Out_Last,
+                                    Packet_Id => Pid,
+                                    Topic     => Topic,
+                                    Payload   => Payload);
+                                 Clients (Owner).Outbound_Inflight
+                                   (Slot) :=
+                                     (Stage => Awaiting_Pubrec,
+                                      Pid   => Pid);
+                                 Send_All
+                                   (Clients (Owner).Sock,
+                                    Clients (Owner).Working_Buf.all
+                                      (Clients (Owner).Working_Buf'First
+                                       .. Out_Last));
+                                 Sub_Count := Sub_Count + 1;
+                              end if;
+                           end;
                      end case;
-                     Send_All
-                       (Clients (Owner).Sock,
-                        Clients (Owner).Working_Buf.all
-                          (Clients (Owner).Working_Buf'First .. Out_Last));
-                     Sub_Count := Sub_Count + 1;
                   end if;
                end;
             end if;
@@ -396,57 +586,70 @@ package body Mqtt_Core.Broker is
 
             when RFLX.Control_Packet.SUBSCRIBE =>
                declare
+                  Max_Filters : constant := 8;
                   Valid : Boolean;
                   Pid   : Wire.Packet_Identifier;
-                  Topic : String (1 .. 256);
-                  Topic_Last : Natural;
-                  Req_QoS : RFLX.Control_Packet.QoS_Level;
-                  Slot : Natural;
+                  Topics_Buf : Wire.Filter_Topic_Array (1 .. Max_Filters);
+                  Topic_Lasts : Wire.Filter_Last_Array (1 .. Max_Filters);
+                  Topic_QoS  : Wire.Filter_QoS_Array (1 .. Max_Filters);
+                  Filter_N   : Natural;
+                  Codes      : Wire.Suback_Wire_Codes (1 .. Max_Filters);
                begin
-                  Wire.Decode_Subscribe
+                  Wire.Decode_Subscribe_Filters
                     (Buf, Pkt_Last, Valid, Pid,
-                     Topic, Topic_Last, Req_QoS);
-                  if not Valid then
+                     Topics_Buf, Topic_Lasts, Topic_QoS, Filter_N);
+                  if not Valid or else Filter_N = 0 then
                      Disconnect_Client (CI);
                      return;
                   end if;
 
-                  Slot := Find_Free_Sub;
-                  if Slot = 0 then
-                     Disconnect_Client (CI);
-                     return;
-                  end if;
-                  Subs (Slot) :=
-                    (In_Use      => True,
-                     Owner       => CI,
-                     Topic_Filter =>
-                       (others => ' '),
-                     Filter_Last => Topic_Last,
-                     QoS         => Req_QoS);
-                  Subs (Slot).Topic_Filter (1 .. Topic_Last) :=
-                    Topic (1 .. Topic_Last);
+                  for K in 1 .. Filter_N loop
+                     declare
+                        Slot : constant Natural := Find_Free_Sub;
+                     begin
+                        if Slot = 0 then
+                           --  Out of registry slots → grant the filter
+                           --  with FAILURE; client may retry later.
+                           Codes (K) := RFLX.Suback.FAILURE;
+                        else
+                           Subs (Slot) :=
+                             (In_Use      => True,
+                              Owner       => CI,
+                              Topic_Filter => (others => ' '),
+                              Filter_Last => Topic_Lasts (K),
+                              QoS         => Topic_QoS (K));
+                           Subs (Slot).Topic_Filter
+                             (1 .. Topic_Lasts (K)) :=
+                               Topics_Buf (K) (1 .. Topic_Lasts (K));
+                           Codes (K) :=
+                             (case Topic_QoS (K) is
+                                when RFLX.Control_Packet.QOS_0 =>
+                                  RFLX.Suback.SUCCESS_QOS_0,
+                                when RFLX.Control_Packet.QOS_1 =>
+                                  RFLX.Suback.SUCCESS_QOS_1,
+                                when RFLX.Control_Packet.QOS_2 =>
+                                  RFLX.Suback.SUCCESS_QOS_2);
+                        end if;
+                     end;
+                  end loop;
 
-                  Wire.Encode_Suback_Single
-                    (Buf, Out_Last, Pid,
-                     Granted_QoS =>
-                       (case Req_QoS is
-                          when RFLX.Control_Packet.QOS_0 =>
-                            RFLX.Suback.SUCCESS_QOS_0,
-                          when RFLX.Control_Packet.QOS_1 =>
-                            RFLX.Suback.SUCCESS_QOS_1,
-                          when RFLX.Control_Packet.QOS_2 =>
-                            RFLX.Suback.SUCCESS_QOS_2));
+                  Wire.Encode_Suback
+                    (Buf, Out_Last, Pid, Codes (1 .. Filter_N));
                   Send_All
                     (Clients (CI).Sock,
                      Buf.all (Buf'First .. Out_Last));
-                  On_Event
-                    (Kind     => Client_Subscribed,
-                     Client_Id =>
-                       Clients (CI).Client_Id (1 .. Clients (CI).Cid_Last),
-                     Topic    => Topic (1 .. Topic_Last),
-                     Payload  => Empty,
-                     QoS      => Req_QoS,
-                     Subscriber_Count => 0);
+                  for K in 1 .. Filter_N loop
+                     On_Event
+                       (Kind     => Client_Subscribed,
+                        Client_Id =>
+                          Clients (CI).Client_Id
+                            (1 .. Clients (CI).Cid_Last),
+                        Topic    =>
+                          Topics_Buf (K) (1 .. Topic_Lasts (K)),
+                        Payload  => Empty,
+                        QoS      => Topic_QoS (K),
+                        Subscriber_Count => 0);
+                  end loop;
                end;
 
             when RFLX.Control_Packet.PUBLISH =>
@@ -459,6 +662,7 @@ package body Mqtt_Core.Broker is
                   Pid : Wire.Packet_Identifier;
                   Decode_OK : Boolean;
                   Sub_Count : Natural := 0;
+                  Suppress_Route : Boolean := False;
                begin
                   Wire.Decode_Publish
                     (Buf, Pkt_Last, Decode_OK,
@@ -468,25 +672,55 @@ package body Mqtt_Core.Broker is
                      Disconnect_Client (CI);
                      return;
                   end if;
-                  if QoS = RFLX.Control_Packet.QOS_1 then
-                     Wire.Encode_Puback (Buf, Out_Last, Pid);
-                     Send_All
-                       (Clients (CI).Sock,
-                        Buf.all (Buf'First .. Out_Last));
-                  end if;
-                  --  Route to subscribers.
-                  if Payload_Last > 0 then
-                     Route_Publish
-                       (Topic (1 .. Topic_Last),
-                        Payload
-                          (Payload'First ..
-                             Payload'First +
-                                RFLX.RFLX_Types.Index (Payload_Last) - 1),
-                        QoS, Sub_Count);
-                  else
-                     Route_Publish
-                       (Topic (1 .. Topic_Last),
-                        Empty, QoS, Sub_Count);
+
+                  --  §4.3 ack-protocol: deliver-on-receipt for q1/q2,
+                  --  but for q2 record the packet-id so a DUP retry
+                  --  doesn't deliver twice.
+                  case QoS is
+                     when RFLX.Control_Packet.QOS_1 =>
+                        Wire.Encode_Puback (Buf, Out_Last, Pid);
+                        Send_All
+                          (Clients (CI).Sock,
+                           Buf.all (Buf'First .. Out_Last));
+                     when RFLX.Control_Packet.QOS_2 =>
+                        if Find_Inbound_QoS2_Slot (CI, Pid) /= 0 then
+                           --  DUP retransmission of a PUBLISH we
+                           --  already routed; just re-emit PUBREC.
+                           Suppress_Route := True;
+                        else
+                           declare
+                              Slot : constant Natural :=
+                                Find_Free_Inbound_QoS2 (CI);
+                           begin
+                              if Slot /= 0 then
+                                 Clients (CI).Inbound_QoS2 (Slot) :=
+                                   (In_Use => True, Pid => Pid);
+                              end if;
+                           end;
+                        end if;
+                        Wire.Encode_Pubrec (Buf, Out_Last, Pid);
+                        Send_All
+                          (Clients (CI).Sock,
+                           Buf.all (Buf'First .. Out_Last));
+                     when others => null;
+                  end case;
+
+                  --  Route to subscribers (skipping QoS 2 duplicates).
+                  if not Suppress_Route then
+                     if Payload_Last > 0 then
+                        Route_Publish
+                          (Topic (1 .. Topic_Last),
+                           Payload
+                             (Payload'First ..
+                                Payload'First +
+                                   RFLX.RFLX_Types.Index (Payload_Last)
+                                   - 1),
+                           QoS, Sub_Count);
+                     else
+                        Route_Publish
+                          (Topic (1 .. Topic_Last),
+                           Empty, QoS, Sub_Count);
+                     end if;
                   end if;
                   On_Event
                     (Kind     => Publish_Received,
@@ -565,10 +799,94 @@ package body Mqtt_Core.Broker is
                   end if;
                end;
 
+            when RFLX.Control_Packet.PUBACK =>
+               --  Subscriber acks an outbound q1 PUBLISH we forwarded.
+               declare
+                  Valid : Boolean;
+                  Pid   : Wire.Packet_Identifier;
+                  Slot  : Natural;
+               begin
+                  Wire.Decode_Puback (Buf, Pkt_Last, Valid, Pid);
+                  if Valid then
+                     Slot := Find_Outbound_By_Pid (CI, Pid);
+                     if Slot /= 0
+                       and then Clients (CI).Outbound_Inflight (Slot)
+                                  .Stage = Awaiting_Puback
+                     then
+                        Clients (CI).Outbound_Inflight (Slot) :=
+                          (Stage => Free, Pid => 1);
+                     end if;
+                  end if;
+               end;
+
+            when RFLX.Control_Packet.PUBREC =>
+               --  Subscriber acks our q2 PUBLISH; reply PUBREL and
+               --  advance the inflight slot to Awaiting_Pubcomp.
+               declare
+                  Valid : Boolean;
+                  Pid   : Wire.Packet_Identifier;
+                  Slot  : Natural;
+               begin
+                  Wire.Decode_Pubrec (Buf, Pkt_Last, Valid, Pid);
+                  if Valid then
+                     Slot := Find_Outbound_By_Pid (CI, Pid);
+                     if Slot /= 0
+                       and then Clients (CI).Outbound_Inflight (Slot)
+                                  .Stage = Awaiting_Pubrec
+                     then
+                        Clients (CI).Outbound_Inflight (Slot).Stage :=
+                          Awaiting_Pubcomp;
+                     end if;
+                     Wire.Encode_Pubrel (Buf, Out_Last, Pid);
+                     Send_All
+                       (Clients (CI).Sock,
+                        Buf.all (Buf'First .. Out_Last));
+                  end if;
+               end;
+
+            when RFLX.Control_Packet.PUBREL =>
+               --  Publisher releases an inbound q2 packet-id; we
+               --  forget the dup-suppression slot and reply PUBCOMP.
+               declare
+                  Valid : Boolean;
+                  Pid   : Wire.Packet_Identifier;
+                  Slot  : Natural;
+               begin
+                  Wire.Decode_Pubrel (Buf, Pkt_Last, Valid, Pid);
+                  if Valid then
+                     Slot := Find_Inbound_QoS2_Slot (CI, Pid);
+                     if Slot /= 0 then
+                        Clients (CI).Inbound_QoS2 (Slot) :=
+                          (In_Use => False, Pid => 1);
+                     end if;
+                     Wire.Encode_Pubcomp (Buf, Out_Last, Pid);
+                     Send_All
+                       (Clients (CI).Sock,
+                        Buf.all (Buf'First .. Out_Last));
+                  end if;
+               end;
+
+            when RFLX.Control_Packet.PUBCOMP =>
+               --  Final ack of our outbound q2 PUBLISH.
+               declare
+                  Valid : Boolean;
+                  Pid   : Wire.Packet_Identifier;
+                  Slot  : Natural;
+               begin
+                  Wire.Decode_Pubcomp (Buf, Pkt_Last, Valid, Pid);
+                  if Valid then
+                     Slot := Find_Outbound_By_Pid (CI, Pid);
+                     if Slot /= 0
+                       and then Clients (CI).Outbound_Inflight (Slot)
+                                  .Stage = Awaiting_Pubcomp
+                     then
+                        Clients (CI).Outbound_Inflight (Slot) :=
+                          (Stage => Free, Pid => 1);
+                     end if;
+                  end if;
+               end;
+
             when others =>
-               --  PUBACK / PUBREC / PUBREL / PUBCOMP — v0.2 broker
-               --  doesn't track outbound q1/q2 publishes, so these
-               --  ack receipts have no pending request to ack.
                null;
          end case;
       end Handle_Packet;

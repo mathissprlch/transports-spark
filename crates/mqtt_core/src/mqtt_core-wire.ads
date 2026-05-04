@@ -407,6 +407,49 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 5,
      Post => Buffer /= null;
 
+   --  §3.8 — broker-side multi-filter SUBSCRIBE decode. Surfaces up
+   --  to Filter_Topics'Last filters; each Filter_Lasts(I) gives the
+   --  meaningful slice of Filter_Topics(I). Sets Filter_Count to the
+   --  number of filters parsed (may be < input N if the array is
+   --  smaller than the SUBSCRIBE).
+   type Filter_Topic_Array is
+     array (Positive range <>) of String (1 .. 256);
+   type Filter_Last_Array is array (Positive range <>) of Natural;
+   type Filter_QoS_Array is
+     array (Positive range <>)
+       of RFLX.Control_Packet.QoS_Level;
+
+   procedure Decode_Subscribe_Filters
+     (Buffer       : in out Bytes_Ptr;
+      Last         : Index;
+      Valid        :    out Boolean;
+      Packet_Id    :    out Packet_Identifier;
+      Filter_Topics : out Filter_Topic_Array;
+      Filter_Lasts  : out Filter_Last_Array;
+      Filter_QoS    : out Filter_QoS_Array;
+      Filter_Count  : out Natural)
+   with
+     Pre  => Buffer /= null and then Buffer'Length >= 8
+             and then Filter_Topics'Length = Filter_Lasts'Length
+             and then Filter_Topics'Length = Filter_QoS'Length
+             and then Filter_Topics'Length > 0,
+     Post => Buffer /= null;
+
+   --  §3.9 — broker-side multi-return-code SUBACK encode. Emits one
+   --  return code per granted filter in order.
+   type Suback_Wire_Codes is
+     array (Positive range <>) of RFLX.Suback.Return_Code;
+
+   procedure Encode_Suback
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Packet_Id : Packet_Identifier;
+      Codes     : Suback_Wire_Codes)
+   with
+     Pre  => Buffer /= null and then Codes'Length > 0
+             and then Buffer'Length >= 4 + Codes'Length,
+     Post => Buffer /= null;
+
    --  §3.13 — broker side: respond to PINGREQ. Fixed 2-byte response.
    procedure Encode_Pingresp
      (Buffer : in out Bytes_Ptr;

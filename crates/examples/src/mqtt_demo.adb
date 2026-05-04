@@ -124,14 +124,29 @@ procedure Mqtt_Demo is
    Outgoing : RFLX.RFLX_Types.Bytes_Ptr :=
      new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
 
+   Port : Natural := 1883;
 begin
-   Put_Line ("mqtt_demo: connecting to localhost:1883...");
+   --  Last argument can be a numeric port override (must come after
+   --  the optional "wait-q2" mode flag).
+   if Ada.Command_Line.Argument_Count >= 1 then
+      declare
+         Last : constant String :=
+           Ada.Command_Line.Argument
+             (Ada.Command_Line.Argument_Count);
+      begin
+         if Last'Length > 0 and then Last (Last'First) in '0' .. '9' then
+            Port := Natural'Value (Last);
+         end if;
+      end;
+   end if;
+   Put_Line ("mqtt_demo: connecting to localhost:" & Port'Image
+             & "...");
    Mqtt_Core.Client.Attach_Buffers
      (Client, Buf, Inbound, Outgoing);
    Mqtt_Core.Client.Open
      (Client,
       Host          => "127.0.0.1",
-      Port          => 1883,
+      Port          => Port,
       Client_Id     => "ada-mqtt-demo",
       Keep_Alive_S  => 60,
       Clean_Session => True);
