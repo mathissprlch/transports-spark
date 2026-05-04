@@ -6,6 +6,7 @@ with RFLX.RFLX_Builtin_Types;
 with RFLX.Suback;
 with RFLX.Session.Broker_Reading.FSM;
 
+with Ada.Real_Time;
 with Ada.Streams;
 with Ada.Unchecked_Deallocation;
 with GNAT.Sockets;
@@ -53,13 +54,43 @@ package body Mqtt_Core.Broker is
    type Inflight_Stage is
      (Free, Awaiting_Puback, Awaiting_Pubrec, Awaiting_Pubcomp);
 
+   Retry_Topic_Cap   : constant := 128;
+   Retry_Payload_Cap : constant := 512;
+
+   --  RFC §4.4: a sender that doesn't get an expected ack is
+   --  required to retransmit on reconnect. We do better and
+   --  retransmit periodically while the connection is up, up to
+   --  Retry_Max attempts spaced Retry_Period_Ms apart, then drop
+   --  the slot. The slot caches the original PUBLISH content
+   --  (topic + payload + effective QoS) so retries don't need the
+   --  publisher to be still around.
+   --
    --  Pid range is 1..65535 (0 is reserved by §2.3.1). The slot's
-   --  Stage / In_Use flag is the source of truth for occupancy; the
-   --  Pid field is meaningful only when the slot is non-Free.
+   --  Stage flag is the source of truth for occupancy; Pid /
+   --  retry-state fields are meaningful only when Stage /= Free.
    type Outbound_Inflight_Slot is record
-      Stage : Inflight_Stage := Free;
-      Pid   : Wire.Packet_Identifier := 1;
+      Stage          : Inflight_Stage := Free;
+      Pid            : Wire.Packet_Identifier := 1;
+      Time_Last_Sent : Ada.Real_Time.Time := Ada.Real_Time.Time_First;
+      Retry_Count    : Natural := 0;
+      Topic          : String (1 .. Retry_Topic_Cap) := (others => ' ');
+      Topic_Last     : Natural := 0;
+      Payload        : RFLX.RFLX_Types.Bytes (1 .. Retry_Payload_Cap) :=
+        (others => 0);
+      Payload_Last   : Natural := 0;
    end record;
+
+   --  Reset constant — used wherever a slot returns to Free.
+   --  Hides the new retry-state fields from the call sites.
+   Free_Inflight : constant Outbound_Inflight_Slot :=
+     (Stage          => Free,
+      Pid            => 1,
+      Time_Last_Sent => Ada.Real_Time.Time_First,
+      Retry_Count    => 0,
+      Topic          => (others => ' '),
+      Topic_Last     => 0,
+      Payload        => (others => 0),
+      Payload_Last   => 0);
 
    type Outbound_Inflight_Array is
      array (1 .. Max_Inflight) of Outbound_Inflight_Slot;
@@ -314,7 +345,7 @@ package body Mqtt_Core.Broker is
          Clients (CI).Out_Pid_Counter := 65535;
          for I in Clients (CI).Outbound_Inflight'Range loop
             Clients (CI).Outbound_Inflight (I) :=
-              (Stage => Free, Pid => 1);
+              Free_Inflight;
          end loop;
          for I in Clients (CI).Inbound_QoS2'Range loop
             Clients (CI).Inbound_QoS2 (I) :=
@@ -410,6 +441,153 @@ package body Mqtt_Core.Broker is
       end Find_Free_Inbound_QoS2;
 
       ---------------------------------------------------------------
+      --  Retry policy: a packet that doesn't get its expected ack
+      --  in Retry_Period gets retransmitted with the same Pid; if
+      --  Retry_Max attempts go unanswered we give up and free the
+      --  slot (the publisher's view: message lost).
+      ---------------------------------------------------------------
+
+      Retry_Period : constant Ada.Real_Time.Time_Span :=
+        Ada.Real_Time.Milliseconds (1500);
+      Retry_Max    : constant := 3;
+
+      procedure Stash_Inflight
+        (Owner   : Active_Client;
+         Slot    : Positive;
+         Stage   : Inflight_Stage;
+         Pid     : Wire.Packet_Identifier;
+         Topic   : String;
+         Payload : RFLX.RFLX_Types.Bytes);
+
+      procedure Stash_Inflight
+        (Owner   : Active_Client;
+         Slot    : Positive;
+         Stage   : Inflight_Stage;
+         Pid     : Wire.Packet_Identifier;
+         Topic   : String;
+         Payload : RFLX.RFLX_Types.Bytes)
+      is
+         Tlen : constant Natural :=
+           Natural'Min (Topic'Length, Retry_Topic_Cap);
+         Plen : constant Natural :=
+           Natural'Min (Payload'Length, Retry_Payload_Cap);
+      begin
+         Clients (Owner).Outbound_Inflight (Slot) :=
+           (Stage          => Stage,
+            Pid            => Pid,
+            Time_Last_Sent => Ada.Real_Time.Clock,
+            Retry_Count    => 0,
+            Topic          => (others => ' '),
+            Topic_Last     => Tlen,
+            Payload        => (others => 0),
+            Payload_Last   => Plen);
+         if Tlen > 0 then
+            Clients (Owner).Outbound_Inflight (Slot).Topic
+              (1 .. Tlen) :=
+                Topic (Topic'First .. Topic'First + Tlen - 1);
+         end if;
+         if Plen > 0 then
+            Clients (Owner).Outbound_Inflight (Slot).Payload
+              (1 .. RFLX.RFLX_Types.Index (Plen)) :=
+                Payload
+                  (Payload'First ..
+                     Payload'First + RFLX.RFLX_Types.Index (Plen) - 1);
+         end if;
+      end Stash_Inflight;
+
+      procedure Sweep_Inflight_Retries;
+      procedure Sweep_Inflight_Retries is
+         use type Ada.Real_Time.Time;
+         use type Ada.Real_Time.Time_Span;
+         Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+         Out_Last : RFLX.RFLX_Types.Index;
+      begin
+         for CI in Clients'Range loop
+            if Clients (CI).In_Use and then Clients (CI).Connected then
+               for I in Clients (CI).Outbound_Inflight'Range loop
+                  declare
+                     Slot : Outbound_Inflight_Slot renames
+                       Clients (CI).Outbound_Inflight (I);
+                  begin
+                     if Slot.Stage /= Free
+                       and then Now - Slot.Time_Last_Sent
+                                  >= Retry_Period
+                     then
+                        if Slot.Retry_Count >= Retry_Max then
+                           --  Give up; slot returns to Free.
+                           Slot := Free_Inflight;
+                        else
+                           --  Retransmit with the same Pid. Most
+                           --  brokers/clients dedupe on Pid; DUP=1
+                           --  flag would be ideal but the v0.3
+                           --  Encode_Publish_* helpers don't yet
+                           --  expose it.
+                           case Slot.Stage is
+                              when Awaiting_Puback =>
+                                 Wire.Encode_Publish_Qos1
+                                   (Buffer    =>
+                                      Clients (CI).Working_Buf,
+                                    Last      => Out_Last,
+                                    Packet_Id => Slot.Pid,
+                                    Topic     =>
+                                      Slot.Topic
+                                        (1 .. Slot.Topic_Last),
+                                    Payload   =>
+                                      Slot.Payload
+                                        (1 ..
+                                           RFLX.RFLX_Types.Index
+                                             (Slot.Payload_Last)));
+                                 Send_All
+                                   (Clients (CI).Sock,
+                                    Clients (CI).Working_Buf.all
+                                      (Clients (CI).Working_Buf'First
+                                       .. Out_Last));
+                              when Awaiting_Pubrec =>
+                                 Wire.Encode_Publish_Qos2
+                                   (Buffer    =>
+                                      Clients (CI).Working_Buf,
+                                    Last      => Out_Last,
+                                    Packet_Id => Slot.Pid,
+                                    Topic     =>
+                                      Slot.Topic
+                                        (1 .. Slot.Topic_Last),
+                                    Payload   =>
+                                      Slot.Payload
+                                        (1 ..
+                                           RFLX.RFLX_Types.Index
+                                             (Slot.Payload_Last)));
+                                 Send_All
+                                   (Clients (CI).Sock,
+                                    Clients (CI).Working_Buf.all
+                                      (Clients (CI).Working_Buf'First
+                                       .. Out_Last));
+                              when Awaiting_Pubcomp =>
+                                 --  Resend PUBREL (we've already
+                                 --  seen PUBREC; the peer's PUBCOMP
+                                 --  is what we're waiting for).
+                                 Wire.Encode_Pubrel
+                                   (Buffer    =>
+                                      Clients (CI).Working_Buf,
+                                    Last      => Out_Last,
+                                    Packet_Id => Slot.Pid);
+                                 Send_All
+                                   (Clients (CI).Sock,
+                                    Clients (CI).Working_Buf.all
+                                      (Clients (CI).Working_Buf'First
+                                       .. Out_Last));
+                              when Free => null;  --  unreachable
+                           end case;
+                           Slot.Time_Last_Sent := Now;
+                           Slot.Retry_Count := Slot.Retry_Count + 1;
+                        end if;
+                     end if;
+                  end;
+               end loop;
+            end if;
+         end loop;
+      end Sweep_Inflight_Retries;
+
+      ---------------------------------------------------------------
       --  Route a published message to all matching subscribers.
       --  Outbound QoS = min(publish_qos, subscriber_granted_qos).
       --  v0.2 caps at QoS 1 (no PUBREC/PUBREL outbound flow).
@@ -488,10 +666,10 @@ package body Mqtt_Core.Broker is
                                     Packet_Id => Pid,
                                     Topic     => Topic,
                                     Payload   => Payload);
-                                 Clients (Owner).Outbound_Inflight
-                                   (Slot) :=
-                                     (Stage => Awaiting_Puback,
-                                      Pid   => Pid);
+                                 Stash_Inflight
+                                   (Owner, Slot,
+                                    Awaiting_Puback, Pid,
+                                    Topic, Payload);
                                  Send_All
                                    (Clients (Owner).Sock,
                                     Clients (Owner).Working_Buf.all
@@ -518,10 +696,10 @@ package body Mqtt_Core.Broker is
                                     Packet_Id => Pid,
                                     Topic     => Topic,
                                     Payload   => Payload);
-                                 Clients (Owner).Outbound_Inflight
-                                   (Slot) :=
-                                     (Stage => Awaiting_Pubrec,
-                                      Pid   => Pid);
+                                 Stash_Inflight
+                                   (Owner, Slot,
+                                    Awaiting_Pubrec, Pid,
+                                    Topic, Payload);
                                  Send_All
                                    (Clients (Owner).Sock,
                                     Clients (Owner).Working_Buf.all
@@ -813,7 +991,7 @@ package body Mqtt_Core.Broker is
                                   .Stage = Awaiting_Puback
                      then
                         Clients (CI).Outbound_Inflight (Slot) :=
-                          (Stage => Free, Pid => 1);
+                          Free_Inflight;
                      end if;
                   end if;
                end;
@@ -880,7 +1058,7 @@ package body Mqtt_Core.Broker is
                                   .Stage = Awaiting_Pubcomp
                      then
                         Clients (CI).Outbound_Inflight (Slot) :=
-                          (Stage => Free, Pid => 1);
+                          Free_Inflight;
                      end if;
                   end if;
                end;
@@ -1014,6 +1192,11 @@ package body Mqtt_Core.Broker is
          GNAT.Sockets.Check_Selector
            (Selector, Read_Set, W_Set, Status,
             Timeout => 1.0);
+
+         --  Even when the selector returned Expired (no socket
+         --  woke us), the wake-up itself is the cue to scan for
+         --  inflight slots whose retry window has elapsed.
+         Sweep_Inflight_Retries;
 
          if Status = GNAT.Sockets.Completed then
             if GNAT.Sockets.Is_Set (Read_Set, Listening_Sock) then
