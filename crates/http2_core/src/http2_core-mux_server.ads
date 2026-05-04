@@ -61,14 +61,21 @@ package Http2_Core.Mux_Server is
 
    --  Accept one client and run the multi-stream connection until
    --  the peer GOAWAYs / closes or we hit a fatal protocol error.
-   --  Handle_Request is invoked once per stream as soon as that
-   --  stream's request body is complete (END_STREAM seen).
+   --  Each variant fans the work into per-stream callbacks indexed
+   --  by the slot number (1 .. Max_Streams) so the application can
+   --  keep its own per-stream state.
    --
-   --  Same handler signature as Http2_Core.Server.Accept_And_Serve.
-   --  Multi-stream variants for streaming RPCs are v0.4 work.
+   --  All four variants share the same connection-level demux: one
+   --  TCP connection, frames routed by stream-id into per-stream
+   --  Stream::Open FSM contexts. They differ only in how the
+   --  request body and response are handled.
+
+   --  Unary: handler invoked once per stream as soon as that stream
+   --  reaches END_STREAM, returns one full HEADERS+DATA+trailers.
    generic
       with procedure Handle_Request
-        (Request_Headers       : Hpack.Header_Block;
+        (Slot                  : Positive;
+         Request_Headers       : Hpack.Header_Block;
          Request_Headers_Last  : Natural;
          Request_Body          : RFLX.RFLX_Types.Bytes;
          Request_Body_Last     : Natural;
@@ -79,6 +86,76 @@ package Http2_Core.Mux_Server is
          Trailers              : in out Hpack.Header_Block;
          Trailers_Last         : out Natural);
    procedure Accept_And_Serve_Multi (L : in out Listener);
+
+   --  Server-streaming: Setup_Response runs once per stream when
+   --  END_STREAM arrives on the request side. After response HEADERS
+   --  go out, the connection loop pumps Next_Reply for that slot
+   --  until it returns False; then trailers go and the slot closes.
+   generic
+      with procedure Setup_Response
+        (Slot                  : Positive;
+         Request_Headers       : Hpack.Header_Block;
+         Request_Headers_Last  : Natural;
+         Request_Body          : RFLX.RFLX_Types.Bytes;
+         Request_Body_Last     : Natural;
+         Response_Headers      : in out Hpack.Header_Block;
+         Response_Headers_Last : out Natural;
+         Trailers              : in out Hpack.Header_Block;
+         Trailers_Last         : out Natural);
+      with function Next_Reply
+        (Slot     : Positive;
+         Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+         Out_Last : out RFLX.RFLX_Types.Index)
+         return Boolean;
+   procedure Accept_And_Serve_Multi_Server_Stream
+     (L : in out Listener);
+
+   --  Client-streaming: each inbound DATA frame's gRPC message is
+   --  delivered to On_Request_Message (with the slot index so the
+   --  app can accumulate per-stream). When END_STREAM arrives,
+   --  Build_Response runs and emits the single reply.
+   generic
+      with procedure On_Request_Message
+        (Slot    : Positive;
+         Message : RFLX.RFLX_Types.Bytes);
+      with procedure Build_Response
+        (Slot                  : Positive;
+         Request_Headers       : Hpack.Header_Block;
+         Request_Headers_Last  : Natural;
+         Response_Headers      : in out Hpack.Header_Block;
+         Response_Headers_Last : out Natural;
+         Response_Body         : in out RFLX.RFLX_Types.Bytes;
+         Response_Body_Last    : out Natural;
+         Trailers              : in out Hpack.Header_Block;
+         Trailers_Last         : out Natural);
+   procedure Accept_And_Serve_Multi_Client_Stream
+     (L : in out Listener);
+
+   --  Bidi: response HEADERS go out as soon as the request HEADERS
+   --  arrive (Setup_Response runs at that point). Each inbound DATA
+   --  delivers a message to On_Request_Message. The connection loop
+   --  pumps Next_Reply for that slot independently of inbound
+   --  timing. Loop exits a slot when Next_Reply returns False AND
+   --  the request has ended; then trailers close the stream.
+   generic
+      with procedure Setup_Response
+        (Slot                  : Positive;
+         Request_Headers       : Hpack.Header_Block;
+         Request_Headers_Last  : Natural;
+         Response_Headers      : in out Hpack.Header_Block;
+         Response_Headers_Last : out Natural;
+         Trailers              : in out Hpack.Header_Block;
+         Trailers_Last         : out Natural);
+      with procedure On_Request_Message
+        (Slot    : Positive;
+         Message : RFLX.RFLX_Types.Bytes);
+      with function Next_Reply
+        (Slot     : Positive;
+         Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+         Out_Last : out RFLX.RFLX_Types.Index)
+         return Boolean;
+   procedure Accept_And_Serve_Multi_Bidi_Stream
+     (L : in out Listener);
 
    procedure Stop (L : in out Listener);
 
@@ -93,8 +170,12 @@ private
    --  surrounding fields are accumulators consumed by the handler.
    type Stream_Phase is
      (Free,                 --  slot unused
+      Headers_Complete,     --  HEADERS seen but body still arriving;
+                            --  used by bidi to fire Setup_Response early
       Awaiting_Body,        --  HEADERS seen, expecting DATA / END_STREAM
       Body_Complete,        --  END_STREAM seen, handler not yet run
+      Streaming,            --  response HEADERS sent, replies flowing
+                            --  (server-stream + bidi only)
       Closed);              --  response sent, slot draining
 
    type Stream_Slot is record

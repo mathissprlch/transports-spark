@@ -1,24 +1,22 @@
 --  greeter_mux_server — multi-stream HTTP/2 server.
 --
 --  v0.3 demo: a single connection accepts up to Max_Streams (16)
---  concurrent unary SayHello RPCs. Frames are demuxed by stream-id
---  into per-stream Stream::Open FSM contexts; handlers run inline
---  as soon as a stream's request body completes.
+--  concurrent gRPC RPCs. Frames are demuxed by stream-id into
+--  per-stream Stream::Open FSM contexts.
+--
+--  Modes (argv[1]):
+--    unary           SayHello (default) — N concurrent unary calls.
+--    server-stream   LotsOfReplies      — N concurrent server-streaming
+--                                         calls, each producing 5 replies.
+--  Port via argv[2] (default 50051).
 --
 --  Run:
---    ./bin/greeter_mux_server [port]   # default 50051
---
---  Test (single):
---    grpcurl -plaintext -d '{"name":"X"}' \
---      -import-path crates/examples/proto -proto helloworld.proto \
---      127.0.0.1:50051 helloworld.Greeter/SayHello
---
---  Test (concurrent, requires Python grpcio):
---    python3 crates/examples/scripts/mux_client.py
---    — see scripts/mux_client.py for the concurrent-call demo.
+--    ./bin/greeter_mux_server unary 50051
+--    ./bin/greeter_mux_server server-stream 50051
 
 with Ada.Text_IO;
 with Ada.Command_Line;
+with Ada.Strings.Fixed;
 
 with RFLX.RFLX_Types;
 
@@ -30,8 +28,8 @@ procedure Greeter_Mux_Server is
    use Ada.Text_IO;
    use type RFLX.RFLX_Types.Index;
 
-   --  Decode HelloRequest.name from a body (5-byte gRPC prefix +
-   --  protobuf message).
+   Max_Slots : constant Positive := Http2_Core.Mux_Server.Max_Streams;
+
    procedure Decode_Name
      (Body_Bytes : RFLX.RFLX_Types.Bytes;
       Name_Buf   : out String;
@@ -68,22 +66,22 @@ procedure Greeter_Mux_Server is
       end;
    end Decode_Name;
 
-   procedure Encode_Reply
+   procedure Encode_Reply_Bytes
      (Text     : String;
       Out_Buf  : in out RFLX.RFLX_Types.Bytes;
-      Out_Last : out Natural;
+      Out_Last : out RFLX.RFLX_Types.Index;
       OK       : out Boolean);
 
-   procedure Encode_Reply
+   procedure Encode_Reply_Bytes
      (Text     : String;
       Out_Buf  : in out RFLX.RFLX_Types.Bytes;
-      Out_Last : out Natural;
+      Out_Last : out RFLX.RFLX_Types.Index;
       OK       : out Boolean)
    is
       PB_Buf  : RFLX.RFLX_Types.Bytes (1 .. 1024) := (others => 0);
       PB_Last : RFLX.RFLX_Types.Index;
    begin
-      Out_Last := Integer (Out_Buf'First) - 1;
+      Out_Last := Out_Buf'First;
       Protobuf_Core.Wire.Encode_String_Field
         (PB_Buf, PB_Buf'First, 1, Text, PB_Last, OK);
       if not OK then return; end if;
@@ -103,18 +101,41 @@ procedure Greeter_Mux_Server is
             Out_Buf (Out_Buf'First + 4 + RFLX.RFLX_Types.Index (I)) :=
               PB_Buf (PB_Buf'First + RFLX.RFLX_Types.Index (I) - 1);
          end loop;
-         Out_Last := Integer (Out_Buf'First) + 4 + Len;
+         Out_Last := Out_Buf'First + 4 + RFLX.RFLX_Types.Index (Len);
       end;
-   end Encode_Reply;
+   end Encode_Reply_Bytes;
+
+   procedure Set_Headers_And_Trailers
+     (Resp_Hdrs       : in out Http2_Core.Hpack.Header_Block;
+      Resp_Hdrs_Last  : out Natural;
+      Trailers        : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last   : out Natural);
+
+   procedure Set_Headers_And_Trailers
+     (Resp_Hdrs       : in out Http2_Core.Hpack.Header_Block;
+      Resp_Hdrs_Last  : out Natural;
+      Trailers        : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last   : out Natural) is
+   begin
+      Resp_Hdrs (Resp_Hdrs'First) :=
+        Http2_Core.Hpack.Make_Header (":status", "200");
+      Resp_Hdrs (Resp_Hdrs'First + 1) :=
+        Http2_Core.Hpack.Make_Header ("content-type", "application/grpc");
+      Resp_Hdrs_Last := Resp_Hdrs'First + 1;
+      Trailers (Trailers'First) :=
+        Http2_Core.Hpack.Make_Header ("grpc-status", "0");
+      Trailers_Last := Trailers'First;
+   end Set_Headers_And_Trailers;
 
    ----------------------------------------------------------------
-   --  Handler: one SayHello call.
+   --  Unary mode: SayHello (one request → one reply per stream).
    ----------------------------------------------------------------
 
    Call_Counter : Natural := 0;
 
    procedure Handle_SayHello
-     (Request_Headers       : Http2_Core.Hpack.Header_Block;
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
       Request_Headers_Last  : Natural;
       Request_Body          : RFLX.RFLX_Types.Bytes;
       Request_Body_Last     : Natural;
@@ -126,7 +147,8 @@ procedure Greeter_Mux_Server is
       Trailers_Last         : out Natural);
 
    procedure Handle_SayHello
-     (Request_Headers       : Http2_Core.Hpack.Header_Block;
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
       Request_Headers_Last  : Natural;
       Request_Body          : RFLX.RFLX_Types.Bytes;
       Request_Body_Last     : Natural;
@@ -137,12 +159,14 @@ procedure Greeter_Mux_Server is
       Trailers              : in out Http2_Core.Hpack.Header_Block;
       Trailers_Last         : out Natural)
    is
+      pragma Unreferenced (Slot);
       pragma Unreferenced (Request_Headers);
       pragma Unreferenced (Request_Headers_Last);
       pragma Unreferenced (Request_Body_Last);
       Name : String (1 .. 256);
       Name_Last : Natural;
       OK : Boolean;
+      Reply_Last : RFLX.RFLX_Types.Index;
    begin
       Decode_Name (Request_Body, Name, Name_Last, OK);
       if not OK then
@@ -152,25 +176,108 @@ procedure Greeter_Mux_Server is
       Put_Line ("  ← call#" & Call_Counter'Image
                 & " name=" & Name (1 .. Name_Last));
 
-      Encode_Reply
+      Encode_Reply_Bytes
         (Text     => "Hello, " & Name (1 .. Name_Last) & "!",
          Out_Buf  => Response_Body,
-         Out_Last => Response_Body_Last,
+         Out_Last => Reply_Last,
          OK       => OK);
+      Response_Body_Last := Integer (Reply_Last);
 
-      Response_Headers (Response_Headers'First) :=
-        Http2_Core.Hpack.Make_Header (":status", "200");
-      Response_Headers (Response_Headers'First + 1) :=
-        Http2_Core.Hpack.Make_Header
-          ("content-type", "application/grpc");
-      Response_Headers_Last := Response_Headers'First + 1;
-      Trailers (Trailers'First) :=
-        Http2_Core.Hpack.Make_Header ("grpc-status", "0");
-      Trailers_Last := Trailers'First;
+      Set_Headers_And_Trailers
+        (Response_Headers, Response_Headers_Last,
+         Trailers, Trailers_Last);
    end Handle_SayHello;
 
-   procedure Mux_Run is new Http2_Core.Mux_Server.Accept_And_Serve_Multi
-     (Handle_Request => Handle_SayHello);
+   procedure Mux_Run_Unary is new
+     Http2_Core.Mux_Server.Accept_And_Serve_Multi
+       (Handle_Request => Handle_SayHello);
+
+   ----------------------------------------------------------------
+   --  Server-stream mode: LotsOfReplies (one request → 5 replies
+   --  per stream). Per-slot reply counter + cached name.
+   ----------------------------------------------------------------
+
+   Total_Replies : constant := 5;
+   type Slot_Index is range 1 .. Max_Slots;
+   Slot_Reply_Counter : array (Slot_Index) of Natural := (others => 0);
+   Slot_Name : array (Slot_Index) of String (1 .. 256) :=
+     (others => (others => ' '));
+   Slot_Name_Last : array (Slot_Index) of Natural := (others => 0);
+
+   procedure SS_Setup
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
+      Request_Headers_Last  : Natural;
+      Request_Body          : RFLX.RFLX_Types.Bytes;
+      Request_Body_Last     : Natural;
+      Response_Headers      : in out Http2_Core.Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Trailers              : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last         : out Natural);
+
+   procedure SS_Setup
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
+      Request_Headers_Last  : Natural;
+      Request_Body          : RFLX.RFLX_Types.Bytes;
+      Request_Body_Last     : Natural;
+      Response_Headers      : in out Http2_Core.Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Trailers              : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last         : out Natural)
+   is
+      pragma Unreferenced (Request_Headers);
+      pragma Unreferenced (Request_Headers_Last);
+      pragma Unreferenced (Request_Body_Last);
+      OK : Boolean;
+      S  : constant Slot_Index := Slot_Index (Slot);
+   begin
+      Slot_Reply_Counter (S) := 0;
+      Decode_Name (Request_Body,
+                   Slot_Name (S), Slot_Name_Last (S), OK);
+      if not OK then
+         Slot_Name (S) (1 .. 7) := "Unknown"; Slot_Name_Last (S) := 7;
+      end if;
+      Put_Line ("  ← stream slot" & Slot'Image
+                & " name=" & Slot_Name (S) (1 .. Slot_Name_Last (S)));
+      Set_Headers_And_Trailers
+        (Response_Headers, Response_Headers_Last,
+         Trailers, Trailers_Last);
+   end SS_Setup;
+
+   function SS_Next
+     (Slot     : Positive;
+      Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+      Out_Last : out RFLX.RFLX_Types.Index)
+      return Boolean;
+
+   function SS_Next
+     (Slot     : Positive;
+      Out_Buf  : in out RFLX.RFLX_Types.Bytes;
+      Out_Last : out RFLX.RFLX_Types.Index)
+      return Boolean
+   is
+      use Ada.Strings.Fixed;
+      OK : Boolean;
+      S  : constant Slot_Index := Slot_Index (Slot);
+   begin
+      Out_Last := Out_Buf'First;
+      if Slot_Reply_Counter (S) >= Total_Replies then
+         return False;
+      end if;
+      Slot_Reply_Counter (S) := Slot_Reply_Counter (S) + 1;
+      Encode_Reply_Bytes
+        ("Hello, " & Slot_Name (S) (1 .. Slot_Name_Last (S))
+         & "! [" & Trim (Slot_Reply_Counter (S)'Image, Ada.Strings.Both)
+         & "/" & Trim (Total_Replies'Image, Ada.Strings.Both) & "]",
+         Out_Buf, Out_Last, OK);
+      return OK;
+   end SS_Next;
+
+   procedure Mux_Run_SS is new
+     Http2_Core.Mux_Server.Accept_And_Serve_Multi_Server_Stream
+       (Setup_Response => SS_Setup,
+        Next_Reply     => SS_Next);
 
    ----------------------------------------------------------------
 
@@ -180,26 +287,41 @@ procedure Greeter_Mux_Server is
    Conn_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
      new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Size => 0);
 
+   Mode : String (1 .. 32) := (others => ' ');
+   Mode_Last : Natural := 0;
    Port : Natural := 50051;
 begin
    if Ada.Command_Line.Argument_Count >= 1 then
-      Port := Natural'Value (Ada.Command_Line.Argument (1));
+      declare
+         A : constant String := Ada.Command_Line.Argument (1);
+      begin
+         Mode (1 .. A'Length) := A;
+         Mode_Last := A'Length;
+      end;
+   else
+      Mode (1 .. 5) := "unary"; Mode_Last := 5;
+   end if;
+   if Ada.Command_Line.Argument_Count >= 2 then
+      Port := Natural'Value (Ada.Command_Line.Argument (2));
    end if;
 
    Http2_Core.Mux_Server.Listen (L, "0.0.0.0", Port);
    Http2_Core.Mux_Server.Attach_Buffer (L, Conn_Buf);
 
-   Put_Line ("greeter_mux_server: listening on 0.0.0.0:"
-             & Port'Image & " (max"
-             & Http2_Core.Mux_Server.Max_Streams'Image
+   Put_Line ("greeter_mux_server: mode=" & Mode (1 .. Mode_Last)
+             & " port=" & Port'Image
+             & " (max" & Http2_Core.Mux_Server.Max_Streams'Image
              & " concurrent streams per connection)");
 
    loop
       Put_Line ("greeter_mux_server: awaiting client...");
       begin
-         Mux_Run (L);
-         Put_Line ("greeter_mux_server: connection closed (served"
-                   & Call_Counter'Image & " RPCs total)");
+         if Mode (1 .. Mode_Last) = "server-stream" then
+            Mux_Run_SS (L);
+         else
+            Mux_Run_Unary (L);
+         end if;
+         Put_Line ("greeter_mux_server: connection closed");
       exception
          when others =>
             Put_Line ("greeter_mux_server: connection error, retrying");
