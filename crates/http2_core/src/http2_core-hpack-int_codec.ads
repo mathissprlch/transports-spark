@@ -43,6 +43,7 @@ is
       Output_Last : out Natural;
       Output_OK   : out Boolean)
    with Pre  => Output'Length >= 1
+                and then Output'Last < Natural'Last
                 and then Value <= 2 ** 21 - 1,
         Post => (if Output_OK then
                    Output_Last in Output'First .. Output'Last);
@@ -60,7 +61,8 @@ is
       Value     : out Natural;
       Last      : out Natural;
       Output_OK : out Boolean)
-   with Pre  => First in Input'Range,
+   with Pre  => First in Input'Range
+                and then Input'Last < Natural'Last,
         Post => (if Output_OK then Last in First .. Input'Last
                  else Last = First - 1);
 
