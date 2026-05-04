@@ -8,6 +8,8 @@
 --    unary           SayHello (default) — N concurrent unary calls.
 --    server-stream   LotsOfReplies      — N concurrent server-streaming
 --                                         calls, each producing 5 replies.
+--    client-stream   LotsOfGreetings    — N concurrent client-streaming
+--                                         calls, each summarizing the names.
 --  Port via argv[2] (default 50051).
 --
 --  Run:
@@ -280,6 +282,101 @@ procedure Greeter_Mux_Server is
         Next_Reply     => SS_Next);
 
    ----------------------------------------------------------------
+   --  Client-stream mode: LotsOfGreetings (N requests → 1 reply).
+   ----------------------------------------------------------------
+
+   Slot_Names_Buf : array (Slot_Index) of String (1 .. 4096) :=
+     (others => (others => ' '));
+   Slot_Names_Last : array (Slot_Index) of Natural := (others => 0);
+
+   procedure CS_On_Message
+     (Slot    : Positive;
+      Message : RFLX.RFLX_Types.Bytes);
+
+   procedure CS_On_Message
+     (Slot    : Positive;
+      Message : RFLX.RFLX_Types.Bytes)
+   is
+      Field_Num : Natural;
+      Wire_Tp   : Natural;
+      Tag_Last  : RFLX.RFLX_Types.Index;
+      Tag_OK    : Boolean;
+      Str_End   : RFLX.RFLX_Types.Index;
+      Name_Buf  : String (1 .. 256);
+      Name_Last : Natural;
+      OK        : Boolean;
+      S         : constant Slot_Index := Slot_Index (Slot);
+   begin
+      if Message'Length < 2 then return; end if;
+      Protobuf_Core.Wire.Decode_Tag
+        (Message, Message'First, Field_Num, Wire_Tp, Tag_Last, Tag_OK);
+      if not Tag_OK or else Field_Num /= 1
+        or else Wire_Tp /= Protobuf_Core.Wire.Wire_Length_Delim
+      then return; end if;
+      Protobuf_Core.Wire.Decode_String_Value
+        (Message, Tag_Last + 1, Name_Buf, Name_Last, Str_End, OK);
+      if not OK or else Name_Last = 0 then return; end if;
+
+      if Slot_Names_Last (S) > 0 then
+         Slot_Names_Buf (S) (Slot_Names_Last (S) + 1
+                             .. Slot_Names_Last (S) + 2) := ", ";
+         Slot_Names_Last (S) := Slot_Names_Last (S) + 2;
+      end if;
+      Slot_Names_Buf (S) (Slot_Names_Last (S) + 1
+                          .. Slot_Names_Last (S) + Name_Last) :=
+        Name_Buf (1 .. Name_Last);
+      Slot_Names_Last (S) := Slot_Names_Last (S) + Name_Last;
+      Put_Line ("  ← slot" & Slot'Image & " request "
+                & Name_Buf (1 .. Name_Last));
+   end CS_On_Message;
+
+   procedure CS_Build
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
+      Request_Headers_Last  : Natural;
+      Response_Headers      : in out Http2_Core.Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Response_Body         : in out RFLX.RFLX_Types.Bytes;
+      Response_Body_Last    : out Natural;
+      Trailers              : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last         : out Natural);
+
+   procedure CS_Build
+     (Slot                  : Positive;
+      Request_Headers       : Http2_Core.Hpack.Header_Block;
+      Request_Headers_Last  : Natural;
+      Response_Headers      : in out Http2_Core.Hpack.Header_Block;
+      Response_Headers_Last : out Natural;
+      Response_Body         : in out RFLX.RFLX_Types.Bytes;
+      Response_Body_Last    : out Natural;
+      Trailers              : in out Http2_Core.Hpack.Header_Block;
+      Trailers_Last         : out Natural)
+   is
+      pragma Unreferenced (Request_Headers);
+      pragma Unreferenced (Request_Headers_Last);
+      OK : Boolean;
+      Reply_Last : RFLX.RFLX_Types.Index;
+      S : constant Slot_Index := Slot_Index (Slot);
+   begin
+      Encode_Reply_Bytes
+        ("Hello to all: "
+         & Slot_Names_Buf (S) (1 .. Slot_Names_Last (S))
+         & "!",
+         Response_Body, Reply_Last, OK);
+      Response_Body_Last := Integer (Reply_Last);
+      --  Reset for slot reuse.
+      Slot_Names_Last (S) := 0;
+      Set_Headers_And_Trailers
+        (Response_Headers, Response_Headers_Last,
+         Trailers, Trailers_Last);
+   end CS_Build;
+
+   procedure Mux_Run_CS is new
+     Http2_Core.Mux_Server.Accept_And_Serve_Multi_Client_Stream
+       (On_Request_Message => CS_On_Message,
+        Build_Response     => CS_Build);
+
+   ----------------------------------------------------------------
 
    L : Http2_Core.Mux_Server.Listener;
 
@@ -318,6 +415,8 @@ begin
       begin
          if Mode (1 .. Mode_Last) = "server-stream" then
             Mux_Run_SS (L);
+         elsif Mode (1 .. Mode_Last) = "client-stream" then
+            Mux_Run_CS (L);
          else
             Mux_Run_Unary (L);
          end if;
