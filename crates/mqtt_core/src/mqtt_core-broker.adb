@@ -552,7 +552,6 @@ package body Mqtt_Core.Broker is
          Out_Last : RFLX.RFLX_Types.Index;
          View : constant RFLX.RFLX_Types.Bytes :=
            Buf.all (Buf'First .. Pkt_Last);
-         use type RFLX.RFLX_Types.Length;
          Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
            (others => 0);
       begin

@@ -1,4 +1,3 @@
-with RFLX.Control_Packet;
 with RFLX.Pingreq.Packet;
 with RFLX.Pingresp.Packet;
 with RFLX.Disconnect.Packet;
