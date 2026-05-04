@@ -127,6 +127,197 @@ package body Http2_Core.Server is
    end Read_Frame;
 
    ---------------------------------------------------------------------
+   --  Common helpers shared by all four Accept_And_Serve_* variants.
+   --  Each extracts a phase that was previously inlined four times
+   --  (~80–100 lines per variant).
+   ---------------------------------------------------------------------
+
+   --  §3.4 — read 24-byte connection preface, validate. Closes Chan
+   --  + raises Server_Error on EOF or mismatch.
+   procedure Receive_Preface
+     (Chan : Transport.Channel);
+
+   procedure Receive_Preface
+     (Chan : Transport.Channel)
+   is
+      Pref_Bytes : RFLX.RFLX_Types.Bytes
+        (RFLX.RFLX_Types.Index'First ..
+           RFLX.RFLX_Types.Index'First +
+           RFLX.RFLX_Types.Index (Wire.Preface'Length) - 1);
+      Pref_OK : Boolean;
+   begin
+      Transport.Receive_Full (Chan, Pref_Bytes, Pref_OK);
+      if not Pref_OK then
+         raise Server_Error with "EOF before preface";
+      end if;
+      for I in Pref_Bytes'Range loop
+         if Pref_Bytes (I) /=
+           U8 (Character'Pos
+                 (Wire.Preface
+                    (Wire.Preface'First +
+                       Integer (I - Pref_Bytes'First))))
+         then
+            raise Server_Error with "bad preface";
+         end if;
+      end loop;
+   end Receive_Preface;
+
+   --  §6.5 — emit our initial SETTINGS frame (HEADER_TABLE_SIZE=0,
+   --  ENABLE_PUSH=0, MAX_CONCURRENT_STREAMS=1).
+   procedure Send_Initial_Settings
+     (L    : in out Listener;
+      Chan : Transport.Channel);
+
+   procedure Send_Initial_Settings
+     (L    : in out Listener;
+      Chan : Transport.Channel)
+   is
+      Last : RFLX.RFLX_Types.Index;
+      Params : constant Wire.Settings_List (1 .. 3) :=
+        ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
+          Value      => 0),
+         (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
+          Value      => 0),
+         (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
+          Value      => 1));
+   begin
+      Wire.Encode_Settings (L.Buf, Last, Params);
+      Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
+   end Send_Initial_Settings;
+
+   --  HPACK-encode `Headers` and emit as one HEADERS frame.
+   procedure Encode_And_Send_Headers
+     (L          : in out Listener;
+      Chan       : Transport.Channel;
+      Stream_Id  : Bit_Len;
+      Headers    : Hpack.Header_Block;
+      End_Stream : Boolean);
+
+   procedure Encode_And_Send_Headers
+     (L          : in out Listener;
+      Chan       : Transport.Channel;
+      Stream_Id  : Bit_Len;
+      Headers    : Hpack.Header_Block;
+      End_Stream : Boolean)
+   is
+      Frag_Out  : Hpack.Octet_Array
+        (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
+      Frag_Last : Natural;
+      Frag_OK   : Boolean;
+      Frame_Last : RFLX.RFLX_Types.Index;
+   begin
+      Hpack.Encode
+        (Headers     => Headers,
+         Output      => Frag_Out,
+         Output_Last => Frag_Last,
+         Output_OK   => Frag_OK);
+      if not Frag_OK then
+         raise Server_Error with "HPACK encode failed";
+      end if;
+      declare
+         Frag_Bytes : RFLX.RFLX_Types.Bytes
+           (1 .. RFLX.RFLX_Types.Index (Frag_Last));
+      begin
+         for I in 1 .. Frag_Last loop
+            Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
+              U8 (Frag_Out (I));
+         end loop;
+         Wire.Encode_Headers
+           (Buffer => L.Buf, Last => Frame_Last,
+            Stream_Id => Stream_Id, Fragment => Frag_Bytes,
+            End_Stream => End_Stream);
+      end;
+      Transport.Send (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
+   end Encode_And_Send_Headers;
+
+   --  Wrap caller's gRPC-framed payload in a DATA frame and emit.
+   procedure Send_Data_Frame
+     (L          : in out Listener;
+      Chan       : Transport.Channel;
+      Stream_Id  : Bit_Len;
+      Payload    : RFLX.RFLX_Types.Bytes;
+      End_Stream : Boolean);
+
+   procedure Send_Data_Frame
+     (L          : in out Listener;
+      Chan       : Transport.Channel;
+      Stream_Id  : Bit_Len;
+      Payload    : RFLX.RFLX_Types.Bytes;
+      End_Stream : Boolean)
+   is
+      Data_Last : RFLX.RFLX_Types.Index;
+   begin
+      Wire.Encode_Data
+        (Buffer => L.Buf, Last => Data_Last,
+         Stream_Id => Stream_Id, Payload => Payload,
+         End_Stream => End_Stream);
+      Transport.Send (Chan, L.Buf.all (L.Buf'First .. Data_Last));
+   end Send_Data_Frame;
+
+   --  Post-response cleanup. Reads up to 5 client frames; if a
+   --  PING arrives, ACK it (so Python grpcio doesn't surface
+   --  TCP-FIN as Socket_Closed). Then emit GOAWAY(NO_ERROR) and
+   --  close the socket.
+   procedure Drain_And_Goodbye
+     (L         : in out Listener;
+      Chan      : in out Transport.Channel;
+      Stream_Id : Bit_Len);
+
+   procedure Drain_And_Goodbye
+     (L         : in out Listener;
+      Chan      : in out Transport.Channel;
+      Stream_Id : Bit_Len)
+   is
+   begin
+      for K in 1 .. 5 loop
+         declare
+            Hdr2 : Wire.Frame_Header;
+            Last2 : RFLX.RFLX_Types.Index;
+            OK2 : Boolean;
+         begin
+            Read_Frame (Chan, L.Buf, Hdr2, Last2, OK2);
+            exit when not OK2;
+            if Hdr2.Frame_Type_Value = RFLX.Http2_Parameters.PING
+              and (Hdr2.Flags and Wire.Flag_ACK) = 0
+              and Hdr2.Length = 8
+            then
+               declare
+                  Ack_Last : RFLX.RFLX_Types.Index;
+                  Echo : constant RFLX.RFLX_Types.Bytes :=
+                    L.Buf.all (L.Buf'First + 9 .. L.Buf'First + 16);
+               begin
+                  Wire.Encode_Ping
+                    (Buffer => L.Buf, Last => Ack_Last,
+                     Opaque_Data => Echo, Ack => True);
+                  Transport.Send
+                    (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
+               end;
+               exit;
+            end if;
+         exception
+            when others => exit;
+         end;
+      end loop;
+
+      declare
+         Goaway_Last : RFLX.RFLX_Types.Index;
+         Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
+           (others => 0);
+      begin
+         Wire.Encode_Goaway
+           (Buffer => L.Buf, Last => Goaway_Last,
+            Last_Stream_Id => Stream_Id,
+            Error_Code => 0,
+            Debug_Data => Empty);
+         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Goaway_Last));
+      exception
+         when others => null;
+      end;
+
+      Transport.Close (Chan);
+   end Drain_And_Goodbye;
+
+   ---------------------------------------------------------------------
    --  Accept_And_Serve — full server-side handshake + one RPC.
    ---------------------------------------------------------------------
 
@@ -148,47 +339,8 @@ package body Http2_Core.Server is
 
       Transport.Accept_One (L.Trans, Chan);
 
-      --  §3.4 — server reads 24-byte preface from client first.
-      declare
-         Pref_Bytes : RFLX.RFLX_Types.Bytes
-           (RFLX.RFLX_Types.Index'First ..
-              RFLX.RFLX_Types.Index'First +
-              RFLX.RFLX_Types.Index (Wire.Preface'Length) - 1);
-         Pref_OK : Boolean;
-      begin
-         Transport.Receive_Full (Chan, Pref_Bytes, Pref_OK);
-         if not Pref_OK then
-            Transport.Close (Chan);
-            raise Server_Error with "EOF before preface";
-         end if;
-         for I in Pref_Bytes'Range loop
-            if Pref_Bytes (I) /=
-              U8 (Character'Pos
-                    (Wire.Preface
-                       (Wire.Preface'First +
-                          Integer (I - Pref_Bytes'First))))
-            then
-               Transport.Close (Chan);
-               raise Server_Error with "bad preface";
-            end if;
-         end loop;
-      end;
-
-      --  §6.5 — server emits its own SETTINGS as the first frame
-      --  after the preface (mirror of client side).
-      declare
-         Last : RFLX.RFLX_Types.Index;
-         Params : constant Wire.Settings_List (1 .. 3) :=
-           ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-             Value      => 1));
-      begin
-         Wire.Encode_Settings (L.Buf, Last, Params);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
-      end;
+      Receive_Preface (Chan);
+      Send_Initial_Settings (L, Chan);
 
       --  Note: we don't run a separate SETTINGS-handshake loop here.
       --  The FSM's Awaiting_Headers state already enumerates SETTINGS
@@ -476,96 +628,24 @@ package body Http2_Core.Server is
             --  hand to FSM via App_Outbox one at a time. Drive
             --  Loading_Response → Sending_Response loop.
 
-            --  Send response HEADERS (no END_STREAM — we'll send
-            --  body and trailers).
-            declare
-               Frag_Out  : Hpack.Octet_Array
-                 (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-               Frag_Last : Natural;
-               Frag_OK   : Boolean;
-               Frame_Last : RFLX.RFLX_Types.Index;
-            begin
-               Hpack.Encode
-                 (Headers     =>
-                    Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
-                  Output      => Frag_Out,
-                  Output_Last => Frag_Last,
-                  Output_OK   => Frag_OK);
-               if not Frag_OK then
-                  FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                  Transport.Close (Chan);
-                  raise Server_Error with "response HPACK encode failed";
-               end if;
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => False);
-               end;
-               Transport.Send (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end;
+            Encode_And_Send_Headers
+              (L, Chan, Stream_Id,
+               Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
+               End_Stream => False);
 
-            --  Send response DATA (gRPC-framed bytes from caller).
             if Resp_Body_Last >= Integer (Resp_Body'First) then
-               declare
-                  Data_Last : RFLX.RFLX_Types.Index;
-                  Body_View : constant RFLX.RFLX_Types.Bytes :=
-                    Resp_Body
-                      (Resp_Body'First ..
-                         RFLX.RFLX_Types.Index (Resp_Body_Last));
-               begin
-                  Wire.Encode_Data
-                    (Buffer => L.Buf, Last => Data_Last,
-                     Stream_Id => Stream_Id, Payload => Body_View,
-                     End_Stream => False);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Data_Last));
-               end;
+               Send_Data_Frame
+                 (L, Chan, Stream_Id,
+                  Resp_Body
+                    (Resp_Body'First ..
+                       RFLX.RFLX_Types.Index (Resp_Body_Last)),
+                  End_Stream => False);
             end if;
 
-            --  Send trailing HEADERS (END_STREAM closes the stream).
-            declare
-               Frag_Out  : Hpack.Octet_Array
-                 (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-               Frag_Last : Natural;
-               Frag_OK   : Boolean;
-               Frame_Last : RFLX.RFLX_Types.Index;
-            begin
-               Hpack.Encode
-                 (Headers     =>
-                    Trailers (Trailers'First .. Trailers_Last),
-                  Output      => Frag_Out,
-                  Output_Last => Frag_Last,
-                  Output_OK   => Frag_OK);
-               if not Frag_OK then
-                  FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                  Transport.Close (Chan);
-                  raise Server_Error
-                    with "trailers HPACK encode failed";
-               end if;
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => True);
-               end;
-               Transport.Send
-                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end;
+            Encode_And_Send_Headers
+              (L, Chan, Stream_Id,
+               Trailers (Trailers'First .. Trailers_Last),
+               End_Stream => True);
             end;  --  declare Have_Body / Empty_Slice
          end;
 
@@ -573,63 +653,7 @@ package body Http2_Core.Server is
          pragma Unreferenced (Got_End_Of_Request);
       end;
 
-      --  Drain post-response frames and answer PING with PING-ACK.
-      --  Python grpcio sends a PING after the response and waits
-      --  for the ACK before treating the RPC as cleanly complete;
-      --  without it the client surfaces "Socket closed" on TCP-FIN.
-      for K in 1 .. 5 loop
-         declare
-            Hdr2 : Wire.Frame_Header;
-            Last2 : RFLX.RFLX_Types.Index;
-            OK2 : Boolean;
-         begin
-            Read_Frame (Chan, L.Buf, Hdr2, Last2, OK2);
-            exit when not OK2;
-            if Hdr2.Frame_Type_Value = RFLX.Http2_Parameters.PING
-              and (Hdr2.Flags and Wire.Flag_ACK) = 0
-              and Hdr2.Length = 8
-            then
-               declare
-                  Ack_Last : RFLX.RFLX_Types.Index;
-                  Echo : constant RFLX.RFLX_Types.Bytes :=
-                    L.Buf.all (L.Buf'First + 9 .. L.Buf'First + 16);
-               begin
-                  Wire.Encode_Ping
-                    (Buffer => L.Buf, Last => Ack_Last,
-                     Opaque_Data => Echo, Ack => True);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
-               end;
-               exit;  --  PING-ACK sent, we're done
-            end if;
-            --  WINDOW_UPDATE / GOAWAY / RST_STREAM — log + continue
-         exception
-            when others => exit;
-         end;
-      end loop;
-
-      --  §6.8 — emit GOAWAY before closing so the client sees a
-      --  clean shutdown instead of a "socket closed" error. Python
-      --  grpcio reads frames eagerly and surfaces the bare TCP-FIN
-      --  as transport.Status.UNAVAILABLE; GOAWAY tells it the
-      --  shutdown is intentional.
-      declare
-         Goaway_Last : RFLX.RFLX_Types.Index;
-         Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
-           (others => 0);
-      begin
-         Wire.Encode_Goaway
-           (Buffer         => L.Buf,
-            Last           => Goaway_Last,
-            Last_Stream_Id => Stream_Id,
-            Error_Code     => 0,  --  NO_ERROR
-            Debug_Data     => Empty);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Goaway_Last));
-      exception
-         when others => null;  --  best effort; client may have already gone
-      end;
-
-      Transport.Close (Chan);
+      Drain_And_Goodbye (L, Chan, Stream_Id);
    end Accept_And_Serve;
 
    ---------------------------------------------------------------------
@@ -659,46 +683,8 @@ package body Http2_Core.Server is
 
       Transport.Accept_One (L.Trans, Chan);
 
-      --  Preface (24 bytes).
-      declare
-         Pref_Bytes : RFLX.RFLX_Types.Bytes
-           (RFLX.RFLX_Types.Index'First ..
-              RFLX.RFLX_Types.Index'First +
-              RFLX.RFLX_Types.Index (Wire.Preface'Length) - 1);
-         Pref_OK : Boolean;
-      begin
-         Transport.Receive_Full (Chan, Pref_Bytes, Pref_OK);
-         if not Pref_OK then
-            Transport.Close (Chan);
-            raise Server_Error with "EOF before preface";
-         end if;
-         for I in Pref_Bytes'Range loop
-            if Pref_Bytes (I) /=
-              U8 (Character'Pos
-                    (Wire.Preface
-                       (Wire.Preface'First +
-                          Integer (I - Pref_Bytes'First))))
-            then
-               Transport.Close (Chan);
-               raise Server_Error with "bad preface";
-            end if;
-         end loop;
-      end;
-
-      --  Send our SETTINGS.
-      declare
-         Last : RFLX.RFLX_Types.Index;
-         Params : constant Wire.Settings_List (1 .. 3) :=
-           ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-             Value      => 1));
-      begin
-         Wire.Encode_Settings (L.Buf, Last, Params);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
-      end;
+      Receive_Preface (Chan);
+      Send_Initial_Settings (L, Chan);
 
       pragma Unreferenced (Got_Peer_Settings);
       pragma Unreferenced (Got_Settings_Ack);
@@ -960,41 +946,10 @@ package body Http2_Core.Server is
                Trailers              => Trailers,
                Trailers_Last         => Trailers_Last);
 
-            --  Send response HEADERS (no END_STREAM).
-            declare
-               Frag_Out  : Hpack.Octet_Array
-                 (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-               Frag_Last : Natural;
-               Frag_OK   : Boolean;
-               Frame_Last : RFLX.RFLX_Types.Index;
-            begin
-               Hpack.Encode
-                 (Headers     =>
-                    Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
-                  Output      => Frag_Out,
-                  Output_Last => Frag_Last,
-                  Output_OK   => Frag_OK);
-               if not Frag_OK then
-                  FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                  Transport.Close (Chan);
-                  raise Server_Error with "response HPACK encode failed";
-               end if;
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => False);
-               end;
-               Transport.Send
-                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end;
+            Encode_And_Send_Headers
+              (L, Chan, Stream_Id,
+               Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
+               End_Stream => False);
 
             --  Streaming loop: pull each reply via Next_Reply, send
             --  as one DATA frame. Caller is responsible for the
@@ -1006,109 +961,26 @@ package body Http2_Core.Server is
                     (others => 0);
                   Msg_Last : RFLX.RFLX_Types.Index;
                   Has_Msg  : Boolean;
-                  Data_Last : RFLX.RFLX_Types.Index;
                begin
                   Has_Msg := Next_Reply (Msg_Buf, Msg_Last);
                   exit Stream_Loop when not Has_Msg;
-                  Wire.Encode_Data
-                    (Buffer => L.Buf, Last => Data_Last,
-                     Stream_Id => Stream_Id,
-                     Payload =>
-                       Msg_Buf (Msg_Buf'First .. Msg_Last),
+                  Send_Data_Frame
+                    (L, Chan, Stream_Id,
+                     Msg_Buf (Msg_Buf'First .. Msg_Last),
                      End_Stream => False);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Data_Last));
                end;
             end loop Stream_Loop;
 
-            --  Send trailing HEADERS with END_STREAM.
-            declare
-               Frag_Out  : Hpack.Octet_Array
-                 (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-               Frag_Last : Natural;
-               Frag_OK   : Boolean;
-               Frame_Last : RFLX.RFLX_Types.Index;
-            begin
-               Hpack.Encode
-                 (Headers     =>
-                    Trailers (Trailers'First .. Trailers_Last),
-                  Output      => Frag_Out,
-                  Output_Last => Frag_Last,
-                  Output_OK   => Frag_OK);
-               if not Frag_OK then
-                  FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                  Transport.Close (Chan);
-                  raise Server_Error
-                    with "trailers HPACK encode failed";
-               end if;
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => True);
-               end;
-               Transport.Send
-                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end;
+            Encode_And_Send_Headers
+              (L, Chan, Stream_Id,
+               Trailers (Trailers'First .. Trailers_Last),
+               End_Stream => True);
          end;
 
          FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
       end;
 
-      --  Post-response PING-ACK + GOAWAY (same as unary).
-      for K in 1 .. 5 loop
-         declare
-            Hdr2 : Wire.Frame_Header;
-            Last2 : RFLX.RFLX_Types.Index;
-            OK2 : Boolean;
-         begin
-            Read_Frame (Chan, L.Buf, Hdr2, Last2, OK2);
-            exit when not OK2;
-            if Hdr2.Frame_Type_Value = RFLX.Http2_Parameters.PING
-              and (Hdr2.Flags and Wire.Flag_ACK) = 0
-              and Hdr2.Length = 8
-            then
-               declare
-                  Ack_Last : RFLX.RFLX_Types.Index;
-                  Echo : constant RFLX.RFLX_Types.Bytes :=
-                    L.Buf.all (L.Buf'First + 9 .. L.Buf'First + 16);
-               begin
-                  Wire.Encode_Ping
-                    (Buffer => L.Buf, Last => Ack_Last,
-                     Opaque_Data => Echo, Ack => True);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
-               end;
-               exit;
-            end if;
-         exception
-            when others => exit;
-         end;
-      end loop;
-
-      declare
-         Goaway_Last : RFLX.RFLX_Types.Index;
-         Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
-           (others => 0);
-      begin
-         Wire.Encode_Goaway
-           (Buffer => L.Buf, Last => Goaway_Last,
-            Last_Stream_Id => Stream_Id,
-            Error_Code => 0,
-            Debug_Data => Empty);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Goaway_Last));
-      exception
-         when others => null;
-      end;
-
-      Transport.Close (Chan);
+      Drain_And_Goodbye (L, Chan, Stream_Id);
    end Accept_And_Serve_Server_Stream;
 
    ---------------------------------------------------------------------
@@ -1167,46 +1039,8 @@ package body Http2_Core.Server is
 
       Transport.Accept_One (L.Trans, Chan);
 
-      --  Preface (24 bytes).
-      declare
-         Pref_Bytes : RFLX.RFLX_Types.Bytes
-           (RFLX.RFLX_Types.Index'First ..
-              RFLX.RFLX_Types.Index'First +
-              RFLX.RFLX_Types.Index (Wire.Preface'Length) - 1);
-         Pref_OK : Boolean;
-      begin
-         Transport.Receive_Full (Chan, Pref_Bytes, Pref_OK);
-         if not Pref_OK then
-            Transport.Close (Chan);
-            raise Server_Error with "EOF before preface";
-         end if;
-         for I in Pref_Bytes'Range loop
-            if Pref_Bytes (I) /=
-              U8 (Character'Pos
-                    (Wire.Preface
-                       (Wire.Preface'First +
-                          Integer (I - Pref_Bytes'First))))
-            then
-               Transport.Close (Chan);
-               raise Server_Error with "bad preface";
-            end if;
-         end loop;
-      end;
-
-      --  Send our SETTINGS.
-      declare
-         Last : RFLX.RFLX_Types.Index;
-         Params : constant Wire.Settings_List (1 .. 3) :=
-           ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-             Value      => 1));
-      begin
-         Wire.Encode_Settings (L.Buf, Last, Params);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
-      end;
+      Receive_Preface (Chan);
+      Send_Initial_Settings (L, Chan);
 
       --  FSM-driven request phase, but each DATA frame's gRPC message
       --  is delivered to On_Request_Message immediately (no body
@@ -1430,148 +1264,30 @@ package body Http2_Core.Server is
                Trailers              => Trailers,
                Trailers_Last         => Trailers_Last);
 
-            --  Send response HEADERS.
-            declare
-               Frag_Out  : Hpack.Octet_Array
-                 (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-               Frag_Last : Natural;
-               Frag_OK   : Boolean;
-               Frame_Last : RFLX.RFLX_Types.Index;
-            begin
-               Hpack.Encode
-                 (Headers     =>
-                    Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
-                  Output      => Frag_Out,
-                  Output_Last => Frag_Last,
-                  Output_OK   => Frag_OK);
-               if not Frag_OK then
-                  FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                  Transport.Close (Chan);
-                  raise Server_Error with "response HPACK encode failed";
-               end if;
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => False);
-               end;
-               Transport.Send
-                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end;
+            Encode_And_Send_Headers
+              (L, Chan, Stream_Id,
+               Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
+               End_Stream => False);
 
-            --  Send response DATA.
             if Resp_Body_Last >= Integer (Resp_Body'First) then
-               declare
-                  Data_Last : RFLX.RFLX_Types.Index;
-                  Body_View : constant RFLX.RFLX_Types.Bytes :=
-                    Resp_Body
-                      (Resp_Body'First ..
-                         RFLX.RFLX_Types.Index (Resp_Body_Last));
-               begin
-                  Wire.Encode_Data
-                    (Buffer => L.Buf, Last => Data_Last,
-                     Stream_Id => Stream_Id, Payload => Body_View,
-                     End_Stream => False);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Data_Last));
-               end;
+               Send_Data_Frame
+                 (L, Chan, Stream_Id,
+                  Resp_Body
+                    (Resp_Body'First ..
+                       RFLX.RFLX_Types.Index (Resp_Body_Last)),
+                  End_Stream => False);
             end if;
 
-            --  Send trailers.
-            declare
-               Frag_Out  : Hpack.Octet_Array
-                 (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-               Frag_Last : Natural;
-               Frag_OK   : Boolean;
-               Frame_Last : RFLX.RFLX_Types.Index;
-            begin
-               Hpack.Encode
-                 (Headers     =>
-                    Trailers (Trailers'First .. Trailers_Last),
-                  Output      => Frag_Out,
-                  Output_Last => Frag_Last,
-                  Output_OK   => Frag_OK);
-               if not Frag_OK then
-                  FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                  Transport.Close (Chan);
-                  raise Server_Error
-                    with "trailers HPACK encode failed";
-               end if;
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => True);
-               end;
-               Transport.Send
-                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end;
+            Encode_And_Send_Headers
+              (L, Chan, Stream_Id,
+               Trailers (Trailers'First .. Trailers_Last),
+               End_Stream => True);
          end;
 
          FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
       end;
 
-      --  Post-response PING-ACK + GOAWAY (same as other variants).
-      for K in 1 .. 5 loop
-         declare
-            Hdr2 : Wire.Frame_Header;
-            Last2 : RFLX.RFLX_Types.Index;
-            OK2 : Boolean;
-         begin
-            Read_Frame (Chan, L.Buf, Hdr2, Last2, OK2);
-            exit when not OK2;
-            if Hdr2.Frame_Type_Value = RFLX.Http2_Parameters.PING
-              and (Hdr2.Flags and Wire.Flag_ACK) = 0
-              and Hdr2.Length = 8
-            then
-               declare
-                  Ack_Last : RFLX.RFLX_Types.Index;
-                  Echo : constant RFLX.RFLX_Types.Bytes :=
-                    L.Buf.all (L.Buf'First + 9 .. L.Buf'First + 16);
-               begin
-                  Wire.Encode_Ping
-                    (Buffer => L.Buf, Last => Ack_Last,
-                     Opaque_Data => Echo, Ack => True);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
-               end;
-               exit;
-            end if;
-         exception
-            when others => exit;
-         end;
-      end loop;
-
-      declare
-         Goaway_Last : RFLX.RFLX_Types.Index;
-         Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
-           (others => 0);
-      begin
-         Wire.Encode_Goaway
-           (Buffer => L.Buf, Last => Goaway_Last,
-            Last_Stream_Id => Stream_Id,
-            Error_Code => 0,
-            Debug_Data => Empty);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Goaway_Last));
-      exception
-         when others => null;
-      end;
-
-      Transport.Close (Chan);
+      Drain_And_Goodbye (L, Chan, Stream_Id);
    end Accept_And_Serve_Client_Stream;
 
    ---------------------------------------------------------------------
@@ -1604,46 +1320,8 @@ package body Http2_Core.Server is
 
       Transport.Accept_One (L.Trans, Chan);
 
-      --  Preface (24 bytes).
-      declare
-         Pref_Bytes : RFLX.RFLX_Types.Bytes
-           (RFLX.RFLX_Types.Index'First ..
-              RFLX.RFLX_Types.Index'First +
-              RFLX.RFLX_Types.Index (Wire.Preface'Length) - 1);
-         Pref_OK : Boolean;
-      begin
-         Transport.Receive_Full (Chan, Pref_Bytes, Pref_OK);
-         if not Pref_OK then
-            Transport.Close (Chan);
-            raise Server_Error with "EOF before preface";
-         end if;
-         for I in Pref_Bytes'Range loop
-            if Pref_Bytes (I) /=
-              U8 (Character'Pos
-                    (Wire.Preface
-                       (Wire.Preface'First +
-                          Integer (I - Pref_Bytes'First))))
-            then
-               Transport.Close (Chan);
-               raise Server_Error with "bad preface";
-            end if;
-         end loop;
-      end;
-
-      --  Send our SETTINGS.
-      declare
-         Last : RFLX.RFLX_Types.Index;
-         Params : constant Wire.Settings_List (1 .. 3) :=
-           ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
-             Value      => 0),
-            (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-             Value      => 1));
-      begin
-         Wire.Encode_Settings (L.Buf, Last, Params);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
-      end;
+      Receive_Preface (Chan);
+      Send_Initial_Settings (L, Chan);
 
       --  Drive request side until HEADERS arrives + emit response
       --  HEADERS so client can start receiving replies. Then
@@ -1818,41 +1496,10 @@ package body Http2_Core.Server is
             Trailers              => Trailers,
             Trailers_Last         => Trailers_Last);
 
-         --  Send response HEADERS (no END_STREAM).
-         declare
-            Frag_Out  : Hpack.Octet_Array
-              (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-            Frag_Last : Natural;
-            Frag_OK   : Boolean;
-            Frame_Last : RFLX.RFLX_Types.Index;
-         begin
-            Hpack.Encode
-              (Headers     =>
-                 Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
-               Output      => Frag_Out,
-               Output_Last => Frag_Last,
-               Output_OK   => Frag_OK);
-            if not Frag_OK then
-               FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-               Transport.Close (Chan);
-               raise Server_Error with "response HPACK encode failed";
-            end if;
-            declare
-               Frag_Bytes : RFLX.RFLX_Types.Bytes
-                 (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-            begin
-               for I in 1 .. Frag_Last loop
-                  Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                    U8 (Frag_Out (I));
-               end loop;
-               Wire.Encode_Headers
-                 (Buffer => L.Buf, Last => Frame_Last,
-                  Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                  End_Stream => False);
-            end;
-            Transport.Send
-              (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-         end;
+         Encode_And_Send_Headers
+           (L, Chan, Stream_Id,
+            Resp_Hdrs (Resp_Hdrs'First .. Resp_Hdrs_Last),
+            End_Stream => False);
 
          --  Bidi loop. v0.2 limitation: Read_Frame is blocking, so
          --  this is half-duplex bidi — the driver alternates "read
@@ -1957,105 +1604,26 @@ package body Http2_Core.Server is
                     (others => 0);
                   Msg_Last : RFLX.RFLX_Types.Index;
                   Has_Msg  : Boolean;
-                  Data_Last : RFLX.RFLX_Types.Index;
                begin
                   Has_Msg := Next_Reply (Msg_Buf, Msg_Last);
                   exit Drain_Replies when not Has_Msg;
-                  Wire.Encode_Data
-                    (Buffer => L.Buf, Last => Data_Last,
-                     Stream_Id => Stream_Id,
-                     Payload =>
-                       Msg_Buf (Msg_Buf'First .. Msg_Last),
+                  Send_Data_Frame
+                    (L, Chan, Stream_Id,
+                     Msg_Buf (Msg_Buf'First .. Msg_Last),
                      End_Stream => False);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Data_Last));
                end;
             end loop Drain_Replies;
          end loop Bidi_Loop;
 
-         --  Send trailers with END_STREAM.
-         declare
-            Frag_Out  : Hpack.Octet_Array
-              (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
-            Frag_Last : Natural;
-            Frag_OK   : Boolean;
-            Frame_Last : RFLX.RFLX_Types.Index;
-         begin
-            Hpack.Encode
-              (Headers     =>
-                 Trailers (Trailers'First .. Trailers_Last),
-               Output      => Frag_Out,
-               Output_Last => Frag_Last,
-               Output_OK   => Frag_OK);
-            if Frag_OK then
-               declare
-                  Frag_Bytes : RFLX.RFLX_Types.Bytes
-                    (1 .. RFLX.RFLX_Types.Index (Frag_Last));
-               begin
-                  for I in 1 .. Frag_Last loop
-                     Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
-                       U8 (Frag_Out (I));
-                  end loop;
-                  Wire.Encode_Headers
-                    (Buffer => L.Buf, Last => Frame_Last,
-                     Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-                     End_Stream => True);
-               end;
-               Transport.Send
-                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
-            end if;
-         end;
+         Encode_And_Send_Headers
+           (L, Chan, Stream_Id,
+            Trailers (Trailers'First .. Trailers_Last),
+            End_Stream => True);
 
          FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
       end;
 
-      --  Post-response cleanup (PING-ACK + GOAWAY).
-      for K in 1 .. 5 loop
-         declare
-            Hdr2 : Wire.Frame_Header;
-            Last2 : RFLX.RFLX_Types.Index;
-            OK2 : Boolean;
-         begin
-            Read_Frame (Chan, L.Buf, Hdr2, Last2, OK2);
-            exit when not OK2;
-            if Hdr2.Frame_Type_Value = RFLX.Http2_Parameters.PING
-              and (Hdr2.Flags and Wire.Flag_ACK) = 0
-              and Hdr2.Length = 8
-            then
-               declare
-                  Ack_Last : RFLX.RFLX_Types.Index;
-                  Echo : constant RFLX.RFLX_Types.Bytes :=
-                    L.Buf.all (L.Buf'First + 9 .. L.Buf'First + 16);
-               begin
-                  Wire.Encode_Ping
-                    (Buffer => L.Buf, Last => Ack_Last,
-                     Opaque_Data => Echo, Ack => True);
-                  Transport.Send
-                    (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
-               end;
-               exit;
-            end if;
-         exception
-            when others => exit;
-         end;
-      end loop;
-
-      declare
-         Goaway_Last : RFLX.RFLX_Types.Index;
-         Empty : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
-           (others => 0);
-      begin
-         Wire.Encode_Goaway
-           (Buffer => L.Buf, Last => Goaway_Last,
-            Last_Stream_Id => Stream_Id,
-            Error_Code => 0,
-            Debug_Data => Empty);
-         Transport.Send (Chan, L.Buf.all (L.Buf'First .. Goaway_Last));
-      exception
-         when others => null;
-      end;
-
-      Transport.Close (Chan);
+      Drain_And_Goodbye (L, Chan, Stream_Id);
    end Accept_And_Serve_Bidi_Stream;
 
 end Http2_Core.Server;
