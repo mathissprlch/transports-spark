@@ -147,7 +147,6 @@ package body Http2_Core.Transport is
 
    function Has_Pending (Chan : Channel) return Boolean is
       use GNAT.Sockets;
-      use type Selector_Status;
       Sel      : Selector_Type;
       Read_Set : Socket_Set_Type;
       Write_Set : Socket_Set_Type;

@@ -1,5 +1,3 @@
-with Ada.Streams;
-
 package body Http1_Core.Server is
 
    use type Wire.Octet_Offset;
@@ -136,7 +134,8 @@ package body Http1_Core.Server is
             Out_Buf  : Wire.Octet_Array (1 .. 256);
             Out_Last : Wire.Octet_Offset;
             Empty_Headers : Wire.Header_Block;
-            Empty_Body : Wire.Octet_Array (1 .. 0) := (others => 0);
+            Empty_Body : constant Wire.Octet_Array (1 .. 0) :=
+              (others => 0);
          begin
             Wire.Encode_Response
               (Out_Buf      => Out_Buf,
@@ -155,7 +154,7 @@ package body Http1_Core.Server is
       --  Drain Content-Length body bytes if not yet fully buffered.
       declare
          Body_Start : constant Wire.Octet_Offset :=
-           Wire.Octet_Offset (Req.Header_Section_Last);
+           Req.Header_Section_Last;
          Body_End   : constant Wire.Octet_Offset :=
            Body_Start + Wire.Octet_Offset (Req.Content_Length) - 1;
          Body_OK    : Boolean := True;
