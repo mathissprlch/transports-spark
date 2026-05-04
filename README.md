@@ -46,8 +46,10 @@ follows as a second transport on the same verified `protobuf_core`.
   `Transport.Has_Pending` non-blocking poll.
 - `http2_core.mux_server` — multi-stream HTTP/2: one TCP connection
   serves up to 16 concurrent streams demuxed by stream-id into
-  per-stream `Stream::Open` FSMs. RFC 9113 §5.1.2 RST_STREAM
-  (REFUSED_STREAM) when the pool is full.
+  per-stream `Stream::Open` FSMs. All four gRPC RPC types
+  (unary, server-stream, client-stream, bidi) work concurrently
+  on one connection with per-slot iterator state. RFC 9113 §5.1.2
+  RST_STREAM (REFUSED_STREAM) when the pool is full.
 - `http1_core` — minimal HTTP/1.1 server (RFC 9112 §3-4 subset:
   Content-Length body, Connection: close, no obs-fold, hand-written
   parser; RFLX-modeling deferred).
@@ -98,10 +100,11 @@ $ echo '{"name":"alpha"}
 {"message": "Hi, alpha!"}
 {"message": "Hi, beta!"}
 
-# Multi-stream server: up to 16 concurrent unary RPCs over one
-# connection demuxed by stream-id.
-$ ./bin/greeter_mux_server 50051 &
-# 8 Python grpcio threads on one channel → ~16 ms total.
+# Multi-stream server: up to 16 concurrent RPCs over one connection
+# demuxed by stream-id. Mode picks RPC type:
+#   unary | server-stream | client-stream | bidi
+$ ./bin/greeter_mux_server bidi 50051 &
+# 4 Python grpcio threads each running a BidiHello → ~10 ms total.
 ```
 
 ### MQTT broker (v0.3)
