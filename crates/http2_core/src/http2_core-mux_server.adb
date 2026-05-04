@@ -175,7 +175,7 @@ package body Http2_Core.Mux_Server is
       type Body_Pool is array (1 .. Max_Streams) of
         RFLX.RFLX_Types.Bytes (1 .. 16384);
       type Cursor_Pool is array (1 .. Max_Streams) of Integer;
-      type End_Pool is array (1 .. Max_Streams) of Boolean;
+
 
       Headers : Hdr_Pool := (others => (others => (Name_Last => 0,
                                                   Value_Last => 0,
@@ -184,7 +184,6 @@ package body Http2_Core.Mux_Server is
       Headers_Last : Hdr_Last_Pool := (others => 0);
       Bodies : Body_Pool;
       Body_Cursor : Cursor_Pool := (others => 0);
-      Got_End : End_Pool := (others => False);
 
       Goaway_Pending : Boolean := False;
       Last_Stream_Id : Bit_Len := 0;
@@ -238,7 +237,6 @@ package body Http2_Core.Mux_Server is
 
       function Find_Slot (Stream_Id : Bit_Len) return Natural;
       function Find_Slot (Stream_Id : Bit_Len) return Natural is
-         use type RFLX.RFLX_Builtin_Types.Bit_Length;
       begin
          for I in L.Pool'Range loop
             if L.Pool (I).Phase /= Free
@@ -259,7 +257,6 @@ package body Http2_Core.Mux_Server is
                L.Pool (I).Stream_Id := Stream_Id;
                Headers_Last (I) := Headers (I)'First - 1;
                Body_Cursor (I) := Integer (Bodies (I)'First) - 1;
-               Got_End (I) := False;
                FSM.Initialize
                  (Ctxs (I),
                   L.Pool (I).Inbound_Buf,
@@ -348,41 +345,10 @@ package body Http2_Core.Mux_Server is
       --  Strip gRPC 5-byte length prefix.
       ---------------------------------------------------------------
 
-      function Strip_Grpc_Frame
-        (View : RFLX.RFLX_Types.Bytes) return RFLX.RFLX_Types.Bytes;
-      function Strip_Grpc_Frame
-        (View : RFLX.RFLX_Types.Bytes) return RFLX.RFLX_Types.Bytes is
-      begin
-         if View'Length < 5 then
-            return View (View'First .. View'First - 1);
-         end if;
-         declare
-            Msg_Len_64 : constant Long_Long_Integer :=
-              Long_Long_Integer (View (View'First + 1)) * 16777216
-              + Long_Long_Integer (View (View'First + 2)) * 65536
-              + Long_Long_Integer (View (View'First + 3)) * 256
-              + Long_Long_Integer (View (View'First + 4));
-         begin
-            if Msg_Len_64 <= 0
-              or else Msg_Len_64 > Long_Long_Integer (View'Length) - 5
-            then
-               return View (View'First .. View'First - 1);
-            end if;
-            declare
-               Msg_Len : constant Natural := Natural (Msg_Len_64);
-            begin
-               return View
-                 (View'First + 5 ..
-                    View'First + 5
-                    + RFLX.RFLX_Types.Index (Msg_Len) - 1);
-            end;
-         end;
-      end Strip_Grpc_Frame;
-
       ---------------------------------------------------------------
       --  Per-stream: drain App_Pending after FSM.Run. Decodes
       --  HEADERS into Headers(I); appends DATA payloads into Body
-      --  (I); flips Got_End on END_STREAM.
+      --  (I); flips Phase to Body_Complete on END_STREAM.
       ---------------------------------------------------------------
 
       procedure Drain_Stream_App (I : Positive);
@@ -444,7 +410,6 @@ package body Http2_Core.Mux_Server is
                         end;
                         if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0
                         then
-                           Got_End (I) := True;
                            L.Pool (I).Phase := Body_Complete;
                         end if;
 
@@ -476,7 +441,6 @@ package body Http2_Core.Mux_Server is
                         end if;
                         if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0
                         then
-                           Got_End (I) := True;
                            L.Pool (I).Phase := Body_Complete;
                         end if;
 
@@ -562,7 +526,6 @@ package body Http2_Core.Mux_Server is
         (Hdr  : Wire.Frame_Header;
          Last : RFLX.RFLX_Types.Index)
       is
-         use type RFLX.RFLX_Builtin_Types.Bit_Length;
       begin
          if Hdr.Stream_Identifier = 0 then
             case Hdr.Frame_Type_Value is

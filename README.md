@@ -22,14 +22,35 @@ follows as a second transport on the same verified `protobuf_core`.
 - Single runtime dependency: a vendored AWS fork with two patches
   that teach its HTTP/2 server to emit trailers.
 
-**v0.2** (in progress) — SPARK rework:
+**v0.2** — SPARK rework, AWS replaced:
 
 - `protobuf_core` — hand-written SPARK wire codec.
-- `mqtt_core` — RecordFlux-driven SPARK MQTT 3.1.1 client (headline).
-- `http2_core`, `grpc_core` — RecordFlux frame layer + SPARK framing;
-  v0.1 gRPC refactored onto verified foundations.
-- Bare-metal PoCs on STM32 + Zynq. Benchmarks: gRPC vs MQTT on
-  identical hardware and payloads.
+- `mqtt_core` — RecordFlux-driven SPARK MQTT 3.1.1 client + minimal
+  broker (multi-client, topic routing, UNSUBSCRIBE).
+- `http2_core` — RecordFlux frame layer (Frame, Settings, Goaway,
+  WindowUpdate, RstStream, Headers, Ping) + Stream::Open / Half_Open
+  state machines + handwritten HPACK (RFC 7541). Drops AWS entirely.
+- `grpc_core` — gRPC framing (5-byte length prefix) + Status +
+  Metadata over `http2_core`.
+- Bare-metal track: memory-loopback `Transport` for in-image
+  round-trips on Cortex-M / Zynq without GNAT.Sockets.
+
+**v0.3** — full server functionality:
+
+- `mqtt_core.broker` — full QoS 1/2 routing with per-client
+  inflight tables (Awaiting_Puback / Awaiting_Pubrec /
+  Awaiting_Pubcomp), 4-way handshake on both directions, multi-filter
+  SUBSCRIBE with per-filter SUBACK return codes.
+- `http2_core.server` — server-streaming, client-streaming, and bidi
+  variants in addition to unary. Bidi runs pure-interleave via
+  `Transport.Has_Pending` non-blocking poll.
+- `http2_core.mux_server` — multi-stream HTTP/2: one TCP connection
+  serves up to 16 concurrent streams demuxed by stream-id into
+  per-stream `Stream::Open` FSMs. RFC 9113 §5.1.2 RST_STREAM
+  (REFUSED_STREAM) when the pool is full.
+- `http1_core` — minimal HTTP/1.1 server (RFC 9112 §3-4 subset:
+  Content-Length body, Connection: close, no obs-fold, hand-written
+  parser; RFLX-modeling deferred).
 
 ## Architecture
 
@@ -58,55 +79,71 @@ with standard gRPC peers.
 Where community GNATprove can't close a goal, it's documented as a
 known gap rather than papered over.
 
-## Quick start (v0.1, hosted)
+## Quick start
 
 ```sh
-$ make codegen build
-$ ./crates/examples/bin/greeter_server &
-Greeter listening on 0.0.0.0:50051
-
-$ ./crates/examples/bin/greeter_client
-Request:  World
-Reply:    Hello, World!
-
-# Wire conformance via raw HTTP/2:
-$ printf '\x00\x00\x00\x00\x07\x0a\x05World' \
-  | curl -s -i --http2-prior-knowledge \
-         -H 'content-type: application/grpc+proto' -H 'TE: trailers' \
-         --data-binary @- \
-         http://localhost:50051/helloworld.Greeter/SayHello \
-  | xxd | tail -3
-00000090: 0d0a 0000 0000 0f0a 0d48 656c 6c6f 2c20  .........Hello,
-000000a0: 576f 726c 6421 6772 7063 2d73 7461 7475  World!grpc-statu
-000000b0: 733a 2030 0d0a                           s: 0..
+$ cd crates/examples && alr build
 ```
 
-`grpc-status: 0` in the trailing HEADERS frame confirms the AWS
-trailer patches work.
+### gRPC (v0.2 single-stream + v0.3 multi-stream)
+
+```sh
+# Single-stream server: pick a mode (unary | server-stream |
+# client-stream | bidi). Multi-mode demo for all four RPC types.
+$ ./bin/greeter_streaming_server bidi 50051 &
+$ echo '{"name":"alpha"}
+{"name":"beta"}' | grpcurl -plaintext -d @ \
+    -import-path proto -proto helloworld.proto \
+    127.0.0.1:50051 helloworld.Greeter/BidiHello
+{"message": "Hi, alpha!"}
+{"message": "Hi, beta!"}
+
+# Multi-stream server: up to 16 concurrent unary RPCs over one
+# connection demuxed by stream-id.
+$ ./bin/greeter_mux_server 50051 &
+# 8 Python grpcio threads on one channel → ~16 ms total.
+```
+
+### MQTT broker (v0.3)
+
+```sh
+$ ./bin/mqtt_broker_demo 1883 &
+$ ./bin/mqtt_demo 1883     # exercises QoS 0/1/2 + multi-topic SUBSCRIBE
+mqtt_demo: subscribed to ada/test (QoS 2) + ada/aux (QoS 0)
+mqtt_demo: QoS 1 publish (FSM-driven, awaits PUBACK)  -> publish acked
+mqtt_demo: QoS 2 publish (FSM-driven, PUBREC + PUBCOMP)  -> completed
+```
+
+### HTTP/1.1 (v0.3)
+
+```sh
+$ ./bin/http1_demo 8080 &
+$ curl -s http://localhost:8080/
+Hello from Ada HTTP/1.1!
+$ curl -s -X POST -d 'mixed Case' http://localhost:8080/upper
+MIXED CASE
+```
 
 ## Layout
 
 ```
 crates/
   protobuf_core/        SPARK protobuf wire codec (v0.2, hand-written)
-  http2_core/           SPARK HTTP/2 frames + stream FSM (v0.2, RecordFlux + glue)
-  mqtt_core/            SPARK MQTT 3.1.1 (v0.2, RecordFlux + glue)
+  http2_core/           SPARK HTTP/2 frames + stream FSMs + servers (v0.2-v0.3)
+  http1_core/           Minimal HTTP/1.1 server (v0.3, hand-written wire)
+  mqtt_core/            SPARK MQTT 3.1.1 client + broker (v0.2-v0.3)
   grpc_core/            SPARK gRPC framing on http2_core + protobuf_core (v0.2)
+  rflx_runtime/         Shared RecordFlux runtime support
   protobuf_ada/         legacy: v0.1 protobuf codec (retires when protobuf_core lands)
-  grpc_ada/             legacy: v0.1 gRPC runtime (retires when grpc_core + grpc_aws land)
-  protoc_gen_grpc_ada/  protoc plugin (build-time; retargeted to protobuf_core)
-  protobuf_ada_tests/   AUnit tests + fixtures
-  examples/             helloworld + RouteGuide
+  grpc_ada/             legacy: v0.1 gRPC runtime (retires when grpc_core lands)
+  protoc_gen_grpc_ada/  protoc plugin (build-time)
+  examples/             helloworld + RouteGuide + mqtt + http1 demos
+  *_tests/              AUnit + scripted fuzz harnesses
 targets/
   stm32f4/              STM32 Cortex-M (planned)
   zynq7000/             Xilinx Zynq-7000 (planned)
-vendor/
-  aws-patches/          unified diffs against AWS upstream (HTTP/2 trailer support)
-  aws-overlays/         platform constants + helper GPRs
-  bootstrap.sh          clones AWS at pin, applies patches
 docs/
-  design.md             architecture sketch
-  aws-integration.md    AWS bootstrap details
+  design.md             architecture sketch (v0.1 baseline)
   notes-grpc-wire.md    notes from PROTOCOL-HTTP2.md
   notes-protobuf.md     notes from the protobuf encoding spec
 ```
@@ -114,20 +151,17 @@ docs/
 ## Build
 
 Tested on macOS arm64 with `alr 2.1.0` + `gnat_native 15.1.2` +
-`gprbuild 25.0.1`. Linux x86_64 / aarch64 should work the same way
-once a fresh `os_lib.ads` overlay is generated for the host (run
-`vendor/aws-overlays/gen_os_lib.c`; output committed per platform).
+`gprbuild 25.0.1`. Linux x86_64 / aarch64 should work the same way.
+The v0.2+ stack drops the AWS dependency, so there's no submodule
+or patch step — `alr build` in any crate suffices.
 
 ```sh
-./vendor/bootstrap.sh   # one-time: clone AWS at pin, apply patches
-make codegen            # build plugin and regenerate Ada from .proto
-make build              # all crates
-make test               # protobuf wire + framing + status suites
+cd crates/examples && alr build      # builds all v0.1+v0.2+v0.3 demos
+cd crates/<crate>_tests && alr run    # AUnit suites where they exist
 ```
 
-The macOS SDK headers and lib path are injected via Alire's
-`[environment.'case(os)'.macos]` blocks in each crate's `alire.toml`
-— no external `SDKROOT` needed.
+The v0.1 `make codegen` flow is preserved for the legacy
+`grpc_ada` / `protobuf_ada` crates; the v0.2+ stack does not need it.
 
 ## Defining a service (v0.1 codegen)
 
