@@ -81,6 +81,20 @@ package body Http2_Core.Mux_Server.Frames is
       Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
    end Send_Rst_Stream;
 
+   procedure Send_Window_Update
+     (L         : in out Listener;
+      Chan      : Transport.Channel;
+      Stream_Id : Bit_Len;
+      Increment : Bit_Len)
+   is
+      Last : RFLX.RFLX_Types.Index;
+   begin
+      Wire.Encode_Window_Update
+        (Buffer => L.Buf, Last => Last,
+         Stream_Id => Stream_Id, Increment => Increment);
+      Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
+   end Send_Window_Update;
+
    procedure Send_Headers_Frame
      (L          : in out Listener;
       Chan       : Transport.Channel;

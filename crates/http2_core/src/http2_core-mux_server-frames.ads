@@ -36,6 +36,16 @@ private package Http2_Core.Mux_Server.Frames is
       Stream_Id  : Bit_Len;
       Error_Code : Bit_Len);
 
+   --  RFC 9113 §6.9 — open the connection-level (Stream_Id=0) or
+   --  per-stream flow-control window by `Increment` bytes. Without
+   --  these, the peer stops sending after the default 65 535-byte
+   --  window is exhausted (~64 KB of inbound data).
+   procedure Send_Window_Update
+     (L         : in out Listener;
+      Chan      : Transport.Channel;
+      Stream_Id : Bit_Len;
+      Increment : Bit_Len);
+
    procedure Send_Headers_Frame
      (L          : in out Listener;
       Chan       : Transport.Channel;

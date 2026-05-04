@@ -25,6 +25,17 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
    Goaway_Pending : Boolean := False;
    Last_Stream_Id : Bit_Len := 0;
 
+   --  RFC 9113 §6.9 flow-control accounting. We're conservative:
+   --  every inbound DATA frame's payload counts against the
+   --  connection-level + per-stream windows. When ≥ Refill_At
+   --  bytes have accumulated since the last WINDOW_UPDATE, we
+   --  send one to refresh by exactly that amount. Per-stream
+   --  windows refill at the same threshold but are scoped per slot.
+   Refill_At         : constant := 32_768;     --  half the default
+   Conn_Bytes_Owed   : Bit_Len := 0;
+   Stream_Bytes_Owed : array (1 .. Max_Streams) of Bit_Len :=
+     (others => 0);
+
    ---------------------------------------------------------------------
    --  Drain_Stream_App — pull every queued App_Pending frame out of
    --  the FSM for one slot. HEADERS frames have their HPACK fragment
@@ -114,6 +125,26 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                            On_Inbound_Message (L, Chan, Slot, Msg);
                         end if;
                      end;
+
+                     --  RFC 9113 §6.9: count the DATA frame's
+                     --  payload (the full Hdr.Length, including
+                     --  any padding) against both the connection
+                     --  and the per-stream window. Refill once
+                     --  we cross the threshold.
+                     Conn_Bytes_Owed := Conn_Bytes_Owed + Hdr.Length;
+                     Stream_Bytes_Owed (Slot) :=
+                       Stream_Bytes_Owed (Slot) + Hdr.Length;
+                     if Conn_Bytes_Owed >= Refill_At then
+                        Frames.Send_Window_Update
+                          (L, Chan, 0, Conn_Bytes_Owed);
+                        Conn_Bytes_Owed := 0;
+                     end if;
+                     if Stream_Bytes_Owed (Slot) >= Refill_At then
+                        Frames.Send_Window_Update
+                          (L, Chan, L.Slots (Slot).Stream_Id,
+                           Stream_Bytes_Owed (Slot));
+                        Stream_Bytes_Owed (Slot) := 0;
+                     end if;
                   end if;
                   if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                      L.Slots (Slot).End_Of_Request := True;
@@ -273,14 +304,22 @@ begin
                   end if;
                when Closed =>
                   Last_Stream_Id := L.Slots (I).Stream_Id;
+                  --  Per-stream window dies with the stream; reset
+                  --  so the slot's next tenant starts at zero.
+                  Stream_Bytes_Owed (I) := 0;
                   Slots.Release_Slot (L, I);
                   Made_Progress := True;
                when others => null;
             end case;
          end loop;
 
+         --  No-progress idle backoff. 100 µs caps a single-client
+         --  sequential-RPC ceiling at ~10 k req/s instead of the
+         --  ~1 k req/s a 1 ms delay imposed; under burst load
+         --  Made_Progress is True every iteration and the delay
+         --  never fires.
          if not Made_Progress then
-            delay 0.001;
+            delay 0.0001;
          end if;
       end;
    end loop Connection_Loop;

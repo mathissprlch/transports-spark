@@ -82,7 +82,7 @@ procedure Greeter_Mux_Server is
       Out_Last : out RFLX.RFLX_Types.Index;
       OK       : out Boolean)
    is
-      PB_Buf  : RFLX.RFLX_Types.Bytes (1 .. 1024) := (others => 0);
+      PB_Buf  : RFLX.RFLX_Types.Bytes (1 .. 16384) := (others => 0);
       PB_Last : RFLX.RFLX_Types.Index;
    begin
       Out_Last := Out_Buf'First;
