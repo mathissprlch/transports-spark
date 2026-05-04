@@ -34,6 +34,8 @@ package body Http2_Core.Transport is
    begin
       Create_Socket (Chan.Socket, Family_Inet, Socket_Stream);
       Connect_Socket (Chan.Socket, Address);
+      Create_Selector (Chan.Selector);
+      Chan.Sel_Open := True;
       Chan.Open := True;
    exception
       when others =>
@@ -145,36 +147,55 @@ package body Http2_Core.Transport is
    --  Has_Pending — non-blocking poll via Check_Selector(0).
    ---------------------------------------------------------------------
 
-   function Has_Pending (Chan : Channel) return Boolean is
+   --  Internal: poll the persistent selector with the given timeout.
+   procedure Poll_Internal
+     (Chan    : Channel;
+      Timeout : Duration;
+      Ready   : out Boolean);
+
+   procedure Poll_Internal
+     (Chan    : Channel;
+      Timeout : Duration;
+      Ready   : out Boolean)
+   is
       use GNAT.Sockets;
-      Sel      : Selector_Type;
-      Read_Set : Socket_Set_Type;
+      Read_Set  : Socket_Set_Type;
       Write_Set : Socket_Set_Type;
-      Status   : Selector_Status;
+      Status    : Selector_Status;
    begin
-      Create_Selector (Sel);
+      Ready := False;
+      if not Chan.Sel_Open then
+         return;
+      end if;
       Empty (Read_Set);
       Empty (Write_Set);
       Set (Read_Set, Chan.Socket);
       Check_Selector
-        (Sel, Read_Set, Write_Set, Status, Timeout => 0.0);
-      declare
-         Ready : constant Boolean :=
-           Status = Completed
-             and then Is_Set (Read_Set, Chan.Socket);
-      begin
-         Close_Selector (Sel);
-         return Ready;
-      end;
+        (Chan.Selector, Read_Set, Write_Set, Status,
+         Timeout => Timeout);
+      Ready :=
+        Status = Completed
+          and then Is_Set (Read_Set, Chan.Socket);
    exception
       when others =>
-         begin
-            Close_Selector (Sel);
-         exception
-            when others => null;
-         end;
-         return False;
+         Ready := False;
+   end Poll_Internal;
+
+   function Has_Pending (Chan : Channel) return Boolean is
+      Ready : Boolean;
+   begin
+      Poll_Internal (Chan, 0.0, Ready);
+      return Ready;
    end Has_Pending;
+
+   procedure Wait_For_Data
+     (Chan     : Channel;
+      Timeout  : Duration;
+      Got_Data : out Boolean)
+   is
+   begin
+      Poll_Internal (Chan, Timeout, Got_Data);
+   end Wait_For_Data;
 
    ---------------------------------------------------------------------
    --  Close
@@ -182,6 +203,14 @@ package body Http2_Core.Transport is
 
    procedure Close (Chan : in out Channel) is
    begin
+      if Chan.Sel_Open then
+         begin
+            GNAT.Sockets.Close_Selector (Chan.Selector);
+         exception
+            when others => null;
+         end;
+         Chan.Sel_Open := False;
+      end if;
       begin
          GNAT.Sockets.Close_Socket (Chan.Socket);
       exception
@@ -233,6 +262,8 @@ package body Http2_Core.Transport is
       Peer : Sock_Addr_Type;
    begin
       Accept_Socket (L.Socket, Chan.Socket, Peer);
+      Create_Selector (Chan.Selector);
+      Chan.Sel_Open := True;
       Chan.Open := True;
    exception
       when others =>

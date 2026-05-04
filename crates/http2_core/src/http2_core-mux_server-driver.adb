@@ -281,6 +281,8 @@ begin
       declare
          Made_Progress : Boolean := False;
          Tick_Progress : Boolean;
+         Has_Streaming : Boolean := False;
+         Got_Data      : Boolean;
       begin
          if Transport.Has_Pending (Chan) then
             declare
@@ -298,6 +300,7 @@ begin
          for I in L.Slots'Range loop
             case L.Slots (I).Phase is
                when Streaming =>
+                  Has_Streaming := True;
                   On_Streaming_Tick (L, Chan, I, Tick_Progress);
                   if Tick_Progress then
                      Made_Progress := True;
@@ -313,13 +316,20 @@ begin
             end case;
          end loop;
 
-         --  No-progress idle backoff. 100 µs caps a single-client
-         --  sequential-RPC ceiling at ~10 k req/s instead of the
-         --  ~1 k req/s a 1 ms delay imposed; under burst load
-         --  Made_Progress is True every iteration and the delay
-         --  never fires.
+         --  No-progress wait. When there are no Streaming slots
+         --  the only thing that can wake us is inbound data, so
+         --  block on the socket up to 100 ms — wakes immediately
+         --  when a frame arrives, costs nothing while idle. With
+         --  Streaming slots in flight we still need to busy-poll
+         --  in case On_Streaming_Tick produces a reply on the
+         --  next iteration; cap the polling at 100 µs so reply
+         --  latency stays bounded.
          if not Made_Progress then
-            delay 0.0001;
+            if Has_Streaming then
+               Transport.Wait_For_Data (Chan, 0.0001, Got_Data);
+            else
+               Transport.Wait_For_Data (Chan, 0.1, Got_Data);
+            end if;
          end if;
       end;
    end loop Connection_Loop;

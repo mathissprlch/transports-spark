@@ -39,6 +39,14 @@ package Http2_Core.Transport is
    function Has_Pending (Chan : Channel) return Boolean
    with Pre => Is_Open (Chan);
 
+   --  Bare metal: no kernel scheduler, so we can't actually wait.
+   --  Returns immediately with the current Has_Pending result.
+   procedure Wait_For_Data
+     (Chan     : Channel;
+      Timeout  : Duration;
+      Got_Data : out Boolean)
+   with Pre => Is_Open (Chan);
+
    procedure Close (Chan : in out Channel)
    with
      Pre  => Is_Open (Chan),

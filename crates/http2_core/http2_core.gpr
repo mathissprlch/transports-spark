@@ -9,6 +9,14 @@ library project Http2_Core is
    type Transport_Kind is ("tcp", "bare");
    Transport : Transport_Kind := external ("TRANSPORT", "tcp");
 
+   --  Build mode: debug (default — -O0 + assertions) or release
+   --  (-O2 + assertions off). The hot path through RFLX's frame
+   --  Verify_Message is dominated by recursive Cursors_Invariant
+   --  checks that mirror the SPARK proofs; in release we trust
+   --  the proofs and turn the runtime echoes off.
+   type Build_Mode_Kind is ("debug", "release");
+   Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");
+
    for Library_Name use "http2_core";
    for Library_Kind use "static";
    for Source_Dirs use
@@ -22,12 +30,27 @@ library project Http2_Core is
    package Compiler is
       case Transport is
          when "tcp" =>
-            --  Hosted: assertions on (preconditions, postconditions,
-            --  type predicates evaluate at runtime). Matches the
-            --  contracts SPARK proof discharged at level 2.
-            for Default_Switches ("Ada") use
-              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
-               "-gnata");
+            case Build_Mode is
+               when "debug" =>
+                  --  Hosted debug: assertions on (preconditions,
+                  --  postconditions, type predicates evaluate at
+                  --  runtime). Matches the contracts SPARK proof
+                  --  discharged at level 2.
+                  for Default_Switches ("Ada") use
+                    ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
+                     "-gnata");
+               when "release" =>
+                  --  Hosted release: -O2 + assertions OFF. RFLX's
+                  --  generated Verify_Message / Cursors_Invariant
+                  --  is the per-frame hot path and the runtime
+                  --  echoes of proofs already discharged statically
+                  --  cost ~76 % of CPU (see profile in commit
+                  --  history). Skipping them gives ~10x throughput.
+                  for Default_Switches ("Ada") use
+                    ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
+                     "-gnatp",
+                     "-ffunction-sections", "-fdata-sections");
+            end case;
          when "bare" =>
             --  Bare-metal: assertions off (No_Exception_Propagation
             --  restriction means a failed contract → HardFault).

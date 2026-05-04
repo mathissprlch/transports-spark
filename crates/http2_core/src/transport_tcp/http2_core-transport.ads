@@ -43,10 +43,21 @@ package Http2_Core.Transport is
 
    --  Non-blocking poll: returns True iff a subsequent Receive would
    --  not block (either bytes are queued or the peer has FIN'd).
-   --  Implementation uses select(2) with a zero timeout. Used by the
-   --  bidi-streaming server to interleave inbound frames with
-   --  outbound replies.
+   --  Backed by a persistent Selector created in Connect/Accept_One;
+   --  no per-call file-descriptor churn.
    function Has_Pending (Chan : Channel) return Boolean
+   with Pre => Is_Open (Chan);
+
+   --  Block (up to Timeout seconds) waiting for the channel to
+   --  become readable. Sets Got_Data := True if data is now
+   --  pending, False if the timeout fired. Used by the connection
+   --  driver to sleep efficiently between RPCs without
+   --  busy-looping. Timeout 0.0 is a non-blocking poll (same
+   --  semantics as Has_Pending).
+   procedure Wait_For_Data
+     (Chan     : Channel;
+      Timeout  : Duration;
+      Got_Data : out Boolean)
    with Pre => Is_Open (Chan);
 
    --  Read exactly `Buffer'Length` bytes (loops over Receive).
@@ -93,8 +104,10 @@ package Http2_Core.Transport is
 private
 
    type Channel is limited record
-      Socket : GNAT.Sockets.Socket_Type;
-      Open   : Boolean := False;
+      Socket    : GNAT.Sockets.Socket_Type;
+      Selector  : GNAT.Sockets.Selector_Type;
+      Sel_Open  : Boolean := False;
+      Open      : Boolean := False;
    end record;
 
    type Listener is limited record

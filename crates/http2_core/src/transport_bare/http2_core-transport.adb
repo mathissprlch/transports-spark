@@ -135,6 +135,16 @@ package body Http2_Core.Transport is
       return Queued_Bytes > 0;
    end Has_Pending;
 
+   procedure Wait_For_Data
+     (Chan     : Channel;
+      Timeout  : Duration;
+      Got_Data : out Boolean)
+   is
+      pragma Unreferenced (Chan, Timeout);
+   begin
+      Got_Data := Queued_Bytes > 0;
+   end Wait_For_Data;
+
    function Queued_Bytes return Natural is
    begin
       if Head = 0 then
