@@ -24,6 +24,7 @@ with Tls_Core.Records;
 with Tls_Core.Transcript;
 with Tls_Core.Finished;
 with Tls_Core.Handshake;
+with Tls_Core.Handshake_Driver;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1087,6 +1088,117 @@ procedure Tls_Core_Tests is
              Equal (Derived, Derived_Expected));
    end Key_Schedule_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 16 — wire-level handshake driver loopback.
+   --
+   --  Two Driver instances (Client and Server), wired through a
+   --  pair of byte buffers, run the PSK_KE handshake to Done.
+   --  After the loopback completes, both drivers expose identical
+   --  Traffic_Secrets — proving the state machine composes the
+   --  primitives correctly.
+   --------------------------------------------------------------------
+   procedure Driver_Loopback_Scenario;
+   procedure Driver_Loopback_Scenario is
+      use type Tls_Core.Handshake_Driver.State;
+      use type Tls_Core.Octet;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+
+      C, S : Tls_Core.Handshake_Driver.Driver;
+
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf_Last : Natural := 0;
+      Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+      pragma Unreferenced (Empty);
+
+      Cs, Ss : Tls_Core.Handshake.Traffic_Secrets;
+   begin
+      Put_Line ("scenario 16 — Handshake_Driver Client/Server loopback");
+
+      Tls_Core.Handshake_Driver.Init (C, Tls_Core.Handshake_Driver.Client, Psk);
+      Tls_Core.Handshake_Driver.Init (S, Tls_Core.Handshake_Driver.Server, Psk);
+
+      --  Client kicks off — empty in, ClientHello out.
+      Tls_Core.Handshake_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      Check ("Client.Step Idle → Awaiting_Server_Hello",
+             Tls_Core.Handshake_Driver.Current_State (C)
+               = Tls_Core.Handshake_Driver.Awaiting_Server_Hello);
+      Check ("Client emits ClientHello bytes", Buf_Last > 4);
+
+      --  Server consumes CH, emits SH.
+      declare
+         CH_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (S, In_Bytes => CH_Bytes, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Server.Step Awaiting_CH → Awaiting_Finished",
+                Tls_Core.Handshake_Driver.Current_State (S)
+                  = Tls_Core.Handshake_Driver.Awaiting_Finished);
+         Check ("Server emits ServerHello bytes", Reply_Last > 4);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Client consumes SH || SF, derives secrets, → Awaiting_Finished.
+      declare
+         Sh_Sf_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Sh_Sf_Bytes, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Client.Step Awaiting_SH → Awaiting_Finished",
+                Tls_Core.Handshake_Driver.Current_State (C)
+                  = Tls_Core.Handshake_Driver.Awaiting_Finished);
+         pragma Unreferenced (Reply_Last);
+      end;
+
+      --  Client emits its Finished, → Done. Server receives → Done.
+      declare
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Client.Step Awaiting_Finished → Done",
+                Tls_Core.Handshake_Driver.Current_State (C)
+                  = Tls_Core.Handshake_Driver.Done);
+
+         declare
+            CF : constant Tls_Core.Octet_Array :=
+              Reply (1 .. Reply_Last);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard_Last : Natural := 0;
+         begin
+            Tls_Core.Handshake_Driver.Step
+              (S, In_Bytes => CF,
+               Out_Buf => Discard, Out_Last => Discard_Last);
+         end;
+         Check ("Server.Step Awaiting_Finished → Done",
+                Tls_Core.Handshake_Driver.Current_State (S)
+                  = Tls_Core.Handshake_Driver.Done);
+      end;
+
+      Tls_Core.Handshake_Driver.Get_Secrets (C, Cs);
+      Tls_Core.Handshake_Driver.Get_Secrets (S, Ss);
+
+      --  Both sides walked the same key-schedule tree — the four
+      --  derived secrets must match across the loopback.
+      Check ("Driver: client/server agree on c_hs",
+             Equal (Cs.Client_Handshake, Ss.Client_Handshake));
+      Check ("Driver: client/server agree on s_hs",
+             Equal (Cs.Server_Handshake, Ss.Server_Handshake));
+      Check ("Driver: client/server agree on c_ap",
+             Equal (Cs.Client_App, Ss.Client_App));
+      Check ("Driver: client/server agree on s_ap",
+             Equal (Cs.Server_App, Ss.Server_App));
+   end Driver_Loopback_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1104,6 +1216,7 @@ begin
    Records_Scenario;
    Transcript_Finished_Scenario;
    Capstone_Scenario;
+   Driver_Loopback_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
