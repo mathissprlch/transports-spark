@@ -20,6 +20,7 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Chacha20;
 with Tls_Core.Poly1305;
 with Tls_Core.Aead_Chacha20_Poly1305;
+with Tls_Core.Records;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -658,6 +659,56 @@ procedure Tls_Core_Tests is
              Equal (Out_Plain, Plain));
    end Record_Aead_Roundtrip;
 
+   --------------------------------------------------------------------
+   --  Records — TLSPlaintext encode/decode round-trip via the
+   --  RecordFlux-generated serializer in Tls_Core.Records.
+   --------------------------------------------------------------------
+
+   procedure Records_Scenario;
+   procedure Records_Scenario is
+      use type Tls_Core.Records.Content_Type;
+      Buf : RFLX.RFLX_Builtin_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'(1 .. 256 => 0);
+      Frag : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#CA#, 16#FE#, 16#BA#, 16#BE#);
+      Last : Natural;
+      OK   : Boolean;
+      T    : Tls_Core.Records.Content_Type;
+      F1, F2 : Natural;
+   begin
+      Put_Line ("scenario 13 — Tls_Core.Records encode/decode round-trip");
+      Tls_Core.Records.Encode
+        (Buffer => Buf, Last => Last,
+         Type_Of => Tls_Core.Records.Application_Data,
+         Fragment => Frag);
+      --  Wire bytes: 17 03 03 00 04 CA FE BA BE
+      Check ("encoded length is 9 bytes", Last = 9);
+      Check ("byte 1 = 0x17 (application_data)",
+             Tls_Core.Octet (Buf.all (1)) = 16#17#);
+      Check ("byte 2 = 0x03 (legacy_version high)",
+             Tls_Core.Octet (Buf.all (2)) = 16#03#);
+      Check ("byte 3 = 0x03 (legacy_version low)",
+             Tls_Core.Octet (Buf.all (3)) = 16#03#);
+      Check ("byte 4 = 0x00 (length high)",
+             Tls_Core.Octet (Buf.all (4)) = 16#00#);
+      Check ("byte 5 = 0x04 (length low)",
+             Tls_Core.Octet (Buf.all (5)) = 16#04#);
+      Check ("bytes 6..9 = fragment",
+             Tls_Core.Octet (Buf.all (6)) = 16#CA#
+             and then Tls_Core.Octet (Buf.all (7)) = 16#FE#
+             and then Tls_Core.Octet (Buf.all (8)) = 16#BA#
+             and then Tls_Core.Octet (Buf.all (9)) = 16#BE#);
+
+      Tls_Core.Records.Decode
+        (Buffer => Buf, Last => Last,
+         OK => OK, Type_Of => T,
+         Fragment_First => F1, Fragment_Last => F2);
+      Check ("decode OK", OK);
+      Check ("type = application_data",
+             T = Tls_Core.Records.Application_Data);
+      Check ("fragment range 6..9", F1 = 6 and then F2 = 9);
+   end Records_Scenario;
+
    procedure Aead_Scenario;
    procedure Aead_Scenario is
       Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array :=
@@ -817,6 +868,7 @@ begin
    Poly1305_Scenario;
    Aead_Scenario;
    Record_Aead_Roundtrip;
+   Records_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

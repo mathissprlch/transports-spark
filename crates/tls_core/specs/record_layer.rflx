@@ -1,0 +1,55 @@
+--  Record: TLS 1.3 record-layer wire envelope.
+--
+--  Source: RFC 8446 §5.1 — Record Layer.
+--
+--    enum {
+--        invalid(0),
+--        change_cipher_spec(20),
+--        alert(21),
+--        handshake(22),
+--        application_data(23),
+--    } ContentType;
+--
+--    struct {
+--        ContentType type;
+--        ProtocolVersion legacy_record_version;
+--        uint16 length;
+--        opaque fragment[TLSPlaintext.length];
+--    } TLSPlaintext;
+--
+--  RFC 8446 §5.1 caps TLSPlaintext.length at 2^14 (16384), §5.2
+--  caps TLSCiphertext.length at 2^14 + 256. We model the unified
+--  outer message as TLSPlaintext with the full ciphertext bound,
+--  since TLSCiphertext is just TLSPlaintext with type fixed to
+--  application_data and the length range extended.
+
+package Record_Layer is
+
+   type Content_Type is
+      (Invalid            =>  0,
+       Change_Cipher_Spec => 20,
+       Alert              => 21,
+       Handshake          => 22,
+       Application_Data   => 23)
+      with Size => 8;
+
+   --  ProtocolVersion is always 0x0303 ("legacy") on the wire in
+   --  TLS 1.3; the actual negotiated version moves into the
+   --  supported_versions extension.
+   type Protocol_Version is unsigned 16;
+
+   --  TLSPlaintext.length: 0 .. 2^14
+   --  TLSCiphertext.length: 0 .. 2^14 + 256
+   --  Use the wider of the two so one message type covers both.
+   type Length_U16 is range 0 .. 16640 with Size => 16;
+
+   type Plaintext is
+      message
+         Type_Field      : Content_Type;
+         Legacy_Version  : Protocol_Version;
+         Length          : Length_U16;
+         Fragment        : Opaque
+            with Size => Length * 8;
+      end message;
+
+end Record_Layer;

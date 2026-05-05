@@ -1,0 +1,48 @@
+--  Handshake: TLS 1.3 handshake message envelope.
+--
+--  Source: RFC 8446 §4 — Handshake Protocol.
+--
+--    enum { ..., (255) } HandshakeType;
+--
+--    struct {
+--        HandshakeType msg_type;
+--        uint24 length;
+--        select (Handshake.msg_type) { ... } body;
+--    } Handshake;
+--
+--  We model the envelope as a generic header + opaque body; the
+--  per-message-type body parsing lives in dedicated specs
+--  (clienthello.rflx, serverhello.rflx, ...) so the variant union
+--  doesn't bloat the parent message.
+
+package Handshake_Layer is
+
+   --  RFC 8446 §B.3 HandshakeType.
+   type Handshake_Type is
+      (Hello_Request           =>   0,  --  reserved in TLS 1.3
+       Client_Hello            =>   1,
+       Server_Hello            =>   2,
+       New_Session_Ticket      =>   4,
+       End_Of_Early_Data       =>   5,
+       Encrypted_Extensions    =>   8,
+       Certificate             =>  11,
+       Certificate_Request     =>  13,
+       Certificate_Verify      =>  15,
+       Finished                =>  20,
+       Key_Update              =>  24,
+       Message_Hash            => 254)
+      with Size => 8;
+
+   --  uint24 length per RFC 8446 §4. Caps the body at 2^24 - 1
+   --  octets, but realistic handshake bodies are <= a few KB.
+   type Length_U24 is unsigned 24;
+
+   type Envelope is
+      message
+         Msg_Type : Handshake_Type;
+         Length   : Length_U24;
+         Body_Bytes : Opaque
+            with Size => Length * 8;
+      end message;
+
+end Handshake_Layer;
