@@ -16,6 +16,7 @@ with Tls_Core.Record_Layer;
 with Tls_Core.Sha256;
 with Tls_Core.Hmac_Sha256;
 with Tls_Core.Hkdf_Sha256;
+with Tls_Core.Key_Schedule;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -453,6 +454,63 @@ procedure Tls_Core_Tests is
       end;
    end Expand_Label_End_To_End;
 
+   --------------------------------------------------------------------
+   --  Key schedule — RFC 8448 §3 (TLS 1.3 1-RTT simple handshake).
+   --
+   --  Step 0 of every TLS 1.3 handshake: Early Secret =
+   --    HKDF-Extract(0_32, 0_32)
+   --  RFC 8448 §3 logs this exactly:
+   --    33 ad 0a 1c 60 7e c0 3b 09 e6 cd 98 93 68 0c e2
+   --    10 ad f3 00 aa 1f 26 60 e1 b2 2e 10 f1 70 f9 2a
+   --
+   --  Then "derived" = Derive-Secret(Early_Secret, "derived",
+   --  ""), which feeds the next Extract that mixes in the
+   --  (EC)DHE shared secret. RFC 8448 §3 logs:
+   --    6f 26 15 a1 08 c7 02 c5 67 8f 54 fc 9d ba b6 97
+   --    16 c0 76 18 9c 48 25 0c eb ea c3 57 6c 36 11 ba
+   --------------------------------------------------------------------
+
+   procedure Key_Schedule_Scenario;
+   procedure Key_Schedule_Scenario is
+      use type Tls_Core.Sha256.Digest;
+      Zero32 : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 0);
+      Early_Secret_Expected :
+        constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#33#, 16#AD#, 16#0A#, 16#1C#, 16#60#, 16#7E#, 16#C0#, 16#3B#,
+         16#09#, 16#E6#, 16#CD#, 16#98#, 16#93#, 16#68#, 16#0C#, 16#E2#,
+         16#10#, 16#AD#, 16#F3#, 16#00#, 16#AA#, 16#1F#, 16#26#, 16#60#,
+         16#E1#, 16#B2#, 16#2E#, 16#10#, 16#F1#, 16#70#, 16#F9#, 16#2A#);
+      Derived_Expected :
+        constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#6F#, 16#26#, 16#15#, 16#A1#, 16#08#, 16#C7#, 16#02#, 16#C5#,
+         16#67#, 16#8F#, 16#54#, 16#FC#, 16#9D#, 16#BA#, 16#B6#, 16#97#,
+         16#16#, 16#C0#, 16#76#, 16#18#, 16#9C#, 16#48#, 16#25#, 16#0C#,
+         16#EB#, 16#EA#, 16#C3#, 16#57#, 16#6C#, 16#36#, 16#11#, 16#BA#);
+      Derived_Label : constant Tls_Core.Octet_Array (1 .. 7) :=
+        (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+      Empty   : constant Tls_Core.Octet_Array (1 .. 0) :=
+        (others => 0);
+      Early_Secret : Tls_Core.Key_Schedule.Secret;
+      Derived      : Tls_Core.Key_Schedule.Secret;
+   begin
+      Put_Line
+        ("scenario 8 — TLS 1.3 key schedule, RFC 8448 §3 "
+         & "Early Secret + derived");
+      Tls_Core.Key_Schedule.Extract
+        (Salt => Zero32, IKM => Zero32, Out_PRK => Early_Secret);
+      Check ("early_secret matches RFC 8448 §3",
+             Equal (Early_Secret, Early_Secret_Expected));
+
+      Tls_Core.Key_Schedule.Derive_Secret
+        (Secret_In  => Early_Secret,
+         Label      => Derived_Label,
+         Messages   => Empty,
+         Out_Secret => Derived);
+      Check ("Derive-Secret(early, derived, empty) matches RFC 8448",
+             Equal (Derived, Derived_Expected));
+   end Key_Schedule_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -462,6 +520,7 @@ begin
    Hmac_Sha256_Scenario;
    Hkdf_Expand_Scenario;
    Expand_Label_End_To_End;
+   Key_Schedule_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
