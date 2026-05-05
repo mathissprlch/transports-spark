@@ -45,6 +45,18 @@ is
       Sig        : Signature)
       return Boolean;
 
+   --  RFC 8032 §5.1.6: derive the public key from a 32-byte seed.
+   procedure Public_Of_Seed
+     (Seed       : Bytes_32;
+      Out_Public : out Bytes_32);
+
+   --  RFC 8032 §5.1.6: produce a 64-byte signature over Message
+   --  using the 32-byte seed (Ed25519 private key).
+   procedure Sign
+     (Seed    : Bytes_32;
+      Message : Octet_Array;
+      Out_Sig : out Signature);
+
    --  Diagnostic: encode the base point B. Should return the
    --  canonical encoding 0x5866666666...66 (32 bytes).
    procedure Debug_Encode_Base (Out_Bytes : out Bytes_32);

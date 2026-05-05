@@ -31,6 +31,7 @@ with Tls_Core.Sha512;
 with Tls_Core.Ed25519;
 with Tls_Core.X509;
 with Tls_Core.Hello;
+with Tls_Core.Transport;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1986,6 +1987,40 @@ procedure Tls_Core_Tests is
          Check ("Ed25519 decode Pub_1 succeeds", OK_Decode);
          Check ("Ed25519 decode-then-encode Pub_1 round-trips",
                 Equal (Got, Pub_1));
+      end;
+
+      --  RFC 8032 §7.1 sign vectors — derive public key and produce
+      --  the canonical signature given the seed.
+      declare
+         Seed_1 : constant Tls_Core.Ed25519.Bytes_32 :=
+           (16#9D#, 16#61#, 16#B1#, 16#9D#, 16#EF#, 16#FD#, 16#5A#, 16#60#,
+            16#BA#, 16#84#, 16#4A#, 16#F4#, 16#92#, 16#EC#, 16#2C#, 16#C4#,
+            16#44#, 16#49#, 16#C5#, 16#69#, 16#7B#, 16#32#, 16#69#, 16#19#,
+            16#70#, 16#3B#, 16#AC#, 16#03#, 16#1C#, 16#AE#, 16#7F#, 16#60#);
+         Got_Sig : Tls_Core.Ed25519.Signature;
+         Got_Pub : Tls_Core.Ed25519.Bytes_32;
+      begin
+         Tls_Core.Ed25519.Public_Of_Seed (Seed_1, Got_Pub);
+         Check ("Ed25519 Public_Of_Seed matches RFC §7.1 TEST 1 pub",
+                Equal (Got_Pub, Pub_1));
+         Tls_Core.Ed25519.Sign (Seed_1, Msg_1, Got_Sig);
+         Check ("Ed25519 Sign produces RFC §7.1 TEST 1 signature",
+                Equal (Got_Sig, Sig_1));
+         Check ("Ed25519 sign output verifies",
+                Tls_Core.Ed25519.Verify (Got_Pub, Msg_1, Got_Sig));
+      end;
+
+      declare
+         Seed_2 : constant Tls_Core.Ed25519.Bytes_32 :=
+           (16#4C#, 16#CD#, 16#08#, 16#9B#, 16#28#, 16#FF#, 16#96#, 16#DA#,
+            16#9D#, 16#B6#, 16#C3#, 16#46#, 16#EC#, 16#11#, 16#4E#, 16#0F#,
+            16#5B#, 16#8A#, 16#31#, 16#9F#, 16#35#, 16#AB#, 16#A6#, 16#24#,
+            16#DA#, 16#8C#, 16#F6#, 16#ED#, 16#4F#, 16#B8#, 16#A6#, 16#FB#);
+         Got_Sig : Tls_Core.Ed25519.Signature;
+      begin
+         Tls_Core.Ed25519.Sign (Seed_2, Msg_2, Got_Sig);
+         Check ("Ed25519 Sign produces RFC §7.1 TEST 2 signature",
+                Equal (Got_Sig, Sig_2));
       end;
 
       --  Diagnostic: [2] * B should equal known doubled base point.

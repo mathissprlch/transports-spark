@@ -459,16 +459,16 @@ is
    --  Algorithm ported from TweetNaCl modL.
    ---------------------------------------------------------------------
 
-   procedure Mod_L (Out_Bytes : out Bytes_32; X_In : Octet_Array);
-   procedure Mod_L (Out_Bytes : out Bytes_32; X_In : Octet_Array) is
-      X : array (0 .. 63) of Integer_64;
+   --  Internal helper: reduce a 64-element Integer_64 array (the
+   --  shape Sign produces from polynomial multiplication) mod L
+   --  in-place, then emit the canonical 32-byte LE result.
+   subtype X64 is Natural range 0 .. 63;
+   type X64_Array is array (X64) of Integer_64;
+
+   procedure Mod_L_Core (Out_Bytes : out Bytes_32; X : in out X64_Array);
+   procedure Mod_L_Core (Out_Bytes : out Bytes_32; X : in out X64_Array) is
       Carry_Acc : Integer_64;
    begin
-      pragma Assert (X_In'Length = 64);
-      for I in 0 .. 63 loop
-         X (I) := Integer_64 (X_In (X_In'First + I));
-      end loop;
-
       for I in reverse 32 .. 63 loop
          Carry_Acc := 0;
          for J in (I - 32) .. (I - 13) loop
@@ -493,6 +493,17 @@ is
          X (I + 1) := X (I + 1) + Asr (X (I), 8);
          Out_Bytes (1 + I) := Octet (And_64 (X (I), 16#FF#));
       end loop;
+   end Mod_L_Core;
+
+   procedure Mod_L (Out_Bytes : out Bytes_32; X_In : Octet_Array);
+   procedure Mod_L (Out_Bytes : out Bytes_32; X_In : Octet_Array) is
+      X : X64_Array := (others => 0);
+   begin
+      pragma Assert (X_In'Length = 64);
+      for I in 0 .. 63 loop
+         X (I) := Integer_64 (X_In (X_In'First + I));
+      end loop;
+      Mod_L_Core (Out_Bytes, X);
    end Mod_L;
 
    ---------------------------------------------------------------------
@@ -606,5 +617,137 @@ is
          Encode_Point (Out_Bytes, P);
       end if;
    end Debug_Decode_Encode;
+
+   ---------------------------------------------------------------------
+   --  Derive the clamped scalar a and prefix from the seed.
+   ---------------------------------------------------------------------
+
+   procedure Seed_To_Scalar_And_Prefix
+     (Seed   : Bytes_32;
+      A_Out  : out Bytes_32;
+      Prefix : out Bytes_32);
+   procedure Seed_To_Scalar_And_Prefix
+     (Seed   : Bytes_32;
+      A_Out  : out Bytes_32;
+      Prefix : out Bytes_32)
+   is
+      H : Tls_Core.Sha512.Digest;
+   begin
+      Tls_Core.Sha512.Hash (Seed, H);
+      A_Out := H (1 .. 32);
+      A_Out (1) := A_Out (1) and 16#F8#;
+      A_Out (32) := (A_Out (32) and 16#7F#) or 16#40#;
+      Prefix := H (33 .. 64);
+   end Seed_To_Scalar_And_Prefix;
+
+   ---------------------------------------------------------------------
+   --  Public_Of_Seed — A = encode([a]B).
+   ---------------------------------------------------------------------
+
+   procedure Public_Of_Seed
+     (Seed       : Bytes_32;
+      Out_Public : out Bytes_32)
+   is
+      A : Bytes_32;
+      Prefix : Bytes_32;
+      B, P : Point;
+   begin
+      Seed_To_Scalar_And_Prefix (Seed, A, Prefix);
+      Get_Base_Point (B);
+      Scalar_Mult_Bytes (P, A, B);
+      Encode_Point (Out_Public, P);
+   end Public_Of_Seed;
+
+   ---------------------------------------------------------------------
+   --  Sign — RFC 8032 §5.1.6.
+   ---------------------------------------------------------------------
+
+   procedure Sign
+     (Seed    : Bytes_32;
+      Message : Octet_Array;
+      Out_Sig : out Signature)
+   is
+      A_Bytes : Bytes_32;
+      Prefix  : Bytes_32;
+      Pub_Key : Bytes_32;
+      B_Pt    : Point;
+
+      R_Hash  : Tls_Core.Sha512.Digest;
+      R_Bytes : Bytes_32;
+      R_Pt    : Point;
+      R_Enc   : Bytes_32;
+
+      K_Hash  : Tls_Core.Sha512.Digest;
+      K_Bytes : Bytes_32;
+
+      X       : X64_Array := (others => 0);
+      S_Out   : Bytes_32;
+
+      Ctx     : Tls_Core.Sha512.Context;
+   begin
+      Out_Sig := (others => 0);
+
+      Seed_To_Scalar_And_Prefix (Seed, A_Bytes, Prefix);
+      Get_Base_Point (B_Pt);
+
+      --  A = encode([a]B)
+      declare
+         A_Pt : Point;
+      begin
+         Scalar_Mult_Bytes (A_Pt, A_Bytes, B_Pt);
+         Encode_Point (Pub_Key, A_Pt);
+      end;
+
+      --  r = SHA-512(prefix || message), reduced mod L.
+      Tls_Core.Sha512.Init (Ctx);
+      Tls_Core.Sha512.Update (Ctx, Prefix);
+      Tls_Core.Sha512.Update (Ctx, Message);
+      Tls_Core.Sha512.Finalize (Ctx, R_Hash);
+      declare
+         R_Wide : Octet_Array (1 .. 64);
+      begin
+         for I in 1 .. 64 loop
+            R_Wide (I) := R_Hash (I);
+         end loop;
+         Mod_L (R_Bytes, R_Wide);
+      end;
+
+      --  R = encode([r]B).
+      Scalar_Mult_Bytes (R_Pt, R_Bytes, B_Pt);
+      Encode_Point (R_Enc, R_Pt);
+
+      --  k = SHA-512(R_enc || A || message), reduced mod L.
+      Tls_Core.Sha512.Init (Ctx);
+      Tls_Core.Sha512.Update (Ctx, R_Enc);
+      Tls_Core.Sha512.Update (Ctx, Pub_Key);
+      Tls_Core.Sha512.Update (Ctx, Message);
+      Tls_Core.Sha512.Finalize (Ctx, K_Hash);
+      declare
+         K_Wide : Octet_Array (1 .. 64);
+      begin
+         for I in 1 .. 64 loop
+            K_Wide (I) := K_Hash (I);
+         end loop;
+         Mod_L (K_Bytes, K_Wide);
+      end;
+
+      --  s = (r + k * a) mod L. Build the polynomial product into X
+      --  per TweetNaCl: x[i+j] += k[i] * a[j], then mod L.
+      for I in 0 .. 31 loop
+         X (I) := Integer_64 (R_Bytes (1 + I));
+      end loop;
+      for I in 0 .. 31 loop
+         for J in 0 .. 31 loop
+            X (I + J) :=
+              X (I + J)
+              + Integer_64 (K_Bytes (1 + I)) * Integer_64 (A_Bytes (1 + J));
+         end loop;
+      end loop;
+      Mod_L_Core (S_Out, X);
+
+      --  Concatenate R || s.
+      Out_Sig (1 .. 32) := R_Enc;
+      Out_Sig (33 .. 64) := S_Out;
+   end Sign;
 
 end Tls_Core.Ed25519;
