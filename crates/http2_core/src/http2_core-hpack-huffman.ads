@@ -319,12 +319,17 @@ is
       Output      : in out Octet_Array;
       Output_Last : out Natural;
       Output_OK   : out Boolean)
-   with Pre => Output'Length >= 1;
+   with Pre => Output'Length >= 1
+               and then Output'Last < Natural'Last
+               and then Input'Last < Natural'Last;
 
    --  Worst-case Huffman expansion: 30 bits per input symbol. Useful
-   --  for sizing Output before calling Encode.
+   --  for sizing Output before calling Encode. Caller must bound
+   --  Input_Length so the multiplication stays in Natural range —
+   --  any realistic header is well under this.
    function Max_Encoded_Length (Input_Length : Natural) return Natural
-   is ((Input_Length * 30 + 7) / 8 + 1);
+   is ((Input_Length * 30 + 7) / 8 + 1)
+   with Pre => Input_Length <= (Natural'Last - 7) / 30;
 
    --  Decode a Huffman bit stream `Input` into raw bytes `Output`.
    --  Walks the canonical code table for each emitted symbol; O(257
@@ -338,6 +343,9 @@ is
       Output      : in out Octet_Array;
       Output_Last : out Natural;
       Output_OK   : out Boolean)
-   with Pre => Output'Length >= 1;
+   with Pre => Output'Length >= 1
+               and then Output'Last < Natural'Last
+               and then Input'Last < Natural'Last
+               and then Input'Length <= Natural'Last / 8;
 
 end Http2_Core.Hpack.Huffman;

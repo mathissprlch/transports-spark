@@ -30,7 +30,9 @@ is
       Output      : in out Octet_Array;
       Output_Last : out Natural;
       Output_OK   : out Boolean)
-   with Pre => Output'Length >= 1;
+   with Pre => Output'Length >= 1
+               and then Output'Last < Natural'Last
+               and then Input'Last < Natural'Last;
 
    --  Decode a §5.2 string literal starting at Input(First). The
    --  decoded bytes are written into Output starting at its First.
@@ -48,6 +50,8 @@ is
       Output_Last : out Natural;
       Output_OK   : out Boolean)
    with Pre => First in Input'Range
-               and then Output'Length >= 1;
+               and then Output'Length >= 1
+               and then Output'Last < Natural'Last
+               and then Input'Last < Natural'Last;
 
 end Http2_Core.Hpack.String_Literal;
