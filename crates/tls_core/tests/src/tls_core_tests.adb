@@ -21,6 +21,9 @@ with Tls_Core.Chacha20;
 with Tls_Core.Poly1305;
 with Tls_Core.Aead_Chacha20_Poly1305;
 with Tls_Core.Records;
+with Tls_Core.Transcript;
+with Tls_Core.Finished;
+with Tls_Core.Handshake;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -664,6 +667,236 @@ procedure Tls_Core_Tests is
    --  RecordFlux-generated serializer in Tls_Core.Records.
    --------------------------------------------------------------------
 
+   --------------------------------------------------------------------
+   --  Transcript + Finished — full chain from PSK to verify_data.
+   --
+   --  This composes every slice landed in v0.5:
+   --    * Tls_Core.Sha256              (slice 7)
+   --    * Tls_Core.Key_Schedule.Extract / Derive_Secret (slice 2)
+   --    * Tls_Core.Hkdf.Expand_Label   (slice 1)
+   --    * Tls_Core.Transcript.{Init,Append,Snapshot}
+   --    * Tls_Core.Finished.Compute
+   --
+   --  The actual byte values aren't matched against an external
+   --  vector here (RFC 8448 §3 stops short of Finished without an
+   --  ECDHE step we don't implement); instead we check determinism,
+   --  the right output length, and that two parties operating on
+   --  the same inputs produce identical verify_data — i.e., the
+   --  primitive is composing correctly.
+   --------------------------------------------------------------------
+
+   --------------------------------------------------------------------
+   --  Capstone — full PSK_KE handshake on a single process,
+   --  driven by Tls_Core.Handshake.Derive_Psk_Secrets, with
+   --  application data sealed/opened via the derived keys.
+   --
+   --  This is the v0.5 end-to-end smoke test: PSK in, working
+   --  authenticated channel out. Both "client" and "server"
+   --  compute the same secrets from the same recorded transcript;
+   --  the test confirms determinism + that the AEAD cycle works
+   --  with the derived application-traffic secret as the key.
+   --------------------------------------------------------------------
+
+   procedure Capstone_Scenario;
+   procedure Capstone_Scenario is
+      use type Tls_Core.Sha256.Digest;
+      PSK : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#5C#);
+      --  Synthetic recorded handshake transcript bytes. The actual
+      --  bytes don't have to be valid TLS messages for the key
+      --  derivation to produce identical outputs — both parties
+      --  just need to feed the same byte sequences.
+      Ch_Bytes : constant Tls_Core.Octet_Array (1 .. 90) :=
+        (others => 16#11#);
+      Sh_Bytes : constant Tls_Core.Octet_Array (1 .. 90) :=
+        (others => 16#22#);
+      Sf_Bytes : constant Tls_Core.Octet_Array (1 .. 36) :=
+        (others => 16#33#);
+      Client_Side, Server_Side : Tls_Core.Handshake.Traffic_Secrets;
+   begin
+      Put_Line
+        ("scenario 15 — capstone: PSK_KE handshake → AEAD round-trip");
+
+      --  Both sides derive in parallel from the same inputs.
+      Tls_Core.Handshake.Derive_Psk_Secrets
+        (PSK => PSK,
+         Client_Hello => Ch_Bytes, Server_Hello => Sh_Bytes,
+         Server_Finished => Sf_Bytes,
+         Out_Secrets => Client_Side);
+      Tls_Core.Handshake.Derive_Psk_Secrets
+        (PSK => PSK,
+         Client_Hello => Ch_Bytes, Server_Hello => Sh_Bytes,
+         Server_Finished => Sf_Bytes,
+         Out_Secrets => Server_Side);
+
+      --  Both sides reach identical secrets — the property the
+      --  whole TLS 1.3 key-schedule architecture buys us.
+      Check ("client + server agree on c_hs_traffic_secret",
+             Equal (Client_Side.Client_Handshake,
+                    Server_Side.Client_Handshake));
+      Check ("client + server agree on s_hs_traffic_secret",
+             Equal (Client_Side.Server_Handshake,
+                    Server_Side.Server_Handshake));
+      Check ("client + server agree on c_ap_traffic_secret",
+             Equal (Client_Side.Client_App,
+                    Server_Side.Client_App));
+      Check ("client + server agree on s_ap_traffic_secret",
+             Equal (Client_Side.Server_App,
+                    Server_Side.Server_App));
+
+      --  The four secrets MUST be distinct (else key separation
+      --  is broken).
+      Check ("c_hs_traffic /= s_hs_traffic",
+             not Equal (Client_Side.Client_Handshake,
+                        Client_Side.Server_Handshake));
+      Check ("c_ap_traffic /= s_ap_traffic",
+             not Equal (Client_Side.Client_App,
+                        Client_Side.Server_App));
+      Check ("c_hs_traffic /= c_ap_traffic",
+             not Equal (Client_Side.Client_Handshake,
+                        Client_Side.Client_App));
+
+      --  Now use the c_ap_traffic_secret directly as a 32-byte
+      --  AEAD key (production would HKDF-Expand-Label "key" /
+      --  "iv" out of it; this test just demonstrates that the
+      --  derived bytes produce a working AEAD round-trip).
+      declare
+         AEAD_Key : Tls_Core.Aead_Chacha20_Poly1305.Key_Array
+           := Client_Side.Client_App;
+         Nonce : constant Tls_Core.Aead_Chacha20_Poly1305.Nonce_Array :=
+           (others => 16#33#);
+         Plain : constant Tls_Core.Octet_Array (1 .. 13) :=
+           (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#,  -- "Hello"
+            16#2C#, 16#20#,                          -- ", "
+            16#54#, 16#4C#, 16#53#, 16#21#,          -- "TLS!"
+            16#0A#, 16#0D#);
+         AAD : constant Tls_Core.Octet_Array (1 .. 0) :=
+           (others => 0);
+         Cipher : Tls_Core.Octet_Array (1 .. 13);
+         Tag : Tls_Core.Aead_Chacha20_Poly1305.Tag_Array;
+         Decrypted : Tls_Core.Octet_Array (1 .. 13);
+         Ok : Boolean;
+      begin
+         Tls_Core.Aead_Chacha20_Poly1305.Seal
+           (Key => AEAD_Key, Nonce => Nonce, AAD => AAD,
+            Plaintext => Plain, Ciphertext => Cipher, Tag => Tag);
+         Tls_Core.Aead_Chacha20_Poly1305.Open
+           (Key => AEAD_Key, Nonce => Nonce, AAD => AAD,
+            Ciphertext => Cipher, Tag => Tag,
+            Plaintext => Decrypted, OK => Ok);
+         Check ("AEAD opens with derived key", Ok);
+         Check ("decrypted plaintext matches original",
+                Equal (Decrypted, Plain));
+      end;
+   end Capstone_Scenario;
+
+   procedure Transcript_Finished_Scenario;
+   procedure Transcript_Finished_Scenario is
+      use type Tls_Core.Sha256.Digest;
+      PSK : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#AB#);
+      --  Synthetic ClientHello and ServerHello bodies (just bytes
+      --  for the running hash; not validated against a wire spec
+      --  here — the wire-format check is scenario 13).
+      Ch_Bytes : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (others => 16#11#);
+      Sh_Bytes : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (others => 16#22#);
+      Early_Secret, Handshake_Secret : Tls_Core.Key_Schedule.Secret;
+      Hs_Traffic : Tls_Core.Key_Schedule.Secret;
+      Empty   : constant Tls_Core.Octet_Array (1 .. 0) :=
+        (others => 0);
+      Zero32  : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 0);
+      Derived_Label : constant Tls_Core.Octet_Array (1 .. 7) :=
+        (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+      C_Hs_Label : constant Tls_Core.Octet_Array (1 .. 12) :=
+        (16#63#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
+         16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+      Tx : Tls_Core.Transcript.Accumulator;
+      Snapshot_Hash : Tls_Core.Sha256.Digest;
+      Verify_A, Verify_B : Tls_Core.Finished.Verify_Data;
+   begin
+      Put_Line
+        ("scenario 14 — PSK key schedule chain → Finished verify_data");
+
+      --  Step 1: Early Secret = HKDF-Extract(0_32, PSK).
+      Tls_Core.Key_Schedule.Extract
+        (Salt => Zero32, IKM => PSK, Out_PRK => Early_Secret);
+
+      --  Step 2: derived = Derive-Secret(Early_Secret, "derived", "").
+      declare
+         Derived : Tls_Core.Key_Schedule.Secret;
+      begin
+         Tls_Core.Key_Schedule.Derive_Secret
+           (Secret_In  => Early_Secret,
+            Label      => Derived_Label,
+            Messages   => Empty,
+            Out_Secret => Derived);
+         --  PSK-only path skips real ECDHE; per RFC 8446 §7.1
+         --  the (EC)DHE input is then 32 zero bytes.
+         Tls_Core.Key_Schedule.Extract
+           (Salt => Derived, IKM => Zero32,
+            Out_PRK => Handshake_Secret);
+      end;
+
+      --  Step 3: feed ClientHello + ServerHello into the transcript.
+      Tls_Core.Transcript.Init (Tx);
+      Tls_Core.Transcript.Append (Tx, Ch_Bytes);
+      Tls_Core.Transcript.Append (Tx, Sh_Bytes);
+      Tls_Core.Transcript.Snapshot (Tx, Snapshot_Hash);
+
+      --  Step 4: client_handshake_traffic_secret =
+      --    Derive-Secret(Handshake_Secret, "c hs traffic", CH..SH).
+      Tls_Core.Key_Schedule.Derive_Secret
+        (Secret_In  => Handshake_Secret,
+         Label      => C_Hs_Label,
+         Messages   => Ch_Bytes & Sh_Bytes,
+         Out_Secret => Hs_Traffic);
+
+      --  Step 5: verify_data = HMAC(finished_key, Snapshot_Hash)
+      --  where finished_key = HKDF-Expand-Label(Hs_Traffic,
+      --  "finished", "", 32).
+      Tls_Core.Finished.Compute
+        (Base_Key => Hs_Traffic,
+         Transcript_Hash => Snapshot_Hash,
+         Out_Verify => Verify_A);
+
+      Check ("verify_data is 32 bytes", Verify_A'Length = 32);
+      --  Determinism: re-run from scratch.
+      declare
+         Tx_2 : Tls_Core.Transcript.Accumulator;
+         Snap_2 : Tls_Core.Sha256.Digest;
+      begin
+         Tls_Core.Transcript.Init (Tx_2);
+         Tls_Core.Transcript.Append (Tx_2, Ch_Bytes);
+         Tls_Core.Transcript.Append (Tx_2, Sh_Bytes);
+         Tls_Core.Transcript.Snapshot (Tx_2, Snap_2);
+         Check ("transcript snapshot deterministic",
+                Equal (Snap_2, Snapshot_Hash));
+      end;
+      Tls_Core.Finished.Compute
+        (Base_Key => Hs_Traffic,
+         Transcript_Hash => Snapshot_Hash,
+         Out_Verify => Verify_B);
+      Check ("Finished compute deterministic",
+             Equal (Verify_A, Verify_B));
+      --  Sanity: verify_data must depend on the Snapshot (mutating
+      --  one byte of the transcript-hash flips the verify_data).
+      declare
+         Mutated : Tls_Core.Sha256.Digest := Snapshot_Hash;
+         Verify_C : Tls_Core.Finished.Verify_Data;
+      begin
+         Mutated (1) := Mutated (1) xor 16#01#;
+         Tls_Core.Finished.Compute
+           (Base_Key => Hs_Traffic,
+            Transcript_Hash => Mutated,
+            Out_Verify => Verify_C);
+         Check ("Finished depends on transcript hash",
+                not Equal (Verify_A, Verify_C));
+      end;
+   end Transcript_Finished_Scenario;
+
    procedure Records_Scenario;
    procedure Records_Scenario is
       use type Tls_Core.Records.Content_Type;
@@ -869,6 +1102,8 @@ begin
    Aead_Scenario;
    Record_Aead_Roundtrip;
    Records_Scenario;
+   Transcript_Finished_Scenario;
+   Capstone_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
