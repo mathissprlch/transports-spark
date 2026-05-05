@@ -26,6 +26,7 @@ with Tls_Core.Finished;
 with Tls_Core.Handshake;
 with Tls_Core.Handshake_Driver;
 with Tls_Core.Channel;
+with Tls_Core.X25519;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1339,6 +1340,111 @@ procedure Tls_Core_Tests is
       end;
    end Channel_Roundtrip_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 18 — X25519 RFC 7748 §5.2 byte-exact test vectors.
+   --
+   --  Two single-shot input/output triples from §5.2 plus a Diffie-
+   --  Hellman round (§6.1): Alice and Bob each derive a public key
+   --  from their private scalar via the base point, then each
+   --  derive the shared secret from their private + peer's public.
+   --  Both shared secrets must match.
+   --------------------------------------------------------------------
+   procedure X25519_Scenario;
+   procedure X25519_Scenario is
+      use type Tls_Core.Octet;
+
+      --  RFC 7748 §5.2 first vector.
+      Scalar_1 : constant Tls_Core.X25519.Bytes_32 :=
+        (16#A5#, 16#46#, 16#E3#, 16#6B#, 16#F0#, 16#52#, 16#7C#, 16#9D#,
+         16#3B#, 16#16#, 16#15#, 16#4B#, 16#82#, 16#46#, 16#5E#, 16#DD#,
+         16#62#, 16#14#, 16#4C#, 16#0A#, 16#C1#, 16#FC#, 16#5A#, 16#18#,
+         16#50#, 16#6A#, 16#22#, 16#44#, 16#BA#, 16#44#, 16#9A#, 16#C4#);
+      U_1 : constant Tls_Core.X25519.Bytes_32 :=
+        (16#E6#, 16#DB#, 16#68#, 16#67#, 16#58#, 16#30#, 16#30#, 16#DB#,
+         16#35#, 16#94#, 16#C1#, 16#A4#, 16#24#, 16#B1#, 16#5F#, 16#7C#,
+         16#72#, 16#66#, 16#24#, 16#EC#, 16#26#, 16#B3#, 16#35#, 16#3B#,
+         16#10#, 16#A9#, 16#03#, 16#A6#, 16#D0#, 16#AB#, 16#1C#, 16#4C#);
+      Expected_1 : constant Tls_Core.X25519.Bytes_32 :=
+        (16#C3#, 16#DA#, 16#55#, 16#37#, 16#9D#, 16#E9#, 16#C6#, 16#90#,
+         16#8E#, 16#94#, 16#EA#, 16#4D#, 16#F2#, 16#8D#, 16#08#, 16#4F#,
+         16#32#, 16#EC#, 16#CF#, 16#03#, 16#49#, 16#1C#, 16#71#, 16#F7#,
+         16#54#, 16#B4#, 16#07#, 16#55#, 16#77#, 16#A2#, 16#85#, 16#52#);
+
+      --  RFC 7748 §5.2 second vector.
+      Scalar_2 : constant Tls_Core.X25519.Bytes_32 :=
+        (16#4B#, 16#66#, 16#E9#, 16#D4#, 16#D1#, 16#B4#, 16#67#, 16#3C#,
+         16#5A#, 16#D2#, 16#26#, 16#91#, 16#95#, 16#7D#, 16#6A#, 16#F5#,
+         16#C1#, 16#1B#, 16#64#, 16#21#, 16#E0#, 16#EA#, 16#01#, 16#D4#,
+         16#2C#, 16#A4#, 16#16#, 16#9E#, 16#79#, 16#18#, 16#BA#, 16#0D#);
+      U_2 : constant Tls_Core.X25519.Bytes_32 :=
+        (16#E5#, 16#21#, 16#0F#, 16#12#, 16#78#, 16#68#, 16#11#, 16#D3#,
+         16#F4#, 16#B7#, 16#95#, 16#9D#, 16#05#, 16#38#, 16#AE#, 16#2C#,
+         16#31#, 16#DB#, 16#E7#, 16#10#, 16#6F#, 16#C0#, 16#3C#, 16#3E#,
+         16#FC#, 16#4C#, 16#D5#, 16#49#, 16#C7#, 16#15#, 16#A4#, 16#93#);
+      Expected_2 : constant Tls_Core.X25519.Bytes_32 :=
+        (16#95#, 16#CB#, 16#DE#, 16#94#, 16#76#, 16#E8#, 16#90#, 16#7D#,
+         16#7A#, 16#AD#, 16#E4#, 16#5C#, 16#B4#, 16#B8#, 16#73#, 16#F8#,
+         16#8B#, 16#59#, 16#5A#, 16#68#, 16#79#, 16#9F#, 16#A1#, 16#52#,
+         16#E6#, 16#F8#, 16#F7#, 16#64#, 16#7A#, 16#AC#, 16#79#, 16#57#);
+
+      Got : Tls_Core.X25519.Bytes_32 := (others => 0);
+   begin
+      Put_Line ("scenario 18 — X25519 RFC 7748 §5.2 vectors");
+
+      Tls_Core.X25519.Scalar_Mult (Scalar_1, U_1, Got);
+      Check ("X25519 vector #1 matches RFC 7748 §5.2", Equal (Got, Expected_1));
+
+      Tls_Core.X25519.Scalar_Mult (Scalar_2, U_2, Got);
+      Check ("X25519 vector #2 matches RFC 7748 §5.2", Equal (Got, Expected_2));
+
+      --  Diffie-Hellman round-trip (RFC 7748 §6.1).
+      declare
+         Alice_Priv : constant Tls_Core.X25519.Bytes_32 :=
+           (16#77#, 16#07#, 16#6D#, 16#0A#, 16#73#, 16#18#, 16#A5#, 16#7D#,
+            16#3C#, 16#16#, 16#C1#, 16#72#, 16#51#, 16#B2#, 16#66#, 16#45#,
+            16#DF#, 16#4C#, 16#2F#, 16#87#, 16#EB#, 16#C0#, 16#99#, 16#2A#,
+            16#B1#, 16#77#, 16#FB#, 16#A5#, 16#1D#, 16#B9#, 16#2C#, 16#2A#);
+         Alice_Pub_Expected : constant Tls_Core.X25519.Bytes_32 :=
+           (16#85#, 16#20#, 16#F0#, 16#09#, 16#89#, 16#30#, 16#A7#, 16#54#,
+            16#74#, 16#8B#, 16#7D#, 16#DC#, 16#B4#, 16#3E#, 16#F7#, 16#5A#,
+            16#0D#, 16#BF#, 16#3A#, 16#0D#, 16#26#, 16#38#, 16#1A#, 16#F4#,
+            16#EB#, 16#A4#, 16#A9#, 16#8E#, 16#AA#, 16#9B#, 16#4E#, 16#6A#);
+
+         Bob_Priv : constant Tls_Core.X25519.Bytes_32 :=
+           (16#5D#, 16#AB#, 16#08#, 16#7E#, 16#62#, 16#4A#, 16#8A#, 16#4B#,
+            16#79#, 16#E1#, 16#7F#, 16#8B#, 16#83#, 16#80#, 16#0E#, 16#E6#,
+            16#6F#, 16#3B#, 16#B1#, 16#29#, 16#26#, 16#18#, 16#B6#, 16#FD#,
+            16#1C#, 16#2F#, 16#8B#, 16#27#, 16#FF#, 16#88#, 16#E0#, 16#EB#);
+         Bob_Pub_Expected : constant Tls_Core.X25519.Bytes_32 :=
+           (16#DE#, 16#9E#, 16#DB#, 16#7D#, 16#7B#, 16#7D#, 16#C1#, 16#B4#,
+            16#D3#, 16#5B#, 16#61#, 16#C2#, 16#EC#, 16#E4#, 16#35#, 16#37#,
+            16#3F#, 16#83#, 16#43#, 16#C8#, 16#5B#, 16#78#, 16#67#, 16#4D#,
+            16#AD#, 16#FC#, 16#7E#, 16#14#, 16#6F#, 16#88#, 16#2B#, 16#4F#);
+         Shared_Expected : constant Tls_Core.X25519.Bytes_32 :=
+           (16#4A#, 16#5D#, 16#9D#, 16#5B#, 16#A4#, 16#CE#, 16#2D#, 16#E1#,
+            16#72#, 16#8E#, 16#3B#, 16#F4#, 16#80#, 16#35#, 16#0F#, 16#25#,
+            16#E0#, 16#7E#, 16#21#, 16#C9#, 16#47#, 16#D1#, 16#9E#, 16#33#,
+            16#76#, 16#F0#, 16#9B#, 16#3C#, 16#1E#, 16#16#, 16#17#, 16#42#);
+
+         Alice_Pub, Bob_Pub : Tls_Core.X25519.Bytes_32 := (others => 0);
+         Shared_A, Shared_B : Tls_Core.X25519.Bytes_32 := (others => 0);
+      begin
+         Tls_Core.X25519.Derive_Public (Alice_Priv, Alice_Pub);
+         Tls_Core.X25519.Derive_Public (Bob_Priv, Bob_Pub);
+         Check ("X25519 Alice public matches RFC 7748 §6.1",
+                Equal (Alice_Pub, Alice_Pub_Expected));
+         Check ("X25519 Bob public matches RFC 7748 §6.1",
+                Equal (Bob_Pub, Bob_Pub_Expected));
+
+         Tls_Core.X25519.Scalar_Mult (Alice_Priv, Bob_Pub, Shared_A);
+         Tls_Core.X25519.Scalar_Mult (Bob_Priv, Alice_Pub, Shared_B);
+         Check ("X25519 Alice and Bob agree on shared secret",
+                Equal (Shared_A, Shared_B));
+         Check ("X25519 shared secret matches RFC 7748 §6.1",
+                Equal (Shared_A, Shared_Expected));
+      end;
+   end X25519_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1358,6 +1464,7 @@ begin
    Capstone_Scenario;
    Driver_Loopback_Scenario;
    Channel_Roundtrip_Scenario;
+   X25519_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
