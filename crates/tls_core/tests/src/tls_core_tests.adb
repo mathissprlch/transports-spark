@@ -2292,6 +2292,147 @@ procedure Tls_Core_Tests is
       end;
    end Transport_Loopback_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 26 — full ECDHE + server-cert handshake loopback.
+   --
+   --  Server is initialised with an Ed25519 seed; client is
+   --  initialised with the matching public key (skipping the X.509
+   --  chain step — Tls_Core.X509 covers parsing separately). Server
+   --  emits SH || Cert || CertVerify || Finished; client extracts
+   --  the pubkey from Cert, verifies the CertVerify signature, then
+   --  proceeds to derive matching traffic secrets.
+   --------------------------------------------------------------------
+   procedure Cert_Driver_Loopback;
+   procedure Cert_Driver_Loopback is
+      use type Tls_Core.Handshake_Driver.State;
+      use type Tls_Core.Octet;
+
+      Cli_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#33#);
+      Srv_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#44#);
+      Sign_Seed : constant Tls_Core.Ed25519.Bytes_32 :=
+        (others => 16#55#);
+
+      Server_Pub : Tls_Core.Ed25519.Bytes_32;
+
+      C, S : Tls_Core.Handshake_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf_Last : Natural := 0;
+      Cs, Ss : Tls_Core.Handshake.Traffic_Secrets;
+   begin
+      Put_Line ("scenario 26 — ECDHE + server-cert handshake loopback");
+
+      Tls_Core.Ed25519.Public_Of_Seed (Sign_Seed, Server_Pub);
+
+      Tls_Core.Handshake_Driver.Init_Ecdhe_With_Cert
+        (S, Srv_Priv, Sign_Seed);
+      Tls_Core.Handshake_Driver.Init_Ecdhe_Verify
+        (C, Cli_Priv, Server_Pub);
+
+      Tls_Core.Handshake_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      Check ("Cert driver: client emits CH",
+             Tls_Core.Handshake_Driver.Current_State (C)
+               = Tls_Core.Handshake_Driver.Awaiting_Server_Hello);
+
+      declare
+         CH : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (S, In_Bytes => CH, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Cert driver: server emits SH+Cert+CV+SF",
+                Tls_Core.Handshake_Driver.Current_State (S)
+                  = Tls_Core.Handshake_Driver.Awaiting_Finished);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      declare
+         Sh_Cert_Cv_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Sh_Cert_Cv_Sf,
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Cert driver: client → Awaiting_Finished (cert verified)",
+                Tls_Core.Handshake_Driver.Current_State (C)
+                  = Tls_Core.Handshake_Driver.Awaiting_Finished);
+         pragma Unreferenced (Reply_Last);
+      end;
+
+      declare
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Cert driver: client → Done",
+                Tls_Core.Handshake_Driver.Current_State (C)
+                  = Tls_Core.Handshake_Driver.Done);
+         declare
+            CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard_Last : Natural := 0;
+         begin
+            Tls_Core.Handshake_Driver.Step
+              (S, In_Bytes => CF,
+               Out_Buf => Discard, Out_Last => Discard_Last);
+         end;
+         Check ("Cert driver: server → Done",
+                Tls_Core.Handshake_Driver.Current_State (S)
+                  = Tls_Core.Handshake_Driver.Done);
+      end;
+
+      Tls_Core.Handshake_Driver.Get_Secrets (C, Cs);
+      Tls_Core.Handshake_Driver.Get_Secrets (S, Ss);
+      Check ("Cert driver: c_hs match",
+             Equal (Cs.Client_Handshake, Ss.Client_Handshake));
+      Check ("Cert driver: s_hs match",
+             Equal (Cs.Server_Handshake, Ss.Server_Handshake));
+      Check ("Cert driver: c_ap match",
+             Equal (Cs.Client_App, Ss.Client_App));
+      Check ("Cert driver: s_ap match",
+             Equal (Cs.Server_App, Ss.Server_App));
+
+      --  Negative: client init'd with the wrong trusted pubkey rejects.
+      declare
+         Bad_C, Bad_S : Tls_Core.Handshake_Driver.Driver;
+         Bad_Pub : Tls_Core.Ed25519.Bytes_32 := Server_Pub;
+         Bad_Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Bad_Buf_Last : Natural := 0;
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Bad_Pub (1) := Bad_Pub (1) xor 16#01#;
+         Tls_Core.Handshake_Driver.Init_Ecdhe_With_Cert
+           (Bad_S, Srv_Priv, Sign_Seed);
+         Tls_Core.Handshake_Driver.Init_Ecdhe_Verify
+           (Bad_C, Cli_Priv, Bad_Pub);
+         Tls_Core.Handshake_Driver.Step
+           (Bad_C, In_Bytes => Bad_Buf (1 .. 0),
+            Out_Buf => Bad_Buf, Out_Last => Bad_Buf_Last);
+         declare
+            CH : constant Tls_Core.Octet_Array := Bad_Buf (1 .. Bad_Buf_Last);
+            Srv_Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Srv_Reply_Last : Natural := 0;
+         begin
+            Tls_Core.Handshake_Driver.Step
+              (Bad_S, In_Bytes => CH,
+               Out_Buf => Srv_Reply, Out_Last => Srv_Reply_Last);
+            Tls_Core.Handshake_Driver.Step
+              (Bad_C, In_Bytes => Srv_Reply (1 .. Srv_Reply_Last),
+               Out_Buf => Reply, Out_Last => Reply_Last);
+         end;
+         Check ("Cert driver: wrong trusted pub → Failed",
+                Tls_Core.Handshake_Driver.Current_State (Bad_C)
+                  = Tls_Core.Handshake_Driver.Failed);
+      end;
+   end Cert_Driver_Loopback;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -2318,6 +2459,7 @@ begin
    X509_Scenario;
    Ed25519_Scenario;
    Hello_Scenario;
+   Cert_Driver_Loopback;
    Transport_Loopback_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);

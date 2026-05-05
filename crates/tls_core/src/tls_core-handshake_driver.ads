@@ -20,6 +20,7 @@
 --  miTLS reference: src/tls/MiTLS.Handshake.fst transition log;
 --  the F* `step` ghost there has the same call/return shape.
 
+with Tls_Core.Ed25519;
 with Tls_Core.Handshake;
 with Tls_Core.Transcript;
 with Tls_Core.X25519;
@@ -31,9 +32,18 @@ is
    type Role is (Client, Server);
 
    --  RFC 8446 §4.1.4 mode selection: this v0.5 driver supports
-   --     - PSK_KE  (pre-shared key only)
-   --     - ECDHE   (pure ECDHE with X25519 named group; no certs)
-   type Mode is (PSK_KE, ECDHE);
+   --     - PSK_KE          — pre-shared key only
+   --     - ECDHE           — pure ECDHE with X25519, no server auth
+   --     - ECDHE_With_Cert — ECDHE plus an Ed25519-signed
+   --                         CertificateVerify per RFC 8446 §4.4.3.
+   --                         The "Certificate" message in this mode
+   --                         carries a raw Ed25519 public key
+   --                         (not a wrapped X.509 chain — the X.509
+   --                         parsing path is exercised separately
+   --                         by Tls_Core.X509). Client validates by
+   --                         comparing the received public key to a
+   --                         caller-supplied trusted pin.
+   type Mode is (PSK_KE, ECDHE, ECDHE_With_Cert);
 
    type State is
      (Idle,                 --  Nothing sent or received yet.
@@ -63,6 +73,25 @@ is
      (D            : out Driver;
       For_Role     : Role;
       Private_Key  : Tls_Core.X25519.Bytes_32);
+
+   --  Server-side cert mode. The driver embeds the Ed25519 public
+   --  key (derived from `Sign_Seed`) in a synthetic Certificate
+   --  message, signs the transcript with `Sign_Seed` and emits
+   --  the result as CertificateVerify per RFC 8446 §4.4.3.
+   procedure Init_Ecdhe_With_Cert
+     (D            : out Driver;
+      Private_Key  : Tls_Core.X25519.Bytes_32;
+      Sign_Seed    : Tls_Core.Ed25519.Bytes_32);
+
+   --  Client-side cert-verifying mode. `Trusted_Pub_Key` is the
+   --  Ed25519 public key the client expects to see in the server's
+   --  Certificate message; if the received Cert doesn't match,
+   --  state transitions to Failed. The signature in
+   --  CertificateVerify is verified against this same key.
+   procedure Init_Ecdhe_Verify
+     (D               : out Driver;
+      Private_Key     : Tls_Core.X25519.Bytes_32;
+      Trusted_Pub_Key : Tls_Core.Ed25519.Bytes_32);
 
    --  Accept an inbound Handshake message body (no record-layer
    --  envelope; just the type+u24-length+body bytes). Advances
@@ -103,11 +132,16 @@ private
       Hash_Ctx         : Tls_Core.Transcript.Accumulator;
       PSK              : PSK_Bytes := (others => 0);
 
-      --  ECDHE state — populated only when My_Mode = ECDHE.
+      --  ECDHE state — populated only when My_Mode in {ECDHE, ECDHE_With_Cert}.
       My_Priv          : Tls_Core.X25519.Bytes_32 := (others => 0);
       My_Pub           : Tls_Core.X25519.Bytes_32 := (others => 0);
       Peer_Pub         : Tls_Core.X25519.Bytes_32 := (others => 0);
       Shared           : Tls_Core.X25519.Bytes_32 := (others => 0);
+
+      --  Cert-mode state — populated only when My_Mode = ECDHE_With_Cert.
+      Sign_Seed        : Tls_Core.Ed25519.Bytes_32 := (others => 0);
+      Sign_Pub         : Tls_Core.Ed25519.Bytes_32 := (others => 0);
+      Trusted_Pub      : Tls_Core.Ed25519.Bytes_32 := (others => 0);
 
       --  We retain the recorded ClientHello and ServerHello bytes
       --  (and the peer Finished bytes) so the §7.1 schedule can
