@@ -2,10 +2,6 @@
 --
 --  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
 --  Section coverage: §3.3 — PUBLISH.
---
---  RETAIN flag (§3.3.1.3) is DEFERRED post-v0.2 per `coverage.md`; the
---  bit is modeled as `range 0 .. 0` so a parser built from this spec
---  rejects packets that try to use Retain.
 
 with Control_Packet;
 
@@ -19,8 +15,11 @@ package Publish is
    --  ("MUST NOT use"); the enum's range rejects QoS=3 packets at parse
    --  time.
 
-   --  §3.3.1.3 — RETAIN (DEFERRED). Forced to 0 for v0.2.
-   type Retain_Deferred is range 0 .. 0 with Size => 1;
+   --  §3.3.1.3 — RETAIN. 1 = "store this message and replay it as
+   --  the initial value to any future SUBSCRIBE that matches the
+   --  topic". Empty payload + RETAIN=1 clears any retained value
+   --  for the topic.
+   type Retain_Flag is unsigned 1;
 
    --  §2.2.3 — Remaining Length. v0.2 restricts PUBLISH to the 1-byte
    --  varint form (max 127 byte body). This covers the headline demo
@@ -49,7 +48,7 @@ package Publish is
          --  §3.3.1.2
          QoS : Control_Packet::QoS_Level;
          --  §3.3.1.3
-         Retain : Retain_Deferred;
+         Retain : Retain_Flag;
          Remaining_Length : Remaining_Length;
          --  §3.3.2.1 — Topic Name. Length-prefixed UTF-8 string.
          Topic_Name_Length : Control_Packet::String_Length;

@@ -141,6 +141,35 @@ package body Mqtt_Core.Broker is
      Subscription_State;
 
    ----------------------------------------------------------------
+   --  Retained-message registry (§3.3.1.3)
+   --
+   --  When a subscriber issues SUBSCRIBE with a filter, the broker
+   --  delivers any retained message whose topic matches that
+   --  filter as the "initial value" — even if no client has
+   --  PUBLISHed since the subscription was made.
+   --
+   --  Inbound PUBLISH with RETAIN=1: replace the slot whose Topic
+   --  matches; if the topic is new, allocate a free slot.
+   --  Inbound PUBLISH with RETAIN=1 and zero-length payload:
+   --  clear the slot for that topic (§3.3.1.3 special-case).
+   ----------------------------------------------------------------
+
+   Max_Retained : constant := 32;
+
+   type Retained_Slot is record
+      In_Use       : Boolean := False;
+      Topic        : String (1 .. 256) := (others => ' ');
+      Topic_Last   : Natural := 0;
+      Payload      : RFLX.RFLX_Types.Bytes (1 .. 1024) := (others => 0);
+      Payload_Last : RFLX.RFLX_Types.Length := 0;
+      QoS          : RFLX.Control_Packet.QoS_Level :=
+        RFLX.Control_Packet.QOS_0;
+   end record;
+
+   subtype Retained_Index is Natural range 1 .. Max_Retained;
+   type Retained_Array is array (Retained_Index) of Retained_Slot;
+
+   ----------------------------------------------------------------
    --  Listen / Stop
    ----------------------------------------------------------------
 
@@ -282,6 +311,7 @@ package body Mqtt_Core.Broker is
    procedure Run (L : in out Listener) is
       Clients   : Client_Array;
       Subs      : Subscription_Array;
+      Retained  : Retained_Array;
       Selector  : GNAT.Sockets.Selector_Type;
       Read_Set  : GNAT.Sockets.Socket_Set_Type;
       W_Set     : GNAT.Sockets.Socket_Set_Type;
@@ -589,6 +619,75 @@ package body Mqtt_Core.Broker is
       end Sweep_Inflight_Retries;
 
       ---------------------------------------------------------------
+      --  Retained-message helpers (§3.3.1.3)
+      ---------------------------------------------------------------
+
+      procedure Update_Retained
+        (Reg     : in out Retained_Array;
+         Topic   : String;
+         Payload : RFLX.RFLX_Types.Bytes;
+         QoS     : RFLX.Control_Packet.QoS_Level);
+
+      procedure Update_Retained
+        (Reg     : in out Retained_Array;
+         Topic   : String;
+         Payload : RFLX.RFLX_Types.Bytes;
+         QoS     : RFLX.Control_Packet.QoS_Level)
+      is
+         Free_Idx : Natural := 0;
+      begin
+         if Topic'Length = 0 or else Topic'Length > 256
+           or else Payload'Length > 1024
+         then
+            return;
+         end if;
+         for I in Reg'Range loop
+            if Reg (I).In_Use
+              and then Reg (I).Topic_Last = Topic'Length
+              and then Reg (I).Topic (1 .. Reg (I).Topic_Last) = Topic
+            then
+               Reg (I).Payload (1 ..
+                 RFLX.RFLX_Types.Index (Payload'Length)) := Payload;
+               Reg (I).Payload_Last :=
+                 RFLX.RFLX_Types.Length (Payload'Length);
+               Reg (I).QoS := QoS;
+               return;
+            elsif not Reg (I).In_Use and then Free_Idx = 0 then
+               Free_Idx := I;
+            end if;
+         end loop;
+         if Free_Idx /= 0 then
+            Reg (Free_Idx).In_Use := True;
+            Reg (Free_Idx).Topic := (others => ' ');
+            Reg (Free_Idx).Topic (1 .. Topic'Length) := Topic;
+            Reg (Free_Idx).Topic_Last := Topic'Length;
+            Reg (Free_Idx).Payload (1 ..
+              RFLX.RFLX_Types.Index (Payload'Length)) := Payload;
+            Reg (Free_Idx).Payload_Last :=
+              RFLX.RFLX_Types.Length (Payload'Length);
+            Reg (Free_Idx).QoS := QoS;
+         end if;
+      end Update_Retained;
+
+      procedure Clear_Retained
+        (Reg : in out Retained_Array; Topic : String);
+
+      procedure Clear_Retained
+        (Reg : in out Retained_Array; Topic : String) is
+      begin
+         for I in Reg'Range loop
+            if Reg (I).In_Use
+              and then Reg (I).Topic_Last = Topic'Length
+              and then Reg (I).Topic (1 .. Reg (I).Topic_Last) = Topic
+            then
+               Reg (I).In_Use := False;
+               Reg (I).Topic_Last := 0;
+               Reg (I).Payload_Last := 0;
+            end if;
+         end loop;
+      end Clear_Retained;
+
+      ---------------------------------------------------------------
       --  Route a published message to all matching subscribers.
       --  Outbound QoS = min(publish_qos, subscriber_granted_qos).
       --  v0.2 caps at QoS 1 (no PUBREC/PUBREL outbound flow).
@@ -715,6 +814,126 @@ package body Mqtt_Core.Broker is
             end if;
          end loop;
       end Route_Publish;
+
+      ---------------------------------------------------------------
+      --  Replay retained messages matching `Filter` to the freshly
+      --  subscribed client (§3.3.1.3 — RETAIN flag set to 1 so the
+      --  client knows it's a stored value, not a fresh publish).
+      ---------------------------------------------------------------
+
+      procedure Replay_Retained_Matches
+        (Reg     : Retained_Array;
+         Owner   : Active_Client;
+         Filter  : String;
+         Granted : RFLX.Control_Packet.QoS_Level);
+
+      procedure Replay_Retained_Matches
+        (Reg     : Retained_Array;
+         Owner   : Active_Client;
+         Filter  : String;
+         Granted : RFLX.Control_Packet.QoS_Level)
+      is
+         Out_Last : RFLX.RFLX_Types.Index;
+      begin
+         for I in Reg'Range loop
+            if Reg (I).In_Use
+              and then Topics.Matches
+                         (Reg (I).Topic (1 .. Reg (I).Topic_Last),
+                          Filter)
+            then
+               declare
+                  Effective : constant RFLX.Control_Packet.QoS_Level :=
+                    (if Reg (I).QoS = RFLX.Control_Packet.QOS_0
+                       or else Granted = RFLX.Control_Packet.QOS_0
+                     then RFLX.Control_Packet.QOS_0
+                     elsif Reg (I).QoS = RFLX.Control_Packet.QOS_1
+                       or else Granted = RFLX.Control_Packet.QOS_1
+                     then RFLX.Control_Packet.QOS_1
+                     else RFLX.Control_Packet.QOS_2);
+                  Pl : constant RFLX.RFLX_Types.Bytes :=
+                    Reg (I).Payload
+                      (1 .. RFLX.RFLX_Types.Index
+                              (Reg (I).Payload_Last));
+               begin
+                  if not Clients (Owner).In_Use
+                    or else not Clients (Owner).Connected
+                  then
+                     return;
+                  end if;
+                  case Effective is
+                     when RFLX.Control_Packet.QOS_0 =>
+                        Wire.Encode_Publish_Qos0
+                          (Clients (Owner).Working_Buf, Out_Last,
+                           Reg (I).Topic (1 .. Reg (I).Topic_Last),
+                           Pl, Retain => True);
+                        Send_All
+                          (Clients (Owner).Sock,
+                           Clients (Owner).Working_Buf.all
+                             (Clients (Owner).Working_Buf'First
+                              .. Out_Last));
+                     when RFLX.Control_Packet.QOS_1 =>
+                        declare
+                           Slot : constant Natural :=
+                             Find_Free_Outbound (Owner);
+                           Pid  : Wire.Packet_Identifier;
+                        begin
+                           if Slot /= 0 then
+                              Pid := Next_Outbound_Pid (Owner);
+                              Wire.Encode_Publish_Qos1
+                                (Buffer    =>
+                                   Clients (Owner).Working_Buf,
+                                 Last      => Out_Last,
+                                 Packet_Id => Pid,
+                                 Topic     =>
+                                   Reg (I).Topic
+                                     (1 .. Reg (I).Topic_Last),
+                                 Payload   => Pl,
+                                 Retain    => True);
+                              Stash_Inflight
+                                (Owner, Slot, Awaiting_Puback, Pid,
+                                 Reg (I).Topic
+                                   (1 .. Reg (I).Topic_Last), Pl);
+                              Send_All
+                                (Clients (Owner).Sock,
+                                 Clients (Owner).Working_Buf.all
+                                   (Clients (Owner).Working_Buf'First
+                                    .. Out_Last));
+                           end if;
+                        end;
+                     when RFLX.Control_Packet.QOS_2 =>
+                        declare
+                           Slot : constant Natural :=
+                             Find_Free_Outbound (Owner);
+                           Pid  : Wire.Packet_Identifier;
+                        begin
+                           if Slot /= 0 then
+                              Pid := Next_Outbound_Pid (Owner);
+                              Wire.Encode_Publish_Qos2
+                                (Buffer    =>
+                                   Clients (Owner).Working_Buf,
+                                 Last      => Out_Last,
+                                 Packet_Id => Pid,
+                                 Topic     =>
+                                   Reg (I).Topic
+                                     (1 .. Reg (I).Topic_Last),
+                                 Payload   => Pl,
+                                 Retain    => True);
+                              Stash_Inflight
+                                (Owner, Slot, Awaiting_Pubrec, Pid,
+                                 Reg (I).Topic
+                                   (1 .. Reg (I).Topic_Last), Pl);
+                              Send_All
+                                (Clients (Owner).Sock,
+                                 Clients (Owner).Working_Buf.all
+                                   (Clients (Owner).Working_Buf'First
+                                    .. Out_Last));
+                           end if;
+                        end;
+                  end case;
+               end;
+            end if;
+         end loop;
+      end Replay_Retained_Matches;
 
       ---------------------------------------------------------------
       --  Process one packet from a client.
@@ -860,6 +1079,19 @@ package body Mqtt_Core.Broker is
                         Payload  => Empty,
                         QoS      => Topic_QoS (K),
                         Subscriber_Count => 0);
+                     --  §3.3.1.3 (last paragraph): if any retained
+                     --  message matches this filter, send it now
+                     --  with RETAIN=1 so the subscriber can tell
+                     --  it's the stored initial value rather than
+                     --  a fresh publish.
+                     if RFLX.Suback."/=" (Codes (K),
+                                          RFLX.Suback.FAILURE)
+                     then
+                        Replay_Retained_Matches
+                          (Retained, CI,
+                           Topics_Buf (K) (1 .. Topic_Lasts (K)),
+                           Topic_QoS (K));
+                     end if;
                   end loop;
                end;
 
@@ -872,16 +1104,37 @@ package body Mqtt_Core.Broker is
                   QoS : RFLX.Control_Packet.QoS_Level;
                   Pid : Wire.Packet_Identifier;
                   Decode_OK : Boolean;
+                  Retain    : Boolean;
                   Sub_Count : Natural := 0;
                   Suppress_Route : Boolean := False;
                begin
                   Wire.Decode_Publish
                     (Buf, Pkt_Last, Decode_OK,
                      QoS, Pid, Topic, Topic_Last,
-                     Payload, Payload_Last);
+                     Payload, Payload_Last, Retain);
                   if not Decode_OK then
                      Disconnect_Client (CI);
                      return;
+                  end if;
+
+                  --  §3.3.1.3: RETAIN=1 with non-empty payload →
+                  --  store as the new retained value (replacing any
+                  --  prior retained for that topic). RETAIN=1 with
+                  --  empty payload → clear any retained value but
+                  --  still forward to current subscribers.
+                  if Retain then
+                     if Payload_Last = 0 then
+                        Clear_Retained
+                          (Retained, Topic (1 .. Topic_Last));
+                     else
+                        Update_Retained
+                          (Retained,
+                           Topic (1 .. Topic_Last),
+                           Payload (Payload'First ..
+                             Payload'First +
+                               RFLX.RFLX_Types.Index (Payload_Last) - 1),
+                           QoS);
+                     end if;
                   end if;
 
                   --  §4.3 ack-protocol: deliver-on-receipt for q1/q2,

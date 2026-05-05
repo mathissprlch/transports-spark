@@ -249,11 +249,13 @@ package body Mqtt_Core.Client is
    procedure Publish
      (C       : in out Client;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes)
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False)
    is
       Last : RFLX.RFLX_Types.Index;
    begin
-      Wire.Encode_Publish_Qos0 (C.Buf, Last, Topic, Payload);
+      Wire.Encode_Publish_Qos0
+        (C.Buf, Last, Topic, Payload, Retain);
       Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
    end Publish;
 
@@ -264,7 +266,8 @@ package body Mqtt_Core.Client is
    procedure Publish_Qos1
      (C       : in out Client;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes)
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False)
    is
       package FSM renames RFLX.Session.Publish_Qos1.FSM;
       Ctx        : FSM.Context;
@@ -276,7 +279,8 @@ package body Mqtt_Core.Client is
    begin
       C.Next_Packet_Id := C.Next_Packet_Id + 1;
 
-      Wire.Encode_Publish_Qos1 (C.Buf, Last, Pid, Topic, Payload);
+      Wire.Encode_Publish_Qos1
+        (C.Buf, Last, Pid, Topic, Payload, Retain);
 
       FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
@@ -374,7 +378,8 @@ package body Mqtt_Core.Client is
    procedure Publish_Qos2
      (C       : in out Client;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes)
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False)
    is
       package FSM renames RFLX.Session.Publish_Qos2.FSM;
       Ctx          : FSM.Context;
@@ -389,7 +394,8 @@ package body Mqtt_Core.Client is
    begin
       C.Next_Packet_Id := C.Next_Packet_Id + 1;
 
-      Wire.Encode_Publish_Qos2 (C.Buf, Last, Pid, Topic, Payload);
+      Wire.Encode_Publish_Qos2
+        (C.Buf, Last, Pid, Topic, Payload, Retain);
 
       FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
@@ -782,9 +788,13 @@ package body Mqtt_Core.Client is
         C.Buf'First + RFLX.RFLX_Types.Index (View'Length) - 1;
    begin
       C.Buf.all (C.Buf'First .. Last_Idx) := View;
-      Wire.Decode_Publish
-        (C.Buf, Last_Idx, Ok, QoS, Pid,
-         Topic, Topic_Last, Payload, Payload_Last);
+      declare
+         Retain : Boolean;
+      begin
+         Wire.Decode_Publish
+           (C.Buf, Last_Idx, Ok, QoS, Pid,
+            Topic, Topic_Last, Payload, Payload_Last, Retain);
+      end;
    end Decode_Pending_Publish;
 
    --  Drive Receive_Qos2 FSM through PUBREC → await PUBREL →

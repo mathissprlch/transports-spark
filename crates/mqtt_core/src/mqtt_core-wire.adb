@@ -296,7 +296,8 @@ is
      (Buffer  : in out Bytes_Ptr;
       Last    :    out Index;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes)
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False)
    is
       Ctx : RFLX.Publish.Packet.Context;
       RL  : constant RFLX.Publish.Remaining_Length :=
@@ -307,7 +308,7 @@ is
         (Ctx, RFLX.Control_Packet.PUBLISH);
       RFLX.Publish.Packet.Set_DUP    (Ctx, False);
       RFLX.Publish.Packet.Set_QoS    (Ctx, RFLX.Control_Packet.QOS_0);
-      RFLX.Publish.Packet.Set_Retain (Ctx, 0);
+      RFLX.Publish.Packet.Set_Retain (Ctx, (if Retain then 1 else 0));
       RFLX.Publish.Packet.Set_Remaining_Length (Ctx, RL);
       RFLX.Publish.Packet.Set_Topic_Name_Length
         (Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
@@ -334,7 +335,8 @@ is
       Last      :    out Index;
       Packet_Id : Packet_Identifier;
       Topic     : String;
-      Payload   : RFLX.RFLX_Types.Bytes)
+      Payload   : RFLX.RFLX_Types.Bytes;
+      Retain    : Boolean := False)
    is
       Ctx : RFLX.Publish.Packet.Context;
       RL  : constant RFLX.Publish.Remaining_Length :=
@@ -346,7 +348,7 @@ is
         (Ctx, RFLX.Control_Packet.PUBLISH);
       RFLX.Publish.Packet.Set_DUP    (Ctx, False);
       RFLX.Publish.Packet.Set_QoS    (Ctx, RFLX.Control_Packet.QOS_1);
-      RFLX.Publish.Packet.Set_Retain (Ctx, 0);
+      RFLX.Publish.Packet.Set_Retain (Ctx, (if Retain then 1 else 0));
       RFLX.Publish.Packet.Set_Remaining_Length (Ctx, RL);
       RFLX.Publish.Packet.Set_Topic_Name_Length
         (Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
@@ -371,7 +373,8 @@ is
       Last      :    out Index;
       Packet_Id : Packet_Identifier;
       Topic     : String;
-      Payload   : RFLX.RFLX_Types.Bytes)
+      Payload   : RFLX.RFLX_Types.Bytes;
+      Retain    : Boolean := False)
    is
       Ctx : RFLX.Publish.Packet.Context;
       RL  : constant RFLX.Publish.Remaining_Length :=
@@ -383,7 +386,7 @@ is
         (Ctx, RFLX.Control_Packet.PUBLISH);
       RFLX.Publish.Packet.Set_DUP    (Ctx, False);
       RFLX.Publish.Packet.Set_QoS    (Ctx, RFLX.Control_Packet.QOS_2);
-      RFLX.Publish.Packet.Set_Retain (Ctx, 0);
+      RFLX.Publish.Packet.Set_Retain (Ctx, (if Retain then 1 else 0));
       RFLX.Publish.Packet.Set_Remaining_Length (Ctx, RL);
       RFLX.Publish.Packet.Set_Topic_Name_Length
         (Ctx, RFLX.Control_Packet.String_Length (Topic'Length));
@@ -1167,16 +1170,19 @@ is
       Topic        : in out String;
       Topic_Last   :    out Natural;
       Payload      : in out RFLX.RFLX_Types.Bytes;
-      Payload_Last :    out RFLX.RFLX_Types.Length)
+      Payload_Last :    out RFLX.RFLX_Types.Length;
+      Retain       :    out Boolean)
    is
       Ctx : RFLX.Publish.Packet.Context;
       use type RFLX.Control_Packet.QoS_Level;
+      use type RFLX.Publish.Retain_Flag;
    begin
       Valid        := False;
       QoS          := RFLX.Control_Packet.QOS_0;
       Packet_Id    := 1;
       Topic_Last   := Topic'First - 1;
       Payload_Last := 0;
+      Retain       := False;
 
       RFLX.Publish.Packet.Initialize
         (Ctx, Buffer,
@@ -1191,6 +1197,7 @@ is
       if QoS /= RFLX.Control_Packet.QOS_0 then
          Packet_Id := RFLX.Publish.Packet.Get_Packet_Identifier (Ctx);
       end if;
+      Retain := RFLX.Publish.Packet.Get_Retain (Ctx) = 1;
 
       --  The function-form Get_Topic_Name / Get_Payload are Ghost in
       --  the generated spec; SPARK rejects them in non-Ghost code.

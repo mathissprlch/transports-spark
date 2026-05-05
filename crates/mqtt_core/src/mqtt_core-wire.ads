@@ -131,16 +131,17 @@ is
    ---------------------------------------------------------------------
    --  PUBLISH (QoS 0) — §3.3. Application bytes published on a topic.
    --
-   --  Forces DUP=0 and RETAIN=0 (RETAIN is deferred per coverage.md,
-   --  see publish.rflx). Total wire size is bounded by the single-byte
-   --  Remaining-Length cap: 2 + Topic'Length + Payload'Length <= 127.
+   --  Forces DUP=0. RETAIN defaults to False (a vanilla publish).
+   --  Total wire size is bounded by the single-byte Remaining-Length
+   --  cap: 2 + Topic'Length + Payload'Length <= 127.
    ---------------------------------------------------------------------
 
    procedure Encode_Publish_Qos0
      (Buffer  : in out Bytes_Ptr;
       Last    :    out Index;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes)
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False)
    with
      Pre  => Buffer /= null
              and then Topic'Length in 1 .. 124
@@ -151,7 +152,7 @@ is
    ---------------------------------------------------------------------
    --  PUBLISH (QoS 1) — §3.3 with QoS=1 + Packet Identifier.
    --
-   --  Forces DUP=0 (no retransmission yet) and RETAIN=0 (deferred).
+   --  Forces DUP=0 (no retransmission yet). RETAIN defaults to False.
    --  Wire size bound: 4 + Topic'Length + Payload'Length <= 127
    --  (extra 2 bytes vs QoS 0 for the Packet Identifier).
    ---------------------------------------------------------------------
@@ -161,7 +162,8 @@ is
       Last      :    out Index;
       Packet_Id : Packet_Identifier;
       Topic     : String;
-      Payload   : RFLX.RFLX_Types.Bytes)
+      Payload   : RFLX.RFLX_Types.Bytes;
+      Retain    : Boolean := False)
    with
      Pre  => Buffer /= null
              and then Topic'Length in 1 .. 122
@@ -207,7 +209,8 @@ is
       Last      :    out Index;
       Packet_Id : Packet_Identifier;
       Topic     : String;
-      Payload   : RFLX.RFLX_Types.Bytes)
+      Payload   : RFLX.RFLX_Types.Bytes;
+      Retain    : Boolean := False)
    with
      Pre  => Buffer /= null
              and then Topic'Length in 1 .. 122
@@ -583,7 +586,8 @@ is
       Topic        : in out String;
       Topic_Last   :    out Natural;
       Payload      : in out RFLX.RFLX_Types.Bytes;
-      Payload_Last :    out RFLX.RFLX_Types.Length)
+      Payload_Last :    out RFLX.RFLX_Types.Length;
+      Retain       :    out Boolean)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 4,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode

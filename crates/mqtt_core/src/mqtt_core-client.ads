@@ -75,10 +75,14 @@ package Mqtt_Core.Client is
       Clean_Session : Boolean := True);
 
    --  Publish QoS 0 — fire-and-forget. No FSM (no reply, no dispatch).
+   --  Retain=True asks the broker to store the message and replay
+   --  it (with RETAIN=1) to subsequent SUBSCRIBEs that match the
+   --  topic — see §3.3.1.3.
    procedure Publish
      (C       : in out Client;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes);
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False);
 
    --  Publish QoS 1 — sends PUBLISH, awaits PUBACK with matching id.
    --  Inbound PUBLISHes interleaved while waiting for PUBACK are
@@ -86,7 +90,8 @@ package Mqtt_Core.Client is
    procedure Publish_Qos1
      (C       : in out Client;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes);
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False);
 
    --  Publish QoS 2 — four-step handshake (§4.3.3): client sends
    --  PUBLISH, awaits PUBREC, sends PUBREL, awaits PUBCOMP. Inbound
@@ -95,7 +100,8 @@ package Mqtt_Core.Client is
    procedure Publish_Qos2
      (C       : in out Client;
       Topic   : String;
-      Payload : RFLX.RFLX_Types.Bytes);
+      Payload : RFLX.RFLX_Types.Bytes;
+      Retain  : Boolean := False);
 
    procedure Subscribe
      (C     : in out Client;

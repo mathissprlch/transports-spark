@@ -20,7 +20,8 @@ project Examples is
                  "http1_demo.adb",
                  "mqtt_broker_demo.adb",
                  "listfeatures_server.adb", "listfeatures_client.adb",
-                 "mqtt_demo.adb");
+                 "mqtt_demo.adb",
+                 "mqtt_retained_demo.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use
