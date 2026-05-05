@@ -110,6 +110,15 @@ is
           when F_Client_Id_Length =>
              Invalid (Ctx.Cursors (F_Client_Id)),
           when F_Client_Id =>
+             Invalid (Ctx.Cursors (F_User_Name_Length))
+             and Invalid (Ctx.Cursors (F_Will_Topic_Length)),
+          when F_Will_Topic_Length =>
+             Invalid (Ctx.Cursors (F_Will_Topic)),
+          when F_Will_Topic =>
+             Invalid (Ctx.Cursors (F_Will_Message_Length)),
+          when F_Will_Message_Length =>
+             Invalid (Ctx.Cursors (F_Will_Message)),
+          when F_Will_Message =>
              Invalid (Ctx.Cursors (F_User_Name_Length)),
           when F_User_Name_Length =>
              Invalid (Ctx.Cursors (F_User_Name)),
@@ -133,7 +142,7 @@ is
    function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean is
      (Sufficient_Buffer_Length (Ctx, Fld)
       and then (case Fld is
-                   when F_Protocol_Name | F_Client_Id | F_User_Name | F_Password =>
+                   when F_Protocol_Name | F_Client_Id | F_Will_Topic | F_Will_Message | F_User_Name | F_Password =>
                       Data'Length = RFLX_Types.To_Index (Field_Last (Ctx, Fld)) - RFLX_Types.To_Index (Field_First (Ctx, Fld)) + 1
                       and then (for all I in RFLX_Types.Index range RFLX_Types.To_Index (Field_First (Ctx, Fld)) .. RFLX_Types.To_Index (Field_Last (Ctx, Fld)) =>
                                    Ctx.Buffer.all (I) = Data (Data'First + (I - RFLX_Types.To_Index (Field_First (Ctx, Fld))))),
@@ -167,7 +176,7 @@ is
    end Reset_Dependent_Fields;
 
    function Composite_Field (Fld : Field) return Boolean is
-     (Fld in F_Protocol_Name | F_Client_Id | F_User_Name | F_Password);
+     (Fld in F_Protocol_Name | F_Client_Id | F_Will_Topic | F_Will_Message | F_User_Name | F_Password);
 
    function Get (Ctx : Context; Fld : Field) return RFLX_Types.Base_Integer
    with
@@ -197,7 +206,7 @@ is
              2,
           when F_Will_Flag | F_Clean_Session | F_Reserved_Connect_Flag =>
              1,
-          when F_Keep_Alive | F_Client_Id_Length | F_User_Name_Length | F_Password_Length =>
+          when F_Keep_Alive | F_Client_Id_Length | F_Will_Topic_Length | F_Will_Message_Length | F_User_Name_Length | F_Password_Length =>
              16,
           when others =>
              Positive'Last);
@@ -223,6 +232,7 @@ is
                                   Fld = F_Client_Id
                                   or Fld = F_Password
                                   or Fld = F_User_Name
+                                  or Fld = F_Will_Message
                                then
                                   Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0);
                pragma Assert ((((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size = 0);
@@ -268,6 +278,20 @@ is
       return Ctx.Buffer.all (First .. Last);
    end Get_Client_Id;
 
+   function Get_Will_Topic (Ctx : Context) return RFLX_Types.Bytes is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Topic).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Topic).Last);
+   begin
+      return Ctx.Buffer.all (First .. Last);
+   end Get_Will_Topic;
+
+   function Get_Will_Message (Ctx : Context) return RFLX_Types.Bytes is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Message).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Message).Last);
+   begin
+      return Ctx.Buffer.all (First .. Last);
+   end Get_Will_Message;
+
    function Get_User_Name (Ctx : Context) return RFLX_Types.Bytes is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_User_Name).First);
       Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_User_Name).Last);
@@ -298,6 +322,22 @@ is
       Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
    end Get_Client_Id;
 
+   procedure Get_Will_Topic (Ctx : Context; Data : out RFLX_Types.Bytes) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Topic).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Topic).Last);
+   begin
+      Data := (others => RFLX_Types.Byte'First);
+      Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
+   end Get_Will_Topic;
+
+   procedure Get_Will_Message (Ctx : Context; Data : out RFLX_Types.Bytes) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Message).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Message).Last);
+   begin
+      Data := (others => RFLX_Types.Byte'First);
+      Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
+   end Get_Will_Message;
+
    procedure Get_User_Name (Ctx : Context; Data : out RFLX_Types.Bytes) is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_User_Name).First);
       Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_User_Name).Last);
@@ -327,6 +367,20 @@ is
    begin
       Process_Client_Id (Ctx.Buffer.all (First .. Last));
    end Generic_Get_Client_Id;
+
+   procedure Generic_Get_Will_Topic (Ctx : Context) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Topic).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Topic).Last);
+   begin
+      Process_Will_Topic (Ctx.Buffer.all (First .. Last));
+   end Generic_Get_Will_Topic;
+
+   procedure Generic_Get_Will_Message (Ctx : Context) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Message).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Will_Message).Last);
+   begin
+      Process_Will_Message (Ctx.Buffer.all (First .. Last));
+   end Generic_Get_Will_Message;
 
    procedure Generic_Get_User_Name (Ctx : Context) is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_User_Name).First);
@@ -371,7 +425,7 @@ is
        and then (if State_Valid and Size > 0 then Valid (Ctx, Fld) else Well_Formed (Ctx, Fld))
        and then (Ctx.Cursors (Fld).Value = Val
                  and then (if
-                              Fld in F_Client_Id | F_Password | F_User_Name
+                              Fld in F_Client_Id | F_Password | F_User_Name | F_Will_Message
                               and then Well_Formed_Message (Ctx)
                            then
                               Message_Last (Ctx) = Field_Last (Ctx, Fld)))
@@ -405,7 +459,7 @@ is
        not Ctx'Constrained
        and then RFLX.Connect.Packet.Has_Buffer (Ctx)
        and then RFLX.Connect.Packet.Valid_Next (Ctx, Fld)
-       and then Fld in F_Packet_Type | F_Reserved | F_Remaining_Length | F_Protocol_Name_Length | F_Protocol_Level | F_User_Name_Flag | F_Password_Flag | F_Will_Retain | F_Will_QoS | F_Will_Flag | F_Clean_Session | F_Reserved_Connect_Flag | F_Keep_Alive | F_Client_Id_Length | F_User_Name_Length | F_Password_Length
+       and then Fld in F_Packet_Type | F_Reserved | F_Remaining_Length | F_Protocol_Name_Length | F_Protocol_Level | F_User_Name_Flag | F_Password_Flag | F_Will_Retain | F_Will_QoS | F_Will_Flag | F_Clean_Session | F_Reserved_Connect_Flag | F_Keep_Alive | F_Client_Id_Length | F_Will_Topic_Length | F_Will_Message_Length | F_User_Name_Length | F_Password_Length
        and then RFLX.Connect.Packet.Valid_Value (Fld, Val)
        and then RFLX.Connect.Packet.Valid_Size (Ctx, Fld, RFLX.Connect.Packet.Field_Size (Ctx, Fld))
        and then RFLX.Connect.Packet.Available_Space (Ctx, Fld) >= RFLX.Connect.Packet.Field_Size (Ctx, Fld)
@@ -417,7 +471,7 @@ is
        and Invalid_Successor (Ctx, Fld)
        and (Ctx.Cursors (Fld).Value = Val
             and then (if
-                         Fld in F_Client_Id | F_Password | F_User_Name
+                         Fld in F_Client_Id | F_Password | F_User_Name | F_Will_Message
                          and then Well_Formed_Message (Ctx)
                       then
                          Message_Last (Ctx) = Field_Last (Ctx, Fld)))
@@ -474,17 +528,17 @@ is
       Set_Scalar (Ctx, F_Password_Flag, To_Base_Integer (Val));
    end Set_Password_Flag;
 
-   procedure Set_Will_Retain (Ctx : in out Context; Val : RFLX.Connect.Will_Retain_Deferred) is
+   procedure Set_Will_Retain (Ctx : in out Context; Val : RFLX.Connect.Will_Retain_Bit) is
    begin
       Set_Scalar (Ctx, F_Will_Retain, RFLX.Connect.To_Base_Integer (Val));
    end Set_Will_Retain;
 
-   procedure Set_Will_QoS (Ctx : in out Context; Val : RFLX.Connect.Will_QoS_Deferred) is
+   procedure Set_Will_QoS (Ctx : in out Context; Val : RFLX.Connect.Will_QoS_Bits) is
    begin
       Set_Scalar (Ctx, F_Will_QoS, RFLX.Connect.To_Base_Integer (Val));
    end Set_Will_QoS;
 
-   procedure Set_Will_Flag (Ctx : in out Context; Val : RFLX.Connect.Will_Flag_Deferred) is
+   procedure Set_Will_Flag (Ctx : in out Context; Val : RFLX.Connect.Will_Flag_Bit) is
    begin
       Set_Scalar (Ctx, F_Will_Flag, RFLX.Connect.To_Base_Integer (Val));
    end Set_Will_Flag;
@@ -509,6 +563,16 @@ is
       Set_Scalar (Ctx, F_Client_Id_Length, RFLX.Control_Packet.To_Base_Integer (Val));
    end Set_Client_Id_Length;
 
+   procedure Set_Will_Topic_Length (Ctx : in out Context; Val : RFLX.Control_Packet.String_Length) is
+   begin
+      Set_Scalar (Ctx, F_Will_Topic_Length, RFLX.Control_Packet.To_Base_Integer (Val));
+   end Set_Will_Topic_Length;
+
+   procedure Set_Will_Message_Length (Ctx : in out Context; Val : RFLX.Control_Packet.String_Length) is
+   begin
+      Set_Scalar (Ctx, F_Will_Message_Length, RFLX.Control_Packet.To_Base_Integer (Val));
+   end Set_Will_Message_Length;
+
    procedure Set_User_Name_Length (Ctx : in out Context; Val : RFLX.Control_Packet.String_Length) is
    begin
       Set_Scalar (Ctx, F_User_Name_Length, RFLX.Control_Packet.To_Base_Integer (Val));
@@ -525,6 +589,20 @@ is
    begin
       Set (Ctx, F_Client_Id, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
    end Set_Client_Id_Empty;
+
+   procedure Set_Will_Topic_Empty (Ctx : in out Context) is
+      Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
+      Unused_Offset : RFLX_Types.Offset;
+   begin
+      Set (Ctx, F_Will_Topic, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
+   end Set_Will_Topic_Empty;
+
+   procedure Set_Will_Message_Empty (Ctx : in out Context) is
+      Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
+      Unused_Offset : RFLX_Types.Offset;
+   begin
+      Set (Ctx, F_Will_Message, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
+   end Set_Will_Message_Empty;
 
    procedure Set_User_Name_Empty (Ctx : in out Context) is
       Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
@@ -564,6 +642,10 @@ is
        and then Invalid (Ctx, F_Keep_Alive)
        and then Invalid (Ctx, F_Client_Id_Length)
        and then Invalid (Ctx, F_Client_Id)
+       and then Invalid (Ctx, F_Will_Topic_Length)
+       and then Invalid (Ctx, F_Will_Topic)
+       and then Invalid (Ctx, F_Will_Message_Length)
+       and then Invalid (Ctx, F_Will_Message)
        and then Invalid (Ctx, F_User_Name_Length)
        and then Invalid (Ctx, F_User_Name)
        and then Invalid (Ctx, F_Password_Length)
@@ -607,11 +689,20 @@ is
        and then Well_Formed (Ctx, F_Client_Id)
        and then Field_Size (Ctx, F_Client_Id) = RFLX_Types.To_Bit_Length (Length)
        and then Ctx.Verified_Last = Field_Last (Ctx, F_Client_Id)
+       and then Invalid (Ctx, F_Will_Topic_Length)
+       and then Invalid (Ctx, F_Will_Topic)
+       and then Invalid (Ctx, F_Will_Message_Length)
+       and then Invalid (Ctx, F_Will_Message)
        and then Invalid (Ctx, F_User_Name_Length)
        and then Invalid (Ctx, F_User_Name)
        and then Invalid (Ctx, F_Password_Length)
        and then Invalid (Ctx, F_Password)
-       and then (if Get_User_Name_Flag (Ctx) then Valid_Next (Ctx, F_User_Name_Length))
+       and then (if
+                    Get_Will_Flag (Ctx) = 0
+                    and then Get_User_Name_Flag (Ctx)
+                 then
+                    Valid_Next (Ctx, F_User_Name_Length))
+       and then (if Get_Will_Flag (Ctx) = 1 then Valid_Next (Ctx, F_Will_Topic_Length))
        and then Ctx.Buffer_First = Ctx.Buffer_First'Old
        and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and then Ctx.First = Ctx.First'Old
@@ -621,6 +712,9 @@ is
        and then Get_Remaining_Length (Ctx) = Get_Remaining_Length (Ctx)'Old
        and then Get_User_Name_Flag (Ctx) = Get_User_Name_Flag (Ctx)'Old
        and then Get_Password_Flag (Ctx) = Get_Password_Flag (Ctx)'Old
+       and then Get_Will_Retain (Ctx) = Get_Will_Retain (Ctx)'Old
+       and then Get_Will_QoS (Ctx) = Get_Will_QoS (Ctx)'Old
+       and then Get_Will_Flag (Ctx) = Get_Will_Flag (Ctx)'Old
        and then Get_Clean_Session (Ctx) = Get_Clean_Session (Ctx)'Old
        and then Get_Keep_Alive (Ctx) = Get_Keep_Alive (Ctx)'Old
        and then Get_Client_Id_Length (Ctx) = Get_Client_Id_Length (Ctx)'Old
@@ -641,6 +735,113 @@ is
    begin
       Initialize_Client_Id_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Client_Id)));
    end Initialize_Client_Id;
+
+   procedure Initialize_Will_Topic_Private (Ctx : in out Context; Length : RFLX_Types.Length)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Connect.Packet.Has_Buffer (Ctx)
+       and then RFLX.Connect.Packet.Valid_Next (Ctx, RFLX.Connect.Packet.F_Will_Topic)
+       and then RFLX.Connect.Packet.Valid_Length (Ctx, RFLX.Connect.Packet.F_Will_Topic, Length)
+       and then RFLX_Types.To_Length (RFLX.Connect.Packet.Available_Space (Ctx, RFLX.Connect.Packet.F_Will_Topic)) >= Length,
+     Post =>
+       Has_Buffer (Ctx)
+       and then Well_Formed (Ctx, F_Will_Topic)
+       and then Field_Size (Ctx, F_Will_Topic) = RFLX_Types.To_Bit_Length (Length)
+       and then Ctx.Verified_Last = Field_Last (Ctx, F_Will_Topic)
+       and then Invalid (Ctx, F_Will_Message_Length)
+       and then Invalid (Ctx, F_Will_Message)
+       and then Invalid (Ctx, F_User_Name_Length)
+       and then Invalid (Ctx, F_User_Name)
+       and then Invalid (Ctx, F_Password_Length)
+       and then Invalid (Ctx, F_Password)
+       and then Valid_Next (Ctx, F_Will_Message_Length)
+       and then Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and then Ctx.First = Ctx.First'Old
+       and then Ctx.Last = Ctx.Last'Old
+       and then Valid_Next (Ctx, F_Will_Topic) = Valid_Next (Ctx, F_Will_Topic)'Old
+       and then Get_Packet_Type (Ctx) = Get_Packet_Type (Ctx)'Old
+       and then Get_Remaining_Length (Ctx) = Get_Remaining_Length (Ctx)'Old
+       and then Get_User_Name_Flag (Ctx) = Get_User_Name_Flag (Ctx)'Old
+       and then Get_Password_Flag (Ctx) = Get_Password_Flag (Ctx)'Old
+       and then Get_Will_Retain (Ctx) = Get_Will_Retain (Ctx)'Old
+       and then Get_Will_QoS (Ctx) = Get_Will_QoS (Ctx)'Old
+       and then Get_Will_Flag (Ctx) = Get_Will_Flag (Ctx)'Old
+       and then Get_Clean_Session (Ctx) = Get_Clean_Session (Ctx)'Old
+       and then Get_Keep_Alive (Ctx) = Get_Keep_Alive (Ctx)'Old
+       and then Get_Client_Id_Length (Ctx) = Get_Client_Id_Length (Ctx)'Old
+       and then Get_Will_Topic_Length (Ctx) = Get_Will_Topic_Length (Ctx)'Old
+       and then Field_First (Ctx, F_Will_Topic) = Field_First (Ctx, F_Will_Topic)'Old
+   is
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Will_Topic);
+      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Will_Topic) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
+   begin
+      pragma Assert (Last mod RFLX_Types.Byte'Size = 0);
+      Reset_Dependent_Fields (Ctx, F_Will_Topic);
+      pragma Warnings (Off, "attribute Update is an obsolescent feature");
+      Ctx := Ctx'Update (Verified_Last => Last, Written_Last => Last);
+      pragma Warnings (On, "attribute Update is an obsolescent feature");
+      Ctx.Cursors (F_Will_Topic) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
+   end Initialize_Will_Topic_Private;
+
+   procedure Initialize_Will_Topic (Ctx : in out Context) is
+   begin
+      Initialize_Will_Topic_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Will_Topic)));
+   end Initialize_Will_Topic;
+
+   procedure Initialize_Will_Message_Private (Ctx : in out Context; Length : RFLX_Types.Length)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Connect.Packet.Has_Buffer (Ctx)
+       and then RFLX.Connect.Packet.Valid_Next (Ctx, RFLX.Connect.Packet.F_Will_Message)
+       and then RFLX.Connect.Packet.Valid_Length (Ctx, RFLX.Connect.Packet.F_Will_Message, Length)
+       and then RFLX_Types.To_Length (RFLX.Connect.Packet.Available_Space (Ctx, RFLX.Connect.Packet.F_Will_Message)) >= Length,
+     Post =>
+       Has_Buffer (Ctx)
+       and then Well_Formed (Ctx, F_Will_Message)
+       and then Field_Size (Ctx, F_Will_Message) = RFLX_Types.To_Bit_Length (Length)
+       and then Ctx.Verified_Last = Field_Last (Ctx, F_Will_Message)
+       and then Invalid (Ctx, F_User_Name_Length)
+       and then Invalid (Ctx, F_User_Name)
+       and then Invalid (Ctx, F_Password_Length)
+       and then Invalid (Ctx, F_Password)
+       and then (if Get_User_Name_Flag (Ctx) then Valid_Next (Ctx, F_User_Name_Length))
+       and then Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and then Ctx.First = Ctx.First'Old
+       and then Ctx.Last = Ctx.Last'Old
+       and then Valid_Next (Ctx, F_Will_Message) = Valid_Next (Ctx, F_Will_Message)'Old
+       and then Get_Packet_Type (Ctx) = Get_Packet_Type (Ctx)'Old
+       and then Get_Remaining_Length (Ctx) = Get_Remaining_Length (Ctx)'Old
+       and then Get_User_Name_Flag (Ctx) = Get_User_Name_Flag (Ctx)'Old
+       and then Get_Password_Flag (Ctx) = Get_Password_Flag (Ctx)'Old
+       and then Get_Will_Retain (Ctx) = Get_Will_Retain (Ctx)'Old
+       and then Get_Will_QoS (Ctx) = Get_Will_QoS (Ctx)'Old
+       and then Get_Will_Flag (Ctx) = Get_Will_Flag (Ctx)'Old
+       and then Get_Clean_Session (Ctx) = Get_Clean_Session (Ctx)'Old
+       and then Get_Keep_Alive (Ctx) = Get_Keep_Alive (Ctx)'Old
+       and then Get_Client_Id_Length (Ctx) = Get_Client_Id_Length (Ctx)'Old
+       and then Get_Will_Topic_Length (Ctx) = Get_Will_Topic_Length (Ctx)'Old
+       and then Get_Will_Message_Length (Ctx) = Get_Will_Message_Length (Ctx)'Old
+       and then Field_First (Ctx, F_Will_Message) = Field_First (Ctx, F_Will_Message)'Old
+   is
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Will_Message);
+      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Will_Message) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
+   begin
+      pragma Assert (Last mod RFLX_Types.Byte'Size = 0);
+      Reset_Dependent_Fields (Ctx, F_Will_Message);
+      pragma Warnings (Off, "attribute Update is an obsolescent feature");
+      Ctx := Ctx'Update (Verified_Last => Last, Written_Last => Last);
+      pragma Warnings (On, "attribute Update is an obsolescent feature");
+      Ctx.Cursors (F_Will_Message) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
+   end Initialize_Will_Message_Private;
+
+   procedure Initialize_Will_Message (Ctx : in out Context) is
+   begin
+      Initialize_Will_Message_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Will_Message)));
+   end Initialize_Will_Message;
 
    procedure Initialize_User_Name_Private (Ctx : in out Context; Length : RFLX_Types.Length)
    with
@@ -667,6 +868,9 @@ is
        and then Get_Remaining_Length (Ctx) = Get_Remaining_Length (Ctx)'Old
        and then Get_User_Name_Flag (Ctx) = Get_User_Name_Flag (Ctx)'Old
        and then Get_Password_Flag (Ctx) = Get_Password_Flag (Ctx)'Old
+       and then Get_Will_Retain (Ctx) = Get_Will_Retain (Ctx)'Old
+       and then Get_Will_QoS (Ctx) = Get_Will_QoS (Ctx)'Old
+       and then Get_Will_Flag (Ctx) = Get_Will_Flag (Ctx)'Old
        and then Get_Clean_Session (Ctx) = Get_Clean_Session (Ctx)'Old
        and then Get_Keep_Alive (Ctx) = Get_Keep_Alive (Ctx)'Old
        and then Get_Client_Id_Length (Ctx) = Get_Client_Id_Length (Ctx)'Old
@@ -711,6 +915,9 @@ is
        and then Get_Remaining_Length (Ctx) = Get_Remaining_Length (Ctx)'Old
        and then Get_User_Name_Flag (Ctx) = Get_User_Name_Flag (Ctx)'Old
        and then Get_Password_Flag (Ctx) = Get_Password_Flag (Ctx)'Old
+       and then Get_Will_Retain (Ctx) = Get_Will_Retain (Ctx)'Old
+       and then Get_Will_QoS (Ctx) = Get_Will_QoS (Ctx)'Old
+       and then Get_Will_Flag (Ctx) = Get_Will_Flag (Ctx)'Old
        and then Get_Clean_Session (Ctx) = Get_Clean_Session (Ctx)'Old
        and then Get_Keep_Alive (Ctx) = Get_Keep_Alive (Ctx)'Old
        and then Get_Client_Id_Length (Ctx) = Get_Client_Id_Length (Ctx)'Old
@@ -754,6 +961,26 @@ is
       pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Client_Id)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Client_Id))) = Data);
    end Set_Client_Id;
 
+   procedure Set_Will_Topic (Ctx : in out Context; Data : RFLX_Types.Bytes) is
+      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Will_Topic));
+      Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
+   begin
+      Initialize_Will_Topic_Private (Ctx, Data'Length);
+      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Will_Topic)));
+      Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
+      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Will_Topic)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Will_Topic))) = Data);
+   end Set_Will_Topic;
+
+   procedure Set_Will_Message (Ctx : in out Context; Data : RFLX_Types.Bytes) is
+      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Will_Message));
+      Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
+   begin
+      Initialize_Will_Message_Private (Ctx, Data'Length);
+      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Will_Message)));
+      Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
+      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Will_Message)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Will_Message))) = Data);
+   end Set_Will_Message;
+
    procedure Set_User_Name (Ctx : in out Context; Data : RFLX_Types.Bytes) is
       Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_User_Name));
       Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
@@ -793,6 +1020,26 @@ is
       pragma Assert (RFLX.Connect.Packet.Valid_Length (Ctx, RFLX.Connect.Packet.F_Client_Id, Length));
       Initialize_Client_Id_Private (Ctx, Length);
    end Generic_Set_Client_Id;
+
+   procedure Generic_Set_Will_Topic (Ctx : in out Context; Length : RFLX_Types.Length) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Will_Topic));
+   begin
+      if Length > 0 then
+         Process_Will_Topic (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
+      end if;
+      pragma Assert (RFLX.Connect.Packet.Valid_Length (Ctx, RFLX.Connect.Packet.F_Will_Topic, Length));
+      Initialize_Will_Topic_Private (Ctx, Length);
+   end Generic_Set_Will_Topic;
+
+   procedure Generic_Set_Will_Message (Ctx : in out Context; Length : RFLX_Types.Length) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Will_Message));
+   begin
+      if Length > 0 then
+         Process_Will_Message (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
+      end if;
+      pragma Assert (RFLX.Connect.Packet.Valid_Length (Ctx, RFLX.Connect.Packet.F_Will_Message, Length));
+      Initialize_Will_Message_Private (Ctx, Length);
+   end Generic_Set_Will_Message;
 
    procedure Generic_Set_User_Name (Ctx : in out Context; Length : RFLX_Types.Length) is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_User_Name));

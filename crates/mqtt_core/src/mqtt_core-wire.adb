@@ -100,11 +100,22 @@ is
       Last          :    out Index;
       Client_Id     : String;
       Keep_Alive_S  : Keep_Alive;
-      Clean_Session : Boolean := True)
+      Clean_Session : Boolean := True;
+      Will_Topic    : String := "";
+      Will_Message  : RFLX.RFLX_Types.Bytes := Empty_Bytes;
+      Will_QoS      : RFLX.Control_Packet.QoS_Level :=
+                        RFLX.Control_Packet.QOS_0;
+      Will_Retain   : Boolean := False)
    is
       Ctx : RFLX.Connect.Packet.Context;
+      Has_Will : constant Boolean := Will_Topic'Length > 0;
+      Will_Bytes : constant Natural :=
+        (if Has_Will
+         then 4 + Will_Topic'Length + Will_Message'Length
+         else 0);
       RL  : constant RFLX.Connect.Remaining_Length :=
-        RFLX.Connect.Remaining_Length (12 + Client_Id'Length);
+        RFLX.Connect.Remaining_Length
+          (12 + Client_Id'Length + Will_Bytes);
    begin
       RFLX.Connect.Packet.Initialize (Ctx, Buffer);
       RFLX.Connect.Packet.Set_Packet_Type
@@ -115,19 +126,44 @@ is
       RFLX.Connect.Packet.Set_Protocol_Name
         (Ctx, To_Bytes ("MQTT"));
       RFLX.Connect.Packet.Set_Protocol_Level (Ctx, 4);
-      --  Connect Flags byte (high to low: User, Pass, WillRet, WillQ,
-      --  WillF, Clean, Reserved). v0.2 has User=Pass=WillX=Reserved=0.
+      --  Connect Flags byte (high to low: User, Pass, WillRet,
+      --  WillQ, WillF, Clean, Reserved). User_Name + Password are
+      --  not yet client-side; Will is now plumbed through.
       RFLX.Connect.Packet.Set_User_Name_Flag (Ctx, False);
       RFLX.Connect.Packet.Set_Password_Flag  (Ctx, False);
-      RFLX.Connect.Packet.Set_Will_Retain    (Ctx, 0);
-      RFLX.Connect.Packet.Set_Will_QoS       (Ctx, 0);
-      RFLX.Connect.Packet.Set_Will_Flag      (Ctx, 0);
+      RFLX.Connect.Packet.Set_Will_Retain
+        (Ctx, (if Has_Will and Will_Retain then 1 else 0));
+      RFLX.Connect.Packet.Set_Will_QoS
+        (Ctx,
+         (if not Has_Will then 0
+          else
+            (case Will_QoS is
+               when RFLX.Control_Packet.QOS_0 => 0,
+               when RFLX.Control_Packet.QOS_1 => 1,
+               when RFLX.Control_Packet.QOS_2 => 2)));
+      RFLX.Connect.Packet.Set_Will_Flag
+        (Ctx, (if Has_Will then 1 else 0));
       RFLX.Connect.Packet.Set_Clean_Session  (Ctx, Clean_Session);
       RFLX.Connect.Packet.Set_Reserved_Connect_Flag (Ctx, 0);
       RFLX.Connect.Packet.Set_Keep_Alive (Ctx, Keep_Alive_S);
       RFLX.Connect.Packet.Set_Client_Id_Length
         (Ctx, RFLX.Control_Packet.String_Length (Client_Id'Length));
       RFLX.Connect.Packet.Set_Client_Id (Ctx, To_Bytes (Client_Id));
+      if Has_Will then
+         RFLX.Connect.Packet.Set_Will_Topic_Length
+           (Ctx,
+            RFLX.Control_Packet.String_Length (Will_Topic'Length));
+         RFLX.Connect.Packet.Set_Will_Topic
+           (Ctx, To_Bytes (Will_Topic));
+         RFLX.Connect.Packet.Set_Will_Message_Length
+           (Ctx,
+            RFLX.Control_Packet.String_Length (Will_Message'Length));
+         if Will_Message'Length = 0 then
+            RFLX.Connect.Packet.Set_Will_Message_Empty (Ctx);
+         else
+            RFLX.Connect.Packet.Set_Will_Message (Ctx, Will_Message);
+         end if;
+      end if;
       Last := RFLX.RFLX_Types.To_Index
         (RFLX.Connect.Packet.Message_Last (Ctx));
       RFLX.Connect.Packet.Take_Buffer (Ctx, Buffer);
@@ -175,9 +211,19 @@ is
       User_Name      : out String;
       User_Name_Last : out Natural;
       Password       : out RFLX.RFLX_Types.Bytes;
-      Password_Last  : out Natural)
+      Password_Last  : out Natural;
+      Will_Flag      : out Boolean;
+      Will_Topic     : out String;
+      Will_Topic_Last : out Natural;
+      Will_Message   : out RFLX.RFLX_Types.Bytes;
+      Will_Message_Last : out Natural;
+      Will_QoS       : out QoS_Level;
+      Will_Retain    : out Boolean)
    is
       Ctx : RFLX.Connect.Packet.Context;
+      use type RFLX.Connect.Will_Flag_Bit;
+      use type RFLX.Connect.Will_Retain_Bit;
+      use type RFLX.Connect.Will_QoS_Bits;
    begin
       Valid    := False;
       Client_Id := (others => ' ');
@@ -186,6 +232,13 @@ is
       User_Name_Last := 0;
       Password  := (others => 0);
       Password_Last  := 0;
+      Will_Flag := False;
+      Will_Topic := (others => ' ');
+      Will_Topic_Last := 0;
+      Will_Message := (others => 0);
+      Will_Message_Last := 0;
+      Will_QoS := RFLX.Control_Packet.QOS_0;
+      Will_Retain := False;
       RFLX.Connect.Packet.Initialize
         (Ctx, Buffer,
          Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
@@ -255,6 +308,61 @@ is
                         .. Password'First
                            + RFLX.RFLX_Types.Index (PL) - 1));
                   Password_Last := PL;
+               end if;
+            end;
+         end if;
+
+         --  §3.1.2.3-5 + §3.1.3.2-3: Will Flag set → Will Topic +
+         --  Message follow Client_Id. Will_QoS in {0,1,2}; 3 is
+         --  reserved and the Get_Will_QoS function will fault on
+         --  out-of-range values, so we accept what RFLX gives.
+         if Valid
+           and then RFLX.Connect.Packet.Get_Will_Flag (Ctx) = 1
+         then
+            Will_Flag := True;
+            Will_Retain :=
+              RFLX.Connect.Packet.Get_Will_Retain (Ctx) = 1;
+            declare
+               Q : constant RFLX.Connect.Will_QoS_Bits :=
+                 RFLX.Connect.Packet.Get_Will_QoS (Ctx);
+            begin
+               Will_QoS :=
+                 (case Q is
+                    when 0 => RFLX.Control_Packet.QOS_0,
+                    when 1 => RFLX.Control_Packet.QOS_1,
+                    when 2 => RFLX.Control_Packet.QOS_2,
+                    when others => RFLX.Control_Packet.QOS_0);
+            end;
+            declare
+               TL : constant Natural := Natural
+                 (RFLX.Connect.Packet.Get_Will_Topic_Length (Ctx));
+               T_Bytes : RFLX.RFLX_Types.Bytes (1 .. 256) :=
+                 (others => 0);
+            begin
+               if TL > 0 and then TL <= Will_Topic'Length
+                 and then TL <= T_Bytes'Length
+               then
+                  RFLX.Connect.Packet.Get_Will_Topic
+                    (Ctx, T_Bytes (1 .. RFLX.RFLX_Types.Index (TL)));
+                  for I in 1 .. TL loop
+                     Will_Topic (Will_Topic'First + I - 1) :=
+                       Character'Val (Natural (T_Bytes
+                         (RFLX.RFLX_Types.Index (I))));
+                  end loop;
+                  Will_Topic_Last := TL;
+               end if;
+            end;
+            declare
+               ML : constant Natural := Natural
+                 (RFLX.Connect.Packet.Get_Will_Message_Length (Ctx));
+            begin
+               if ML > 0 and then ML <= Will_Message'Length then
+                  RFLX.Connect.Packet.Get_Will_Message
+                    (Ctx, Will_Message
+                       (Will_Message'First
+                        .. Will_Message'First
+                           + RFLX.RFLX_Types.Index (ML) - 1));
+                  Will_Message_Last := ML;
                end if;
             end;
          end if;

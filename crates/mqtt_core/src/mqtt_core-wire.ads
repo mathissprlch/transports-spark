@@ -55,25 +55,44 @@ is
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
-   --  CONNECT — §3.1. Encodes a CONNECT without Username/Password and
-   --  without Will fields (the latter are deferred per coverage.md and
-   --  forced to 0 in connect.rflx).
-   --
-   --  The Remaining Length field uses the single-byte varint form
-   --  (spec restriction): packet size on the wire is at most 129 bytes
+   --  CONNECT — §3.1. Optional Will Topic + Message can be supplied;
+   --  Username/Password are still client-side TODO. The Remaining
+   --  Length field uses the single-byte varint form (spec
+   --  restriction): packet size on the wire is at most 129 bytes
    --  (1 fixed-header byte + 1 RL byte + 127 payload).
+   --
+   --  Pass Will_Topic="" to omit the Will. When set, Will_Message
+   --  may be empty (§3.1.3.3 zero-length is permitted), Will_QoS in
+   --  {0,1,2}, Will_Retain True/False.
    ---------------------------------------------------------------------
+
+   Empty_Bytes : constant RFLX.RFLX_Types.Bytes (1 .. 0) :=
+     (others => 0);
 
    procedure Encode_Connect
      (Buffer        : in out Bytes_Ptr;
       Last          :    out Index;
       Client_Id     : String;
       Keep_Alive_S  : Keep_Alive;
-      Clean_Session : Boolean := True)
+      Clean_Session : Boolean := True;
+      Will_Topic    : String := "";
+      Will_Message  : RFLX.RFLX_Types.Bytes := Empty_Bytes;
+      Will_QoS      : RFLX.Control_Packet.QoS_Level :=
+                        RFLX.Control_Packet.QOS_0;
+      Will_Retain   : Boolean := False)
    with
      Pre  => Buffer /= null
+             and then Will_Topic'Length <= 64
+             and then Will_Message'Length <= 64
              and then Buffer'Length >= 14 + Client_Id'Length
-             and then Client_Id'Length in 1 .. 115,
+                       + (if Will_Topic'Length = 0 then 0
+                          else 4 + Will_Topic'Length
+                               + Will_Message'Length)
+             and then Client_Id'Length in 1 .. 115
+             and then Client_Id'Length
+                      + (if Will_Topic'Length = 0 then 0
+                         else 4 + Will_Topic'Length
+                              + Will_Message'Length) <= 115,
      Post => Buffer /= null;  --  ownership returned to caller after encode/decode
 
    ---------------------------------------------------------------------
@@ -96,12 +115,21 @@ is
       User_Name      : out String;
       User_Name_Last : out Natural;
       Password       : out RFLX.RFLX_Types.Bytes;
-      Password_Last  : out Natural)
+      Password_Last  : out Natural;
+      Will_Flag      : out Boolean;
+      Will_Topic     : out String;
+      Will_Topic_Last : out Natural;
+      Will_Message   : out RFLX.RFLX_Types.Bytes;
+      Will_Message_Last : out Natural;
+      Will_QoS       : out QoS_Level;
+      Will_Retain    : out Boolean)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 12
              and then Client_Id'Length > 0
              and then User_Name'Length > 0
-             and then Password'Length > 0,
+             and then Password'Length > 0
+             and then Will_Topic'Length > 0
+             and then Will_Message'Length > 0,
      Post => Buffer /= null;
 
    --  §3.2 — broker side: encode a CONNACK with given session-present

@@ -133,7 +133,12 @@ package body Mqtt_Core.Client is
       Port          : Natural := 1883;
       Client_Id     : String;
       Keep_Alive_S  : Natural := 60;
-      Clean_Session : Boolean := True)
+      Clean_Session : Boolean := True;
+      Will_Topic    : String := "";
+      Will_Message  : RFLX.RFLX_Types.Bytes := Wire.Empty_Bytes;
+      Will_QoS      : RFLX.Control_Packet.QoS_Level :=
+                        RFLX.Control_Packet.QOS_0;
+      Will_Retain   : Boolean := False)
    is
       package FSM renames RFLX.Session.Connect_Handshake.FSM;
       Ctx         : FSM.Context;
@@ -163,7 +168,11 @@ package body Mqtt_Core.Client is
         (C.Buf, Last,
          Client_Id     => Client_Id,
          Keep_Alive_S  => RFLX.Connect.Keep_Alive (Keep_Alive_S),
-         Clean_Session => Clean_Session);
+         Clean_Session => Clean_Session,
+         Will_Topic    => Will_Topic,
+         Will_Message  => Will_Message,
+         Will_QoS      => Will_QoS,
+         Will_Retain   => Will_Retain);
 
       FSM.Initialize (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
       if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
@@ -1070,6 +1079,13 @@ package body Mqtt_Core.Client is
       --  let the application free them (or re-use them for a new
       --  session).
    end Close;
+
+   procedure Drop (C : in out Client) is
+   begin
+      if Transport.Is_Open (C.Trans) then
+         Transport.Close (C.Trans);
+      end if;
+   end Drop;
 
    procedure Attach_Buffers
      (C            : in out Client;

@@ -2,12 +2,6 @@
 --
 --  Source: MQTT Version 3.1.1 + Errata 01, OASIS Standard, 29 Oct 2014.
 --  Section coverage: §3.1 — CONNECT.
---
---  Will-related fields (§3.1.2.3 Will Flag, §3.1.2.4 Will QoS,
---  §3.1.2.5 Will Retain, §3.1.3.2 Will Topic, §3.1.3.3 Will Message)
---  are DEFERRED post-v0.2 per `coverage.md`. The three Will-related bits
---  in the Connect Flags byte are modeled as `range 0 .. 0` so a parser
---  built from this spec rejects packets that try to use Will.
 
 with Control_Packet;
 
@@ -34,14 +28,18 @@ package Connect is
    --  §3.1.2.10 — Keep Alive. 16-bit big-endian seconds. 0 disables.
    type Keep_Alive is unsigned 16;
 
-   --  §3.1.2.5 — Will Retain (DEFERRED). Forced to 0 for v0.2.
-   type Will_Retain_Deferred is range 0 .. 0 with Size => 1;
+   --  §3.1.2.5 — Will Retain. 1 = "publish the Will message with
+   --  RETAIN=1". MUST be 0 if Will Flag = 0 (range-checked above
+   --  the wire layer since the constraint is conditional).
+   type Will_Retain_Bit is unsigned 1;
 
-   --  §3.1.2.4 — Will QoS (DEFERRED). Forced to 0 for v0.2.
-   type Will_QoS_Deferred is range 0 .. 0 with Size => 2;
+   --  §3.1.2.4 — Will QoS. {0,1,2}; 3 is invalid. Constraint that
+   --  this MUST be 0 if Will Flag = 0 is checked above the wire.
+   type Will_QoS_Bits is unsigned 2;
 
-   --  §3.1.2.3 — Will Flag (DEFERRED). Forced to 0 for v0.2.
-   type Will_Flag_Deferred is range 0 .. 0 with Size => 1;
+   --  §3.1.2.3 — Will Flag. 1 = the Will Topic + Message follow
+   --  the Client_Id in the payload.
+   type Will_Flag_Bit is unsigned 1;
 
    --  §3.1.2.1 — Reserved bit (bit 0 of the Connect Flags byte).
    --  MUST be 0; servers MUST close the connection if set.
@@ -78,9 +76,9 @@ package Connect is
          --  §3.1.2 — Connect Flags byte, high bit first.
          User_Name_Flag : Boolean;
          Password_Flag : Boolean;
-         Will_Retain : Will_Retain_Deferred;
-         Will_QoS : Will_QoS_Deferred;
-         Will_Flag : Will_Flag_Deferred;
+         Will_Retain : Will_Retain_Bit;
+         Will_QoS : Will_QoS_Bits;
+         Will_Flag : Will_Flag_Bit;
          --  §3.1.2.4
          Clean_Session : Boolean;
          Reserved_Connect_Flag : Reserved_Connect_Flag;
@@ -91,6 +89,23 @@ package Connect is
          Client_Id_Length : Control_Packet::String_Length;
          Client_Id : Opaque
             with Size => Client_Id_Length * 8
+            then Will_Topic_Length
+               if Will_Flag = 1
+            then null
+               if Will_Flag = 0
+                  and User_Name_Flag = False
+                  and Password_Flag = False
+            then User_Name_Length
+               if Will_Flag = 0 and User_Name_Flag = True;
+         --  §3.1.3.2 — Will Topic (UTF-8 string). Present iff Will_Flag.
+         Will_Topic_Length : Control_Packet::String_Length;
+         Will_Topic : Opaque
+            with Size => Will_Topic_Length * 8
+            then Will_Message_Length;
+         --  §3.1.3.3 — Will Message (binary, 16-bit length-prefixed).
+         Will_Message_Length : Control_Packet::String_Length;
+         Will_Message : Opaque
+            with Size => Will_Message_Length * 8
             then null
                if User_Name_Flag = False and Password_Flag = False
             then User_Name_Length

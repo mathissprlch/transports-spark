@@ -105,56 +105,56 @@ is
      Pre =>
        Valid_Keep_Alive (Val);
 
-   type Will_Retain_Deferred is range 0 .. 0
+   type Will_Retain_Bit is range 0 .. 2**1 - 1
    with
      Size =>
        1;
 
-   function Valid_Will_Retain_Deferred (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
-     (Val = 0);
+   function Valid_Will_Retain_Bit (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+     (Val <= 1);
 
-   function To_Base_Integer (Val : RFLX.Connect.Will_Retain_Deferred) return RFLX.RFLX_Types.Base_Integer is
+   function To_Base_Integer (Val : RFLX.Connect.Will_Retain_Bit) return RFLX.RFLX_Types.Base_Integer is
      (RFLX.RFLX_Types.Base_Integer (Val));
 
-   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Connect.Will_Retain_Deferred is
-     (RFLX.Connect.Will_Retain_Deferred (Val))
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Connect.Will_Retain_Bit is
+     (RFLX.Connect.Will_Retain_Bit (Val))
    with
      Pre =>
-       Valid_Will_Retain_Deferred (Val);
+       Valid_Will_Retain_Bit (Val);
 
-   type Will_QoS_Deferred is range 0 .. 0
+   type Will_QoS_Bits is range 0 .. 2**2 - 1
    with
      Size =>
        2;
 
-   function Valid_Will_QoS_Deferred (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
-     (Val = 0);
+   function Valid_Will_QoS_Bits (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+     (Val <= 3);
 
-   function To_Base_Integer (Val : RFLX.Connect.Will_QoS_Deferred) return RFLX.RFLX_Types.Base_Integer is
+   function To_Base_Integer (Val : RFLX.Connect.Will_QoS_Bits) return RFLX.RFLX_Types.Base_Integer is
      (RFLX.RFLX_Types.Base_Integer (Val));
 
-   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Connect.Will_QoS_Deferred is
-     (RFLX.Connect.Will_QoS_Deferred (Val))
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Connect.Will_QoS_Bits is
+     (RFLX.Connect.Will_QoS_Bits (Val))
    with
      Pre =>
-       Valid_Will_QoS_Deferred (Val);
+       Valid_Will_QoS_Bits (Val);
 
-   type Will_Flag_Deferred is range 0 .. 0
+   type Will_Flag_Bit is range 0 .. 2**1 - 1
    with
      Size =>
        1;
 
-   function Valid_Will_Flag_Deferred (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
-     (Val = 0);
+   function Valid_Will_Flag_Bit (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+     (Val <= 1);
 
-   function To_Base_Integer (Val : RFLX.Connect.Will_Flag_Deferred) return RFLX.RFLX_Types.Base_Integer is
+   function To_Base_Integer (Val : RFLX.Connect.Will_Flag_Bit) return RFLX.RFLX_Types.Base_Integer is
      (RFLX.RFLX_Types.Base_Integer (Val));
 
-   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Connect.Will_Flag_Deferred is
-     (RFLX.Connect.Will_Flag_Deferred (Val))
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Connect.Will_Flag_Bit is
+     (RFLX.Connect.Will_Flag_Bit (Val))
    with
      Pre =>
-       Valid_Will_Flag_Deferred (Val);
+       Valid_Will_Flag_Bit (Val);
 
    type Reserved_Connect_Flag is range 0 .. 0
    with

@@ -72,7 +72,12 @@ package Mqtt_Core.Client is
       Port          : Natural := 1883;
       Client_Id     : String;
       Keep_Alive_S  : Natural := 60;
-      Clean_Session : Boolean := True);
+      Clean_Session : Boolean := True;
+      Will_Topic    : String := "";
+      Will_Message  : RFLX.RFLX_Types.Bytes := Wire.Empty_Bytes;
+      Will_QoS      : RFLX.Control_Packet.QoS_Level :=
+                        RFLX.Control_Packet.QOS_0;
+      Will_Retain   : Boolean := False);
 
    --  Publish QoS 0 — fire-and-forget. No FSM (no reply, no dispatch).
    --  Retain=True asks the broker to store the message and replay
@@ -138,6 +143,12 @@ package Mqtt_Core.Client is
       Payload_Last :    out RFLX.RFLX_Types.Length);
 
    procedure Close (C : in out Client);
+
+   --  Slam the socket shut without sending DISCONNECT. Useful for
+   --  exercising the broker's Will/Testament path (§3.1.2.5) — the
+   --  broker MUST then publish the Will message for clients that
+   --  set Will_Topic on Open.
+   procedure Drop (C : in out Client);
 
    Connect_Failure     : exception;
    Subscribe_Failure   : exception;

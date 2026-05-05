@@ -119,6 +119,20 @@ package body Mqtt_Core.Broker is
       Out_Pid_Counter : Wire.Packet_Identifier := 65535;
       Outbound_Inflight : Outbound_Inflight_Array;
       Inbound_QoS2 : Inbound_Pid_Array;
+      --  §3.1.2.5 / §3.1.3.2-3 — Will state captured at CONNECT.
+      --  Will_Pending=True means the broker MUST publish (Will_Topic,
+      --  Will_Message) on abnormal disconnect (network drop, malformed
+      --  packet, KeepAlive timeout). A clean DISCONNECT clears it
+      --  before the socket close so it isn't re-published.
+      Will_Pending : Boolean := False;
+      Will_Topic   : String (1 .. 64) := (others => ' ');
+      Will_Topic_Last : Natural := 0;
+      Will_Message : RFLX.RFLX_Types.Bytes (1 .. 256) :=
+        (others => 0);
+      Will_Message_Last : Natural := 0;
+      Will_QoS     : RFLX.Control_Packet.QoS_Level :=
+        RFLX.Control_Packet.QOS_0;
+      Will_Retain  : Boolean := False;
    end record;
 
    type Client_Array is array (Active_Client) of Client_State;
@@ -342,8 +356,58 @@ package body Mqtt_Core.Broker is
       end Find_Free_Sub;
 
       procedure Disconnect_Client (CI : Active_Client);
+
+      procedure Update_Retained
+        (Reg     : in out Retained_Array;
+         Topic   : String;
+         Payload : RFLX.RFLX_Types.Bytes;
+         QoS     : RFLX.Control_Packet.QoS_Level);
+
+      procedure Clear_Retained
+        (Reg : in out Retained_Array; Topic : String);
+
+      procedure Route_Publish
+        (Topic   : String;
+         Payload : RFLX.RFLX_Types.Bytes;
+         Pub_QoS : RFLX.Control_Packet.QoS_Level;
+         Sub_Count : out Natural);
+
       procedure Disconnect_Client (CI : Active_Client) is
+         Sub_Count : Natural := 0;
       begin
+         --  §3.1.2.5: if Will is still pending (i.e., the client did
+         --  NOT issue a clean DISCONNECT), publish the Will message.
+         --  Note: Subs are dropped *after* this so the publishing
+         --  client's own subscriptions still match if the will is
+         --  on a topic they themselves subscribed to.
+         if Clients (CI).Will_Pending
+           and then Clients (CI).Will_Topic_Last > 0
+         then
+            declare
+               Pl : constant RFLX.RFLX_Types.Bytes :=
+                 Clients (CI).Will_Message
+                   (1 .. RFLX.RFLX_Types.Index
+                           (Clients (CI).Will_Message_Last));
+               T  : constant String :=
+                 Clients (CI).Will_Topic
+                   (1 .. Clients (CI).Will_Topic_Last);
+            begin
+               --  RETAIN handling: §3.3.1.3 — if Will_Retain is set
+               --  the message is stored as the topic's retained
+               --  value too.
+               if Clients (CI).Will_Retain then
+                  if Pl'Length = 0 then
+                     Clear_Retained (Retained, T);
+                  else
+                     Update_Retained
+                       (Retained, T, Pl, Clients (CI).Will_QoS);
+                  end if;
+               end if;
+               Route_Publish (T, Pl, Clients (CI).Will_QoS, Sub_Count);
+            end;
+            Clients (CI).Will_Pending := False;
+         end if;
+
          --  Drop subscriptions for this client.
          for I in Subs'Range loop
             if Subs (I).In_Use and then Subs (I).Owner = CI then
@@ -626,12 +690,6 @@ package body Mqtt_Core.Broker is
         (Reg     : in out Retained_Array;
          Topic   : String;
          Payload : RFLX.RFLX_Types.Bytes;
-         QoS     : RFLX.Control_Packet.QoS_Level);
-
-      procedure Update_Retained
-        (Reg     : in out Retained_Array;
-         Topic   : String;
-         Payload : RFLX.RFLX_Types.Bytes;
          QoS     : RFLX.Control_Packet.QoS_Level)
       is
          Free_Idx : Natural := 0;
@@ -670,9 +728,6 @@ package body Mqtt_Core.Broker is
       end Update_Retained;
 
       procedure Clear_Retained
-        (Reg : in out Retained_Array; Topic : String);
-
-      procedure Clear_Retained
         (Reg : in out Retained_Array; Topic : String) is
       begin
          for I in Reg'Range loop
@@ -692,12 +747,6 @@ package body Mqtt_Core.Broker is
       --  Outbound QoS = min(publish_qos, subscriber_granted_qos).
       --  v0.2 caps at QoS 1 (no PUBREC/PUBREL outbound flow).
       ---------------------------------------------------------------
-
-      procedure Route_Publish
-        (Topic   : String;
-         Payload : RFLX.RFLX_Types.Bytes;
-         Pub_QoS : RFLX.Control_Packet.QoS_Level;
-         Sub_Count : out Natural);
 
       procedure Route_Publish
         (Topic   : String;
@@ -963,16 +1012,48 @@ package body Mqtt_Core.Broker is
                   Password       : RFLX.RFLX_Types.Bytes
                     (1 .. 256) := (others => 0);
                   Password_Last  : Natural := 0;
+                  Will_Flag      : Boolean;
+                  Will_Topic     : String (1 .. 64) :=
+                    (others => ' ');
+                  Will_Topic_Last : Natural := 0;
+                  Will_Msg       : RFLX.RFLX_Types.Bytes
+                    (1 .. 256) := (others => 0);
+                  Will_Msg_Last  : Natural := 0;
+                  Will_QoS       : RFLX.Control_Packet.QoS_Level;
+                  Will_Retain    : Boolean;
                begin
                   Wire.Decode_Connect
                     (Buf, Pkt_Last, Valid,
                      Clients (CI).Client_Id,
                      Clients (CI).Cid_Last,
                      User_Name, User_Name_Last,
-                     Password,  Password_Last);
+                     Password,  Password_Last,
+                     Will_Flag, Will_Topic, Will_Topic_Last,
+                     Will_Msg,  Will_Msg_Last,
+                     Will_QoS,  Will_Retain);
                   if not Valid then
                      Disconnect_Client (CI);
                      return;
+                  end if;
+
+                  --  Capture Will state for later abnormal-disconnect
+                  --  republishing (§3.1.2.5).
+                  Clients (CI).Will_Pending := Will_Flag;
+                  if Will_Flag then
+                     Clients (CI).Will_Topic := (others => ' ');
+                     Clients (CI).Will_Topic
+                       (1 .. Will_Topic_Last) :=
+                         Will_Topic (1 .. Will_Topic_Last);
+                     Clients (CI).Will_Topic_Last :=
+                       Will_Topic_Last;
+                     Clients (CI).Will_Message := (others => 0);
+                     Clients (CI).Will_Message
+                       (1 .. RFLX.RFLX_Types.Index (Will_Msg_Last)) :=
+                         Will_Msg
+                           (1 .. RFLX.RFLX_Types.Index (Will_Msg_Last));
+                     Clients (CI).Will_Message_Last := Will_Msg_Last;
+                     Clients (CI).Will_QoS := Will_QoS;
+                     Clients (CI).Will_Retain := Will_Retain;
                   end if;
 
                   --  §3.1.4.1: a server "MAY check that the contents
@@ -1217,6 +1298,8 @@ package body Mqtt_Core.Broker is
                   Subscriber_Count => 0);
 
             when RFLX.Control_Packet.DISCONNECT =>
+               --  §3.1.2.5: a clean DISCONNECT cancels the Will.
+               Clients (CI).Will_Pending := False;
                On_Event
                  (Kind     => Client_Disconnected,
                   Client_Id =>
