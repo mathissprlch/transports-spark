@@ -476,10 +476,11 @@ package body Http2_Core.Server is
                                          - 1));
                               end loop;
                               Hpack.Decode
-                                (Input        => Frag,
-                                 Headers      => Request_Headers,
-                                 Headers_Last => Request_Headers_Last,
-                                 Output_OK    => Decode_OK);
+                                (Input         => Frag,
+                                 Headers       => Request_Headers,
+                                 Headers_Last  => Request_Headers_Last,
+                                 Output_OK     => Decode_OK,
+                                 Decoder_State => L.Hpack_Decoder);
                               if not Decode_OK then
                                  FSM.Finalize
                                    (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
@@ -804,10 +805,11 @@ package body Http2_Core.Server is
                                          - 1));
                               end loop;
                               Hpack.Decode
-                                (Input        => Frag,
-                                 Headers      => Request_Headers,
-                                 Headers_Last => Request_Headers_Last,
-                                 Output_OK    => Decode_OK);
+                                (Input         => Frag,
+                                 Headers       => Request_Headers,
+                                 Headers_Last  => Request_Headers_Last,
+                                 Output_OK     => Decode_OK,
+                                 Decoder_State => L.Hpack_Decoder);
                               if not Decode_OK then
                                  FSM.Finalize
                                    (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
@@ -1136,10 +1138,11 @@ package body Http2_Core.Server is
                                          - 1));
                               end loop;
                               Hpack.Decode
-                                (Input        => Frag,
-                                 Headers      => Request_Headers,
-                                 Headers_Last => Request_Headers_Last,
-                                 Output_OK    => Decode_OK);
+                                (Input         => Frag,
+                                 Headers       => Request_Headers,
+                                 Headers_Last  => Request_Headers_Last,
+                                 Output_OK     => Decode_OK,
+                                 Decoder_State => L.Hpack_Decoder);
                               if not Decode_OK then
                                  FSM.Finalize
                                    (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
@@ -1422,10 +1425,11 @@ package body Http2_Core.Server is
                                          - 1));
                               end loop;
                               Hpack.Decode
-                                (Input        => Frag,
-                                 Headers      => Request_Headers,
-                                 Headers_Last => Request_Headers_Last,
-                                 Output_OK    => Decode_OK);
+                                (Input         => Frag,
+                                 Headers       => Request_Headers,
+                                 Headers_Last  => Request_Headers_Last,
+                                 Output_OK     => Decode_OK,
+                                 Decoder_State => L.Hpack_Decoder);
                               if not Decode_OK then
                                  FSM.Finalize
                                    (Ctx, L.Inbound_Buf, L.Outgoing_Buf);

@@ -127,11 +127,16 @@ procedure Http2_Core_Fuzz is
             Hpack_Buf (I) := Http2_Core.Hpack.Octet
                                (Buf (RFLX.RFLX_Types.Index (I)));
          end loop;
-         Http2_Core.Hpack.Decode
-           (Input        => Hpack_Buf,
-            Headers      => Hdrs,
-            Headers_Last => HL,
-            Output_OK    => OK);
+         declare
+            DT : Http2_Core.Hpack.Dynamic_Table.Table;
+         begin
+            Http2_Core.Hpack.Decode
+              (Input         => Hpack_Buf,
+               Headers       => Hdrs,
+               Headers_Last  => HL,
+               Output_OK     => OK,
+               Decoder_State => DT);
+         end;
          if OK then
             Hpack_R.OK_True := Hpack_R.OK_True + 1;
          else

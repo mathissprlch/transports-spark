@@ -14,8 +14,11 @@ package body Http2_Core.Mux_Server.Frames is
    is
       Last : RFLX.RFLX_Types.Index;
       Params : constant Wire.Settings_List (1 .. 3) :=
+        --  RFC 7541 default of 4096 — peers may now use indexed
+        --  representations and Literal-with-Incremental-Indexing
+        --  to compress repeated headers.
         ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
-          Value      => 0),
+          Value      => 4096),
          (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
           Value      => 0),
          (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,

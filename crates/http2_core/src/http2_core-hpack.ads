@@ -3,15 +3,16 @@
 --  Source: RFC 7541 — HPACK: Header Compression for HTTP/2,
 --  IETF Standard, May 2015.
 --
---  Scope (per ../specs/SCOPE.md):
---  - Static table only (RFC 7541 Appendix A, 61 entries).
---  - Dynamic table size advertised as 0
---    (SETTINGS_HEADER_TABLE_SIZE=0); peer dynamic-table indices
---    >= 62 are PROTOCOL_ERROR.
+--  Scope:
+--  - Static table (RFC 7541 Appendix A, 61 entries) plus a
+--    dynamic table on the decode path so peers may use indexed
+--    representations and Literal-with-Incremental-Indexing
+--    (§6.2.1) to compress repeated headers.
+--  - Encoder emits only static-indexed + Literal-Without-Indexing
+--    forms; we never add to our send-side dynamic table, so we
+--    don't carry one. Peer's SETTINGS_HEADER_TABLE_SIZE for our
+--    direction is moot.
 --  - Huffman codec (Appendix B) hand-written, no dynamic state.
---  - Literal-with-incremental-indexing represents values we want
---    the peer NOT to add to its dynamic table; we never add to
---    ours, so all literals we emit are "never-indexed" form.
 --
 --  Layered files:
 --  - Static_Table — Appendix A entries, lookup helpers.
@@ -26,9 +27,13 @@
 
 with Interfaces;
 
+with Http2_Core.Hpack_Dynamic_Table;
+
 package Http2_Core.Hpack
 with SPARK_Mode
 is
+
+   package Dynamic_Table renames Http2_Core.Hpack_Dynamic_Table;
 
    --  Maximum number of header fields per request (bounded; v0.2
    --  scope says "no per-RPC heap"). Sized for the gRPC header set:
@@ -86,23 +91,24 @@ is
    with Pre => Output'Length >= 1;
 
    --  Decode an HPACK header block fragment per RFC 7541 §6 into
-   --  `Headers`. v0.2 acceptance discipline:
+   --  `Headers`. Acceptance discipline:
    --    * §6.1 with index 1..61 → look up static table.
-   --    * §6.1 with index >= 62 → PROTOCOL_ERROR (we advertise
-   --      SETTINGS_HEADER_TABLE_SIZE=0, peers MUST NOT use dynamic
-   --      indices).
-   --    * §6.2.1/§6.2.2/§6.2.3 → decode name + value. We don't
-   --      maintain a dynamic table, so "with incremental indexing"
-   --      is treated identically to "without indexing" on receive.
-   --    * §6.3 dynamic-table-size update → must be 0; otherwise
-   --      PROTOCOL_ERROR.
-   --  Headers'Length is the caller-allocated capacity; Headers_Last
-   --  reports the count actually decoded.
+   --    * §6.1 with index >= 62 → look up Decoder_State (offset
+   --      by -61). PROTOCOL_ERROR if out of range.
+   --    * §6.2.1 (0x40, incremental-indexing) → decode name + value,
+   --      add to Decoder_State.
+   --    * §6.2.2 (0x00, without-indexing) and §6.2.3 (0x10,
+   --      never-indexed) → decode name + value, do NOT add.
+   --    * §6.3 dynamic-table-size update → call
+   --      Decoder_State.Set_Max_Size with the new bound.
+   --  Headers'Length is the caller-allocated capacity;
+   --  Headers_Last reports the count actually decoded.
    procedure Decode
-     (Input        : Octet_Array;
-      Headers      : in out Header_Block;
-      Headers_Last : out Natural;
-      Output_OK    : out Boolean)
+     (Input         : Octet_Array;
+      Headers       : in out Header_Block;
+      Headers_Last  : out Natural;
+      Output_OK     : out Boolean;
+      Decoder_State : in out Dynamic_Table.Table)
    with Pre => Headers'Length >= 1;
 
 end Http2_Core.Hpack;

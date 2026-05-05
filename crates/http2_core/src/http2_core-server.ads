@@ -143,6 +143,9 @@ private
       Buf           : RFLX.RFLX_Types.Bytes_Ptr := null;
       Inbound_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
       Outgoing_Buf  : RFLX.RFLX_Types.Bytes_Ptr := null;
+      --  Decoder dynamic table — survives across all RPCs served
+      --  on this listener (one connection at a time).
+      Hpack_Decoder : Hpack.Dynamic_Table.Table;
    end record;
 
 end Http2_Core.Server;

@@ -410,10 +410,11 @@ package body Http2_Core.Connection is
                                         RFLX.RFLX_Types.Index (I) - 1));
                            end loop;
                            Hpack.Decode
-                             (Input        => Frag,
-                              Headers      => Response_Headers,
-                              Headers_Last => Response_Headers_Last,
-                              Output_OK    => Decode_OK);
+                             (Input         => Frag,
+                              Headers       => Response_Headers,
+                              Headers_Last  => Response_Headers_Last,
+                              Output_OK     => Decode_OK,
+                              Decoder_State => C.Hpack_Decoder);
                            if not Decode_OK then
                               FSM.Finalize
                                 (Ctx, C.Inbound_Buf, C.Outgoing_Buf);
@@ -713,10 +714,11 @@ package body Http2_Core.Connection is
                 (View (Frag_First + RFLX.RFLX_Types.Index (I) - 1));
          end loop;
          Hpack.Decode
-           (Input        => Frag,
-            Headers      => Response_Headers,
-            Headers_Last => Response_Headers_Last,
-            Output_OK    => Decode_OK);
+           (Input         => Frag,
+            Headers       => Response_Headers,
+            Headers_Last  => Response_Headers_Last,
+            Output_OK     => Decode_OK,
+            Decoder_State => C.Hpack_Decoder);
          if not Decode_OK then
             raise RPC_Error with "HPACK decode failed";
          end if;

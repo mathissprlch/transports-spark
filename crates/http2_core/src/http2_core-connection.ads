@@ -177,6 +177,9 @@ private
       --  Without this, persistent connections hang once the peer's
       --  default 65 535-byte outbound window is exhausted.
       Conn_Bytes_Owed : RFLX.RFLX_Builtin_Types.Bit_Length := 0;
+      --  HPACK decoder dynamic table; survives across all
+      --  Round_Trip / streaming RPCs on this Connection.
+      Hpack_Decoder  : Hpack.Dynamic_Table.Table;
    end record;
 
 end Http2_Core.Connection;

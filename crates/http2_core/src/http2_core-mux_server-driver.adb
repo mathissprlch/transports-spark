@@ -92,10 +92,11 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                                    + RFLX.RFLX_Types.Index (K) - 1));
                         end loop;
                         Hpack.Decode
-                          (Input        => Frag,
-                           Headers      => L.Headers (Slot),
-                           Headers_Last => L.Slots (Slot).Headers_Last,
-                           Output_OK    => Decode_OK);
+                          (Input         => Frag,
+                           Headers       => L.Headers (Slot),
+                           Headers_Last  => L.Slots (Slot).Headers_Last,
+                           Output_OK     => Decode_OK,
+                           Decoder_State => L.Hpack_Decoder);
                         if not Decode_OK then
                            raise Mux_Server_Error
                              with "HPACK decode failed";

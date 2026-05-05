@@ -201,10 +201,11 @@ is
    ---------------------------------------------------------------------
 
    procedure Decode
-     (Input        : Octet_Array;
-      Headers      : in out Header_Block;
-      Headers_Last : out Natural;
-      Output_OK    : out Boolean)
+     (Input         : Octet_Array;
+      Headers       : in out Header_Block;
+      Headers_Last  : out Natural;
+      Output_OK     : out Boolean;
+      Decoder_State : in out Dynamic_Table.Table)
    is
       Idx        : Integer := Input'First;
       Hdr_Idx    : Integer := Headers'First - 1;
@@ -234,41 +235,68 @@ is
                   Output_OK := False;
                   return;
                end if;
-               if Index_Value > 61 then
-                  --  v0.2: dynamic table is empty (size advertised
-                  --  as 0); peer dynamic-index >= 62 is a protocol
-                  --  error.
-                  Output_OK := False;
-                  return;
-               end if;
                if Hdr_Idx >= Headers'Last then
                   Output_OK := False;
                   return;
                end if;
                Hdr_Idx := Hdr_Idx + 1;
-               declare
-                  N_Buf  : String (1 .. Max_Header_Length);
-                  N_Last : Natural;
-                  V_Buf  : String (1 .. Max_Header_Length);
-                  V_Last : Natural;
-               begin
-                  Static_Table.Get_Name (Index_Value, N_Buf, N_Last);
-                  Static_Table.Get_Value (Index_Value, V_Buf, V_Last);
-                  Headers (Hdr_Idx).Name (1 .. N_Last) := N_Buf (1 .. N_Last);
-                  Headers (Hdr_Idx).Name_Last := N_Last;
-                  if V_Last > 0 then
-                     Headers (Hdr_Idx).Value (1 .. V_Last) :=
-                       V_Buf (1 .. V_Last);
-                  end if;
-                  Headers (Hdr_Idx).Value_Last := V_Last;
-               end;
+               if Index_Value <= 61 then
+                  declare
+                     N_Buf  : String (1 .. Max_Header_Length);
+                     N_Last : Natural;
+                     V_Buf  : String (1 .. Max_Header_Length);
+                     V_Last : Natural;
+                  begin
+                     Static_Table.Get_Name
+                       (Index_Value, N_Buf, N_Last);
+                     Static_Table.Get_Value
+                       (Index_Value, V_Buf, V_Last);
+                     Headers (Hdr_Idx).Name (1 .. N_Last) :=
+                       N_Buf (1 .. N_Last);
+                     Headers (Hdr_Idx).Name_Last := N_Last;
+                     if V_Last > 0 then
+                        Headers (Hdr_Idx).Value (1 .. V_Last) :=
+                          V_Buf (1 .. V_Last);
+                     end if;
+                     Headers (Hdr_Idx).Value_Last := V_Last;
+                  end;
+               else
+                  --  Dynamic table — entry index is (Index_Value - 61).
+                  declare
+                     N_Buf  : String (1 .. Max_Header_Length);
+                     N_Last : Natural;
+                     V_Buf  : String (1 .. Max_Header_Length);
+                     V_Last : Natural;
+                     DT_OK  : Boolean;
+                  begin
+                     Dynamic_Table.Lookup
+                       (Decoder_State,
+                        Index      => Index_Value - 61,
+                        Name       => N_Buf,
+                        Name_Last  => N_Last,
+                        Value      => V_Buf,
+                        Value_Last => V_Last,
+                        OK         => DT_OK);
+                     if not DT_OK then
+                        Output_OK := False;
+                        return;
+                     end if;
+                     Headers (Hdr_Idx).Name (1 .. N_Last) :=
+                       N_Buf (1 .. N_Last);
+                     Headers (Hdr_Idx).Name_Last := N_Last;
+                     if V_Last > 0 then
+                        Headers (Hdr_Idx).Value (1 .. V_Last) :=
+                          V_Buf (1 .. V_Last);
+                     end if;
+                     Headers (Hdr_Idx).Value_Last := V_Last;
+                  end;
+               end if;
                Idx := IC_Last + 1;
 
             elsif (B and 16#E0#) = 16#20# then
                --  §6.3 Dynamic Table Size Update: 001xxxxx, 5-prefix.
-               --  We advertised SETTINGS_HEADER_TABLE_SIZE=0; the
-               --  peer MUST emit value 0 here. Anything else is
-               --  PROTOCOL_ERROR.
+               --  Apply directly; the SETTINGS_HEADER_TABLE_SIZE
+               --  upper bound check is the caller's responsibility.
                Int_Codec.Decode
                  (Input     => Ic_Input,
                   First     => Idx,
@@ -276,23 +304,28 @@ is
                   Value     => Index_Value,
                   Last      => IC_Last,
                   Output_OK => IC_OK);
-               if not IC_OK or else Index_Value /= 0 then
+               if not IC_OK then
                   Output_OK := False;
                   return;
                end if;
+               Dynamic_Table.Set_Max_Size
+                 (Decoder_State, Index_Value);
                Idx := IC_Last + 1;
 
             else
-               --  §6.2.* literal: 01xxxxxx, 0001xxxx, or 0000xxxx.
-               --  Prefix size: 6 for 0x40, else 4 for 0x10/0x00.
-               --  We treat all three identically on receive
-               --  (we don't maintain a dynamic table to add to).
+               --  §6.2.* literal: 01xxxxxx (incremental indexing,
+               --  6-prefix), 0001xxxx (never indexed, 4-prefix),
+               --  or 0000xxxx (without indexing, 4-prefix). Only
+               --  the 0x40 (incremental) form is added to our
+               --  decoder dynamic table.
                declare
-                  Pfx_N    : Int_Codec.Prefix_Bits;
-                  Name_Idx : Natural;
-                  Has_Name : Boolean;
+                  Pfx_N      : Int_Codec.Prefix_Bits;
+                  Name_Idx   : Natural;
+                  Has_Name   : Boolean;
+                  Add_Entry  : constant Boolean :=
+                    (B and 16#40#) /= 0;
                begin
-                  if (B and 16#40#) /= 0 then
+                  if Add_Entry then
                      Pfx_N := 6;
                   else
                      Pfx_N := 4;
@@ -309,11 +342,6 @@ is
                      return;
                   end if;
                   Has_Name := Name_Idx > 0;
-                  if Has_Name and then Name_Idx > 61 then
-                     --  Dynamic table reference; not supported.
-                     Output_OK := False;
-                     return;
-                  end if;
 
                   if Hdr_Idx >= Headers'Last then
                      Output_OK := False;
@@ -322,30 +350,51 @@ is
                   Hdr_Idx := Hdr_Idx + 1;
 
                   if Has_Name then
-                     declare
-                        N_Buf  : String (1 .. Max_Header_Length);
-                        N_Last : Natural;
-                     begin
-                        Static_Table.Get_Name (Name_Idx, N_Buf, N_Last);
-                        Headers (Hdr_Idx).Name (1 .. N_Last) :=
-                          N_Buf (1 .. N_Last);
-                        Headers (Hdr_Idx).Name_Last := N_Last;
-                     end;
+                     if Name_Idx <= 61 then
+                        declare
+                           N_Buf  : String (1 .. Max_Header_Length);
+                           N_Last : Natural;
+                        begin
+                           Static_Table.Get_Name
+                             (Name_Idx, N_Buf, N_Last);
+                           Headers (Hdr_Idx).Name (1 .. N_Last) :=
+                             N_Buf (1 .. N_Last);
+                           Headers (Hdr_Idx).Name_Last := N_Last;
+                        end;
+                     else
+                        declare
+                           N_Buf  : String (1 .. Max_Header_Length);
+                           N_Last : Natural;
+                           V_Buf  : String (1 .. Max_Header_Length);
+                           V_Last : Natural;
+                           DT_OK  : Boolean;
+                        begin
+                           Dynamic_Table.Lookup
+                             (Decoder_State,
+                              Index      => Name_Idx - 61,
+                              Name       => N_Buf,
+                              Name_Last  => N_Last,
+                              Value      => V_Buf,
+                              Value_Last => V_Last,
+                              OK         => DT_OK);
+                           if not DT_OK then
+                              Output_OK := False;
+                              return;
+                           end if;
+                           Headers (Hdr_Idx).Name (1 .. N_Last) :=
+                             N_Buf (1 .. N_Last);
+                           Headers (Hdr_Idx).Name_Last := N_Last;
+                        end;
+                     end if;
                      Idx := IC_Last + 1;
                   else
-                     --  Literal name follows the prefix byte. Bound-
-                     --  check before delegating to String_Literal.Decode
-                     --  whose precondition is `First in Input'Range`;
-                     --  fuzz iteration 01 found that a malformed
-                     --  fragment ending exactly at the prefix byte
-                     --  triggers Assertion_Error here without this
-                     --  guard.
                      if IC_Last + 1 > Input'Last then
                         Output_OK := False;
                         return;
                      end if;
                      declare
-                        Name_Buf  : String_Literal.Octet_Array (Headers (Hdr_Idx + 0).Name'Range);
+                        Name_Buf  : String_Literal.Octet_Array
+                          (Headers (Hdr_Idx + 0).Name'Range);
                         SL_Out    : Natural;
                         SL_Cons   : Natural;
                         SL_OK     : Boolean;
@@ -370,9 +419,6 @@ is
                      end;
                   end if;
 
-                  --  Value is always literal in §6.2.*. Same
-                  --  bound-check as for the literal name above —
-                  --  same fuzz-found assertion failure.
                   if Idx > Input'Last then
                      Output_OK := False;
                      return;
@@ -402,6 +448,18 @@ is
                      Headers (Hdr_Idx).Value_Last := SL_Out;
                      Idx := SL_Cons + 1;
                   end;
+
+                  --  §6.2.1 incremental indexing — add the just-
+                  --  decoded (name, value) to the dynamic table so
+                  --  later indices can refer back to it.
+                  if Add_Entry then
+                     Dynamic_Table.Add
+                       (Decoder_State,
+                        Headers (Hdr_Idx).Name
+                          (1 .. Headers (Hdr_Idx).Name_Last),
+                        Headers (Hdr_Idx).Value
+                          (1 .. Headers (Hdr_Idx).Value_Last));
+                  end if;
                end;
             end if;
          end;

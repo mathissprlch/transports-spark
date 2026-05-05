@@ -19,11 +19,13 @@ with Http2_Core.Hpack;
 with Http2_Core.Hpack.Static_Table;
 with Http2_Core.Hpack.Huffman;
 with Http2_Core.Hpack.Int_Codec;
+with Http2_Core.Hpack_Dynamic_Table;
 with Http2_Core.Wire;
 
 procedure Http2_Core_Tests is
    use Ada.Text_IO;
    use Http2_Core.Hpack;
+   package Hpack renames Http2_Core.Hpack;
    use type Interfaces.Unsigned_8;
 
    subtype U8 is Interfaces.Unsigned_8;
@@ -220,11 +222,16 @@ procedure Http2_Core_Tests is
       if not Enc_OK then return; end if;
       Put_Line ("  encoded" & Wire_Last'Image & "B");
 
-      Decode
-        (Input        => Wire (1 .. Wire_Last),
-         Headers      => Out_Headers,
-         Headers_Last => Out_Last,
-         Output_OK    => Dec_OK);
+      declare
+         DT : Hpack.Dynamic_Table.Table;
+      begin
+         Decode
+           (Input         => Wire (1 .. Wire_Last),
+            Headers       => Out_Headers,
+            Headers_Last  => Out_Last,
+            Output_OK     => Dec_OK,
+            Decoder_State => DT);
+      end;
       Check ("decode", Dec_OK);
       if not Dec_OK then return; end if;
       Check ("count" & In_Headers'Length'Image,
@@ -252,6 +259,53 @@ procedure Http2_Core_Tests is
       end loop;
       Check ("all fields match after round-trip", All_Match);
    end Test_Hpack_Round_Trip;
+
+   ----------------------------------------------------------------------
+   --  HPACK dynamic-table decode: hand-craft a wire fragment that uses
+   --  Literal-with-Incremental-Indexing (§6.2.1) followed by an Indexed
+   --  Header Field (§6.1) referencing the just-added entry, and verify
+   --  the decoder's dynamic table resolves the second one correctly.
+   ----------------------------------------------------------------------
+
+   procedure Test_Hpack_Dyn_Table;
+   procedure Test_Hpack_Dyn_Table is
+      --  Bytes:
+      --    40                  — §6.2.1, name index = 0 (literal name)
+      --    05 'm' 'y' 'h' 'd' 'r' — name "myhdr" (raw, 5 bytes)
+      --    05 'v' 'a' 'l' 'u' '1' — value "valu1"
+      --    BE                  — §6.1, index = 62 (first dynamic entry)
+      Wire : constant Octet_Array (1 .. 14) :=
+        (16#40#,
+         16#05#, 16#6D#, 16#79#, 16#68#, 16#64#, 16#72#,
+         16#05#, 16#76#, 16#61#, 16#6C#, 16#75#, 16#31#,
+         16#BE#);
+      DT       : Hpack.Dynamic_Table.Table;
+      Out_H    : Header_Block (1 .. 4);
+      Out_Last : Natural;
+      Dec_OK   : Boolean;
+   begin
+      Put_Line ("hpack dynamic-table decode:");
+      Decode
+        (Input         => Wire,
+         Headers       => Out_H,
+         Headers_Last  => Out_Last,
+         Output_OK     => Dec_OK,
+         Decoder_State => DT);
+      Check ("decode ok", Dec_OK);
+      if not Dec_OK then return; end if;
+      Check ("two entries decoded", Out_Last = 2);
+      if Out_Last < 2 then return; end if;
+      Check ("entry 1 name=myhdr",
+             Out_H (1).Name (1 .. Out_H (1).Name_Last) = "myhdr");
+      Check ("entry 1 value=valu1",
+             Out_H (1).Value (1 .. Out_H (1).Value_Last) = "valu1");
+      Check ("entry 2 resolves dyn idx 62 to myhdr",
+             Out_H (2).Name (1 .. Out_H (2).Name_Last) = "myhdr");
+      Check ("entry 2 resolves dyn idx 62 to valu1",
+             Out_H (2).Value (1 .. Out_H (2).Value_Last) = "valu1");
+      Check ("decoder table has one entry",
+             Hpack.Dynamic_Table.Count (DT) = 1);
+   end Test_Hpack_Dyn_Table;
 
    pragma Unreferenced (To_Octet);
 
@@ -387,6 +441,7 @@ begin
    Test_Int_Codec;
    Test_Huffman;
    Test_Hpack_Round_Trip;
+   Test_Hpack_Dyn_Table;
    Test_Wire;
    New_Line;
    Put_Line ("summary: " & Pass_Count'Image & " passed,"

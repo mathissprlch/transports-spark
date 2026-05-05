@@ -233,6 +233,13 @@ private
       --  adjust open slots when the peer changes the setting
       --  mid-connection.
       Initial_Stream_Window : Bit_Len := 65_535;
+
+      --  RFC 7541 §2.3.2 — decoder dynamic table. State spans the
+      --  whole connection: a §6.2.1 Literal-with-Incremental-
+      --  Indexing in one frame can be referenced by §6.1 in a
+      --  later one. Default-initialized to an empty 4096-byte
+      --  table; resized by inbound §6.3 Dynamic Table Size Update.
+      Hpack_Decoder : Hpack.Dynamic_Table.Table;
    end record;
 
 end Http2_Core.Mux_Server;
