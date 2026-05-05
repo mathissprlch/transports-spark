@@ -145,6 +145,67 @@ is
              and then IV_Of (S_After) = IV_Of (S_Before),
      Post => Next_Nonce (S_After) /= Next_Nonce (S_Before);
 
+   ---------------------------------------------------------------------
+   --  Aead — generic over the underlying seal/open primitive. For
+   --  the TLS_CHACHA20_POLY1305_SHA256 suite we instantiate against
+   --  Tls_Core.Aead_Chacha20_Poly1305 (slice 7).
+   --
+   --  The Stream provides the unique nonce per call; the AEAD
+   --  primitive treats it as a fresh value by contract. Seal_Record
+   --  bumps the Stream's Seq counter, so by Lemma_Bump_Fresh_Nonce
+   --  the next call will use a different nonce — that's the
+   --  no-reuse property surfaced operationally.
+   ---------------------------------------------------------------------
+
+   generic
+      type Key_Type is private;
+      type Tag_Type is private;
+      with procedure Seal
+        (Key        : Key_Type;
+         Nonce      : IV_Array;
+         AAD        : Octet_Array;
+         Plaintext  : Octet_Array;
+         Ciphertext : out Octet_Array;
+         Tag        : out Tag_Type);
+      with procedure Open
+        (Key        : Key_Type;
+         Nonce      : IV_Array;
+         AAD        : Octet_Array;
+         Ciphertext : Octet_Array;
+         Tag        : Tag_Type;
+         Plaintext  : out Octet_Array;
+         OK         : out Boolean);
+   package Aead is
+
+      procedure Seal_Record
+        (S          : in out Stream;
+         Key        : Key_Type;
+         AAD        : Octet_Array;
+         Plaintext  : Octet_Array;
+         Ciphertext : out Octet_Array;
+         Tag        : out Tag_Type)
+      with
+        Pre  => Seq_Of (S) < Seq_Number'Last
+                and then Ciphertext'Length = Plaintext'Length,
+        Post => Seq_Of (S) = Seq_Of (S'Old) + 1
+                and then IV_Of (S) = IV_Of (S'Old);
+
+      procedure Open_Record
+        (S          : in out Stream;
+         Key        : Key_Type;
+         AAD        : Octet_Array;
+         Ciphertext : Octet_Array;
+         Tag        : Tag_Type;
+         Plaintext  : out Octet_Array;
+         OK         : out Boolean)
+      with
+        Pre  => Seq_Of (S) < Seq_Number'Last
+                and then Plaintext'Length = Ciphertext'Length,
+        Post => Seq_Of (S) = Seq_Of (S'Old) + 1
+                and then IV_Of (S) = IV_Of (S'Old);
+
+   end Aead;
+
 private
 
    type Stream is record

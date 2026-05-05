@@ -132,4 +132,54 @@ is
          Seq_Of (S_After));
    end Lemma_Bump_Fresh_Nonce;
 
+   ---------------------------------------------------------------------
+   --  Aead generic body
+   ---------------------------------------------------------------------
+
+   package body Aead is
+
+      procedure Seal_Record
+        (S          : in out Stream;
+         Key        : Key_Type;
+         AAD        : Octet_Array;
+         Plaintext  : Octet_Array;
+         Ciphertext : out Octet_Array;
+         Tag        : out Tag_Type)
+      is
+         N : constant IV_Array := Nonce (S.IV, S.Seq);
+      begin
+         Seal
+           (Key        => Key,
+            Nonce      => N,
+            AAD        => AAD,
+            Plaintext  => Plaintext,
+            Ciphertext => Ciphertext,
+            Tag        => Tag);
+         Bump (S);
+      end Seal_Record;
+
+      procedure Open_Record
+        (S          : in out Stream;
+         Key        : Key_Type;
+         AAD        : Octet_Array;
+         Ciphertext : Octet_Array;
+         Tag        : Tag_Type;
+         Plaintext  : out Octet_Array;
+         OK         : out Boolean)
+      is
+         N : constant IV_Array := Nonce (S.IV, S.Seq);
+      begin
+         Open
+           (Key        => Key,
+            Nonce      => N,
+            AAD        => AAD,
+            Ciphertext => Ciphertext,
+            Tag        => Tag,
+            Plaintext  => Plaintext,
+            OK         => OK);
+         Bump (S);
+      end Open_Record;
+
+   end Aead;
+
 end Tls_Core.Record_Layer;

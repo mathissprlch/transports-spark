@@ -589,6 +589,75 @@ procedure Tls_Core_Tests is
    --  Tag       = 1a:e1:0b:59:4f:09:e2:6a:7e:90:2e:cb:d0:60:06:91
    --------------------------------------------------------------------
 
+   --------------------------------------------------------------------
+   --  Record-layer round-trip — Stream's Seal_Record / Open_Record
+   --  driven by the ChaCha20-Poly1305 AEAD primitive. Two seals
+   --  produce two distinct ciphertexts (because the Stream's Seq
+   --  monotonically increases and the no-reuse lemma fires); both
+   --  open back to the original plaintext.
+   --------------------------------------------------------------------
+
+   package Stream_Aead is new Tls_Core.Record_Layer.Aead
+     (Key_Type => Tls_Core.Aead_Chacha20_Poly1305.Key_Array,
+      Tag_Type => Tls_Core.Aead_Chacha20_Poly1305.Tag_Array,
+      Seal     => Tls_Core.Aead_Chacha20_Poly1305.Seal,
+      Open     => Tls_Core.Aead_Chacha20_Poly1305.Open);
+
+   procedure Record_Aead_Roundtrip;
+   procedure Record_Aead_Roundtrip is
+      Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array :=
+        (others => 16#42#);
+      IV  : constant Tls_Core.Record_Layer.IV_Array :=
+        (16#01#, 16#02#, 16#03#, 16#04#,
+         16#05#, 16#06#, 16#07#, 16#08#,
+         16#09#, 16#0A#, 16#0B#, 16#0C#);
+      AAD : constant Tls_Core.Octet_Array (1 .. 5) :=
+        (16#17#, 16#03#, 16#03#, 16#00#, 16#21#);  -- TLS 1.3 record header sketch
+      Plain : constant Tls_Core.Octet_Array (1 .. 16) :=
+        (16#54#, 16#65#, 16#73#, 16#74#,
+         16#5F#, 16#52#, 16#65#, 16#63#,
+         16#6F#, 16#72#, 16#64#, 16#5F#,
+         16#41#, 16#42#, 16#43#, 16#44#);
+      Sender, Receiver : Tls_Core.Record_Layer.Stream;
+      Cipher_1, Cipher_2 : Tls_Core.Octet_Array (1 .. 16);
+      Tag_1, Tag_2 : Tls_Core.Aead_Chacha20_Poly1305.Tag_Array;
+      Out_Plain : Tls_Core.Octet_Array (1 .. 16);
+      Open_OK : Boolean;
+   begin
+      Put_Line ("scenario 12 — Record_Layer.Aead round-trip + no-reuse");
+      Tls_Core.Record_Layer.Init (Sender, IV);
+      Tls_Core.Record_Layer.Init (Receiver, IV);
+
+      Stream_Aead.Seal_Record
+        (S => Sender, Key => Key, AAD => AAD,
+         Plaintext => Plain,
+         Ciphertext => Cipher_1, Tag => Tag_1);
+      Stream_Aead.Seal_Record
+        (S => Sender, Key => Key, AAD => AAD,
+         Plaintext => Plain,
+         Ciphertext => Cipher_2, Tag => Tag_2);
+
+      Check ("two seals of identical plaintext differ",
+             not Equal (Cipher_1, Cipher_2));
+
+      --  Receiver opens in the same order.
+      Stream_Aead.Open_Record
+        (S => Receiver, Key => Key, AAD => AAD,
+         Ciphertext => Cipher_1, Tag => Tag_1,
+         Plaintext => Out_Plain, OK => Open_OK);
+      Check ("open seq=0 succeeds", Open_OK);
+      Check ("open seq=0 recovers plaintext",
+             Equal (Out_Plain, Plain));
+
+      Stream_Aead.Open_Record
+        (S => Receiver, Key => Key, AAD => AAD,
+         Ciphertext => Cipher_2, Tag => Tag_2,
+         Plaintext => Out_Plain, OK => Open_OK);
+      Check ("open seq=1 succeeds", Open_OK);
+      Check ("open seq=1 recovers plaintext",
+             Equal (Out_Plain, Plain));
+   end Record_Aead_Roundtrip;
+
    procedure Aead_Scenario;
    procedure Aead_Scenario is
       Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array :=
@@ -747,6 +816,7 @@ begin
    Chacha20_Scenario;
    Poly1305_Scenario;
    Aead_Scenario;
+   Record_Aead_Roundtrip;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
