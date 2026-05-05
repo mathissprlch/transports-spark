@@ -1,0 +1,18 @@
+name = "tls_core_tests"
+description = "Tls_Core unit tests / cross-check oracles"
+version = "0.0.1"
+
+authors = ["Mathis Sperlich"]
+maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
+maintainers-logins = ["mathis"]
+licenses = "MIT"
+
+executables = ["tls_core_tests"]
+
+[[depends-on]]
+tls_core = "*"
+rflx_runtime = "*"
+
+[[pins]]
+tls_core = { path = ".." }
+rflx_runtime = { path = "../../rflx_runtime" }

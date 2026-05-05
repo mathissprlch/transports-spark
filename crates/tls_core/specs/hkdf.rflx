@@ -1,0 +1,48 @@
+--  Hkdf: TLS 1.3 HKDF-Expand-Label info-parameter struct.
+--
+--  Source: RFC 8446 §7.1 — Key Schedule.
+--
+--    struct {
+--      uint16 length = Length;
+--      opaque label<7..255> = "tls13 " + Label;
+--      opaque context<0..255> = Context;
+--    } HkdfLabel;
+--
+--  miTLS reference: project-everest/mitls-fstar
+--    src/parsers/MiTLS.Parsers.HKDF.rfc           (TLS-PL source)
+--    src/tls/MiTLS.HKDF.fst   (function `format` / `expand_label`)
+--
+--  miTLS encodes this via the QuackyDucky-generated
+--  `hkdfLabel_serializer32`. We hand the same bytes layout to
+--  RecordFlux; the parse/serialize pair drops out at bronze.
+
+package Hkdf is
+
+   --  Length of the key material to be produced by Expand-Label.
+   --  The real upper bound is 255 * HashLen, but the field on the
+   --  wire is a u16 so the wire-level cap is 65535.
+   type Length_U16 is unsigned 16;
+
+   --  Length of the labelled name. Wire form is one length octet
+   --  followed by Label_Len bytes of label content; the label
+   --  content MUST be 7..255 octets and starts with the literal
+   --  ASCII bytes "tls13 " (six bytes, including the trailing
+   --  space). The semantic check on the prefix lives above the
+   --  wire layer — RecordFlux only enforces 7 <= Label_Len <= 255.
+   type Label_Length is range 7 .. 255 with Size => 8;
+
+   --  Length of the (transcript-hash) context. 0..255 octets.
+   type Context_Length is unsigned 8;
+
+   type Label is
+      message
+         Length : Length_U16;
+         Label_Len : Label_Length;
+         Label_Bytes : Opaque
+            with Size => Label_Len * 8;
+         Context_Len : Context_Length;
+         Context_Bytes : Opaque
+            with Size => Context_Len * 8;
+      end message;
+
+end Hkdf;
