@@ -198,13 +198,20 @@ private
       Slot_Trailers : Trailers_Pool;
       --  RFC 9113 §6.9 outbound flow control. The peer's
       --  connection-level inbound window (= our send window)
-      --  starts at 65 535 (the default — peer can override via
-      --  SETTINGS_INITIAL_WINDOW_SIZE which we don't yet honor)
-      --  and is replenished by inbound WINDOW_UPDATE frames on
-      --  stream 0. Decremented by the byte count of each DATA
-      --  frame we send. Streaming Pump_Reply hooks skip a tick
-      --  when this would underflow.
+      --  starts at 65 535 (the default) and is replenished by
+      --  inbound WINDOW_UPDATE frames on stream 0. Decremented
+      --  by the byte count of each DATA frame we send. Streaming
+      --  Pump_Reply hooks skip a tick when this would underflow.
       Peer_Send_Window : Bit_Len := 65_535;
+
+      --  RFC 9113 §6.5.2 SETTINGS_INITIAL_WINDOW_SIZE — the
+      --  per-stream initial flow-control window the peer
+      --  advertised. Default 65 535; updated by inbound SETTINGS
+      --  parameter id=4. Used as the initial per-stream send
+      --  window for newly-allocated slots. Also used to delta-
+      --  adjust open slots when the peer changes the setting
+      --  mid-connection.
+      Initial_Stream_Window : Bit_Len := 65_535;
    end record;
 
 end Http2_Core.Mux_Server;

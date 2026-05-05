@@ -4,6 +4,7 @@
 with RFLX.RFLX_Types; use type RFLX.RFLX_Types.Index;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.Suback;
+with RFLX.Connack;
 with RFLX.Session.Broker_Reading.FSM;
 
 with Ada.Real_Time;
@@ -737,12 +738,45 @@ package body Mqtt_Core.Broker is
             when RFLX.Control_Packet.CONNECT =>
                declare
                   Valid : Boolean;
+                  User_Name      : String (1 .. 64) :=
+                    (others => ' ');
+                  User_Name_Last : Natural := 0;
+                  Password       : RFLX.RFLX_Types.Bytes
+                    (1 .. 256) := (others => 0);
+                  Password_Last  : Natural := 0;
                begin
                   Wire.Decode_Connect
                     (Buf, Pkt_Last, Valid,
                      Clients (CI).Client_Id,
-                     Clients (CI).Cid_Last);
+                     Clients (CI).Cid_Last,
+                     User_Name, User_Name_Last,
+                     Password,  Password_Last);
                   if not Valid then
+                     Disconnect_Client (CI);
+                     return;
+                  end if;
+
+                  --  §3.1.4.1: a server "MAY check that the contents
+                  --  of the CONNECT Packet meet any further
+                  --  restrictions and SHOULD perform authentication
+                  --  and authorization checks." If the auth hook
+                  --  rejects, return code 0x05 (Not_Authorized) per
+                  --  §3.2.2.3 then close the network connection.
+                  if not Authenticate
+                    (Clients (CI).Client_Id (1 .. Clients (CI).Cid_Last),
+                     User_Name (1 .. User_Name_Last),
+                     Password
+                       (Password'First
+                        .. Password'First
+                           + RFLX.RFLX_Types.Index (Password_Last) - 1))
+                  then
+                     Wire.Encode_Connack
+                       (Buf, Out_Last,
+                        Return_Code =>
+                          RFLX.Connack.REFUSED_NOT_AUTHORIZED);
+                     Send_All
+                       (Clients (CI).Sock,
+                        Buf.all (Buf'First .. Out_Last));
                      Disconnect_Client (CI);
                      return;
                   end if;

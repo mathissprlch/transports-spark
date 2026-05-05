@@ -64,6 +64,20 @@ package Mqtt_Core.Broker is
       Pingreq_Received,
       Client_Disconnected);
 
+   --  Default authentication hook — accepts every CONNECT regardless
+   --  of credentials. Provided so brokers that don't care about auth
+   --  can instantiate Run without writing one. Note that
+   --  Password is binary (§3.1.3.5: arbitrary octets, not a string).
+   pragma Warnings
+     (Off, "formal parameter * is not referenced");
+   function Allow_All_Auth
+     (Client_Id : String;
+      User_Name : String;
+      Password  : RFLX.RFLX_Types.Bytes) return Boolean
+   is (True);
+   pragma Warnings
+     (On, "formal parameter * is not referenced");
+
    generic
       with procedure On_Event
         (Kind         : Event_Kind;
@@ -72,6 +86,16 @@ package Mqtt_Core.Broker is
          Payload      : RFLX.RFLX_Types.Bytes;
          QoS          : RFLX.Control_Packet.QoS_Level;
          Subscriber_Count : Natural);
+      --  Returns True to accept the CONNECT, False to reject with
+      --  CONNACK return code 0x05 (§3.2.2.3 — "not authorised").
+      --  Empty user_name / password (length=0) means the client did
+      --  not present that field; the hook can decide policy
+      --  (anonymous-allowed vs deny).
+      with function Authenticate
+        (Client_Id : String;
+         User_Name : String;
+         Password  : RFLX.RFLX_Types.Bytes) return Boolean
+        is Allow_All_Auth;
    procedure Run (L : in out Listener);
 
    Server_Error : exception;

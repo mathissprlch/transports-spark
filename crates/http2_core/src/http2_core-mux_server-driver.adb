@@ -190,6 +190,47 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                end if;
             when RFLX.Http2_Parameters.SETTINGS =>
                if (Hdr.Flags and Wire.Flag_ACK) = 0 then
+                  --  RFC 9113 §6.5.1: zero or more 6-byte
+                  --  parameters (16-bit id + 32-bit value, both
+                  --  big-endian). We pick out
+                  --  SETTINGS_INITIAL_WINDOW_SIZE (id=4); other
+                  --  ids (HEADER_TABLE_SIZE, MAX_FRAME_SIZE,
+                  --  MAX_CONCURRENT_STREAMS, ENABLE_PUSH,
+                  --  MAX_HEADER_LIST_SIZE) are accepted-but-
+                  --  ignored for now — we'll act on them as the
+                  --  matching feature lands (HPACK dyn table
+                  --  pulls in HEADER_TABLE_SIZE).
+                  declare
+                     Off : RFLX.RFLX_Types.Index :=
+                       L.Buf'First + 9;
+                     End_At : constant RFLX.RFLX_Types.Index :=
+                       L.Buf'First + 9
+                       + RFLX.RFLX_Types.Index (Hdr.Length) - 1;
+                  begin
+                     while Off + 5 <= End_At loop
+                        declare
+                           Id : constant Bit_Len :=
+                             Bit_Len (L.Buf.all (Off)) * 256
+                             + Bit_Len (L.Buf.all (Off + 1));
+                           Val : constant Bit_Len :=
+                             Bit_Len (L.Buf.all (Off + 2)) * 16777216
+                             + Bit_Len (L.Buf.all (Off + 3)) * 65536
+                             + Bit_Len (L.Buf.all (Off + 4)) * 256
+                             + Bit_Len (L.Buf.all (Off + 5));
+                        begin
+                           if Id = 4 then  --  INITIAL_WINDOW_SIZE
+                              --  RFC §6.9.2: when the setting
+                              --  changes, deltas apply to all open
+                              --  streams' send windows. With
+                              --  per-stream window tracking landed
+                              --  in a follow-up commit, this is
+                              --  where the adjustment will go.
+                              L.Initial_Stream_Window := Val;
+                           end if;
+                        end;
+                        Off := Off + 6;
+                     end loop;
+                  end;
                   Frames.Send_Settings_Ack (L, Chan);
                end if;
             when RFLX.Http2_Parameters.GOAWAY =>

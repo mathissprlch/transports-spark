@@ -82,20 +82,26 @@ is
 
    subtype Return_Code is RFLX.Connack.Connect_Return_Code;
 
-   --  §3.1 — broker side: decode an inbound CONNECT. v0.2 surfaces
-   --  client_id only; clean_session, keep-alive and other fields are
-   --  parsed by the underlying RFLX message but we only echo the
-   --  client id back. Returns Valid=False if the packet doesn't
-   --  parse as a Connect::Packet.
+   --  §3.1 — broker side: decode an inbound CONNECT. Surfaces
+   --  client_id plus optional username (§3.1.3.4) and password
+   --  (§3.1.3.5). When the corresponding flag bits are clear the
+   --  *_Last out param is 0. Returns Valid=False if the packet
+   --  doesn't parse as a Connect::Packet.
    procedure Decode_Connect
      (Buffer    : in out Bytes_Ptr;
       Last      : Index;
       Valid     :    out Boolean;
       Client_Id : out String;
-      Cid_Last  : out Natural)
+      Cid_Last  : out Natural;
+      User_Name      : out String;
+      User_Name_Last : out Natural;
+      Password       : out RFLX.RFLX_Types.Bytes;
+      Password_Last  : out Natural)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 12
-             and then Client_Id'Length > 0,
+             and then Client_Id'Length > 0
+             and then User_Name'Length > 0
+             and then Password'Length > 0,
      Post => Buffer /= null;
 
    --  §3.2 — broker side: encode a CONNACK with given session-present

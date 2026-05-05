@@ -171,13 +171,21 @@ is
       Last      : Index;
       Valid     :    out Boolean;
       Client_Id : out String;
-      Cid_Last  : out Natural)
+      Cid_Last  : out Natural;
+      User_Name      : out String;
+      User_Name_Last : out Natural;
+      Password       : out RFLX.RFLX_Types.Bytes;
+      Password_Last  : out Natural)
    is
       Ctx : RFLX.Connect.Packet.Context;
    begin
       Valid    := False;
       Client_Id := (others => ' ');
       Cid_Last := 0;
+      User_Name := (others => ' ');
+      User_Name_Last := 0;
+      Password  := (others => 0);
+      Password_Last  := 0;
       RFLX.Connect.Packet.Initialize
         (Ctx, Buffer,
          Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
@@ -203,6 +211,53 @@ is
                Valid := True;
             end if;
          end;
+
+         --  §3.1.3.4 / §3.1.3.5 — username + password are present
+         --  only when the corresponding flag in §3.1.2.8/9 is set.
+         --  Section 3.1.2.9 also stipulates Password_Flag=1 implies
+         --  User_Name_Flag=1; we honor RFLX's parse-time enforcement
+         --  rather than re-checking here.
+         if Valid
+           and then RFLX.Connect.Packet.Get_User_Name_Flag (Ctx)
+         then
+            declare
+               UL : constant Natural := Natural
+                 (RFLX.Connect.Packet.Get_User_Name_Length (Ctx));
+               U_Bytes : RFLX.RFLX_Types.Bytes (1 .. 256) :=
+                 (others => 0);
+            begin
+               if UL > 0 and then UL <= User_Name'Length
+                 and then UL <= U_Bytes'Length
+               then
+                  RFLX.Connect.Packet.Get_User_Name
+                    (Ctx, U_Bytes (1 .. RFLX.RFLX_Types.Index (UL)));
+                  for I in 1 .. UL loop
+                     User_Name (User_Name'First + I - 1) :=
+                       Character'Val (Natural (U_Bytes
+                         (RFLX.RFLX_Types.Index (I))));
+                  end loop;
+                  User_Name_Last := UL;
+               end if;
+            end;
+         end if;
+
+         if Valid
+           and then RFLX.Connect.Packet.Get_Password_Flag (Ctx)
+         then
+            declare
+               PL : constant Natural := Natural
+                 (RFLX.Connect.Packet.Get_Password_Length (Ctx));
+            begin
+               if PL > 0 and then PL <= Password'Length then
+                  RFLX.Connect.Packet.Get_Password
+                    (Ctx, Password
+                       (Password'First
+                        .. Password'First
+                           + RFLX.RFLX_Types.Index (PL) - 1));
+                  Password_Last := PL;
+               end if;
+            end;
+         end if;
       end if;
       RFLX.Connect.Packet.Take_Buffer (Ctx, Buffer);
    end Decode_Connect;
