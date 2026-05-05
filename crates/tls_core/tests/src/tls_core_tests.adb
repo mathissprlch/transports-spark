@@ -30,6 +30,7 @@ with Tls_Core.X25519;
 with Tls_Core.Sha512;
 with Tls_Core.Ed25519;
 with Tls_Core.X509;
+with Tls_Core.Hello;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1940,6 +1941,80 @@ procedure Tls_Core_Tests is
              not Tls_Core.Ed25519.Verify (Pub_2, Msg_1, Sig_1));
    end Ed25519_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 24 — Hello (CH/SH) encode/decode round-trip with
+   --  real RFC 8446 §4 wire format + extensions.
+   --------------------------------------------------------------------
+   procedure Hello_Scenario;
+   procedure Hello_Scenario is
+      use type Tls_Core.Octet;
+
+      Random_Bytes : constant Tls_Core.Hello.Random_Bytes :=
+        (others => 16#A5#);
+      Pub_Key      : constant Tls_Core.Hello.Public_Key :=
+        (1 => 16#01#, 2 => 16#02#, others => 16#42#);
+
+      CH : Tls_Core.Hello.Client_Hello :=
+        (Random           => Random_Bytes,
+         Session_Id_Len   => 0,
+         Session_Id_Bytes => (others => 0),
+         Key_Share        => Pub_Key);
+      SH : Tls_Core.Hello.Server_Hello :=
+        (Random           => Random_Bytes,
+         Session_Id_Len   => 0,
+         Session_Id_Bytes => (others => 0),
+         Key_Share        => Pub_Key);
+
+      Wire : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Wire_Last : Natural;
+      OK : Boolean;
+      Decoded_CH : Tls_Core.Hello.Client_Hello;
+      Decoded_SH : Tls_Core.Hello.Server_Hello;
+   begin
+      Put_Line ("scenario 24 — Hello CH/SH wire-format round-trip");
+
+      Tls_Core.Hello.Encode_Client_Hello (CH, Wire, Wire_Last);
+      Check ("CH: encode produced bytes", Wire_Last > 50);
+      Check ("CH: legacy_version is 0x0303",
+             Wire (1) = 16#03# and then Wire (2) = 16#03#);
+      Check ("CH: random echoed at offset 3",
+             Wire (3) = 16#A5# and then Wire (34) = 16#A5#);
+
+      Tls_Core.Hello.Decode_Client_Hello
+        (Wire (1 .. Wire_Last), Decoded_CH, OK);
+      Check ("CH: decode succeeds", OK);
+      Check ("CH: round-trip random",
+             Equal (Decoded_CH.Random, Random_Bytes));
+      Check ("CH: round-trip key_share",
+             Equal (Decoded_CH.Key_Share, Pub_Key));
+
+      Tls_Core.Hello.Encode_Server_Hello (SH, Wire, Wire_Last);
+      Check ("SH: encode produced bytes", Wire_Last > 40);
+      Check ("SH: legacy_version is 0x0303",
+             Wire (1) = 16#03# and then Wire (2) = 16#03#);
+
+      Tls_Core.Hello.Decode_Server_Hello
+        (Wire (1 .. Wire_Last), Decoded_SH, OK);
+      Check ("SH: decode succeeds", OK);
+      Check ("SH: round-trip random",
+             Equal (Decoded_SH.Random, Random_Bytes));
+      Check ("SH: round-trip key_share",
+             Equal (Decoded_SH.Key_Share, Pub_Key));
+
+      --  CH with non-empty session_id round-trips.
+      CH.Session_Id_Len := 16;
+      CH.Session_Id_Bytes (1 .. 16) := (others => 16#5A#);
+      Tls_Core.Hello.Encode_Client_Hello (CH, Wire, Wire_Last);
+      Tls_Core.Hello.Decode_Client_Hello
+        (Wire (1 .. Wire_Last), Decoded_CH, OK);
+      Check ("CH: session_id round-trips",
+             OK
+             and then Decoded_CH.Session_Id_Len = 16
+             and then Equal
+                        (Decoded_CH.Session_Id_Bytes (1 .. 16),
+                         CH.Session_Id_Bytes (1 .. 16)));
+   end Hello_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1965,6 +2040,7 @@ begin
    Sha512_Scenario;
    X509_Scenario;
    Ed25519_Scenario;
+   Hello_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
