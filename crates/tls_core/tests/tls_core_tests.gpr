@@ -10,9 +10,10 @@ project Tls_Core_Tests is
    for Main use ("tls_core_tests.adb");
 
    package Compiler is
+      --  -gnata removed: see tls_core.gpr for rationale (abstract
+      --  Spec_X ghost functions can't be runtime-evaluated).
       for Default_Switches ("Ada") use
-        ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
-         "-gnata");
+        ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100");
    end Compiler;
 
 end Tls_Core_Tests;

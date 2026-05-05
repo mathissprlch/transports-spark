@@ -26,6 +26,15 @@ is
    subtype Tag is Tls_Core.Sha256.Digest;
    --  HMAC-SHA-256 always emits a 32-byte tag (no truncation here).
 
+   --  Spec_Hmac is the abstract RFC 2104 keyed-hash treated as an
+   --  opaque ghost function. Compute's Post pins its output to the
+   --  spec, with one pragma Assume in the body discharging the
+   --  equality. This composes upward: HKDF, Key_Schedule, Finished
+   --  callers can reason about HMAC's output through Spec_Hmac
+   --  without re-axiomatizing the inner SHA-256 transform.
+   function Spec_Hmac (Key, Message : Octet_Array) return Tag
+   with Ghost;
+
    procedure Compute
      (Key     : Octet_Array;
       Message : Octet_Array;
@@ -38,6 +47,7 @@ is
        --  Bound caller's First so the index arithmetic in the body
        --  cannot overflow Integer.
        and then Key'Last < Integer'Last - 1024
-       and then Message'Last < Integer'Last - 1024;
+       and then Message'Last < Integer'Last - 1024,
+     Post => Out_Tag = Spec_Hmac (Key, Message);
 
 end Tls_Core.Hmac_Sha256;

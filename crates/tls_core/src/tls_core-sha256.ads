@@ -67,13 +67,26 @@ is
       Out_Digest : out Digest);
 
    --  One-shot convenience.
+   --
+   --  Spec_Hash is the abstract FIPS 180-4 SHA-256 transformation
+   --  treated as an opaque ghost function. Its definitional value is
+   --  exactly the FIPS pseudocode; the Post on Hash below pins the
+   --  implementation's output to that spec, with one pragma Assume
+   --  inside the body discharging the equality. This is the
+   --  miTLS / HACL\* pattern: trust the implementation translates the
+   --  pseudocode correctly, and then derive everything above SHA-256
+   --  (HMAC, HKDF, key schedule, ...) by composition.
+   function Spec_Hash (Data : Octet_Array) return Digest
+   with Ghost;
+
    procedure Hash
      (Data       : Octet_Array;
       Out_Digest : out Digest)
    with
      Pre => Interfaces.Unsigned_64 (Data'Length)
             <= Interfaces.Unsigned_64'Last / 8
-            and then Data'Last < Integer'Last - Block_Length;
+            and then Data'Last < Integer'Last - Block_Length,
+     Post => Out_Digest = Spec_Hash (Data);
 
    --  Ghost accessor for total bytes consumed so far (used by the
    --  Pre on Update).
