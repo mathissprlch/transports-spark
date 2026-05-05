@@ -17,6 +17,37 @@ package body Http2_Core.Connection is
    subtype U8       is RFLX.RFLX_Types.Byte;
    subtype Bit_Len  is RFLX.RFLX_Builtin_Types.Bit_Length;
 
+   --  RFC 9113 §6.9: count an inbound DATA frame's payload against
+   --  the connection-level window and emit a WINDOW_UPDATE on
+   --  stream 0 once we owe ≥ 32 KB. Without this, persistent
+   --  connections stall when 64 KB of cumulative server→client
+   --  DATA has arrived. Round_Trip + the three streaming variants
+   --  all need this; the body lives in one place.
+   Refill_At : constant Bit_Len := 32_768;
+
+   procedure Account_Inbound_Data
+     (C : in out Connection; Length : Bit_Len);
+
+   procedure Account_Inbound_Data
+     (C : in out Connection; Length : Bit_Len) is
+   begin
+      C.Conn_Bytes_Owed := C.Conn_Bytes_Owed + Length;
+      if C.Conn_Bytes_Owed >= Refill_At then
+         declare
+            Wu_Last : RFLX.RFLX_Types.Index;
+         begin
+            Wire.Encode_Window_Update
+              (Buffer    => C.Buf,
+               Last      => Wu_Last,
+               Stream_Id => 0,
+               Increment => C.Conn_Bytes_Owed);
+            Transport.Send
+              (C.Trans, C.Buf.all (C.Buf'First .. Wu_Last));
+            C.Conn_Bytes_Owed := 0;
+         end;
+      end if;
+   end Account_Inbound_Data;
+
    --  Read the next full HTTP/2 frame off the wire into C.Buf
    --  starting at C.Buf'First. Sets Last to the index of the last
    --  byte of the frame and Header to the parsed fixed-header.
@@ -421,31 +452,7 @@ package body Http2_Core.Connection is
                            end loop;
                         end;
 
-                        --  RFC 9113 §6.9: refresh the connection-
-                        --  level inbound window. Without this,
-                        --  persistent connections stall once 65 535
-                        --  cumulative response bytes have arrived.
-                        --  Per-stream window is fine for unary
-                        --  (single response < window), so we only
-                        --  refill the connection here.
-                        C.Conn_Bytes_Owed :=
-                          C.Conn_Bytes_Owed + Hdr.Length;
-                        if C.Conn_Bytes_Owed >= 32_768 then
-                           declare
-                              Wu_Last : RFLX.RFLX_Types.Index;
-                           begin
-                              Wire.Encode_Window_Update
-                                (Buffer    => C.Buf,
-                                 Last      => Wu_Last,
-                                 Stream_Id => 0,
-                                 Increment => C.Conn_Bytes_Owed);
-                              Transport.Send
-                                (C.Trans,
-                                 C.Buf.all
-                                   (C.Buf'First .. Wu_Last));
-                              C.Conn_Bytes_Owed := 0;
-                           end;
-                        end if;
+                        Account_Inbound_Data (C, Hdr.Length);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
@@ -841,6 +848,7 @@ package body Http2_Core.Connection is
                               On_Message (Msg);
                            end if;
                         end;
+                        Account_Inbound_Data (C, Hdr.Length);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
@@ -1071,6 +1079,7 @@ package body Http2_Core.Connection is
                                    + RFLX.RFLX_Types.Index (I));
                            end loop;
                         end;
+                        Account_Inbound_Data (C, Hdr.Length);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
@@ -1273,6 +1282,7 @@ package body Http2_Core.Connection is
                               On_Inbound (Msg);
                            end if;
                         end;
+                        Account_Inbound_Data (C, Hdr.Length);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
