@@ -63,6 +63,18 @@ procedure Accept_And_Serve_Multi_Server_Stream
       Msg_Last : RFLX.RFLX_Types.Index;
       Has_Msg  : Boolean;
    begin
+      --  RFC 9113 §6.9: the peer's advertised window is exhausted;
+      --  defer pumping until an inbound WINDOW_UPDATE refreshes it.
+      --  Don't even ask the application for a reply — that would
+      --  require a queue to hold it; instead, idle this tick.
+      declare
+         use type Bit_Len;
+      begin
+         if L.Peer_Send_Window = 0 then
+            Made_Progress := False;
+            return;
+         end if;
+      end;
       Has_Msg := Next_Reply (Slot, Msg_Buf, Msg_Last);
       if Has_Msg then
          Frames.Send_Data_Frame

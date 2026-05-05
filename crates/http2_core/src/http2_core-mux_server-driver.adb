@@ -194,6 +194,34 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                end if;
             when RFLX.Http2_Parameters.GOAWAY =>
                Goaway_Pending := True;
+            when RFLX.Http2_Parameters.WINDOW_UPDATE =>
+               --  RFC 9113 §6.9.1: 4-byte big-endian increment in
+               --  the payload (high bit reserved, ignored). Bump
+               --  the connection-level send window. Per-stream
+               --  WINDOW_UPDATEs (Stream_Identifier > 0) are
+               --  also sent by some peers; v0.4 ignores them
+               --  since we don't yet track per-stream send
+               --  windows separately.
+               if Hdr.Length = 4 then
+                  declare
+                     B0 : constant U8 :=
+                       L.Buf.all (L.Buf'First + 9) and 16#7F#;
+                     B1 : constant U8 :=
+                       L.Buf.all (L.Buf'First + 10);
+                     B2 : constant U8 :=
+                       L.Buf.all (L.Buf'First + 11);
+                     B3 : constant U8 :=
+                       L.Buf.all (L.Buf'First + 12);
+                     Inc : constant Bit_Len :=
+                       Bit_Len (B0) * 16777216
+                       + Bit_Len (B1) * 65536
+                       + Bit_Len (B2) * 256
+                       + Bit_Len (B3);
+                  begin
+                     L.Peer_Send_Window :=
+                       L.Peer_Send_Window + Inc;
+                  end;
+               end if;
             when others => null;
          end case;
          return;
