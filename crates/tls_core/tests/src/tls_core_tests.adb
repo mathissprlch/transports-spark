@@ -1515,6 +1515,111 @@ procedure Tls_Core_Tests is
       end;
    end Ecdhe_Schedule_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 20 — Handshake_Driver ECDHE loopback.
+   --
+   --  Two drivers in ECDHE mode, each with their own X25519 private
+   --  scalar, exchange ClientHello / ServerHello / Finished / Finished
+   --  through a buffer pair. Both peers extract the other's
+   --  X25519 public key from the Hello body, compute the shared
+   --  secret, and run Derive_Ecdhe_Secrets — converging on
+   --  identical traffic secrets.
+   --------------------------------------------------------------------
+   procedure Ecdhe_Driver_Loopback;
+   procedure Ecdhe_Driver_Loopback is
+      use type Tls_Core.Handshake_Driver.State;
+      use type Tls_Core.Octet;
+
+      Cli_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#33#);
+      Srv_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#44#);
+
+      C, S : Tls_Core.Handshake_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf_Last : Natural := 0;
+      Cs, Ss : Tls_Core.Handshake.Traffic_Secrets;
+   begin
+      Put_Line ("scenario 20 — Handshake_Driver ECDHE loopback");
+
+      Tls_Core.Handshake_Driver.Init_Ecdhe
+        (C, Tls_Core.Handshake_Driver.Client, Cli_Priv);
+      Tls_Core.Handshake_Driver.Init_Ecdhe
+        (S, Tls_Core.Handshake_Driver.Server, Srv_Priv);
+
+      --  Client → ClientHello (with X25519 public).
+      Tls_Core.Handshake_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      Check ("ECDHE Driver: Client emitted CH",
+             Tls_Core.Handshake_Driver.Current_State (C)
+               = Tls_Core.Handshake_Driver.Awaiting_Server_Hello);
+
+      --  Server → ServerHello + Finished, having extracted client pub
+      --  and computed shared.
+      declare
+         CH : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (S, In_Bytes => CH, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("ECDHE Driver: Server emitted SH+SF",
+                Tls_Core.Handshake_Driver.Current_State (S)
+                  = Tls_Core.Handshake_Driver.Awaiting_Finished);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Client receives SH+SF, extracts server pub, computes shared.
+      declare
+         Sh_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Sh_Sf, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("ECDHE Driver: Client → Awaiting_Finished",
+                Tls_Core.Handshake_Driver.Current_State (C)
+                  = Tls_Core.Handshake_Driver.Awaiting_Finished);
+         pragma Unreferenced (Reply_Last);
+      end;
+
+      --  Client emits Finished; Server receives it.
+      declare
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("ECDHE Driver: Client → Done",
+                Tls_Core.Handshake_Driver.Current_State (C)
+                  = Tls_Core.Handshake_Driver.Done);
+         declare
+            CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard_Last : Natural := 0;
+         begin
+            Tls_Core.Handshake_Driver.Step
+              (S, In_Bytes => CF,
+               Out_Buf => Discard, Out_Last => Discard_Last);
+         end;
+         Check ("ECDHE Driver: Server → Done",
+                Tls_Core.Handshake_Driver.Current_State (S)
+                  = Tls_Core.Handshake_Driver.Done);
+      end;
+
+      Tls_Core.Handshake_Driver.Get_Secrets (C, Cs);
+      Tls_Core.Handshake_Driver.Get_Secrets (S, Ss);
+      Check ("ECDHE Driver: c_hs match across loopback",
+             Equal (Cs.Client_Handshake, Ss.Client_Handshake));
+      Check ("ECDHE Driver: s_hs match across loopback",
+             Equal (Cs.Server_Handshake, Ss.Server_Handshake));
+      Check ("ECDHE Driver: c_ap match across loopback",
+             Equal (Cs.Client_App, Ss.Client_App));
+      Check ("ECDHE Driver: s_ap match across loopback",
+             Equal (Cs.Server_App, Ss.Server_App));
+   end Ecdhe_Driver_Loopback;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1536,6 +1641,7 @@ begin
    Channel_Roundtrip_Scenario;
    X25519_Scenario;
    Ecdhe_Schedule_Scenario;
+   Ecdhe_Driver_Loopback;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

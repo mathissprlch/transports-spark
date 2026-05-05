@@ -22,12 +22,18 @@
 
 with Tls_Core.Handshake;
 with Tls_Core.Transcript;
+with Tls_Core.X25519;
 
 package Tls_Core.Handshake_Driver
 with SPARK_Mode => Off
 is
 
    type Role is (Client, Server);
+
+   --  RFC 8446 §4.1.4 mode selection: this v0.5 driver supports
+   --     - PSK_KE  (pre-shared key only)
+   --     - ECDHE   (pure ECDHE with X25519 named group; no certs)
+   type Mode is (PSK_KE, ECDHE);
 
    type State is
      (Idle,                 --  Nothing sent or received yet.
@@ -42,13 +48,21 @@ is
    --  the four traffic secrets from RFC 8446 §7.1.
    type Driver is private;
 
-   --  Initialize for a given role with a 32-byte PSK. The PSK is
-   --  copied; caller can free its buffer.
+   --  Initialize for a given role with a 32-byte PSK. PSK_KE mode.
    procedure Init
      (D    : out Driver;
       For_Role : Role;
       PSK  : Octet_Array)
    with Pre => PSK'Length = 32 and then PSK'Last < Integer'Last - 1024;
+
+   --  Initialize for ECDHE mode. The caller supplies the X25519
+   --  private key (32 bytes); the driver derives its own public,
+   --  embeds it in the outgoing Hello, and on receipt of the peer
+   --  Hello extracts the peer public + computes the shared secret.
+   procedure Init_Ecdhe
+     (D            : out Driver;
+      For_Role     : Role;
+      Private_Key  : Tls_Core.X25519.Bytes_32);
 
    --  Accept an inbound Handshake message body (no record-layer
    --  envelope; just the type+u24-length+body bytes). Advances
@@ -84,9 +98,16 @@ private
 
    type Driver is record
       My_Role          : Role := Client;
+      My_Mode          : Mode := PSK_KE;
       Cur_State        : State := Idle;
       Hash_Ctx         : Tls_Core.Transcript.Accumulator;
       PSK              : PSK_Bytes := (others => 0);
+
+      --  ECDHE state — populated only when My_Mode = ECDHE.
+      My_Priv          : Tls_Core.X25519.Bytes_32 := (others => 0);
+      My_Pub           : Tls_Core.X25519.Bytes_32 := (others => 0);
+      Peer_Pub         : Tls_Core.X25519.Bytes_32 := (others => 0);
+      Shared           : Tls_Core.X25519.Bytes_32 := (others => 0);
 
       --  We retain the recorded ClientHello and ServerHello bytes
       --  (and the peer Finished bytes) so the §7.1 schedule can

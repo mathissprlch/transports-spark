@@ -60,8 +60,13 @@ is
    is
    begin
       D.My_Role := For_Role;
+      D.My_Mode := PSK_KE;
       D.PSK := (others => 0);
       D.PSK := PSK;
+      D.My_Priv := (others => 0);
+      D.My_Pub := (others => 0);
+      D.Peer_Pub := (others => 0);
+      D.Shared := (others => 0);
       D.CH_Buf := (others => 0);
       D.CH_Len := 0;
       D.SH_Buf := (others => 0);
@@ -79,6 +84,43 @@ is
          when Server => D.Cur_State := Awaiting_Client_Hello;
       end case;
    end Init;
+
+   ---------------------------------------------------------------------
+   --  Init_Ecdhe — set up X25519 keypair from a private scalar.
+   ---------------------------------------------------------------------
+
+   procedure Init_Ecdhe
+     (D            : out Driver;
+      For_Role     : Role;
+      Private_Key  : Tls_Core.X25519.Bytes_32)
+   is
+      Pub : Tls_Core.X25519.Bytes_32;
+   begin
+      D.My_Role := For_Role;
+      D.My_Mode := ECDHE;
+      D.PSK := (others => 0);
+      D.My_Priv := Private_Key;
+      Tls_Core.X25519.Derive_Public (Private_Key, Pub);
+      D.My_Pub := Pub;
+      D.Peer_Pub := (others => 0);
+      D.Shared := (others => 0);
+      D.CH_Buf := (others => 0);
+      D.CH_Len := 0;
+      D.SH_Buf := (others => 0);
+      D.SH_Len := 0;
+      D.SF_Buf := (others => 0);
+      D.SF_Len := 0;
+      D.Secrets_Set := False;
+      D.Secrets.Client_Handshake := (others => 0);
+      D.Secrets.Server_Handshake := (others => 0);
+      D.Secrets.Client_App       := (others => 0);
+      D.Secrets.Server_App       := (others => 0);
+      Tls_Core.Transcript.Init (D.Hash_Ctx);
+      case For_Role is
+         when Client => D.Cur_State := Idle;
+         when Server => D.Cur_State := Awaiting_Client_Hello;
+      end case;
+   end Init_Ecdhe;
 
    ---------------------------------------------------------------------
    --  Helpers — store an inbound message into the per-side Hello_Bytes
@@ -113,12 +155,22 @@ is
               and then D.SF_Len in 0 .. 1024;
    procedure Compute_Secrets (D : in out Driver) is
    begin
-      Tls_Core.Handshake.Derive_Psk_Secrets
-        (PSK             => D.PSK,
-         Client_Hello    => D.CH_Buf (1 .. D.CH_Len),
-         Server_Hello    => D.SH_Buf (1 .. D.SH_Len),
-         Server_Finished => D.SF_Buf (1 .. D.SF_Len),
-         Out_Secrets     => D.Secrets);
+      case D.My_Mode is
+         when PSK_KE =>
+            Tls_Core.Handshake.Derive_Psk_Secrets
+              (PSK             => D.PSK,
+               Client_Hello    => D.CH_Buf (1 .. D.CH_Len),
+               Server_Hello    => D.SH_Buf (1 .. D.SH_Len),
+               Server_Finished => D.SF_Buf (1 .. D.SF_Len),
+               Out_Secrets     => D.Secrets);
+         when ECDHE =>
+            Tls_Core.Handshake.Derive_Ecdhe_Secrets
+              (ECDHE_Shared    => D.Shared,
+               Client_Hello    => D.CH_Buf (1 .. D.CH_Len),
+               Server_Hello    => D.SH_Buf (1 .. D.SH_Len),
+               Server_Finished => D.SF_Buf (1 .. D.SF_Len),
+               Out_Secrets     => D.Secrets);
+      end case;
       D.Secrets_Set := True;
    end Compute_Secrets;
 
@@ -137,16 +189,22 @@ is
       Out_Buf := (others => 0);
       Out_Last := 0;
 
+      --  Body_Of for emitted Hellos / Finished:
+      --    PSK_KE  → reflect the PSK as the body bytes (deterministic,
+      --              keeps both peers' transcripts identical).
+      --    ECDHE   → for CH / SH the body is My_Pub (the X25519
+      --              key_share extension's contents). Finished uses
+      --              an arbitrary deterministic body (PSK is zero
+      --              in this mode, but the body shape doesn't have
+      --              to be the real verify_data for our loopback
+      --              proof — both peers just need to agree on the
+      --              transcript bytes).
       case D.Cur_State is
          when Idle =>
-            --  Client only: emit ClientHello with an opaque body
-            --  (a deterministic 32-byte PSK_KE marker derived from
-            --  the PSK). Real TLS uses random + key-share + PSK
-            --  identity extensions; for PSK-only loopback we just
-            --  need a deterministic transcript byte string.
             if D.My_Role = Client then
                declare
-                  Body_Of : constant Octet_Array := D.PSK;
+                  Body_Of : constant Octet_Array :=
+                    (if D.My_Mode = ECDHE then D.My_Pub else D.PSK);
                   Wire    : Octet_Array (1 .. 4 + Body_Of'Length);
                   Wire_Last : Natural;
                begin
@@ -162,19 +220,29 @@ is
             end if;
 
          when Awaiting_Client_Hello =>
-            --  Server: receive CH, emit SH followed by SF in a single
-            --  buffer. The PSK_KE flight at this point is
-            --      Server -> Client : ServerHello, Finished
-            --  (RFC 8446 §2.2 figure with the EE/Cert/CV elided
-            --  in PSK-only mode).
-            if D.My_Role = Server and then In_Bytes'Length > 4 then
+            if D.My_Role = Server and then In_Bytes'Length >= 36 then
                Tls_Core.Transcript.Append (D.Hash_Ctx, In_Bytes);
                Store (D.CH_Buf, D.CH_Len, In_Bytes);
+
+               --  ECDHE: extract peer's public key from the CH body
+               --  (bytes 5..36 inside the handshake message).
+               if D.My_Mode = ECDHE then
+                  for I in 1 .. 32 loop
+                     D.Peer_Pub (I) := In_Bytes (In_Bytes'First + 4 + I - 1);
+                  end loop;
+                  Tls_Core.X25519.Scalar_Mult
+                    (Scalar  => D.My_Priv,
+                     U_Coord => D.Peer_Pub,
+                     Out_Q   => D.Shared);
+               end if;
+
                declare
-                  Body_Of   : constant Octet_Array := D.PSK;
+                  Body_Of   : constant Octet_Array :=
+                    (if D.My_Mode = ECDHE then D.My_Pub else D.PSK);
                   Sh_Wire   : Octet_Array (1 .. 4 + Body_Of'Length);
                   Sh_Last   : Natural;
-                  Sf_Wire   : Octet_Array (1 .. 4 + Body_Of'Length);
+                  Fin_Body  : constant Octet_Array := D.PSK;
+                  Sf_Wire   : Octet_Array (1 .. 4 + Fin_Body'Length);
                   Sf_Last   : Natural;
                begin
                   Encode_Handshake
@@ -183,13 +251,10 @@ is
                   Store (D.SH_Buf, D.SH_Len, Sh_Wire);
 
                   Encode_Handshake
-                    (HS_Finished, Body_Of, Sf_Wire, Sf_Last);
+                    (HS_Finished, Fin_Body, Sf_Wire, Sf_Last);
                   Tls_Core.Transcript.Append (D.Hash_Ctx, Sf_Wire);
                   Store (D.SF_Buf, D.SF_Len, Sf_Wire);
 
-                  --  Server now derives all four traffic secrets,
-                  --  matching what the client will derive when it
-                  --  receives the same SH || SF bytes.
                   Compute_Secrets (D);
 
                   if Sh_Last + Sf_Last <= Out_Buf'Length then
@@ -205,12 +270,8 @@ is
             end if;
 
          when Awaiting_Server_Hello =>
-            --  Client: receive SH || SF in a single buffer. We split
-            --  using the 4-byte handshake header (type + u24 length)
-            --  on the first message to find SF's offset.
             if D.My_Role = Client and then In_Bytes'Length > 8 then
                declare
-                  --  In_Bytes layout: SH header (4) + SH body + SF header (4) + SF body
                   Sh_Body_Len : constant Natural :=
                     Natural (In_Bytes (In_Bytes'First + 1)) * 65536
                     + Natural (In_Bytes (In_Bytes'First + 2)) * 256
@@ -228,6 +289,19 @@ is
                         Sf_Bytes : constant Octet_Array :=
                           In_Bytes (Sh_End + 1 .. In_Bytes'Last);
                      begin
+                        --  ECDHE: SH body holds peer's public key.
+                        if D.My_Mode = ECDHE
+                          and then Sh_Body_Len = 32
+                        then
+                           for I in 1 .. 32 loop
+                              D.Peer_Pub (I) :=
+                                Sh_Bytes (Sh_Bytes'First + 4 + I - 1);
+                           end loop;
+                           Tls_Core.X25519.Scalar_Mult
+                             (Scalar  => D.My_Priv,
+                              U_Coord => D.Peer_Pub,
+                              Out_Q   => D.Shared);
+                        end if;
                         Tls_Core.Transcript.Append (D.Hash_Ctx, Sh_Bytes);
                         Store (D.SH_Buf, D.SH_Len, Sh_Bytes);
                         Tls_Core.Transcript.Append (D.Hash_Ctx, Sf_Bytes);
