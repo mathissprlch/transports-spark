@@ -25,6 +25,7 @@ with Tls_Core.Transcript;
 with Tls_Core.Finished;
 with Tls_Core.Handshake;
 with Tls_Core.Handshake_Driver;
+with Tls_Core.Channel;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1199,6 +1200,145 @@ procedure Tls_Core_Tests is
              Equal (Cs.Server_App, Ss.Server_App));
    end Driver_Loopback_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 17 — Tls_Core.Channel record-layer round-trip.
+   --
+   --  Drives the Handshake_Driver to Done, then opens a Channel
+   --  with the derived c_ap_traffic_secret, sends three plaintexts
+   --  through one Direction's Send and decrypts each on the
+   --  matching Direction's Receive. Confirms (a) wire-format
+   --  framing per RFC 8446 §5.2, (b) AEAD round-trip, (c)
+   --  stream sequence numbers stay aligned across multiple
+   --  records.
+   --------------------------------------------------------------------
+   procedure Channel_Roundtrip_Scenario;
+   procedure Channel_Roundtrip_Scenario is
+      use type Tls_Core.Octet;
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+
+      C, S : Tls_Core.Handshake_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf_Last : Natural := 0;
+      Cs : Tls_Core.Handshake.Traffic_Secrets;
+      Send_Dir, Recv_Dir : Tls_Core.Channel.Direction;
+   begin
+      Put_Line ("scenario 17 — Tls_Core.Channel record round-trip");
+
+      Tls_Core.Handshake_Driver.Init
+        (C, Tls_Core.Handshake_Driver.Client, Psk);
+      Tls_Core.Handshake_Driver.Init
+        (S, Tls_Core.Handshake_Driver.Server, Psk);
+      Tls_Core.Handshake_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      declare
+         CH_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (S, In_Bytes => CH_Bytes, Out_Buf => Reply, Out_Last => Reply_Last);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+      declare
+         Sh_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Sh_Sf, Out_Buf => Reply, Out_Last => Reply_Last);
+         pragma Unreferenced (Reply_Last);
+      end;
+      declare
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         declare
+            CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard_Last : Natural := 0;
+         begin
+            Tls_Core.Handshake_Driver.Step
+              (S, In_Bytes => CF,
+               Out_Buf => Discard, Out_Last => Discard_Last);
+         end;
+      end;
+      Tls_Core.Handshake_Driver.Get_Secrets (C, Cs);
+
+      --  Both sides initialise a Channel direction from the SAME
+      --  secret — what real peers would do for, say, the client→
+      --  server application-data direction.
+      Tls_Core.Channel.Init (Send_Dir, Cs.Client_App);
+      Tls_Core.Channel.Init (Recv_Dir, Cs.Client_App);
+
+      declare
+         Pt1 : constant Tls_Core.Octet_Array := (16#41#, 16#42#, 16#43#);
+         Pt2 : constant Tls_Core.Octet_Array (1 .. 5) :=
+           (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "hello"
+         Pt3 : constant Tls_Core.Octet_Array (1 .. 16) := (others => 16#5A#);
+
+         Wire1 : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire1_L : Natural;
+         Wire2 : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire2_L : Natural;
+         Wire3 : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire3_L : Natural;
+
+         Got : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Got_L : Natural;
+         OK    : Boolean;
+      begin
+         Tls_Core.Channel.Send (Send_Dir, Pt1, Wire1, Wire1_L);
+         Tls_Core.Channel.Send (Send_Dir, Pt2, Wire2, Wire2_L);
+         Tls_Core.Channel.Send (Send_Dir, Pt3, Wire3, Wire3_L);
+
+         Check ("Channel: record 1 has TLS 1.3 envelope (0x17 0x03 0x03)",
+                Wire1 (1) = 16#17#
+                and then Wire1 (2) = 16#03#
+                and then Wire1 (3) = 16#03#);
+         Check ("Channel: record 1 wire length matches",
+                Wire1_L = 5 + Pt1'Length + 16);
+
+         --  Open them in order.
+         Tls_Core.Channel.Receive
+           (Recv_Dir, Wire1 (1 .. Wire1_L),
+            Got, Got_L, OK);
+         Check ("Channel: open record 1 succeeds", OK);
+         Check ("Channel: record 1 round-trips bytes",
+                Got_L = Pt1'Length and then Equal (Got (1 .. Got_L), Pt1));
+
+         Tls_Core.Channel.Receive
+           (Recv_Dir, Wire2 (1 .. Wire2_L),
+            Got, Got_L, OK);
+         Check ("Channel: open record 2 succeeds", OK);
+         Check ("Channel: record 2 round-trips bytes",
+                Got_L = Pt2'Length and then Equal (Got (1 .. Got_L), Pt2));
+
+         Tls_Core.Channel.Receive
+           (Recv_Dir, Wire3 (1 .. Wire3_L),
+            Got, Got_L, OK);
+         Check ("Channel: open record 3 succeeds", OK);
+         Check ("Channel: record 3 round-trips bytes",
+                Got_L = Pt3'Length and then Equal (Got (1 .. Got_L), Pt3));
+
+         --  Tampered ciphertext is rejected.
+         declare
+            Bad : Tls_Core.Octet_Array (1 .. Wire1_L) := Wire1 (1 .. Wire1_L);
+         begin
+            Bad (10) := Bad (10) xor 16#01#;
+            --  Re-init Recv_Dir so the sequence number realigns.
+            Tls_Core.Channel.Init (Recv_Dir, Cs.Client_App);
+            Tls_Core.Channel.Receive
+              (Recv_Dir, Bad, Got, Got_L, OK);
+            Check ("Channel: tampered record rejected", not OK);
+         end;
+      end;
+   end Channel_Roundtrip_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1217,6 +1357,7 @@ begin
    Transcript_Finished_Scenario;
    Capstone_Scenario;
    Driver_Loopback_Scenario;
+   Channel_Roundtrip_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
