@@ -45,4 +45,21 @@ is
       Sig        : Signature)
       return Boolean;
 
+   --  Diagnostic: encode the base point B. Should return the
+   --  canonical encoding 0x5866666666...66 (32 bytes).
+   procedure Debug_Encode_Base (Out_Bytes : out Bytes_32);
+
+   --  Diagnostic: scalar-multiply the base point by `Scalar`
+   --  and return the encoded result.
+   procedure Debug_Scalar_Base
+     (Scalar : Bytes_32;
+      Out_Bytes : out Bytes_32);
+
+   --  Diagnostic: decode then re-encode an encoded point.
+   --  Should round-trip byte-exact for valid inputs.
+   procedure Debug_Decode_Encode
+     (In_Bytes  : Bytes_32;
+      Out_Bytes : out Bytes_32;
+      OK        : out Boolean);
+
 end Tls_Core.Ed25519;

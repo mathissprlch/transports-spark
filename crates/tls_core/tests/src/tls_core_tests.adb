@@ -1939,6 +1939,71 @@ procedure Tls_Core_Tests is
 
       Check ("Ed25519 rejects wrong public key",
              not Tls_Core.Ed25519.Verify (Pub_2, Msg_1, Sig_1));
+
+      --  Diagnostic: encode B and check it equals the canonical
+      --  base-point encoding "5866666666...66".
+      declare
+         Got : Tls_Core.Ed25519.Bytes_32;
+         Expected : constant Tls_Core.Ed25519.Bytes_32 :=
+           (1 => 16#58#, 2..32 => 16#66#);
+      begin
+         Tls_Core.Ed25519.Debug_Encode_Base (Got);
+         Check ("Ed25519 base point encodes to canonical 5866...66",
+                Equal (Got, Expected));
+      end;
+
+      --  Diagnostic: [1] * B should equal B's encoding.
+      declare
+         Scalar_One : constant Tls_Core.Ed25519.Bytes_32 :=
+           (1 => 1, others => 0);
+         Got : Tls_Core.Ed25519.Bytes_32;
+         Expected : constant Tls_Core.Ed25519.Bytes_32 :=
+           (1 => 16#58#, 2..32 => 16#66#);
+      begin
+         Tls_Core.Ed25519.Debug_Scalar_Base (Scalar_One, Got);
+         Check ("Ed25519 [1]*B encodes to base point", Equal (Got, Expected));
+      end;
+
+      --  Diagnostic: decode and re-encode B → should round-trip.
+      declare
+         B_Encoded : constant Tls_Core.Ed25519.Bytes_32 :=
+           (1 => 16#58#, 2..32 => 16#66#);
+         Got : Tls_Core.Ed25519.Bytes_32;
+         OK_Decode : Boolean;
+      begin
+         Tls_Core.Ed25519.Debug_Decode_Encode (B_Encoded, Got, OK_Decode);
+         Check ("Ed25519 decode B succeeds", OK_Decode);
+         Check ("Ed25519 decode-then-encode B round-trips",
+                Equal (Got, B_Encoded));
+      end;
+
+      --  Diagnostic: decode and re-encode Pub_1 (a real public key).
+      declare
+         Got : Tls_Core.Ed25519.Bytes_32;
+         OK_Decode : Boolean;
+      begin
+         Tls_Core.Ed25519.Debug_Decode_Encode (Pub_1, Got, OK_Decode);
+         Check ("Ed25519 decode Pub_1 succeeds", OK_Decode);
+         Check ("Ed25519 decode-then-encode Pub_1 round-trips",
+                Equal (Got, Pub_1));
+      end;
+
+      --  Diagnostic: [2] * B should equal known doubled base point.
+      --  RFC reference value: c9a3f86aae465f0e56513864510f3997561fa2c9e85ea21dc2292309f3cd6022
+      declare
+         Scalar_Two : constant Tls_Core.Ed25519.Bytes_32 :=
+           (1 => 2, others => 0);
+         Got : Tls_Core.Ed25519.Bytes_32;
+         Expected : constant Tls_Core.Ed25519.Bytes_32 :=
+           (16#C9#, 16#A3#, 16#F8#, 16#6A#, 16#AE#, 16#46#, 16#5F#, 16#0E#,
+            16#56#, 16#51#, 16#38#, 16#64#, 16#51#, 16#0F#, 16#39#, 16#97#,
+            16#56#, 16#1F#, 16#A2#, 16#C9#, 16#E8#, 16#5E#, 16#A2#, 16#1D#,
+            16#C2#, 16#29#, 16#23#, 16#09#, 16#F3#, 16#CD#, 16#60#, 16#22#);
+      begin
+         Tls_Core.Ed25519.Debug_Scalar_Base (Scalar_Two, Got);
+         Check ("Ed25519 [2]*B equals known doubled base point",
+                Equal (Got, Expected));
+      end;
    end Ed25519_Scenario;
 
    --------------------------------------------------------------------

@@ -216,25 +216,30 @@ is
       P.T := (others => 0);
    end Set_Identity;
 
-   --  Base point B in extended coordinates (RFC 8032 §5.1).
-   B_Point : constant Point :=
-     (X =>
-        (16#D51A#, 16#8F25#, 16#2D60#, 16#C956#,
-         16#A7B2#, 16#9525#, 16#C760#, 16#692C#,
-         16#DC5C#, 16#FDD6#, 16#E231#, 16#C0A4#,
-         16#53FE#, 16#CD6E#, 16#36D3#, 16#2169#),
-      Y =>
-        (16#6658#, 16#6666#, 16#6666#, 16#6666#,
-         16#6666#, 16#6666#, 16#6666#, 16#6666#,
-         16#6666#, 16#6666#, 16#6666#, 16#6666#,
-         16#6666#, 16#6666#, 16#6666#, 16#6666#),
-      Z =>
-        (1, others => 0),
-      T =>
-        (16#A5B7#, 16#0EB5#, 16#4A7C#, 16#A586#,
-         16#A5DC#, 16#1A5C#, 16#4D75#, 16#56F1#,
-         16#9DF7#, 16#A4F2#, 16#0EAF#, 16#7B47#,
-         16#0FE3#, 16#0775#, 16#9C5B#, 16#6787#));
+   --  Base point B in extended coordinates (RFC 8032 §5.1). T is
+   --  computed at runtime via Get_Base_Point so we avoid a separate
+   --  hardcoded constant that could drift from X*Y.
+
+   Bx : constant Felt :=
+     (16#D51A#, 16#8F25#, 16#2D60#, 16#C956#,
+      16#A7B2#, 16#9525#, 16#C760#, 16#692C#,
+      16#DC5C#, 16#FDD6#, 16#E231#, 16#C0A4#,
+      16#53FE#, 16#CD6E#, 16#36D3#, 16#2169#);
+
+   By : constant Felt :=
+     (16#6658#, 16#6666#, 16#6666#, 16#6666#,
+      16#6666#, 16#6666#, 16#6666#, 16#6666#,
+      16#6666#, 16#6666#, 16#6666#, 16#6666#,
+      16#6666#, 16#6666#, 16#6666#, 16#6666#);
+
+   procedure Get_Base_Point (P : out Point);
+   procedure Get_Base_Point (P : out Point) is
+   begin
+      P.X := Bx;
+      P.Y := By;
+      P.Z := (1, others => 0);
+      F_Mul (P.T, Bx, By);
+   end Get_Base_Point;
 
    ---------------------------------------------------------------------
    --  Point addition (RFC 8032 §5.1.4):
@@ -349,6 +354,37 @@ is
    --  Returns OK = False if the input doesn't decode to a valid point.
    ---------------------------------------------------------------------
 
+   --  pow2523 (TweetNaCl): compute z^((p-5)/8) where p = 2^255 - 19.
+   --  Algorithm: c <- z; for a from 250 downto 0: c <- c²; if a /= 1 then c <- c*z.
+   procedure Pow_2523 (O : out Felt; Z : Felt);
+   procedure Pow_2523 (O : out Felt; Z : Felt) is
+      C, Tmp : Felt;
+   begin
+      C := Z;
+      for A in reverse 0 .. 250 loop
+         F_Sqr (Tmp, C); C := Tmp;
+         if A /= 1 then
+            F_Mul (Tmp, C, Z); C := Tmp;
+         end if;
+      end loop;
+      O := C;
+   end Pow_2523;
+
+   --  Felt equality test via canonical packing.
+   function Felt_Eq (A, B : Felt) return Boolean;
+   function Felt_Eq (A, B : Felt) return Boolean is
+      Pa, Pb : Bytes_32;
+   begin
+      Pack (Pa, A);
+      Pack (Pb, B);
+      for I in Pa'Range loop
+         if Pa (I) /= Pb (I) then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Felt_Eq;
+
    procedure Decode_Point
      (P  : out Point;
       In_Bytes : Bytes_32;
@@ -360,13 +396,13 @@ is
    is
       One        : constant Felt := (1, others => 0);
       I_Sqrt_M1  : constant Felt :=
-        --  sqrt(-1) mod p — used when the trial square doesn't
-        --  match the numerator on the first try.
+        --  sqrt(-1) mod p — TweetNaCl's `gf I` constant.
         (16#A0B0#, 16#4A0E#, 16#1B27#, 16#C4EE#,
          16#E478#, 16#AD2F#, 16#1806#, 16#2F43#,
          16#D7A7#, 16#3DFB#, 16#0099#, 16#2B4D#,
          16#DF0B#, 16#4FC1#, 16#2480#, 16#2B83#);
-      Y, Y2, Num, Den, Den2, Den4, Den6, T1, X_Cand, Chk : Felt;
+      Y, Y2, Num, Den, Den2, Den4, Den6 : Felt;
+      T1, X_Cand, Chk, Tmp, Negated : Felt;
       Local_In : Bytes_32 := In_Bytes;
       Sign_Bit : constant Integer_64 :=
         And_64 (Asr (Integer_64 (In_Bytes (32)), 7), 1);
@@ -375,120 +411,44 @@ is
       Unpack (Y, Local_In);
       P.Y := Y;
       P.Z := One;
-      F_Sqr (Y2, Y);
-      F_Sub (Num, Y2, One);
-      F_Mul (Den, Y2, D_Felt);
-      F_Add (Den, Den, One);
+      --  num = y^2 - 1, den = d*y^2 + 1.
+      F_Sqr  (Y2,  Y);
+      F_Mul  (Den, Y2, D_Felt);
+      F_Sub  (Num, Y2, One);
+      F_Add  (Tmp, One, Den); Den := Tmp;
+      --  den^2, den^4, den^6.
       F_Sqr (Den2, Den);
       F_Sqr (Den4, Den2);
       F_Mul (Den6, Den4, Den2);
-      F_Mul (T1, Num, Den6);
-      F_Mul (T1, T1, Den);
-
-      --  Compute T1^((p-5)/8) — exponent has 250 set bits with bit 1 clear.
-      declare
-         C : Felt := T1;
-         Tmp : Felt;
-      begin
-         for I in 0 .. 249 loop
-            F_Sqr (Tmp, C);
-            C := Tmp;
-         end loop;
-         --  c = T1^(2^250) ; multiply by t1^(2^N) for selected N to
-         --  build (p-5)/8 = (2^252 - 3) >> 1. The straightforward way:
-         --  use Fermat-style exponentiation against the explicit
-         --  exponent (p-5)/8.
-         --
-         --  The exponent (p-5)/8 in binary is 250 ones at the top
-         --  followed by 0 1 (bit 1 = 0, bit 0 = 1). We've squared
-         --  250 times above, accumulating bits 2..251 by repeating
-         --  the pattern.
-         null;
-         pragma Unreferenced (C, Tmp);
-      end;
-      --  The 1-line above isn't enough — we need a real exponent
-      --  walk. Use Fermat reformulation: since p = 2^255 - 19 and
-      --  we want T1^((p-5)/8), the exponent is 0x0FFFFFFFFFFFFFFFFFF...FFFD
-      --  (252 bits, low two bits 01).
-      --
-      --  Compute via repeated square-and-multiply against T1 itself
-      --  for the high bits set, then careful low-bit handling.
-      declare
-         function Pow_P_Minus_5_Div_8 (Z : Felt) return Felt;
-         function Pow_P_Minus_5_Div_8 (Z : Felt) return Felt is
-            R, Tmp : Felt;
-            type Bit_Mode is (Set, Clear);
-            --  (p-5)/8 has bits 0=1, 1=0, then 2..251 = 1, 252+ = 0.
-            --  So r = z * z^(2^2 + 2^3 + ... + 2^251).
-            --  Equivalently r = z * (z^(2^250) - structure).
-            --
-            --  Simpler: implement bit-by-bit from LSB, using an
-            --  accumulator that doubles each loop iteration.
-            Acc : Felt;
-         begin
-            R := (1, others => 0);
-            Acc := Z;
-            --  Bit 0 = 1.
-            F_Mul (Tmp, R, Acc);
-            R := Tmp;
-            for I in 1 .. 251 loop
-               F_Sqr (Tmp, Acc);
-               Acc := Tmp;
-               if I /= 1 then
-                  --  Bits 2..251 are all set.
-                  F_Mul (Tmp, R, Acc);
-                  R := Tmp;
-               end if;
-            end loop;
-            return R;
-         end Pow_P_Minus_5_Div_8;
-      begin
-         X_Cand := Pow_P_Minus_5_Div_8 (T1);
-      end;
-      F_Mul (X_Cand, X_Cand, Num);
-      F_Mul (X_Cand, X_Cand, Den);
-      F_Mul (X_Cand, X_Cand, Den2);
-
-      --  Verify candidate.
+      --  t = num * den^7.
+      F_Mul (T1,  Num, Den6);
+      F_Mul (Tmp, T1,  Den); T1 := Tmp;
+      --  t = t^((p-5)/8).
+      Pow_2523 (Tmp, T1); T1 := Tmp;
+      --  x_cand = t * num * den^3.
+      F_Mul (Tmp, T1,    Num);  T1 := Tmp;
+      F_Mul (Tmp, T1,    Den);  T1 := Tmp;
+      F_Mul (Tmp, T1,    Den);  T1 := Tmp;
+      F_Mul (X_Cand, T1, Den);
+      --  Check: x_cand^2 * den == num? If not, multiply by sqrt(-1).
       F_Sqr (Chk, X_Cand);
-      F_Mul (Chk, Chk, Den);
-      declare
-         Match_Bytes, Num_Bytes, Neg_Num_Bytes : Bytes_32;
-         Neg_Num : Felt;
-         All_Eq, Neg_Eq : Boolean := True;
-      begin
-         Pack (Match_Bytes, Chk);
-         Pack (Num_Bytes, Num);
-         F_Sub (Neg_Num, (others => 0), Num);
-         Pack (Neg_Num_Bytes, Neg_Num);
-         for I in Match_Bytes'Range loop
-            if Match_Bytes (I) /= Num_Bytes (I) then
-               All_Eq := False;
-            end if;
-            if Match_Bytes (I) /= Neg_Num_Bytes (I) then
-               Neg_Eq := False;
-            end if;
-         end loop;
-         if not All_Eq and then not Neg_Eq then
-            OK := False;
-            Set_Identity (P);
-            return;
-         end if;
-         if not All_Eq then
-            F_Mul (X_Cand, X_Cand, I_Sqrt_M1);
-         end if;
-      end;
-
+      F_Mul (Tmp, Chk, Den); Chk := Tmp;
+      if not Felt_Eq (Chk, Num) then
+         F_Mul (Tmp, X_Cand, I_Sqrt_M1); X_Cand := Tmp;
+      end if;
+      --  Re-check after possible sqrt(-1) multiply.
+      F_Sqr (Chk, X_Cand);
+      F_Mul (Tmp, Chk, Den); Chk := Tmp;
+      if not Felt_Eq (Chk, Num) then
+         OK := False;
+         Set_Identity (P);
+         return;
+      end if;
       --  Pick the candidate's sign matching the encoded sign bit.
       if Parity (X_Cand) /= Sign_Bit then
-         declare
-            Negated : Felt;
-         begin
-            F_Sub (Negated, (others => 0), X_Cand);
-            X_Cand := Negated;
-         end;
+         F_Sub (Negated, (others => 0), X_Cand);
+         X_Cand := Negated;
       end if;
-
       P.X := X_Cand;
       F_Mul (P.T, X_Cand, Y);
       OK := True;
@@ -595,7 +555,12 @@ is
       Mod_L (K_Bytes, K_Wide);
 
       --  Compute Lhs = [s]B and Rhs = R + [k]A.
-      Scalar_Mult_Bytes (Lhs, S_Bytes, B_Point);
+      declare
+         B : Point;
+      begin
+         Get_Base_Point (B);
+         Scalar_Mult_Bytes (Lhs, S_Bytes, B);
+      end;
       Scalar_Mult_Bytes (Tmp_P, K_Bytes, A_Point);
       Point_Add (Rhs, R_Point, Tmp_P);
 
@@ -609,5 +574,37 @@ is
       end loop;
       return True;
    end Verify;
+
+   procedure Debug_Encode_Base (Out_Bytes : out Bytes_32) is
+      B : Point;
+   begin
+      Get_Base_Point (B);
+      Encode_Point (Out_Bytes, B);
+   end Debug_Encode_Base;
+
+   procedure Debug_Scalar_Base
+     (Scalar : Bytes_32;
+      Out_Bytes : out Bytes_32)
+   is
+      B, P : Point;
+   begin
+      Get_Base_Point (B);
+      Scalar_Mult_Bytes (P, Scalar, B);
+      Encode_Point (Out_Bytes, P);
+   end Debug_Scalar_Base;
+
+   procedure Debug_Decode_Encode
+     (In_Bytes  : Bytes_32;
+      Out_Bytes : out Bytes_32;
+      OK        : out Boolean)
+   is
+      P : Point;
+   begin
+      Out_Bytes := (others => 0);
+      Decode_Point (P, In_Bytes, OK);
+      if OK then
+         Encode_Point (Out_Bytes, P);
+      end if;
+   end Debug_Decode_Encode;
 
 end Tls_Core.Ed25519;
