@@ -27,6 +27,7 @@ with Tls_Core.Handshake;
 with Tls_Core.Handshake_Driver;
 with Tls_Core.Channel;
 with Tls_Core.X25519;
+with Tls_Core.Sha512;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1620,6 +1621,90 @@ procedure Tls_Core_Tests is
              Equal (Cs.Server_App, Ss.Server_App));
    end Ecdhe_Driver_Loopback;
 
+   --------------------------------------------------------------------
+   --  Scenario 21 — SHA-512 FIPS 180-4 §C test vectors.
+   --
+   --  §C.1 — "abc" → 0xDDAF35A1...
+   --  §C.2 — "abcdbcdec...nopq" (448-bit message) → 0x8E959B75...
+   --  §C.3 — empty string → 0xCF83E135...
+   --------------------------------------------------------------------
+   procedure Sha512_Scenario;
+   procedure Sha512_Scenario is
+      use type Tls_Core.Octet;
+
+      Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+
+      Msg_Abc : constant Tls_Core.Octet_Array := (16#61#, 16#62#, 16#63#);
+
+      Msg_C2 : constant Tls_Core.Octet_Array :=
+        (16#61#, 16#62#, 16#63#, 16#64#, 16#62#, 16#63#, 16#64#, 16#65#,
+         16#63#, 16#64#, 16#65#, 16#66#, 16#64#, 16#65#, 16#66#, 16#67#,
+         16#65#, 16#66#, 16#67#, 16#68#, 16#66#, 16#67#, 16#68#, 16#69#,
+         16#67#, 16#68#, 16#69#, 16#6A#, 16#68#, 16#69#, 16#6A#, 16#6B#,
+         16#69#, 16#6A#, 16#6B#, 16#6C#, 16#6A#, 16#6B#, 16#6C#, 16#6D#,
+         16#6B#, 16#6C#, 16#6D#, 16#6E#, 16#6C#, 16#6D#, 16#6E#, 16#6F#,
+         16#6D#, 16#6E#, 16#6F#, 16#70#, 16#6E#, 16#6F#, 16#70#, 16#71#);
+
+      Expected_Abc : constant Tls_Core.Sha512.Digest :=
+        (16#DD#, 16#AF#, 16#35#, 16#A1#, 16#93#, 16#61#, 16#7A#, 16#BA#,
+         16#CC#, 16#41#, 16#73#, 16#49#, 16#AE#, 16#20#, 16#41#, 16#31#,
+         16#12#, 16#E6#, 16#FA#, 16#4E#, 16#89#, 16#A9#, 16#7E#, 16#A2#,
+         16#0A#, 16#9E#, 16#EE#, 16#E6#, 16#4B#, 16#55#, 16#D3#, 16#9A#,
+         16#21#, 16#92#, 16#99#, 16#2A#, 16#27#, 16#4F#, 16#C1#, 16#A8#,
+         16#36#, 16#BA#, 16#3C#, 16#23#, 16#A3#, 16#FE#, 16#EB#, 16#BD#,
+         16#45#, 16#4D#, 16#44#, 16#23#, 16#64#, 16#3C#, 16#E8#, 16#0E#,
+         16#2A#, 16#9A#, 16#C9#, 16#4F#, 16#A5#, 16#4C#, 16#A4#, 16#9F#);
+
+      Expected_C2 : constant Tls_Core.Sha512.Digest :=
+        (16#20#, 16#4A#, 16#8F#, 16#C6#, 16#DD#, 16#A8#, 16#2F#, 16#0A#,
+         16#0C#, 16#ED#, 16#7B#, 16#EB#, 16#8E#, 16#08#, 16#A4#, 16#16#,
+         16#57#, 16#C1#, 16#6E#, 16#F4#, 16#68#, 16#B2#, 16#28#, 16#A8#,
+         16#27#, 16#9B#, 16#E3#, 16#31#, 16#A7#, 16#03#, 16#C3#, 16#35#,
+         16#96#, 16#FD#, 16#15#, 16#C1#, 16#3B#, 16#1B#, 16#07#, 16#F9#,
+         16#AA#, 16#1D#, 16#3B#, 16#EA#, 16#57#, 16#78#, 16#9C#, 16#A0#,
+         16#31#, 16#AD#, 16#85#, 16#C7#, 16#A7#, 16#1D#, 16#D7#, 16#03#,
+         16#54#, 16#EC#, 16#63#, 16#12#, 16#38#, 16#CA#, 16#34#, 16#45#);
+
+      Expected_Empty : constant Tls_Core.Sha512.Digest :=
+        (16#CF#, 16#83#, 16#E1#, 16#35#, 16#7E#, 16#EF#, 16#B8#, 16#BD#,
+         16#F1#, 16#54#, 16#28#, 16#50#, 16#D6#, 16#6D#, 16#80#, 16#07#,
+         16#D6#, 16#20#, 16#E4#, 16#05#, 16#0B#, 16#57#, 16#15#, 16#DC#,
+         16#83#, 16#F4#, 16#A9#, 16#21#, 16#D3#, 16#6C#, 16#E9#, 16#CE#,
+         16#47#, 16#D0#, 16#D1#, 16#3C#, 16#5D#, 16#85#, 16#F2#, 16#B0#,
+         16#FF#, 16#83#, 16#18#, 16#D2#, 16#87#, 16#7E#, 16#EC#, 16#2F#,
+         16#63#, 16#B9#, 16#31#, 16#BD#, 16#47#, 16#41#, 16#7A#, 16#81#,
+         16#A5#, 16#38#, 16#32#, 16#7A#, 16#F9#, 16#27#, 16#DA#, 16#3E#);
+
+      D : Tls_Core.Sha512.Digest;
+   begin
+      Put_Line ("scenario 21 — SHA-512 FIPS 180-4 §C test vectors");
+
+      Tls_Core.Sha512.Hash (Msg_Abc, D);
+      Check ("SHA-512(""abc"") matches FIPS 180-4 §C.1",
+             Equal (D, Expected_Abc));
+
+      Tls_Core.Sha512.Hash (Msg_C2, D);
+      Check ("SHA-512(448-bit message) matches FIPS 180-4 §C.2",
+             Equal (D, Expected_C2));
+
+      Tls_Core.Sha512.Hash (Empty, D);
+      Check ("SHA-512(empty) matches FIPS 180-4 §C.3",
+             Equal (D, Expected_Empty));
+
+      --  Streaming split: hash "abc" in two Update calls.
+      declare
+         Ctx : Tls_Core.Sha512.Context;
+         D2  : Tls_Core.Sha512.Digest;
+      begin
+         Tls_Core.Sha512.Init (Ctx);
+         Tls_Core.Sha512.Update (Ctx, Msg_Abc (1 .. 1));
+         Tls_Core.Sha512.Update (Ctx, Msg_Abc (2 .. 3));
+         Tls_Core.Sha512.Finalize (Ctx, D2);
+         Check ("SHA-512 streaming split equals one-shot",
+                Equal (D2, Expected_Abc));
+      end;
+   end Sha512_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1642,6 +1727,7 @@ begin
    X25519_Scenario;
    Ecdhe_Schedule_Scenario;
    Ecdhe_Driver_Loopback;
+   Sha512_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
