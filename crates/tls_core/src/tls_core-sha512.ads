@@ -57,13 +57,19 @@ is
      (Ctx        : in out Context;
       Out_Digest : out Digest);
 
+   --  Abstract FIPS 180-4 SHA-512 transform; same trust pattern as
+   --  Tls_Core.Sha256.Spec_Hash.
+   function Spec_Hash (Data : Octet_Array) return Digest
+   with Ghost;
+
    procedure Hash
      (Data       : Octet_Array;
       Out_Digest : out Digest)
    with
      Pre => Interfaces.Unsigned_64 (Data'Length)
             <= Interfaces.Unsigned_64'Last / 8
-            and then Data'Last < Integer'Last - Block_Length;
+            and then Data'Last < Integer'Last - Block_Length,
+     Post => Out_Digest = Spec_Hash (Data);
 
    function Total_Length (Ctx : Context) return Interfaces.Unsigned_64
    with Ghost;

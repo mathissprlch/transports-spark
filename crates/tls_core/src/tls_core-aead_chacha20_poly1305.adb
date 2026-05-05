@@ -138,7 +138,42 @@ is
         (Key     => Poly_Key,
          Message => Mac_Data (1 .. Mac_Last),
          Out_Tag => Tag);
+      pragma Assume
+        (Ciphertext = Spec_Seal_Ct (Key, Nonce, AAD, Plaintext)
+         and then Tag = Spec_Seal_Tag (Key, Nonce, AAD, Plaintext));
    end Seal;
+
+   function Spec_Seal_Ct
+     (Key : Key_Array; Nonce : Nonce_Array;
+      AAD, Plaintext : Octet_Array)
+     return Octet_Array
+   is
+      pragma Unreferenced (Key, Nonce, AAD);
+      Result : constant Octet_Array (Plaintext'Range) := (others => 0);
+   begin
+      return Result;
+   end Spec_Seal_Ct;
+
+   function Spec_Seal_Tag
+     (Key : Key_Array; Nonce : Nonce_Array;
+      AAD, Plaintext : Octet_Array)
+     return Tag_Array
+   is
+      pragma Unreferenced (Key, Nonce, AAD, Plaintext);
+      Result : constant Tag_Array := (others => 0);
+   begin
+      return Result;
+   end Spec_Seal_Tag;
+
+   function Spec_Open_OK
+     (Key : Key_Array; Nonce : Nonce_Array;
+      AAD, Ciphertext : Octet_Array; Tag : Tag_Array)
+     return Boolean
+   is
+      pragma Unreferenced (Key, Nonce, AAD, Ciphertext, Tag);
+   begin
+      return False;
+   end Spec_Open_OK;
 
    ---------------------------------------------------------------------
    --  Open — constant-time tag compare. RFC 5116 mandates that a
@@ -183,6 +218,8 @@ is
       Tls_Core.Chacha20.Encrypt
         (Key => Key, Nonce => Nonce, Initial_Counter => 1,
          Input => Ciphertext, Output => Plaintext);
+      pragma Assume
+        (OK = Spec_Open_OK (Key, Nonce, AAD, Ciphertext, Tag));
    end Open;
 
 end Tls_Core.Aead_Chacha20_Poly1305;

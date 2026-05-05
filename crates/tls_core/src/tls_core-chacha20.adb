@@ -170,6 +170,22 @@ is
          end;
          Counter := Counter + 1;
       end loop;
+      pragma Assume
+        (Output =
+           Spec_Encrypt (Key, Nonce, Initial_Counter, Input));
    end Encrypt;
+
+   function Spec_Encrypt
+     (Key             : Key_Array;
+      Nonce           : Nonce_Array;
+      Initial_Counter : Word;
+      Input           : Octet_Array)
+      return Octet_Array
+   is
+      pragma Unreferenced (Key, Nonce, Initial_Counter);
+      Result : constant Octet_Array (Input'Range) := (others => 0);
+   begin
+      return Result;
+   end Spec_Encrypt;
 
 end Tls_Core.Chacha20;

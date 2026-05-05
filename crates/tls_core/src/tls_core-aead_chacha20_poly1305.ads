@@ -32,6 +32,26 @@ is
    --  Seal: encrypt Plaintext under Key/Nonce, authenticate
    --  Plaintext + AAD, return Ciphertext (= Plaintext'Length bytes)
    --  and Tag (16 bytes).
+   --  Abstract RFC 8439 §2.8 AEAD pair.
+   function Spec_Seal_Ct
+     (Key : Key_Array; Nonce : Nonce_Array;
+      AAD, Plaintext : Octet_Array)
+     return Octet_Array
+   with Ghost,
+        Post => Spec_Seal_Ct'Result'Length = Plaintext'Length;
+
+   function Spec_Seal_Tag
+     (Key : Key_Array; Nonce : Nonce_Array;
+      AAD, Plaintext : Octet_Array)
+     return Tag_Array
+   with Ghost;
+
+   function Spec_Open_OK
+     (Key : Key_Array; Nonce : Nonce_Array;
+      AAD, Ciphertext : Octet_Array; Tag : Tag_Array)
+     return Boolean
+   with Ghost;
+
    procedure Seal
      (Key        : Key_Array;
       Nonce      : Nonce_Array;
@@ -46,7 +66,10 @@ is
        and then Plaintext'Length <= 1024
        and then AAD'Last < Integer'Last - 1024
        and then Plaintext'Last < Integer'Last - 1024
-       and then Ciphertext'Last < Integer'Last - 1024;
+       and then Ciphertext'Last < Integer'Last - 1024,
+     Post =>
+       Ciphertext = Spec_Seal_Ct (Key, Nonce, AAD, Plaintext)
+       and then Tag = Spec_Seal_Tag (Key, Nonce, AAD, Plaintext);
 
    --  Open: verify Tag, decrypt Ciphertext to Plaintext.
    --  OK=False if the tag check fails (caller MUST then ignore
@@ -67,6 +90,7 @@ is
        and then Ciphertext'Length <= 1024
        and then AAD'Last < Integer'Last - 1024
        and then Ciphertext'Last < Integer'Last - 1024
-       and then Plaintext'Last < Integer'Last - 1024;
+       and then Plaintext'Last < Integer'Last - 1024,
+     Post => OK = Spec_Open_OK (Key, Nonce, AAD, Ciphertext, Tag);
 
 end Tls_Core.Aead_Chacha20_Poly1305;

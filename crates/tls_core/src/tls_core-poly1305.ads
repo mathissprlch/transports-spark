@@ -33,11 +33,17 @@ is
    subtype Key_Array is Octet_Array (1 .. Key_Length);
    subtype Tag_Array is Octet_Array (1 .. Tag_Length);
 
+   --  Abstract RFC 8439 §2.5 Poly1305; same trust pattern as
+   --  Tls_Core.Sha256.Spec_Hash.
+   function Spec_Mac (Key : Key_Array; Message : Octet_Array) return Tag_Array
+   with Ghost;
+
    procedure Mac
      (Key     : Key_Array;
       Message : Octet_Array;
       Out_Tag : out Tag_Array)
    with
-     Pre => Message'Last < Integer'Last - 16;
+     Pre => Message'Last < Integer'Last - 16,
+     Post => Out_Tag = Spec_Mac (Key, Message);
 
 end Tls_Core.Poly1305;

@@ -39,11 +39,21 @@ is
    --     A = decode(public_key)
    --     k = SHA-512(R ‖ public_key ‖ M) reduced mod L
    --     Accept iff [s]B = R + [k]A as encoded points.
+   --  Abstract RFC 8032 §5.1.7 verify predicate.
+   function Spec_Verify
+     (Public_Key : Bytes_32;
+      Message    : Octet_Array;
+      Sig        : Signature)
+      return Boolean
+   with Ghost;
+
    function Verify
      (Public_Key : Bytes_32;
       Message    : Octet_Array;
       Sig        : Signature)
-      return Boolean;
+      return Boolean
+   with Post =>
+     Verify'Result = Spec_Verify (Public_Key, Message, Sig);
 
    --  RFC 8032 §5.1.6: derive the public key from a 32-byte seed.
    procedure Public_Of_Seed

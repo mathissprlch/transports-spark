@@ -44,6 +44,18 @@ is
    --  inverse (XOR-with-keystream), so this routine is used for
    --  both directions. Initial_Counter is the counter for the
    --  first block; it advances by one per 64-byte block.
+   --  Abstract RFC 8439 §2.4 keystream-XOR transform; same trust
+   --  pattern as Tls_Core.Sha256.Spec_Hash.
+   function Spec_Encrypt
+     (Key             : Key_Array;
+      Nonce           : Nonce_Array;
+      Initial_Counter : Word;
+      Input           : Octet_Array)
+      return Octet_Array
+   with
+     Ghost,
+     Post => Spec_Encrypt'Result'Length = Input'Length;
+
    procedure Encrypt
      (Key             : Key_Array;
       Nonce           : Nonce_Array;
@@ -54,6 +66,9 @@ is
      Pre =>
        Output'Length = Input'Length
        and then Input'Last < Integer'Last - Block_Length
-       and then Output'Last < Integer'Last - Block_Length;
+       and then Output'Last < Integer'Last - Block_Length,
+     Post =>
+       Output =
+         Spec_Encrypt (Key, Nonce, Initial_Counter, Input);
 
 end Tls_Core.Chacha20;

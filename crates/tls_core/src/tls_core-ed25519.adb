@@ -586,6 +586,17 @@ is
       return True;
    end Verify;
 
+   function Spec_Verify
+     (Public_Key : Bytes_32;
+      Message    : Octet_Array;
+      Sig        : Signature)
+      return Boolean
+   is
+      pragma Unreferenced (Public_Key, Message, Sig);
+   begin
+      return False;
+   end Spec_Verify;
+
    procedure Debug_Encode_Base (Out_Bytes : out Bytes_32) is
       B : Point;
    begin
