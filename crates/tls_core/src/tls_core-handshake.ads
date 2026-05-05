@@ -58,4 +58,25 @@ is
        and then Server_Hello'Length <= 1024
        and then Server_Finished'Length <= 1024;
 
+   --  Pure-ECDHE schedule (TLS 1.3 §7.1 mode 3 — no PSK):
+   --
+   --     Early_Secret    = HKDF-Extract(0, 0)
+   --     Derived_1       = Derive(Early_Secret, "derived", "")
+   --     Handshake_Secret= HKDF-Extract(Derived_1, ECDHE_shared)
+   --     ... rest as in PSK_KE
+   --
+   --  ECDHE_Shared is the 32-byte X25519 output (RFC 7748 §5).
+   procedure Derive_Ecdhe_Secrets
+     (ECDHE_Shared    : Octet_Array;
+      Client_Hello    : Octet_Array;
+      Server_Hello    : Octet_Array;
+      Server_Finished : Octet_Array;
+      Out_Secrets     : out Traffic_Secrets)
+   with Pre =>
+       ECDHE_Shared'Length = 32
+       and then ECDHE_Shared'Last < Integer'Last - 1024
+       and then Client_Hello'Length <= 1024
+       and then Server_Hello'Length <= 1024
+       and then Server_Finished'Length <= 1024;
+
 end Tls_Core.Handshake;

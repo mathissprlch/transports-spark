@@ -1445,6 +1445,76 @@ procedure Tls_Core_Tests is
       end;
    end X25519_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 19 — pure-ECDHE handshake key schedule end-to-end.
+   --
+   --  Two parties run an X25519 Diffie-Hellman exchange, then both
+   --  feed the resulting 32-byte shared secret + a recorded
+   --  CH/SH/SF transcript into Derive_Ecdhe_Secrets. Both sides
+   --  must reach identical traffic secrets — the ECDHE branch of
+   --  RFC 8446 §7.1 working end-to-end.
+   --------------------------------------------------------------------
+   procedure Ecdhe_Schedule_Scenario;
+   procedure Ecdhe_Schedule_Scenario is
+      use type Tls_Core.Octet;
+      Alice_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#11#);
+      Bob_Priv   : constant Tls_Core.X25519.Bytes_32 := (others => 16#22#);
+
+      Alice_Pub, Bob_Pub : Tls_Core.X25519.Bytes_32 := (others => 0);
+      Shared_A, Shared_B : Tls_Core.X25519.Bytes_32 := (others => 0);
+
+      CH : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#A1#);
+      SH : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#B2#);
+      SF : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#C3#);
+
+      Sec_A, Sec_B : Tls_Core.Handshake.Traffic_Secrets;
+   begin
+      Put_Line ("scenario 19 — ECDHE key schedule (RFC 8446 §7.1 mode 3)");
+
+      Tls_Core.X25519.Derive_Public (Alice_Priv, Alice_Pub);
+      Tls_Core.X25519.Derive_Public (Bob_Priv, Bob_Pub);
+      Tls_Core.X25519.Scalar_Mult (Alice_Priv, Bob_Pub, Shared_A);
+      Tls_Core.X25519.Scalar_Mult (Bob_Priv, Alice_Pub, Shared_B);
+      Check ("ECDHE: Alice and Bob compute equal shared secret",
+             Equal (Shared_A, Shared_B));
+
+      Tls_Core.Handshake.Derive_Ecdhe_Secrets
+        (ECDHE_Shared    => Shared_A,
+         Client_Hello    => CH,
+         Server_Hello    => SH,
+         Server_Finished => SF,
+         Out_Secrets     => Sec_A);
+      Tls_Core.Handshake.Derive_Ecdhe_Secrets
+        (ECDHE_Shared    => Shared_B,
+         Client_Hello    => CH,
+         Server_Hello    => SH,
+         Server_Finished => SF,
+         Out_Secrets     => Sec_B);
+
+      Check ("ECDHE schedule: both sides agree on c_hs_traffic",
+             Equal (Sec_A.Client_Handshake, Sec_B.Client_Handshake));
+      Check ("ECDHE schedule: both sides agree on s_hs_traffic",
+             Equal (Sec_A.Server_Handshake, Sec_B.Server_Handshake));
+      Check ("ECDHE schedule: both sides agree on c_ap_traffic",
+             Equal (Sec_A.Client_App, Sec_B.Client_App));
+      Check ("ECDHE schedule: both sides agree on s_ap_traffic",
+             Equal (Sec_A.Server_App, Sec_B.Server_App));
+      --  Sanity: ECDHE branch differs from PSK_KE branch with the
+      --  shared secret reused as a "PSK".
+      declare
+         Psk_Sec : Tls_Core.Handshake.Traffic_Secrets;
+      begin
+         Tls_Core.Handshake.Derive_Psk_Secrets
+           (PSK             => Shared_A,
+            Client_Hello    => CH,
+            Server_Hello    => SH,
+            Server_Finished => SF,
+            Out_Secrets     => Psk_Sec);
+         Check ("ECDHE schedule diverges from PSK_KE for same input",
+                not Equal (Sec_A.Client_App, Psk_Sec.Client_App));
+      end;
+   end Ecdhe_Schedule_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1465,6 +1535,7 @@ begin
    Driver_Loopback_Scenario;
    Channel_Roundtrip_Scenario;
    X25519_Scenario;
+   Ecdhe_Schedule_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
