@@ -152,8 +152,11 @@ is
      (Ctx  : in out Context;
       Data : Octet_Array)
    is
-      Cursor : Natural := Data'First - 1;
-      Need   : Natural;
+      --  Number of bytes consumed from Data so far. We index into
+      --  Data by slice offsets relative to Data'First so gnatprove
+      --  doesn't have to reason about Data'First + I overflows.
+      Consumed : Natural := 0;
+      Need     : Natural;
    begin
       Ctx.Total_Len :=
         Ctx.Total_Len + Interfaces.Unsigned_64 (Data'Length);
@@ -163,47 +166,48 @@ is
          Need := Block_Length - Ctx.Buf_Len;
          if Data'Length < Need then
             --  Still partial; just buffer.
-            for I in 1 .. Data'Length loop
-               Ctx.Buf (Ctx.Buf_Len + I) :=
-                 Data (Data'First + I - 1);
-            end loop;
+            Ctx.Buf
+              (Ctx.Buf_Len + 1 .. Ctx.Buf_Len + Data'Length) := Data;
             Ctx.Buf_Len := Ctx.Buf_Len + Data'Length;
             return;
          end if;
-         for I in 1 .. Need loop
-            Ctx.Buf (Ctx.Buf_Len + I) :=
-              Data (Data'First + I - 1);
-         end loop;
+         Ctx.Buf (Ctx.Buf_Len + 1 .. Block_Length) :=
+           Data (Data'First .. Data'First + Need - 1);
          declare
             Snap : constant Block := Ctx.Buf;
          begin
             Process_Block (Ctx, Snap);
          end;
-         Cursor := Data'First + Need - 1;
+         Consumed := Need;
          Ctx.Buf_Len := 0;
       end if;
 
       --  Process complete 64-byte blocks straight from Data.
-      while Data'Last - Cursor >= Block_Length loop
+      while Data'Length - Consumed >= Block_Length loop
+         pragma Loop_Variant (Decreases => Data'Length - Consumed);
+         pragma Loop_Invariant (Consumed <= Data'Length);
+         pragma Loop_Invariant (Ctx.Buf_Len = 0);
+         Ctx.Buf :=
+           Data (Data'First + Consumed
+                 .. Data'First + Consumed + Block_Length - 1);
          declare
-            Blk : Block;
+            Snap : constant Block := Ctx.Buf;
          begin
-            for I in 1 .. Block_Length loop
-               Blk (I) := Data (Cursor + I);
-            end loop;
-            Process_Block (Ctx, Blk);
+            Process_Block (Ctx, Snap);
          end;
-         Cursor := Cursor + Block_Length;
-         pragma Loop_Variant (Decreases => Data'Last - Cursor);
+         Consumed := Consumed + Block_Length;
       end loop;
 
       --  Stash the trailing partial block.
       declare
-         Remaining : constant Natural := Data'Last - Cursor;
+         Remaining : constant Natural := Data'Length - Consumed;
       begin
-         for I in 1 .. Remaining loop
-            Ctx.Buf (I) := Data (Cursor + I);
-         end loop;
+         Ctx.Buf := (others => 0);
+         if Remaining > 0 then
+            Ctx.Buf (1 .. Remaining) :=
+              Data (Data'First + Consumed
+                    .. Data'First + Consumed + Remaining - 1);
+         end if;
          Ctx.Buf_Len := Remaining;
       end;
    end Update;
@@ -218,30 +222,39 @@ is
       Out_Digest : out Digest)
    is
       Bits : constant Interfaces.Unsigned_64 := Ctx.Total_Len * 8;
+      --  Local "filled byte count" — can transiently equal
+      --  Block_Length while padding, which Buf_Length_Type cannot.
+      Filled : Natural := Ctx.Buf_Len;
    begin
+      Out_Digest := (others => 0);
       --  Append 0x80 to the partial block.
-      Ctx.Buf (Ctx.Buf_Len + 1) := 16#80#;
-      Ctx.Buf_Len := Ctx.Buf_Len + 1;
+      Ctx.Buf (Filled + 1) := 16#80#;
+      Filled := Filled + 1;
 
       --  If there isn't room for the 8-byte length, flush a full
       --  block of zeros first, then start a fresh block.
-      if Ctx.Buf_Len > Block_Length - 8 then
-         for I in Ctx.Buf_Len + 1 .. Block_Length loop
-            Ctx.Buf (I) := 0;
-         end loop;
+      if Filled > Block_Length - 8 then
+         if Filled < Block_Length then
+            for I in Filled + 1 .. Block_Length loop
+               Ctx.Buf (I) := 0;
+            end loop;
+         end if;
          declare
             Snap : constant Block := Ctx.Buf;
          begin
             Process_Block (Ctx, Snap);
          end;
          Ctx.Buf := (others => 0);
-         Ctx.Buf_Len := 0;
+         Filled := 0;
       end if;
 
       --  Zero-fill up to the length field.
-      for I in Ctx.Buf_Len + 1 .. Block_Length - 8 loop
-         Ctx.Buf (I) := 0;
-      end loop;
+      if Filled + 1 <= Block_Length - 8 then
+         for I in Filled + 1 .. Block_Length - 8 loop
+            Ctx.Buf (I) := 0;
+         end loop;
+      end if;
+      Ctx.Buf_Len := 0;
 
       --  Length in bits as 64-bit BE.
       for I in 1 .. 8 loop
@@ -250,7 +263,11 @@ is
              (Shift_Right (Bits, Natural (8 * (8 - I))) and 16#FF#);
       end loop;
 
-      Process_Block (Ctx, Ctx.Buf);
+      declare
+         Snap : constant Block := Ctx.Buf;
+      begin
+         Process_Block (Ctx, Snap);
+      end;
 
       --  Emit hash state as 32 bytes BE.
       for I in 1 .. 8 loop

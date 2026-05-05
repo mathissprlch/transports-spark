@@ -16,7 +16,10 @@ is
       or Shift_Left (Word (B (Offset + 1)), 8)
       or Shift_Left (Word (B (Offset + 2)), 16)
       or Shift_Left (Word (B (Offset + 3)), 24))
-   with Pre => Offset + 3 <= B'Last;
+   with Pre =>
+     Offset <= Positive'Last - 3
+     and then B'First <= Offset
+     and then Offset + 3 <= B'Last;
 
    ---------------------------------------------------------------------
    --  Write Word → four bytes LE.
@@ -24,7 +27,10 @@ is
 
    procedure Put_LE_Word
      (B : in out Octet_Array; Offset : Positive; W : Word)
-   with Pre => Offset + 3 <= B'Last;
+   with Pre =>
+     Offset <= Positive'Last - 3
+     and then B'First <= Offset
+     and then Offset + 3 <= B'Last;
    procedure Put_LE_Word
      (B : in out Octet_Array; Offset : Positive; W : Word)
    is
@@ -80,9 +86,14 @@ is
       C1 : constant Word := 16#3320_646E#;
       C2 : constant Word := 16#7962_2D32#;
       C3 : constant Word := 16#6B20_6574#;
-      Initial : State_Array;
-      State   : State_Array;
+      pragma Warnings (Off, "initialization of ""Initial"" has no effect");
+      pragma Warnings (Off, "initialization of ""State"" has no effect");
+      Initial : State_Array := (others => 0);
+      State   : State_Array := (others => 0);
+      pragma Warnings (On, "initialization of ""Initial"" has no effect");
+      pragma Warnings (On, "initialization of ""State"" has no effect");
    begin
+      Out_Block := (others => 0);
       Initial (0)  := C0;
       Initial (1)  := C1;
       Initial (2)  := C2;
@@ -138,6 +149,7 @@ is
       Counter : Word := Initial_Counter;
       Cursor  : Natural := 0;
    begin
+      Output := (others => 0);
       while Cursor < Input'Length loop
          pragma Loop_Variant (Decreases => Input'Length - Cursor);
          Block

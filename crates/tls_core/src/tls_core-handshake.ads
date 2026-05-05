@@ -53,11 +53,9 @@ is
       Out_Secrets    : out Traffic_Secrets)
    with Pre =>
        PSK'Length = 32
+       and then PSK'Last < Integer'Last - 1024
        and then Client_Hello'Length <= 1024
        and then Server_Hello'Length <= 1024
-       and then Server_Finished'Length <= 1024
-       and then Client_Hello'Last < Integer'Last - 1024
-       and then Server_Hello'Last < Integer'Last - 1024
-       and then Server_Finished'Last < Integer'Last - 1024;
+       and then Server_Finished'Length <= 1024;
 
 end Tls_Core.Handshake;

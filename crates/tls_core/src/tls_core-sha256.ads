@@ -53,7 +53,10 @@ is
        --  (FIPS 180-4 §5.1.1 caps the message length at 2**64-1
        --  bits = 2**61 bytes).
        Total_Length (Ctx) <= Interfaces.Unsigned_64'Last
-                              - Interfaces.Unsigned_64 (Data'Length),
+                              - Interfaces.Unsigned_64 (Data'Length)
+       --  Body indexes via Data'First + offset; bound the sum so
+       --  it stays inside the underlying machine Integer type.
+       and then Data'Last < Integer'Last - Block_Length,
      Post =>
        Total_Length (Ctx)
          = Total_Length (Ctx'Old)
@@ -69,7 +72,8 @@ is
       Out_Digest : out Digest)
    with
      Pre => Interfaces.Unsigned_64 (Data'Length)
-            <= Interfaces.Unsigned_64'Last / 8;
+            <= Interfaces.Unsigned_64'Last / 8
+            and then Data'Last < Integer'Last - Block_Length;
 
    --  Ghost accessor for total bytes consumed so far (used by the
    --  Pre on Update).
@@ -80,10 +84,16 @@ private
 
    type Hash_State is array (1 .. 8) of Word;
 
+   --  Buf_Len is "bytes pending in Buf"; by the streaming-update
+   --  invariant it is always strictly less than Block_Length —
+   --  whenever Buf fills, Update calls Process_Block and resets
+   --  Buf_Len to zero.
+   subtype Buf_Length_Type is Natural range 0 .. Block_Length - 1;
+
    type Context is record
       H         : Hash_State;
       Buf       : Block := (others => 0);
-      Buf_Len   : Natural := 0;
+      Buf_Len   : Buf_Length_Type := 0;
       Total_Len : Interfaces.Unsigned_64 := 0;
    end record;
 

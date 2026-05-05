@@ -27,7 +27,8 @@ is
       Final      : Boolean;
       Out_Limbs  : out Limbs)
    with Pre => Block_Bytes in 1 .. 16
-               and then Block_Bytes <= B'Length;
+               and then Block_Bytes <= B'Length
+               and then B'Last < Integer'Last - 16;
 
    procedure Load_Block
      (B          : Octet_Array;
@@ -37,7 +38,9 @@ is
    is
       Padded : Octet_Array (1 .. 17) := (others => 0);
    begin
+      Out_Limbs := (others => 0);
       for I in 1 .. Block_Bytes loop
+         pragma Loop_Invariant (I <= 16);
          Padded (I) := B (B'First + I - 1);
       end loop;
       --  Append the implicit "1" bit at byte position Block_Bytes.
@@ -205,6 +208,7 @@ is
       end Get_S_Limb;
 
    begin
+      Out_Tag := (others => 0);
       --  RFC 8439 §2.5.1 clamp.
       declare
          Clamped : Octet_Array (1 .. 16);
@@ -290,8 +294,9 @@ is
       --  Acc := Acc + s (mod 2^128). Then serialize as little-endian.
       declare
          Carry_Acc : U64 := 0;
-         T : array (Limb_Index) of U64;
-         H_Lo, H_Hi : U64 := 0;
+         T : array (Limb_Index) of U64 := (others => 0);
+         H_Lo : U64;
+         H_Hi : U64;
       begin
          for I in Limb_Index loop
             T (I) := Acc (I) + Get_S_Limb (I) + Carry_Acc;

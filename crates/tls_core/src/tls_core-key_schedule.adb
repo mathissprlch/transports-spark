@@ -28,10 +28,13 @@ is
    --  Derive-Secret — Expand-Label with context = SHA-256(Messages).
    ---------------------------------------------------------------------
 
+   --  Max_Info = 512 covers the worst-case label/context shape
+   --    (Label'Length=249, Context=32) → Info_Size = 291,
+   --  with headroom for SHA-384 contexts later.
    procedure Hkdf_Expand_Label_Sha256
      is new Tls_Core.Hkdf.Expand_Label
        (Hash_Length => Tls_Core.Sha256.Hash_Length,
-        Max_Info    => 256,
+        Max_Info    => 512,
         Hmac_Expand => Tls_Core.Hkdf_Sha256.Hmac_Expand);
 
    procedure Derive_Secret

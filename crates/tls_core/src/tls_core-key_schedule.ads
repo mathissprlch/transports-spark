@@ -55,7 +55,9 @@ is
    with
      Pre =>
        Label'Length in 1 .. 249
-       and then Label'Last < Integer'Last - 256;
+       and then Label'Last < Integer'Last - 256
+       and then Messages'Last
+                  < Integer'Last - Tls_Core.Sha256.Block_Length;
 
 private
 

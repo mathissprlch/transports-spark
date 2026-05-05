@@ -55,7 +55,13 @@ is
                 >= AAD'Length + Pad16_Length (AAD'Length)
                    + Ciphertext'Length + Pad16_Length (Ciphertext'Length)
                    + 16
-       and then Mac_Data'First = 1;
+       and then Mac_Data'First = 1,
+     Post =>
+       Mac_Last
+         = AAD'Length + Pad16_Length (AAD'Length)
+           + Ciphertext'Length + Pad16_Length (Ciphertext'Length)
+           + 16
+       and then Mac_Last <= Mac_Data'Last;
 
    procedure Build_Mac_Data
      (AAD        : Octet_Array;
@@ -67,15 +73,14 @@ is
    begin
       Mac_Data := (others => 0);
 
-      for I in 1 .. AAD'Length loop
-         Mac_Data (Cursor + I) := AAD (AAD'First + I - 1);
-      end loop;
+      if AAD'Length > 0 then
+         Mac_Data (1 .. AAD'Length) := AAD;
+      end if;
       Cursor := Cursor + AAD'Length + Pad16_Length (AAD'Length);
 
-      for I in 1 .. Ciphertext'Length loop
-         Mac_Data (Cursor + I) :=
-           Ciphertext (Ciphertext'First + I - 1);
-      end loop;
+      if Ciphertext'Length > 0 then
+         Mac_Data (Cursor + 1 .. Cursor + Ciphertext'Length) := Ciphertext;
+      end if;
       Cursor := Cursor + Ciphertext'Length
         + Pad16_Length (Ciphertext'Length);
 

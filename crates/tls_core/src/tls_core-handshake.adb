@@ -36,10 +36,34 @@ is
       Derived_2       : Tls_Core.Key_Schedule.Secret;
       Master_Secret   : Tls_Core.Key_Schedule.Secret;
 
-      Ch_Sh : constant Octet_Array := Client_Hello & Server_Hello;
-      Ch_Sh_Sf : constant Octet_Array :=
-        Client_Hello & Server_Hello & Server_Finished;
+      --  Normalize transcript bytes into First=1 buffers so the
+      --  concatenation result indices stay bounded by length only.
+      Ch_Sh : Octet_Array
+        (1 .. Client_Hello'Length + Server_Hello'Length) :=
+          (others => 0);
+      Ch_Sh_Sf : Octet_Array
+        (1 .. Client_Hello'Length
+              + Server_Hello'Length
+              + Server_Finished'Length) :=
+          (others => 0);
    begin
+      --  Pack CH || SH (slice assignment side-steps 'First+I overflow
+      --  reasoning that gnatprove asks for).
+      Ch_Sh (1 .. Client_Hello'Length) := Client_Hello;
+      Ch_Sh
+        (Client_Hello'Length + 1
+         .. Client_Hello'Length + Server_Hello'Length) := Server_Hello;
+
+      --  Pack CH || SH || SF.
+      Ch_Sh_Sf (1 .. Client_Hello'Length) := Client_Hello;
+      Ch_Sh_Sf
+        (Client_Hello'Length + 1
+         .. Client_Hello'Length + Server_Hello'Length) := Server_Hello;
+      Ch_Sh_Sf
+        (Client_Hello'Length + Server_Hello'Length + 1
+         .. Client_Hello'Length + Server_Hello'Length
+            + Server_Finished'Length) := Server_Finished;
+
       --  Step 1: Early Secret.
       Tls_Core.Key_Schedule.Extract
         (Salt => Zero32, IKM => PSK, Out_PRK => Early_Secret);

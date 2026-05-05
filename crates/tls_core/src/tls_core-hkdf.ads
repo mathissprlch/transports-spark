@@ -175,6 +175,10 @@ is
        and then Label'Length in 1 .. 249
        and then Context'Length in 0 .. 255
        and then Output'Length in 1 .. 255 * Hash_Length
-       and then Info_Size (Label'Length, Context'Length) <= Max_Info;
+       and then Info_Size (Label'Length, Context'Length) <= Max_Info
+       and then Label'Last < Integer'Last - 256
+       and then Context'Last < Integer'Last - 256
+       and then Secret'Last < Integer'Last - 1024
+       and then Output'Last < Integer'Last - 1024;
 
 end Tls_Core.Hkdf;

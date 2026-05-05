@@ -43,7 +43,10 @@ is
      Pre =>
        PRK'Length = Hash_Length
        and then OKM'Length in 1 .. Max_Output
-       and then Info'Length <= 1024;
+       and then Info'Length <= 1024
+       and then PRK'Last < Integer'Last - 1024
+       and then Info'Last < Integer'Last - 1024
+       and then OKM'Last < Integer'Last - 1024;
 
    --  Adapter matching the Hmac_Expand formal of
    --  Tls_Core.Hkdf.Expand_Label. Renames Expand under the
@@ -56,6 +59,9 @@ is
      Pre =>
        Prk'Length = Hash_Length
        and then Output'Length in 1 .. 255 * Hash_Length
-       and then Info'Length <= 256;
+       and then Info'Length <= 1024
+       and then Prk'Last < Integer'Last - 1024
+       and then Info'Last < Integer'Last - 1024
+       and then Output'Last < Integer'Last - 1024;
 
 end Tls_Core.Hkdf_Sha256;

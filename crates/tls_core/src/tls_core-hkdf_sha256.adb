@@ -29,8 +29,15 @@ is
 
       while Cursor < OKM'Length loop
          pragma Loop_Variant (Decreases => OKM'Length - Cursor);
-         pragma Loop_Invariant (I in 0 .. 254);
          pragma Loop_Invariant (Cursor < OKM'Length);
+         --  After k completed iterations, Cursor = k * Hash_Length
+         --  (each iteration before the last consumes a full
+         --  Hash_Length-byte block; if the last would be partial,
+         --  the loop guard fails before this point). Combined with
+         --  Cursor < OKM'Length <= 255 * Hash_Length this caps
+         --  the iteration counter I = k at 254.
+         pragma Loop_Invariant (I * Hash_Length <= Cursor);
+         pragma Loop_Invariant (I in 0 .. 254);
          I := I + 1;
 
          --  Build the HMAC input: T(i-1) || Info || octet(i).
