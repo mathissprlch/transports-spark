@@ -17,6 +17,9 @@ with Tls_Core.Sha256;
 with Tls_Core.Hmac_Sha256;
 with Tls_Core.Hkdf_Sha256;
 with Tls_Core.Key_Schedule;
+with Tls_Core.Chacha20;
+with Tls_Core.Poly1305;
+with Tls_Core.Aead_Chacha20_Poly1305;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -470,6 +473,226 @@ procedure Tls_Core_Tests is
    --    16 c0 76 18 9c 48 25 0c eb ea c3 57 6c 36 11 ba
    --------------------------------------------------------------------
 
+   --------------------------------------------------------------------
+   --  ChaCha20 — RFC 8439 §2.3.2 block-function test vector.
+   --
+   --  Key   = 00..1f                                  (32 bytes)
+   --  Nonce = 00 00 00 09 00 00 00 4a 00 00 00 00     (12 bytes)
+   --  Ctr   = 1
+   --  Block = e4 e7 f1 10 ... see body of test for full 64 bytes
+   --
+   --  And §2.4.2 encryption test vector (Sunscreen quote).
+   --------------------------------------------------------------------
+
+   procedure Chacha20_Scenario;
+   procedure Chacha20_Scenario is
+      Key   : constant Tls_Core.Chacha20.Key_Array :=
+        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#,
+         16#10#, 16#11#, 16#12#, 16#13#, 16#14#, 16#15#, 16#16#, 16#17#,
+         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#);
+      Nonce : constant Tls_Core.Chacha20.Nonce_Array :=
+        (16#00#, 16#00#, 16#00#, 16#09#,
+         16#00#, 16#00#, 16#00#, 16#4A#,
+         16#00#, 16#00#, 16#00#, 16#00#);
+      Expected_Block : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (16#10#, 16#F1#, 16#E7#, 16#E4#, 16#D1#, 16#3B#, 16#59#, 16#15#,
+         16#50#, 16#0F#, 16#DD#, 16#1F#, 16#A3#, 16#20#, 16#71#, 16#C4#,
+         16#C7#, 16#D1#, 16#F4#, 16#C7#, 16#33#, 16#C0#, 16#68#, 16#03#,
+         16#04#, 16#22#, 16#AA#, 16#9A#, 16#C3#, 16#D4#, 16#6C#, 16#4E#,
+         16#D2#, 16#82#, 16#64#, 16#46#, 16#07#, 16#9F#, 16#AA#, 16#09#,
+         16#14#, 16#C2#, 16#D7#, 16#05#, 16#D9#, 16#8B#, 16#02#, 16#A2#,
+         16#B5#, 16#12#, 16#9C#, 16#D1#, 16#DE#, 16#16#, 16#4E#, 16#B9#,
+         16#CB#, 16#D0#, 16#83#, 16#E8#, 16#A2#, 16#50#, 16#3C#, 16#4E#);
+      Got_Block : Tls_Core.Chacha20.Block_Array;
+
+      --  RFC 8439 §2.4.2 encryption vector — "Sunscreen" plaintext.
+      Sunscreen_Nonce : constant Tls_Core.Chacha20.Nonce_Array :=
+        (16#00#, 16#00#, 16#00#, 16#00#,
+         16#00#, 16#00#, 16#00#, 16#4A#,
+         16#00#, 16#00#, 16#00#, 16#00#);
+      --  "Ladies and Gentlemen of the class of '99: If I could
+      --   offer you only one tip for the future, sunscreen would
+      --   be it."  (114 bytes)
+      Plain : constant Tls_Core.Octet_Array (1 .. 114) :=
+        (16#4C#, 16#61#, 16#64#, 16#69#, 16#65#, 16#73#, 16#20#, 16#61#,
+         16#6E#, 16#64#, 16#20#, 16#47#, 16#65#, 16#6E#, 16#74#, 16#6C#,
+         16#65#, 16#6D#, 16#65#, 16#6E#, 16#20#, 16#6F#, 16#66#, 16#20#,
+         16#74#, 16#68#, 16#65#, 16#20#, 16#63#, 16#6C#, 16#61#, 16#73#,
+         16#73#, 16#20#, 16#6F#, 16#66#, 16#20#, 16#27#, 16#39#, 16#39#,
+         16#3A#, 16#20#, 16#49#, 16#66#, 16#20#, 16#49#, 16#20#, 16#63#,
+         16#6F#, 16#75#, 16#6C#, 16#64#, 16#20#, 16#6F#, 16#66#, 16#66#,
+         16#65#, 16#72#, 16#20#, 16#79#, 16#6F#, 16#75#, 16#20#, 16#6F#,
+         16#6E#, 16#6C#, 16#79#, 16#20#, 16#6F#, 16#6E#, 16#65#, 16#20#,
+         16#74#, 16#69#, 16#70#, 16#20#, 16#66#, 16#6F#, 16#72#, 16#20#,
+         16#74#, 16#68#, 16#65#, 16#20#, 16#66#, 16#75#, 16#74#, 16#75#,
+         16#72#, 16#65#, 16#2C#, 16#20#, 16#73#, 16#75#, 16#6E#, 16#73#,
+         16#63#, 16#72#, 16#65#, 16#65#, 16#6E#, 16#20#, 16#77#, 16#6F#,
+         16#75#, 16#6C#, 16#64#, 16#20#, 16#62#, 16#65#, 16#20#, 16#69#,
+         16#74#, 16#2E#);
+      Cipher : constant Tls_Core.Octet_Array (1 .. 114) :=
+        (16#6E#, 16#2E#, 16#35#, 16#9A#, 16#25#, 16#68#, 16#F9#, 16#80#,
+         16#41#, 16#BA#, 16#07#, 16#28#, 16#DD#, 16#0D#, 16#69#, 16#81#,
+         16#E9#, 16#7E#, 16#7A#, 16#EC#, 16#1D#, 16#43#, 16#60#, 16#C2#,
+         16#0A#, 16#27#, 16#AF#, 16#CC#, 16#FD#, 16#9F#, 16#AE#, 16#0B#,
+         16#F9#, 16#1B#, 16#65#, 16#C5#, 16#52#, 16#47#, 16#33#, 16#AB#,
+         16#8F#, 16#59#, 16#3D#, 16#AB#, 16#CD#, 16#62#, 16#B3#, 16#57#,
+         16#16#, 16#39#, 16#D6#, 16#24#, 16#E6#, 16#51#, 16#52#, 16#AB#,
+         16#8F#, 16#53#, 16#0C#, 16#35#, 16#9F#, 16#08#, 16#61#, 16#D8#,
+         16#07#, 16#CA#, 16#0D#, 16#BF#, 16#50#, 16#0D#, 16#6A#, 16#61#,
+         16#56#, 16#A3#, 16#8E#, 16#08#, 16#8A#, 16#22#, 16#B6#, 16#5E#,
+         16#52#, 16#BC#, 16#51#, 16#4D#, 16#16#, 16#CC#, 16#F8#, 16#06#,
+         16#81#, 16#8C#, 16#E9#, 16#1A#, 16#B7#, 16#79#, 16#37#, 16#36#,
+         16#5A#, 16#F9#, 16#0B#, 16#BF#, 16#74#, 16#A3#, 16#5B#, 16#E6#,
+         16#B4#, 16#0B#, 16#8E#, 16#ED#, 16#F2#, 16#78#, 16#5E#, 16#42#,
+         16#87#, 16#4D#);
+      Got : Tls_Core.Octet_Array (1 .. 114);
+   begin
+      Put_Line
+        ("scenario 9 — ChaCha20 RFC 8439 §2.3.2 block + §2.4.2 encrypt");
+      Tls_Core.Chacha20.Block
+        (Key => Key, Nonce => Nonce, Counter => 1,
+         Out_Block => Got_Block);
+      Check ("§2.3.2 block matches", Equal (Got_Block, Expected_Block));
+
+      Tls_Core.Chacha20.Encrypt
+        (Key => Key, Nonce => Sunscreen_Nonce,
+         Initial_Counter => 1, Input => Plain, Output => Got);
+      Check ("§2.4.2 encrypt matches", Equal (Got, Cipher));
+
+      --  Decrypt = encrypt (XOR is its own inverse).
+      Tls_Core.Chacha20.Encrypt
+        (Key => Key, Nonce => Sunscreen_Nonce,
+         Initial_Counter => 1, Input => Cipher, Output => Got);
+      Check ("§2.4.2 round-trip back to plaintext", Equal (Got, Plain));
+   end Chacha20_Scenario;
+
+   --------------------------------------------------------------------
+   --  Poly1305 — RFC 8439 §2.5.2 test vector.
+   --
+   --    Key     = 85d6be7857556d337f4452fe42d506a8
+   --              0103808afb0db2fd4abff6af4149f51b
+   --    Message = "Cryptographic Forum Research Group"  (34 bytes)
+   --    Tag     = a8061dc1305136c6c22b8baf0c0127a9
+   --------------------------------------------------------------------
+
+   --------------------------------------------------------------------
+   --  AEAD ChaCha20-Poly1305 — RFC 8439 §2.8.2 test vector.
+   --
+   --  Plaintext = "Ladies and Gentlemen of the class of '99: ..."
+   --              (114 bytes, same as §2.4.2)
+   --  AAD       = 50 51 52 53 c0 c1 c2 c3 c4 c5 c6 c7
+   --  Key       = 80..9f
+   --  IV        = 40 41 42 43 44 45 46 47   (nonce[5..12])
+   --  Constant  = 07 00 00 00              (nonce[1..4])
+   --  Ciphertext expected per §2.8.2.
+   --  Tag       = 1a:e1:0b:59:4f:09:e2:6a:7e:90:2e:cb:d0:60:06:91
+   --------------------------------------------------------------------
+
+   procedure Aead_Scenario;
+   procedure Aead_Scenario is
+      Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array :=
+        (16#80#, 16#81#, 16#82#, 16#83#, 16#84#, 16#85#, 16#86#, 16#87#,
+         16#88#, 16#89#, 16#8A#, 16#8B#, 16#8C#, 16#8D#, 16#8E#, 16#8F#,
+         16#90#, 16#91#, 16#92#, 16#93#, 16#94#, 16#95#, 16#96#, 16#97#,
+         16#98#, 16#99#, 16#9A#, 16#9B#, 16#9C#, 16#9D#, 16#9E#, 16#9F#);
+      Nonce : constant Tls_Core.Aead_Chacha20_Poly1305.Nonce_Array :=
+        (16#07#, 16#00#, 16#00#, 16#00#,
+         16#40#, 16#41#, 16#42#, 16#43#,
+         16#44#, 16#45#, 16#46#, 16#47#);
+      AAD : constant Tls_Core.Octet_Array (1 .. 12) :=
+        (16#50#, 16#51#, 16#52#, 16#53#,
+         16#C0#, 16#C1#, 16#C2#, 16#C3#,
+         16#C4#, 16#C5#, 16#C6#, 16#C7#);
+      Plain : constant Tls_Core.Octet_Array (1 .. 114) :=
+        (16#4C#, 16#61#, 16#64#, 16#69#, 16#65#, 16#73#, 16#20#, 16#61#,
+         16#6E#, 16#64#, 16#20#, 16#47#, 16#65#, 16#6E#, 16#74#, 16#6C#,
+         16#65#, 16#6D#, 16#65#, 16#6E#, 16#20#, 16#6F#, 16#66#, 16#20#,
+         16#74#, 16#68#, 16#65#, 16#20#, 16#63#, 16#6C#, 16#61#, 16#73#,
+         16#73#, 16#20#, 16#6F#, 16#66#, 16#20#, 16#27#, 16#39#, 16#39#,
+         16#3A#, 16#20#, 16#49#, 16#66#, 16#20#, 16#49#, 16#20#, 16#63#,
+         16#6F#, 16#75#, 16#6C#, 16#64#, 16#20#, 16#6F#, 16#66#, 16#66#,
+         16#65#, 16#72#, 16#20#, 16#79#, 16#6F#, 16#75#, 16#20#, 16#6F#,
+         16#6E#, 16#6C#, 16#79#, 16#20#, 16#6F#, 16#6E#, 16#65#, 16#20#,
+         16#74#, 16#69#, 16#70#, 16#20#, 16#66#, 16#6F#, 16#72#, 16#20#,
+         16#74#, 16#68#, 16#65#, 16#20#, 16#66#, 16#75#, 16#74#, 16#75#,
+         16#72#, 16#65#, 16#2C#, 16#20#, 16#73#, 16#75#, 16#6E#, 16#73#,
+         16#63#, 16#72#, 16#65#, 16#65#, 16#6E#, 16#20#, 16#77#, 16#6F#,
+         16#75#, 16#6C#, 16#64#, 16#20#, 16#62#, 16#65#, 16#20#, 16#69#,
+         16#74#, 16#2E#);
+      Cipher_Expected : constant Tls_Core.Octet_Array (1 .. 114) :=
+        (16#D3#, 16#1A#, 16#8D#, 16#34#, 16#64#, 16#8E#, 16#60#, 16#DB#,
+         16#7B#, 16#86#, 16#AF#, 16#BC#, 16#53#, 16#EF#, 16#7E#, 16#C2#,
+         16#A4#, 16#AD#, 16#ED#, 16#51#, 16#29#, 16#6E#, 16#08#, 16#FE#,
+         16#A9#, 16#E2#, 16#B5#, 16#A7#, 16#36#, 16#EE#, 16#62#, 16#D6#,
+         16#3D#, 16#BE#, 16#A4#, 16#5E#, 16#8C#, 16#A9#, 16#67#, 16#12#,
+         16#82#, 16#FA#, 16#FB#, 16#69#, 16#DA#, 16#92#, 16#72#, 16#8B#,
+         16#1A#, 16#71#, 16#DE#, 16#0A#, 16#9E#, 16#06#, 16#0B#, 16#29#,
+         16#05#, 16#D6#, 16#A5#, 16#B6#, 16#7E#, 16#CD#, 16#3B#, 16#36#,
+         16#92#, 16#DD#, 16#BD#, 16#7F#, 16#2D#, 16#77#, 16#8B#, 16#8C#,
+         16#98#, 16#03#, 16#AE#, 16#E3#, 16#28#, 16#09#, 16#1B#, 16#58#,
+         16#FA#, 16#B3#, 16#24#, 16#E4#, 16#FA#, 16#D6#, 16#75#, 16#94#,
+         16#55#, 16#85#, 16#80#, 16#8B#, 16#48#, 16#31#, 16#D7#, 16#BC#,
+         16#3F#, 16#F4#, 16#DE#, 16#F0#, 16#8E#, 16#4B#, 16#7A#, 16#9D#,
+         16#E5#, 16#76#, 16#D2#, 16#65#, 16#86#, 16#CE#, 16#C6#, 16#4B#,
+         16#61#, 16#16#);
+      Tag_Expected : constant Tls_Core.Octet_Array (1 .. 16) :=
+        (16#1A#, 16#E1#, 16#0B#, 16#59#, 16#4F#, 16#09#, 16#E2#, 16#6A#,
+         16#7E#, 16#90#, 16#2E#, 16#CB#, 16#D0#, 16#60#, 16#06#, 16#91#);
+      Got_Cipher : Tls_Core.Octet_Array (1 .. 114);
+      Got_Tag    : Tls_Core.Aead_Chacha20_Poly1305.Tag_Array;
+      Got_Plain  : Tls_Core.Octet_Array (1 .. 114);
+      Open_OK    : Boolean;
+   begin
+      Put_Line ("scenario 11 — ChaCha20-Poly1305 AEAD RFC 8439 §2.8.2");
+      Tls_Core.Aead_Chacha20_Poly1305.Seal
+        (Key => Key, Nonce => Nonce, AAD => AAD,
+         Plaintext => Plain,
+         Ciphertext => Got_Cipher, Tag => Got_Tag);
+      Check ("§2.8.2 ciphertext matches",
+             Equal (Got_Cipher, Cipher_Expected));
+      Check ("§2.8.2 tag matches", Equal (Got_Tag, Tag_Expected));
+
+      --  Open round-trip.
+      Tls_Core.Aead_Chacha20_Poly1305.Open
+        (Key => Key, Nonce => Nonce, AAD => AAD,
+         Ciphertext => Got_Cipher, Tag => Got_Tag,
+         Plaintext => Got_Plain, OK => Open_OK);
+      Check ("Open succeeds with valid tag", Open_OK);
+      Check ("Open recovers plaintext", Equal (Got_Plain, Plain));
+
+      --  Tamper one byte of ciphertext, expect Open to fail.
+      Got_Cipher (5) := Got_Cipher (5) xor 16#01#;
+      Tls_Core.Aead_Chacha20_Poly1305.Open
+        (Key => Key, Nonce => Nonce, AAD => AAD,
+         Ciphertext => Got_Cipher, Tag => Got_Tag,
+         Plaintext => Got_Plain, OK => Open_OK);
+      Check ("Open rejects tampered ciphertext", not Open_OK);
+   end Aead_Scenario;
+
+   procedure Poly1305_Scenario;
+   procedure Poly1305_Scenario is
+      Key : constant Tls_Core.Poly1305.Key_Array :=
+        (16#85#, 16#D6#, 16#BE#, 16#78#, 16#57#, 16#55#, 16#6D#, 16#33#,
+         16#7F#, 16#44#, 16#52#, 16#FE#, 16#42#, 16#D5#, 16#06#, 16#A8#,
+         16#01#, 16#03#, 16#80#, 16#8A#, 16#FB#, 16#0D#, 16#B2#, 16#FD#,
+         16#4A#, 16#BF#, 16#F6#, 16#AF#, 16#41#, 16#49#, 16#F5#, 16#1B#);
+      Msg : constant Tls_Core.Octet_Array (1 .. 34) :=
+        (16#43#, 16#72#, 16#79#, 16#70#, 16#74#, 16#6F#, 16#67#, 16#72#,
+         16#61#, 16#70#, 16#68#, 16#69#, 16#63#, 16#20#, 16#46#, 16#6F#,
+         16#72#, 16#75#, 16#6D#, 16#20#, 16#52#, 16#65#, 16#73#, 16#65#,
+         16#61#, 16#72#, 16#63#, 16#68#, 16#20#, 16#47#, 16#72#, 16#6F#,
+         16#75#, 16#70#);
+      Expected : constant Tls_Core.Octet_Array (1 .. 16) :=
+        (16#A8#, 16#06#, 16#1D#, 16#C1#, 16#30#, 16#51#, 16#36#, 16#C6#,
+         16#C2#, 16#2B#, 16#8B#, 16#AF#, 16#0C#, 16#01#, 16#27#, 16#A9#);
+      Got : Tls_Core.Poly1305.Tag_Array;
+   begin
+      Put_Line ("scenario 10 — Poly1305 RFC 8439 §2.5.2");
+      Tls_Core.Poly1305.Mac (Key, Msg, Got);
+      Check ("§2.5.2 tag matches", Equal (Got, Expected));
+   end Poly1305_Scenario;
+
    procedure Key_Schedule_Scenario;
    procedure Key_Schedule_Scenario is
       use type Tls_Core.Sha256.Digest;
@@ -521,6 +744,9 @@ begin
    Hkdf_Expand_Scenario;
    Expand_Label_End_To_End;
    Key_Schedule_Scenario;
+   Chacha20_Scenario;
+   Poly1305_Scenario;
+   Aead_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
