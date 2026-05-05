@@ -2115,6 +2115,247 @@ procedure Tls_Core_Tests is
                          CH.Session_Id_Bytes (1 .. 16)));
    end Hello_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 25 — Tls_Core.Transport in-process loopback.
+   --
+   --  Drives the PSK_KE Handshake_Driver to Done, snaps the four
+   --  traffic secrets, then opens a Client Pipe and a Server Pipe
+   --  on each side and exchanges three plaintext records each
+   --  direction. Confirms (a) Send/Drain on one peer feeds Inject/
+   --  Receive on the other, (b) sequence numbers stay aligned across
+   --  multiple Sends in a row, (c) AEAD-tag tampering is rejected.
+   --
+   --  Mirrors scenario_17 (Channel_Roundtrip) but exercises the full
+   --  two-direction Pipe object that wraps it.
+   --------------------------------------------------------------------
+   procedure Transport_Loopback_Scenario;
+   procedure Transport_Loopback_Scenario is
+      use type Tls_Core.Octet;
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+
+      C, S : Tls_Core.Handshake_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf_Last : Natural := 0;
+      Cs : Tls_Core.Handshake.Traffic_Secrets;
+
+      Client_Pipe, Server_Pipe : Tls_Core.Transport.Pipe;
+   begin
+      Put_Line ("scenario 25 — Tls_Core.Transport Client/Server loopback");
+
+      --  Drive the PSK_KE handshake to Done (same shape as
+      --  scenarios 16/17).
+      Tls_Core.Handshake_Driver.Init
+        (C, Tls_Core.Handshake_Driver.Client, Psk);
+      Tls_Core.Handshake_Driver.Init
+        (S, Tls_Core.Handshake_Driver.Server, Psk);
+      Tls_Core.Handshake_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      declare
+         CH_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (S, In_Bytes => CH_Bytes,
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+      declare
+         Sh_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Sh_Sf, Out_Buf => Reply, Out_Last => Reply_Last);
+         pragma Unreferenced (Reply_Last);
+      end;
+      declare
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply_Last : Natural := 0;
+      begin
+         Tls_Core.Handshake_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         declare
+            CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard_Last : Natural := 0;
+         begin
+            Tls_Core.Handshake_Driver.Step
+              (S, In_Bytes => CF,
+               Out_Buf => Discard, Out_Last => Discard_Last);
+         end;
+      end;
+      Tls_Core.Handshake_Driver.Get_Secrets (C, Cs);
+
+      --  Both peers' Pipes share the SAME Traffic_Secrets, but
+      --  each was Init'd with the matching Role: Client encrypts
+      --  outbound with Client_App and decrypts inbound with
+      --  Server_App; Server is the mirror.
+      Tls_Core.Transport.Init
+        (Client_Pipe, Tls_Core.Transport.Client, Cs);
+      Tls_Core.Transport.Init
+        (Server_Pipe, Tls_Core.Transport.Server, Cs);
+
+      ----------------------------------------------------------------
+      --  Test 1: Client → Server, single 16-byte plaintext.
+      ----------------------------------------------------------------
+      declare
+         Pt : constant Tls_Core.Octet_Array (1 .. 16) :=
+           (others => 16#A5#);
+         Wire : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Wire_Last : Natural := 0;
+         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got_Last : Natural := 0;
+         OK : Boolean := False;
+      begin
+         Tls_Core.Transport.Send (Client_Pipe, Pt);
+         Tls_Core.Transport.Drain (Client_Pipe, Wire, Wire_Last);
+         Check ("Transport: client Drain produced wire bytes",
+                Wire_Last = 5 + Pt'Length + 16);
+
+         Tls_Core.Transport.Inject
+           (Server_Pipe, Wire (1 .. Wire_Last));
+         Tls_Core.Transport.Receive
+           (Server_Pipe, Got, Got_Last, OK);
+         Check ("Transport: server Receive succeeds (16 B)", OK);
+         Check ("Transport: server got the plaintext (16 B)",
+                Got_Last = Pt'Length
+                and then Equal (Got (1 .. Got_Last), Pt));
+      end;
+
+      ----------------------------------------------------------------
+      --  Test 2: Server → Client, single 32-byte plaintext.
+      ----------------------------------------------------------------
+      declare
+         Pt : constant Tls_Core.Octet_Array (1 .. 32) :=
+           (others => 16#5A#);
+         Wire : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Wire_Last : Natural := 0;
+         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got_Last : Natural := 0;
+         OK : Boolean := False;
+      begin
+         Tls_Core.Transport.Send (Server_Pipe, Pt);
+         Tls_Core.Transport.Drain (Server_Pipe, Wire, Wire_Last);
+         Check ("Transport: server Drain produced wire bytes",
+                Wire_Last = 5 + Pt'Length + 16);
+
+         Tls_Core.Transport.Inject
+           (Client_Pipe, Wire (1 .. Wire_Last));
+         Tls_Core.Transport.Receive
+           (Client_Pipe, Got, Got_Last, OK);
+         Check ("Transport: client Receive succeeds (32 B)", OK);
+         Check ("Transport: client got the plaintext (32 B)",
+                Got_Last = Pt'Length
+                and then Equal (Got (1 .. Got_Last), Pt));
+      end;
+
+      ----------------------------------------------------------------
+      --  Test 3: three Sends in a row, one Drain, one Inject, three
+      --  Receives — confirms sequence-number alignment across
+      --  multiple records buffered together.
+      ----------------------------------------------------------------
+      declare
+         Pt1 : constant Tls_Core.Octet_Array := (16#41#, 16#42#, 16#43#);
+         Pt2 : constant Tls_Core.Octet_Array (1 .. 5) :=
+           (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "hello"
+         Pt3 : constant Tls_Core.Octet_Array (1 .. 24) :=
+           (others => 16#7E#);
+
+         Wire : Tls_Core.Octet_Array (1 .. 8192) := (others => 0);
+         Wire_Last : Natural := 0;
+         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got_Last : Natural := 0;
+         OK : Boolean := False;
+         Expected_Wire : constant Natural :=
+           (5 + Pt1'Length + 16)
+           + (5 + Pt2'Length + 16)
+           + (5 + Pt3'Length + 16);
+      begin
+         Tls_Core.Transport.Send (Client_Pipe, Pt1);
+         Tls_Core.Transport.Send (Client_Pipe, Pt2);
+         Tls_Core.Transport.Send (Client_Pipe, Pt3);
+         Tls_Core.Transport.Drain (Client_Pipe, Wire, Wire_Last);
+         Check ("Transport: 3 Sends one Drain — wire size matches",
+                Wire_Last = Expected_Wire);
+
+         Tls_Core.Transport.Inject
+           (Server_Pipe, Wire (1 .. Wire_Last));
+
+         Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
+         Check ("Transport: queued record 1 decrypts",
+                OK
+                and then Got_Last = Pt1'Length
+                and then Equal (Got (1 .. Got_Last), Pt1));
+
+         Got := (others => 0);
+         Got_Last := 0;
+         OK := False;
+         Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
+         Check ("Transport: queued record 2 decrypts",
+                OK
+                and then Got_Last = Pt2'Length
+                and then Equal (Got (1 .. Got_Last), Pt2));
+
+         Got := (others => 0);
+         Got_Last := 0;
+         OK := False;
+         Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
+         Check ("Transport: queued record 3 decrypts",
+                OK
+                and then Got_Last = Pt3'Length
+                and then Equal (Got (1 .. Got_Last), Pt3));
+
+         --  After draining all three records the inbound queue
+         --  is empty: a fourth Receive must report no record.
+         Got := (others => 0);
+         Got_Last := 0;
+         OK := True;
+         Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
+         Check ("Transport: empty inbound queue → OK=False",
+                not OK and then Got_Last = 0);
+      end;
+
+      ----------------------------------------------------------------
+      --  Test 4: tampered ciphertext byte → AEAD verify fails,
+      --  Receive returns OK=False.
+      ----------------------------------------------------------------
+      declare
+         Fresh_Client, Fresh_Server : Tls_Core.Transport.Pipe;
+         Pt : constant Tls_Core.Octet_Array (1 .. 12) :=
+           (others => 16#33#);
+         Wire : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Wire_Last : Natural := 0;
+         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got_Last : Natural := 0;
+         OK : Boolean := True;
+      begin
+         --  Re-Init both pipes so sequence numbers start at 0
+         --  again — independent of the records exchanged above.
+         Tls_Core.Transport.Init
+           (Fresh_Client, Tls_Core.Transport.Client, Cs);
+         Tls_Core.Transport.Init
+           (Fresh_Server, Tls_Core.Transport.Server, Cs);
+
+         Tls_Core.Transport.Send (Fresh_Client, Pt);
+         Tls_Core.Transport.Drain (Fresh_Client, Wire, Wire_Last);
+
+         --  Flip one byte inside the ciphertext (byte 10 lands
+         --  inside the encrypted fragment, past the 5-byte header).
+         Wire (10) := Wire (10) xor 16#01#;
+
+         Tls_Core.Transport.Inject
+           (Fresh_Server, Wire (1 .. Wire_Last));
+         Tls_Core.Transport.Receive
+           (Fresh_Server, Got, Got_Last, OK);
+         Check ("Transport: corrupted ciphertext rejected",
+                not OK and then Got_Last = 0);
+      end;
+   end Transport_Loopback_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -2141,6 +2382,7 @@ begin
    X509_Scenario;
    Ed25519_Scenario;
    Hello_Scenario;
+   Transport_Loopback_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
