@@ -1,5 +1,3 @@
-with Tls_Core.Sha256;
-
 package body Tls_Core.Handshake_Driver
 with SPARK_Mode => Off
 is
@@ -61,7 +59,6 @@ is
    begin
       D.My_Role := For_Role;
       D.My_Mode := PSK_KE;
-      D.PSK := (others => 0);
       D.PSK := PSK;
       D.My_Priv := (others => 0);
       D.My_Pub := (others => 0);

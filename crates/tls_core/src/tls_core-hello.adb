@@ -4,8 +4,6 @@ is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
-   use type Tls_Core.Octet;
-
    --  Constants for the cipher suite + named group we negotiate.
    Cipher_Suite_Hi : constant Octet := 16#13#;
    Cipher_Suite_Lo : constant Octet := 16#03#;  --  TLS_CHACHA20_POLY1305_SHA256

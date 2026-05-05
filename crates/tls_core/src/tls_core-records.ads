@@ -4,7 +4,6 @@
 --  message. Encode produces TLS 1.3 record-on-the-wire bytes; Decode
 --  parses them back.
 
-with RFLX.Record_Layer;
 with RFLX.RFLX_Builtin_Types;
 
 package Tls_Core.Records
