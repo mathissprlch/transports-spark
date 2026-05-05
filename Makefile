@@ -18,7 +18,7 @@ PLUGIN := crates/protoc_gen_grpc_ada/bin/protoc_gen_grpc_ada
 GEN_DIR := crates/protobuf_ada_tests/generated
 EXAMPLES_GEN := crates/examples/generated
 
-.PHONY: all build test clean codegen plugin
+.PHONY: all build test clean codegen plugin bench bench-build bench-quick
 
 all: build
 
@@ -55,3 +55,22 @@ clean:
 	  rm -rf crates/$$c/obj crates/$$c/lib crates/$$c/bin; \
 	done
 	@rm -rf $(GEN_DIR)
+
+# ============================================================
+# Performance bench (Ada vs Go grpc).
+#
+#   make bench-build  — builds Go server + bench client
+#   make bench        — full ~30 min run
+#   make bench-quick  — 30 s/workload, ~10 min run
+# ============================================================
+
+bench-build:
+	@./bench/build.sh
+
+bench: bench-build
+	@cd crates/examples && BUILD_MODE=release $(ALR_ENV) alr build
+	@./bench/run_bench.sh
+
+bench-quick: bench-build
+	@cd crates/examples && BUILD_MODE=release $(ALR_ENV) alr build
+	@DUR_SRV=30s DUR_CLI=30 ./bench/run_bench.sh

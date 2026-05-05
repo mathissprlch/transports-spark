@@ -1,0 +1,4 @@
+bin/
+results/
+go/server/server
+go/client/client

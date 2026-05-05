@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package helloworld;
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloReply {
+  string message = 1;
+}
+
+service Greeter {
+  // Unary.
+  rpc SayHello (HelloRequest) returns (HelloReply);
+
+  // Server-streaming: one request → N replies.
+  rpc LotsOfReplies (HelloRequest) returns (stream HelloReply);
+
+  // Client-streaming: N requests → one combined reply.
+  rpc LotsOfGreetings (stream HelloRequest) returns (HelloReply);
+
+  // Bidi-streaming: N requests ↔ N replies, interleaved.
+  rpc BidiHello (stream HelloRequest) returns (stream HelloReply);
+}
