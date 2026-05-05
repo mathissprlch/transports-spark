@@ -133,6 +133,10 @@ package body Mqtt_Core.Broker is
       Will_QoS     : RFLX.Control_Packet.QoS_Level :=
         RFLX.Control_Packet.QOS_0;
       Will_Retain  : Boolean := False;
+      --  §3.1.2.4 — if False the broker preserves the client's
+      --  subscriptions across this disconnect for resumption on
+      --  the next CONNECT carrying the same Client_Id.
+      Clean_Session : Boolean := True;
    end record;
 
    type Client_Array is array (Active_Client) of Client_State;
@@ -182,6 +186,43 @@ package body Mqtt_Core.Broker is
 
    subtype Retained_Index is Natural range 1 .. Max_Retained;
    type Retained_Array is array (Retained_Index) of Retained_Slot;
+
+   ----------------------------------------------------------------
+   --  Session registry (§3.1.2.4 persistent sessions)
+   --
+   --  When a client connects with Clean_Session=False and later
+   --  disconnects, we capture its subscription set keyed by
+   --  Client_Id. On a subsequent CONNECT (also Clean_Session=False)
+   --  carrying the same Client_Id, we restore the subscriptions
+   --  and set Session_Present=True in CONNACK.
+   --
+   --  v0.4 only preserves subscriptions; offline-message queuing
+   --  (§4.1 "pending Server-to-Client messages") is deferred.
+   ----------------------------------------------------------------
+
+   Max_Sessions     : constant := 16;
+   Max_Sub_Per_Session : constant := 16;
+
+   type Saved_Sub is record
+      Topic_Filter : String (1 .. 256) := (others => ' ');
+      Filter_Last  : Natural := 0;
+      QoS          : RFLX.Control_Packet.QoS_Level :=
+        RFLX.Control_Packet.QOS_0;
+   end record;
+
+   type Saved_Sub_Array is
+     array (1 .. Max_Sub_Per_Session) of Saved_Sub;
+
+   type Session_Slot is record
+      In_Use      : Boolean := False;
+      Client_Id   : String (1 .. 64) := (others => ' ');
+      Cid_Last    : Natural := 0;
+      Subs        : Saved_Sub_Array;
+      Sub_Count   : Natural := 0;
+   end record;
+
+   subtype Session_Index is Natural range 1 .. Max_Sessions;
+   type Session_Array is array (Session_Index) of Session_Slot;
 
    ----------------------------------------------------------------
    --  Listen / Stop
@@ -326,6 +367,7 @@ package body Mqtt_Core.Broker is
       Clients   : Client_Array;
       Subs      : Subscription_Array;
       Retained  : Retained_Array;
+      Sessions  : Session_Array;
       Selector  : GNAT.Sockets.Selector_Type;
       Read_Set  : GNAT.Sockets.Socket_Set_Type;
       W_Set     : GNAT.Sockets.Socket_Set_Type;
@@ -406,6 +448,72 @@ package body Mqtt_Core.Broker is
                Route_Publish (T, Pl, Clients (CI).Will_QoS, Sub_Count);
             end;
             Clients (CI).Will_Pending := False;
+         end if;
+
+         --  §3.1.2.4: snapshot subscriptions onto the Sessions
+         --  table when Clean_Session=False so a future CONNECT for
+         --  the same Client_Id can resume them.
+         if not Clients (CI).Clean_Session
+           and then Clients (CI).Cid_Last > 0
+         then
+            declare
+               Cid : constant String :=
+                 Clients (CI).Client_Id
+                   (1 .. Clients (CI).Cid_Last);
+               Sess_Idx : Natural := 0;
+               Free_Idx : Natural := 0;
+            begin
+               for SI in Sessions'Range loop
+                  if Sessions (SI).In_Use
+                    and then Sessions (SI).Cid_Last = Cid'Length
+                    and then Sessions (SI).Client_Id
+                               (1 .. Sessions (SI).Cid_Last)
+                             = Cid
+                  then
+                     Sess_Idx := SI;
+                     exit;
+                  elsif not Sessions (SI).In_Use
+                    and then Free_Idx = 0
+                  then
+                     Free_Idx := SI;
+                  end if;
+               end loop;
+               if Sess_Idx = 0 then
+                  Sess_Idx := Free_Idx;
+               end if;
+               if Sess_Idx /= 0 then
+                  Sessions (Sess_Idx).In_Use    := True;
+                  Sessions (Sess_Idx).Client_Id := (others => ' ');
+                  Sessions (Sess_Idx).Client_Id (1 .. Cid'Length)
+                    := Cid;
+                  Sessions (Sess_Idx).Cid_Last  := Cid'Length;
+                  Sessions (Sess_Idx).Sub_Count := 0;
+                  for I in Subs'Range loop
+                     if Subs (I).In_Use
+                       and then Subs (I).Owner = CI
+                       and then Sessions (Sess_Idx).Sub_Count
+                                < Max_Sub_Per_Session
+                     then
+                        Sessions (Sess_Idx).Sub_Count :=
+                          Sessions (Sess_Idx).Sub_Count + 1;
+                        declare
+                           K : constant Positive :=
+                             Sessions (Sess_Idx).Sub_Count;
+                           Saved : Saved_Sub renames
+                             Sessions (Sess_Idx).Subs (K);
+                        begin
+                           Saved.Topic_Filter := (others => ' ');
+                           Saved.Topic_Filter
+                             (1 .. Subs (I).Filter_Last) :=
+                               Subs (I).Topic_Filter
+                                 (1 .. Subs (I).Filter_Last);
+                           Saved.Filter_Last := Subs (I).Filter_Last;
+                           Saved.QoS := Subs (I).QoS;
+                        end;
+                     end if;
+                  end loop;
+               end if;
+            end;
          end if;
 
          --  Drop subscriptions for this client.
@@ -1021,6 +1129,7 @@ package body Mqtt_Core.Broker is
                   Will_Msg_Last  : Natural := 0;
                   Will_QoS       : RFLX.Control_Packet.QoS_Level;
                   Will_Retain    : Boolean;
+                  Clean_Sess     : Boolean;
                begin
                   Wire.Decode_Connect
                     (Buf, Pkt_Last, Valid,
@@ -1030,7 +1139,9 @@ package body Mqtt_Core.Broker is
                      Password,  Password_Last,
                      Will_Flag, Will_Topic, Will_Topic_Last,
                      Will_Msg,  Will_Msg_Last,
-                     Will_QoS,  Will_Retain);
+                     Will_QoS,  Will_Retain,
+                     Clean_Sess);
+                  Clients (CI).Clean_Session := Clean_Sess;
                   if not Valid then
                      Disconnect_Client (CI);
                      return;
@@ -1081,7 +1192,65 @@ package body Mqtt_Core.Broker is
                      return;
                   end if;
                end;
-               Wire.Encode_Connack (Buf, Out_Last);
+               --  §3.1.2.4 persistent sessions: look up any prior
+               --  session for this Client_Id. With Clean_Session=
+               --  True we drop it; with False we reinstate its
+               --  subscriptions onto the current connection slot
+               --  and signal Session_Present=True in CONNACK.
+               declare
+                  Cid : constant String :=
+                    Clients (CI).Client_Id
+                      (1 .. Clients (CI).Cid_Last);
+                  Sess_Idx : Natural := 0;
+                  Session_Present : Boolean := False;
+               begin
+                  for SI in Sessions'Range loop
+                     if Sessions (SI).In_Use
+                       and then Sessions (SI).Cid_Last = Cid'Length
+                       and then Sessions (SI).Client_Id
+                                  (1 .. Sessions (SI).Cid_Last)
+                                = Cid
+                     then
+                        Sess_Idx := SI;
+                        exit;
+                     end if;
+                  end loop;
+
+                  if Clients (CI).Clean_Session then
+                     if Sess_Idx /= 0 then
+                        Sessions (Sess_Idx).In_Use := False;
+                        Sessions (Sess_Idx).Sub_Count := 0;
+                     end if;
+                  elsif Sess_Idx /= 0 then
+                     for K in 1 ..
+                       Sessions (Sess_Idx).Sub_Count
+                     loop
+                        declare
+                           Slot : constant Natural :=
+                             Find_Free_Sub;
+                           Saved : Saved_Sub renames
+                             Sessions (Sess_Idx).Subs (K);
+                        begin
+                           if Slot /= 0 then
+                              Subs (Slot) :=
+                                (In_Use      => True,
+                                 Owner       => CI,
+                                 Topic_Filter => (others => ' '),
+                                 Filter_Last  => Saved.Filter_Last,
+                                 QoS          => Saved.QoS);
+                              Subs (Slot).Topic_Filter
+                                (1 .. Saved.Filter_Last) :=
+                                  Saved.Topic_Filter
+                                    (1 .. Saved.Filter_Last);
+                           end if;
+                        end;
+                     end loop;
+                     Session_Present := True;
+                  end if;
+                  Wire.Encode_Connack
+                    (Buf, Out_Last,
+                     Session_Present => Session_Present);
+               end;
                Send_All
                  (Clients (CI).Sock,
                   Buf.all (Buf'First .. Out_Last));

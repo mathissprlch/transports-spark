@@ -122,7 +122,8 @@ is
       Will_Message   : out RFLX.RFLX_Types.Bytes;
       Will_Message_Last : out Natural;
       Will_QoS       : out QoS_Level;
-      Will_Retain    : out Boolean)
+      Will_Retain    : out Boolean;
+      Clean_Session  : out Boolean)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 12
              and then Client_Id'Length > 0

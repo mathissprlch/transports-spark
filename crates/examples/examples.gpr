@@ -22,7 +22,8 @@ project Examples is
                  "listfeatures_server.adb", "listfeatures_client.adb",
                  "mqtt_demo.adb",
                  "mqtt_retained_demo.adb",
-                 "mqtt_will_demo.adb");
+                 "mqtt_will_demo.adb",
+                 "mqtt_session_demo.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use

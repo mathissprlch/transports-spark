@@ -218,7 +218,8 @@ is
       Will_Message   : out RFLX.RFLX_Types.Bytes;
       Will_Message_Last : out Natural;
       Will_QoS       : out QoS_Level;
-      Will_Retain    : out Boolean)
+      Will_Retain    : out Boolean;
+      Clean_Session  : out Boolean)
    is
       Ctx : RFLX.Connect.Packet.Context;
       use type RFLX.Connect.Will_Flag_Bit;
@@ -239,11 +240,14 @@ is
       Will_Message_Last := 0;
       Will_QoS := RFLX.Control_Packet.QOS_0;
       Will_Retain := False;
+      Clean_Session := True;
       RFLX.Connect.Packet.Initialize
         (Ctx, Buffer,
          Written_Last => RFLX.RFLX_Types.Bit_Length (Last) * 8);
       RFLX.Connect.Packet.Verify_Message (Ctx);
       if RFLX.Connect.Packet.Well_Formed_Message (Ctx) then
+         Clean_Session :=
+           RFLX.Connect.Packet.Get_Clean_Session (Ctx);
          declare
             Cid_Bytes : RFLX.RFLX_Types.Bytes (1 .. 256) :=
               (others => 0);
