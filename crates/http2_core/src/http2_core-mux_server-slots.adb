@@ -127,6 +127,11 @@ package body Http2_Core.Mux_Server.Slots is
             L.Slots (I).Slot_Trailers_Last :=
               L.Slot_Trailers (I)'First - 1;
             L.Slots (I).End_Of_Request := False;
+            --  Inherit the peer's most recent
+            --  SETTINGS_INITIAL_WINDOW_SIZE as our send-side
+            --  per-stream initial window.
+            L.Slots (I).Stream_Send_Window :=
+              L.Initial_Stream_Window;
             RFLX.Stream.Open.FSM.Initialize
               (L.Ctxs (I),
                L.Slots (I).Inbound_Buf,

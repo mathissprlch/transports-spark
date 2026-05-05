@@ -148,9 +148,10 @@ package body Http2_Core.Mux_Server.Frames is
       Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
       --  RFC 9113 §6.9 outbound bookkeeping: every DATA byte we
       --  send (the payload, not the 9-byte frame header) draws
-      --  down the peer's advertised window. Underflow is clamped
-      --  at 0 — the streaming hook layer is responsible for not
-      --  pumping replies when the window is too small.
+      --  down BOTH the connection-level window (Peer_Send_Window)
+      --  and the matching stream-level window. Underflow on either
+      --  is clamped at 0 — the streaming hook layer is responsible
+      --  for not pumping replies when either window is too small.
       declare
          use type Bit_Len;
          Sent : constant Bit_Len := Bit_Len (Payload'Length);
@@ -160,6 +161,20 @@ package body Http2_Core.Mux_Server.Frames is
          else
             L.Peer_Send_Window := 0;
          end if;
+
+         for I in L.Slots'Range loop
+            if L.Slots (I).Stream_Id = Stream_Id
+              and then L.Slots (I).Phase /= Free
+            then
+               if L.Slots (I).Stream_Send_Window >= Sent then
+                  L.Slots (I).Stream_Send_Window :=
+                    L.Slots (I).Stream_Send_Window - Sent;
+               else
+                  L.Slots (I).Stream_Send_Window := 0;
+               end if;
+               exit;
+            end if;
+         end loop;
       end;
    end Send_Data_Frame;
 

@@ -220,12 +220,53 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                         begin
                            if Id = 4 then  --  INITIAL_WINDOW_SIZE
                               --  RFC §6.9.2: when the setting
-                              --  changes, deltas apply to all open
-                              --  streams' send windows. With
-                              --  per-stream window tracking landed
-                              --  in a follow-up commit, this is
-                              --  where the adjustment will go.
-                              L.Initial_Stream_Window := Val;
+                              --  changes mid-connection, the
+                              --  receiver MUST adjust the size of
+                              --  all open streams' send windows by
+                              --  the delta. New streams allocated
+                              --  after this point pick up the new
+                              --  value via Allocate_Slot.
+                              declare
+                                 Old : constant Bit_Len :=
+                                   L.Initial_Stream_Window;
+                              begin
+                                 if Val >= Old then
+                                    declare
+                                       Up : constant Bit_Len :=
+                                         Val - Old;
+                                    begin
+                                       for SI in L.Slots'Range loop
+                                          if L.Slots (SI).Phase /= Free
+                                          then
+                                             L.Slots (SI).Stream_Send_Window :=
+                                               L.Slots (SI).Stream_Send_Window
+                                               + Up;
+                                          end if;
+                                       end loop;
+                                    end;
+                                 else
+                                    declare
+                                       Down : constant Bit_Len :=
+                                         Old - Val;
+                                    begin
+                                       for SI in L.Slots'Range loop
+                                          if L.Slots (SI).Phase /= Free
+                                          then
+                                             if L.Slots (SI).Stream_Send_Window
+                                               >= Down
+                                             then
+                                                L.Slots (SI).Stream_Send_Window :=
+                                                  L.Slots (SI).Stream_Send_Window
+                                                  - Down;
+                                             else
+                                                L.Slots (SI).Stream_Send_Window := 0;
+                                             end if;
+                                          end if;
+                                       end loop;
+                                    end;
+                                 end if;
+                                 L.Initial_Stream_Window := Val;
+                              end;
                            end if;
                         end;
                         Off := Off + 6;
@@ -237,12 +278,11 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                Goaway_Pending := True;
             when RFLX.Http2_Parameters.WINDOW_UPDATE =>
                --  RFC 9113 §6.9.1: 4-byte big-endian increment in
-               --  the payload (high bit reserved, ignored). Bump
-               --  the connection-level send window. Per-stream
-               --  WINDOW_UPDATEs (Stream_Identifier > 0) are
-               --  also sent by some peers; v0.4 ignores them
-               --  since we don't yet track per-stream send
-               --  windows separately.
+               --  the payload (high bit reserved, ignored). On
+               --  Stream_Identifier=0 this bumps the connection-
+               --  level send window; per-stream variants
+               --  (Stream_Identifier > 0) are routed below to the
+               --  matching slot's Stream_Send_Window.
                if Hdr.Length = 4 then
                   declare
                      B0 : constant U8 :=
@@ -286,6 +326,35 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
                --  Late frame for a closed stream.
                return;
             end if;
+         end if;
+
+         --  RFC 9113 §6.9.1 stream-level WINDOW_UPDATE — bumps the
+         --  matching slot's per-stream send window. Handled here
+         --  rather than fed into the Stream::Open FSM since this
+         --  is a transport-layer concern.
+         if Hdr.Frame_Type_Value =
+           RFLX.Http2_Parameters.WINDOW_UPDATE
+           and then Hdr.Length = 4
+         then
+            declare
+               B0 : constant U8 :=
+                 L.Buf.all (L.Buf'First + 9) and 16#7F#;
+               B1 : constant U8 :=
+                 L.Buf.all (L.Buf'First + 10);
+               B2 : constant U8 :=
+                 L.Buf.all (L.Buf'First + 11);
+               B3 : constant U8 :=
+                 L.Buf.all (L.Buf'First + 12);
+               Inc : constant Bit_Len :=
+                 Bit_Len (B0) * 16777216
+                 + Bit_Len (B1) * 65536
+                 + Bit_Len (B2) * 256
+                 + Bit_Len (B3);
+            begin
+               L.Slots (Slot).Stream_Send_Window :=
+                 L.Slots (Slot).Stream_Send_Window + Inc;
+            end;
+            return;
          end if;
 
          if FSM.Needs_Data (L.Ctxs (Slot), FSM.C_Network) then

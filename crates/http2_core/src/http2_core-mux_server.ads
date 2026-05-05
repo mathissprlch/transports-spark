@@ -173,6 +173,14 @@ private
       --  Streaming/bidi only.
       Slot_Trailers_Last   : Natural := 0;
       End_Of_Request       : Boolean := False;
+      --  RFC 9113 §6.9.2 per-stream outbound flow-control window.
+      --  Initialized at slot allocation from
+      --  Listener.Initial_Stream_Window (peer's
+      --  SETTINGS_INITIAL_WINDOW_SIZE), bumped by inbound
+      --  WINDOW_UPDATE on this stream id, decremented by the byte
+      --  count of each DATA frame the driver sends. Streaming
+      --  Pump_Reply hooks skip a tick when this would underflow.
+      Stream_Send_Window : Bit_Len := 65_535;
    end record;
 
    --  Per-slot heavy buffers kept in parallel arrays so Slot_State

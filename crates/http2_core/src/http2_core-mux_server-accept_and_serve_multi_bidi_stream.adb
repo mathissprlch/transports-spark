@@ -73,11 +73,14 @@ procedure Accept_And_Serve_Multi_Bidi_Stream
       Msg_Last : RFLX.RFLX_Types.Index;
       Has_Msg  : Boolean;
    begin
-      --  RFC 9113 §6.9: peer's send window depleted — back off.
+      --  RFC 9113 §6.9: connection or per-stream window depleted
+      --  — back off until an inbound WINDOW_UPDATE refreshes it.
       declare
          use type Bit_Len;
       begin
-         if L.Peer_Send_Window = 0 then
+         if L.Peer_Send_Window = 0
+           or else L.Slots (Slot).Stream_Send_Window = 0
+         then
             Made_Progress := False;
             return;
          end if;
