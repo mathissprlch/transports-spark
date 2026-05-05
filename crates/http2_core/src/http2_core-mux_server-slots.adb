@@ -132,6 +132,9 @@ package body Http2_Core.Mux_Server.Slots is
             --  per-stream initial window.
             L.Slots (I).Stream_Send_Window :=
               L.Initial_Stream_Window;
+            L.Slots (I).In_Continuation := False;
+            L.Slots (I).Cont_End_Stream := False;
+            L.Slots (I).Cont_Last := 0;
             RFLX.Stream.Open.FSM.Initialize
               (L.Ctxs (I),
                L.Slots (I).Inbound_Buf,
@@ -164,6 +167,8 @@ package body Http2_Core.Mux_Server.Slots is
            new RFLX.RFLX_Types.Bytes'(1 .. FSM_Buffer_Size => 0);
          L.Slots (I).Outgoing_Buf :=
            new RFLX.RFLX_Types.Bytes'(1 .. FSM_Buffer_Size => 0);
+         L.Slots (I).Cont_Buf :=
+           new RFLX.RFLX_Types.Bytes'(1 .. FSM_Buffer_Size => 0);
       end loop;
    end Allocate_FSM_Buffers;
 
@@ -175,6 +180,9 @@ package body Http2_Core.Mux_Server.Slots is
          end if;
          if L.Slots (I).Outgoing_Buf /= null then
             Free (L.Slots (I).Outgoing_Buf);
+         end if;
+         if L.Slots (I).Cont_Buf /= null then
+            Free (L.Slots (I).Cont_Buf);
          end if;
       end loop;
    end Release_FSM_Buffers;

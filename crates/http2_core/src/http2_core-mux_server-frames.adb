@@ -102,6 +102,10 @@ package body Http2_Core.Mux_Server.Frames is
       Headers_In : Hpack.Header_Block;
       End_Stream : Boolean)
    is
+      --  RFC 9113 default SETTINGS_MAX_FRAME_SIZE; we don't yet
+      --  honor a peer override so this is the conservative ceiling
+      --  for any single frame we emit.
+      Max_Frame_Payload : constant := 16384;
       Frag_Out  : Hpack.Octet_Array
         (1 .. Hpack.Max_Header_Length * Hpack.Max_Headers);
       Frag_Last : Natural;
@@ -124,12 +128,60 @@ package body Http2_Core.Mux_Server.Frames is
             Frag_Bytes (RFLX.RFLX_Types.Index (I)) :=
               U8 (Frag_Out (I));
          end loop;
-         Wire.Encode_Headers
-           (Buffer => L.Buf, Last => Frame_Last,
-            Stream_Id => Stream_Id, Fragment => Frag_Bytes,
-            End_Stream => End_Stream);
+
+         if Frag_Last <= Max_Frame_Payload then
+            --  Fits in a single frame — emit HEADERS with
+            --  END_HEADERS. Common case; gRPC headers are tiny.
+            Wire.Encode_Headers
+              (Buffer => L.Buf, Last => Frame_Last,
+               Stream_Id => Stream_Id, Fragment => Frag_Bytes,
+               End_Stream => End_Stream);
+            Transport.Send
+              (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
+         else
+            --  RFC §6.10: split into HEADERS (no END_HEADERS) +
+            --  N CONTINUATION frames; only the last frame in the
+            --  run carries END_HEADERS.
+            declare
+               First_Slice : constant RFLX.RFLX_Types.Bytes :=
+                 Frag_Bytes (1 .. Max_Frame_Payload);
+            begin
+               Wire.Encode_Headers
+                 (Buffer => L.Buf, Last => Frame_Last,
+                  Stream_Id => Stream_Id, Fragment => First_Slice,
+                  End_Stream => End_Stream,
+                  End_Headers => False);
+               Transport.Send
+                 (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
+            end;
+            declare
+               Off : Natural := Max_Frame_Payload;
+            begin
+               while Off < Frag_Last loop
+                  declare
+                     Take : constant Natural :=
+                       Natural'Min
+                         (Max_Frame_Payload, Frag_Last - Off);
+                     Slice : constant RFLX.RFLX_Types.Bytes :=
+                       Frag_Bytes
+                         (RFLX.RFLX_Types.Index (Off + 1)
+                          .. RFLX.RFLX_Types.Index (Off + Take));
+                     Final : constant Boolean :=
+                       Off + Take = Frag_Last;
+                  begin
+                     Wire.Encode_Continuation
+                       (Buffer => L.Buf, Last => Frame_Last,
+                        Stream_Id => Stream_Id, Fragment => Slice,
+                        End_Headers => Final);
+                     Transport.Send
+                       (Chan,
+                        L.Buf.all (L.Buf'First .. Frame_Last));
+                     Off := Off + Take;
+                  end;
+               end loop;
+            end;
+         end if;
       end;
-      Transport.Send (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
    end Send_Headers_Frame;
 
    procedure Send_Data_Frame

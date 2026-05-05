@@ -371,10 +371,11 @@ is
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Fragment  : RFLX.RFLX_Types.Bytes;
-      End_Stream : Boolean)
+      End_Stream : Boolean;
+      End_Headers : Boolean := True)
    is
       Flags : constant Byte :=
-        Flag_END_HEADERS or
+        (if End_Headers then Flag_END_HEADERS else 0) or
         (if End_Stream then Flag_END_STREAM else 0);
    begin
       Put_Header
@@ -389,6 +390,29 @@ is
          Last := Buffer'First + 8;
       end if;
    end Encode_Headers;
+
+   procedure Encode_Continuation
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Stream_Id : Bit_Len;
+      Fragment  : RFLX.RFLX_Types.Bytes;
+      End_Headers : Boolean)
+   is
+      Flags : constant Byte :=
+        (if End_Headers then Flag_END_HEADERS else 0);
+   begin
+      Put_Header
+        (Buffer, Bit_Len (Fragment'Length),
+         RFLX.Http2_Parameters.CONTINUATION, Flags, Stream_Id);
+      if Fragment'Length > 0 then
+         Buffer
+           (Buffer'First + 9 ..
+              Buffer'First + 8 + Index (Fragment'Length)) := Fragment;
+         Last := Buffer'First + 8 + Index (Fragment'Length);
+      else
+         Last := Buffer'First + 8;
+      end if;
+   end Encode_Continuation;
 
    ---------------------------------------------------------------------
    --  DATA encode

@@ -172,7 +172,24 @@ is
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Fragment  : RFLX.RFLX_Types.Bytes;
-      End_Stream : Boolean)
+      End_Stream : Boolean;
+      End_Headers : Boolean := True)
+   with
+     Pre  => Buffer /= null
+             and then Buffer'Length >= 9 + Fragment'Length
+             and then Stream_Id in 1 .. 2 ** 31 - 1
+             and then Fragment'Length <= 2 ** 14,
+     Post => Buffer /= null;
+
+   --  CONTINUATION (RFC 9113 §6.10). Carries the next chunk of a
+   --  HEADERS run; the final CONTINUATION on a given stream MUST
+   --  set END_HEADERS=True.
+   procedure Encode_Continuation
+     (Buffer    : in out Bytes_Ptr;
+      Last      :    out Index;
+      Stream_Id : Bit_Len;
+      Fragment  : RFLX.RFLX_Types.Bytes;
+      End_Headers : Boolean)
    with
      Pre  => Buffer /= null
              and then Buffer'Length >= 9 + Fragment'Length

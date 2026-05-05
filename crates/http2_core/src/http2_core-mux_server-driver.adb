@@ -177,6 +177,7 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
      (Hdr  : Wire.Frame_Header;
       Last : RFLX.RFLX_Types.Index)
    is
+      Effective_Last : RFLX.RFLX_Types.Index := Last;
    begin
       if Hdr.Stream_Identifier = 0 then
          case Hdr.Frame_Type_Value is
@@ -357,11 +358,104 @@ procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
             return;
          end if;
 
+         --  RFC 9113 §6.10 — HEADERS without END_HEADERS opens a
+         --  CONTINUATION run. We buffer the HPACK fragment bytes
+         --  ourselves (the FSM has no notion of fragmented header
+         --  blocks) until END_HEADERS arrives, then synthesize a
+         --  single complete HEADERS frame to feed downstream.
+         --
+         --  Note: we don't currently strip PADDED/PRIORITY frame
+         --  variants — peers that send those are unsupported. The
+         --  HPACK fragment is assumed to start at byte 9 of L.Buf
+         --  (right after the 9-byte frame header) and run for
+         --  Hdr.Length bytes.
+         if Hdr.Frame_Type_Value =
+           RFLX.Http2_Parameters.HEADERS
+           and then (Hdr.Flags and Wire.Flag_END_HEADERS) = 0
+         then
+            --  Open the run; cache END_STREAM so the synthesized
+            --  HEADERS preserves it.
+            L.Slots (Slot).In_Continuation := True;
+            L.Slots (Slot).Cont_End_Stream :=
+              (Hdr.Flags and Wire.Flag_END_STREAM) /= 0;
+            L.Slots (Slot).Cont_Last := 0;
+            if Natural (Hdr.Length)
+              <= L.Slots (Slot).Cont_Buf'Length
+            then
+               L.Slots (Slot).Cont_Buf.all
+                 (1 .. RFLX.RFLX_Types.Index (Hdr.Length))
+                 := L.Buf.all
+                      (L.Buf'First + 9
+                       .. L.Buf'First + 8
+                          + RFLX.RFLX_Types.Index (Hdr.Length));
+               L.Slots (Slot).Cont_Last := Natural (Hdr.Length);
+            end if;
+            return;
+         end if;
+
+         if Hdr.Frame_Type_Value =
+           RFLX.Http2_Parameters.CONTINUATION
+         then
+            if not L.Slots (Slot).In_Continuation then
+               --  RFC §6.10: CONTINUATION outside a HEADERS run is
+               --  a connection error. Stay defensive and just
+               --  RST_STREAM rather than tearing the connection
+               --  down — that's the safer ground for v0.4.
+               Frames.Send_Rst_Stream
+                 (L, Chan, Hdr.Stream_Identifier, 1);
+               return;
+            end if;
+            declare
+               Cur : constant Natural := L.Slots (Slot).Cont_Last;
+               Add : constant Natural := Natural (Hdr.Length);
+            begin
+               if Cur + Add > L.Slots (Slot).Cont_Buf'Length then
+                  --  Header block bigger than our buffer: refuse
+                  --  the stream rather than truncating silently.
+                  Frames.Send_Rst_Stream
+                    (L, Chan, Hdr.Stream_Identifier, 11);  --  ENHANCE_YOUR_CALM
+                  L.Slots (Slot).In_Continuation := False;
+                  L.Slots (Slot).Cont_Last := 0;
+                  return;
+               end if;
+               L.Slots (Slot).Cont_Buf.all
+                 (RFLX.RFLX_Types.Index (Cur + 1)
+                  .. RFLX.RFLX_Types.Index (Cur + Add))
+                 := L.Buf.all
+                      (L.Buf'First + 9
+                       .. L.Buf'First + 8
+                          + RFLX.RFLX_Types.Index (Add));
+               L.Slots (Slot).Cont_Last := Cur + Add;
+            end;
+            if (Hdr.Flags and Wire.Flag_END_HEADERS) /= 0 then
+               --  Run complete — synthesize a single HEADERS frame
+               --  in L.Buf with the accumulated fragment, then feed
+               --  the FSM as if the peer had sent it whole.
+               declare
+                  Total : constant Natural :=
+                    L.Slots (Slot).Cont_Last;
+               begin
+                  Wire.Encode_Headers
+                    (Buffer => L.Buf,
+                     Last   => Effective_Last,
+                     Stream_Id => L.Slots (Slot).Stream_Id,
+                     Fragment => L.Slots (Slot).Cont_Buf.all
+                       (1 .. RFLX.RFLX_Types.Index (Total)),
+                     End_Stream => L.Slots (Slot).Cont_End_Stream);
+               end;
+               L.Slots (Slot).In_Continuation := False;
+               L.Slots (Slot).Cont_Last := 0;
+               --  Fall through to feed the synthesized frame.
+            else
+               return;
+            end if;
+         end if;
+
          if FSM.Needs_Data (L.Ctxs (Slot), FSM.C_Network) then
             FSM.Write
               (L.Ctxs (Slot),
                FSM.C_Network,
-               L.Buf.all (L.Buf'First .. Last));
+               L.Buf.all (L.Buf'First .. Effective_Last));
          end if;
          Drain_Stream_App (Slot);
       end;

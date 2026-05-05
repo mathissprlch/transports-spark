@@ -181,6 +181,19 @@ private
       --  count of each DATA frame the driver sends. Streaming
       --  Pump_Reply hooks skip a tick when this would underflow.
       Stream_Send_Window : Bit_Len := 65_535;
+
+      --  RFC 9113 §6.10 — HEADERS-without-END_HEADERS opens a
+      --  CONTINUATION run during which only CONTINUATION frames on
+      --  the same stream are valid. We buffer the raw HPACK
+      --  fragments here until END_HEADERS arrives, then synthesize a
+      --  single HEADERS frame to feed the Stream::Open FSM (which
+      --  has no notion of HEADERS being split across multiple
+      --  frames). Cont_Buf is allocated once per slot at Listen
+      --  time, sized for one default-MAX_FRAME_SIZE block.
+      In_Continuation : Boolean := False;
+      Cont_End_Stream : Boolean := False;
+      Cont_Buf  : RFLX.RFLX_Types.Bytes_Ptr := null;
+      Cont_Last : Natural := 0;
    end record;
 
    --  Per-slot heavy buffers kept in parallel arrays so Slot_State
