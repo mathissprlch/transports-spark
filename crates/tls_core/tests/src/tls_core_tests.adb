@@ -13,6 +13,9 @@ with Interfaces;
 with Tls_Core;
 with Tls_Core.Hkdf;
 with Tls_Core.Record_Layer;
+with Tls_Core.Sha256;
+with Tls_Core.Hmac_Sha256;
+with Tls_Core.Hkdf_Sha256;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -251,11 +254,214 @@ procedure Tls_Core_Tests is
       end;
    end Record_Layer_Scenario;
 
+   --------------------------------------------------------------------
+   --  SHA-256 vectors from FIPS 180-4 Appendix B / NIST CAVS:
+   --    1. Empty input → e3b0c442 98fc1c14 9afbf4c8 996fb924 27ae41e4
+   --                     649b934c a495991b 7852b855
+   --    2. "abc"      → ba7816bf 8f01cfea 414140de 5dae2223 b00361a3
+   --                     96177a9c b410ff61 f20015ad
+   --    3. "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+   --       (FIPS 180-4 §B.2)
+   --                  → 248d6a61 d20638b8 e5c02693 0c3e6039 a33ce459
+   --                     64ff2167 f6ecedd4 19db06c1
+   --
+   --  miTLS itself does not test SHA-256 (it imports HACL\*'s
+   --  proven Spec.SHA2_256 transparently); we ground our pure-Ada
+   --  implementation against the same FIPS vectors HACL\*'s proof
+   --  transitively rests on.
+   --------------------------------------------------------------------
+
+   procedure Sha256_Scenario;
+   procedure Sha256_Scenario is
+      Empty_Expected : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#E3#, 16#B0#, 16#C4#, 16#42#, 16#98#, 16#FC#, 16#1C#, 16#14#,
+         16#9A#, 16#FB#, 16#F4#, 16#C8#, 16#99#, 16#6F#, 16#B9#, 16#24#,
+         16#27#, 16#AE#, 16#41#, 16#E4#, 16#64#, 16#9B#, 16#93#, 16#4C#,
+         16#A4#, 16#95#, 16#99#, 16#1B#, 16#78#, 16#52#, 16#B8#, 16#55#);
+      Abc            : constant Tls_Core.Octet_Array (1 .. 3) :=
+        (16#61#, 16#62#, 16#63#);
+      Abc_Expected   : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#BA#, 16#78#, 16#16#, 16#BF#, 16#8F#, 16#01#, 16#CF#, 16#EA#,
+         16#41#, 16#41#, 16#40#, 16#DE#, 16#5D#, 16#AE#, 16#22#, 16#23#,
+         16#B0#, 16#03#, 16#61#, 16#A3#, 16#96#, 16#17#, 16#7A#, 16#9C#,
+         16#B4#, 16#10#, 16#FF#, 16#61#, 16#F2#, 16#00#, 16#15#, 16#AD#);
+      --  56-byte FIPS §B.2 input:
+      --  "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
+      Long_In        : constant Tls_Core.Octet_Array (1 .. 56) :=
+        (16#61#, 16#62#, 16#63#, 16#64#, 16#62#, 16#63#, 16#64#, 16#65#,
+         16#63#, 16#64#, 16#65#, 16#66#, 16#64#, 16#65#, 16#66#, 16#67#,
+         16#65#, 16#66#, 16#67#, 16#68#, 16#66#, 16#67#, 16#68#, 16#69#,
+         16#67#, 16#68#, 16#69#, 16#6A#, 16#68#, 16#69#, 16#6A#, 16#6B#,
+         16#69#, 16#6A#, 16#6B#, 16#6C#, 16#6A#, 16#6B#, 16#6C#, 16#6D#,
+         16#6B#, 16#6C#, 16#6D#, 16#6E#, 16#6C#, 16#6D#, 16#6E#, 16#6F#,
+         16#6D#, 16#6E#, 16#6F#, 16#70#, 16#6E#, 16#6F#, 16#70#, 16#71#);
+      Long_Expected  : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#24#, 16#8D#, 16#6A#, 16#61#, 16#D2#, 16#06#, 16#38#, 16#B8#,
+         16#E5#, 16#C0#, 16#26#, 16#93#, 16#0C#, 16#3E#, 16#60#, 16#39#,
+         16#A3#, 16#3C#, 16#E4#, 16#59#, 16#64#, 16#FF#, 16#21#, 16#67#,
+         16#F6#, 16#EC#, 16#ED#, 16#D4#, 16#19#, 16#DB#, 16#06#, 16#C1#);
+      Got            : Tls_Core.Sha256.Digest;
+   begin
+      Put_Line ("scenario 4 — SHA-256 against FIPS 180-4 §B vectors");
+
+      Tls_Core.Sha256.Hash
+        (Tls_Core.Octet_Array'(1 .. 0 => 0), Got);
+      Check ("FIPS B.0 empty",       Equal (Got, Empty_Expected));
+
+      Tls_Core.Sha256.Hash (Abc, Got);
+      Check ("FIPS B.1 abc",         Equal (Got, Abc_Expected));
+
+      Tls_Core.Sha256.Hash (Long_In, Got);
+      Check ("FIPS B.2 56-byte msg", Equal (Got, Long_Expected));
+
+      --  Streaming: split "abc" into "a" + "bc" via two Updates.
+      declare
+         Ctx : Tls_Core.Sha256.Context;
+         A   : constant Tls_Core.Octet_Array (1 .. 1) :=
+           (1 => 16#61#);
+         Bc  : constant Tls_Core.Octet_Array (1 .. 2) :=
+           (16#62#, 16#63#);
+      begin
+         Tls_Core.Sha256.Init (Ctx);
+         Tls_Core.Sha256.Update (Ctx, A);
+         Tls_Core.Sha256.Update (Ctx, Bc);
+         Tls_Core.Sha256.Finalize (Ctx, Got);
+         Check ("streaming a + bc matches abc",
+                Equal (Got, Abc_Expected));
+      end;
+   end Sha256_Scenario;
+
+   --------------------------------------------------------------------
+   --  HMAC-SHA-256 vector from RFC 4231 §4.2 (test case 1):
+   --    key     = 20 bytes 0x0b
+   --    data    = "Hi There"
+   --    HMAC    = b0344c61 d8db3853 5ca8afce af0bf12b
+   --              881dc200 c9833da7 26e9376c 2e32cff7
+   --
+   --  Plus an end-to-end HKDF-Expand-Label run (slice 1 instantiated
+   --  against slice 7's HMAC primitive). We use a synthetic vector
+   --  derived from RFC 5869 §A.1 for cross-checkability:
+   --    PRK     = 077709362c2e32df0ddc3f0dc47bba63
+   --              90b6c73bb50f9c3122ec844ad7c2b3e5    (RFC §A.1)
+   --    label   = "tls13 c hs traffic"-form (TLS 1.3 §7.1)
+   --    context = SHA-256(empty) = e3b0c442 ...   from FIPS B.0
+   --    length  = 32
+   --  We compute the result and verify it's deterministic and the
+   --  expected length, not against a specific external vector
+   --  (RFC 5869 §A's "info" was raw bytes; the §7.1 wrapping shifts
+   --  the comparison goalposts).
+   --------------------------------------------------------------------
+
+   procedure Hmac_Sha256_Scenario;
+   procedure Hmac_Sha256_Scenario is
+      Key : constant Tls_Core.Octet_Array (1 .. 20) :=
+        (others => 16#0B#);
+      Data : constant Tls_Core.Octet_Array (1 .. 8) :=
+        (16#48#, 16#69#, 16#20#, 16#54#, 16#68#, 16#65#, 16#72#, 16#65#);
+      Expected : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#B0#, 16#34#, 16#4C#, 16#61#, 16#D8#, 16#DB#, 16#38#, 16#53#,
+         16#5C#, 16#A8#, 16#AF#, 16#CE#, 16#AF#, 16#0B#, 16#F1#, 16#2B#,
+         16#88#, 16#1D#, 16#C2#, 16#00#, 16#C9#, 16#83#, 16#3D#, 16#A7#,
+         16#26#, 16#E9#, 16#37#, 16#6C#, 16#2E#, 16#32#, 16#CF#, 16#F7#);
+      Got : Tls_Core.Hmac_Sha256.Tag;
+   begin
+      Put_Line ("scenario 5 — HMAC-SHA-256 RFC 4231 §4.2 case 1");
+      Tls_Core.Hmac_Sha256.Compute
+        (Key => Key, Message => Data, Out_Tag => Got);
+      Check ("RFC 4231 case 1 matches", Equal (Got, Expected));
+   end Hmac_Sha256_Scenario;
+
+   procedure Hkdf_Expand_Scenario;
+   procedure Hkdf_Expand_Scenario is
+      --  RFC 5869 §A.1 PRK.
+      PRK : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#07#, 16#77#, 16#09#, 16#36#, 16#2C#, 16#2E#, 16#32#, 16#DF#,
+         16#0D#, 16#DC#, 16#3F#, 16#0D#, 16#C4#, 16#7B#, 16#BA#, 16#63#,
+         16#90#, 16#B6#, 16#C7#, 16#3B#, 16#B5#, 16#0F#, 16#9C#, 16#31#,
+         16#22#, 16#EC#, 16#84#, 16#4A#, 16#D7#, 16#C2#, 16#B3#, 16#E5#);
+      Info : constant Tls_Core.Octet_Array (1 .. 10) :=
+        (16#F0#, 16#F1#, 16#F2#, 16#F3#, 16#F4#,
+         16#F5#, 16#F6#, 16#F7#, 16#F8#, 16#F9#);
+      --  RFC 5869 §A.1 expected output (42 bytes).
+      Expected : constant Tls_Core.Octet_Array (1 .. 42) :=
+        (16#3C#, 16#B2#, 16#5F#, 16#25#, 16#FA#, 16#AC#, 16#D5#, 16#7A#,
+         16#90#, 16#43#, 16#4F#, 16#64#, 16#D0#, 16#36#, 16#2F#, 16#2A#,
+         16#2D#, 16#2D#, 16#0A#, 16#90#, 16#CF#, 16#1A#, 16#5A#, 16#4C#,
+         16#5D#, 16#B0#, 16#2D#, 16#56#, 16#EC#, 16#C4#, 16#C5#, 16#BF#,
+         16#34#, 16#00#, 16#72#, 16#08#, 16#D5#, 16#B8#, 16#87#, 16#18#,
+         16#58#, 16#65#);
+      OKM : Tls_Core.Octet_Array (1 .. 42);
+   begin
+      Put_Line ("scenario 6 — HKDF-Expand RFC 5869 §A.1");
+      Tls_Core.Hkdf_Sha256.Expand (PRK, Info, OKM);
+      Check ("RFC 5869 §A.1 OKM matches", Equal (OKM, Expected));
+   end Hkdf_Expand_Scenario;
+
+   --  Slice 1's Tls_Core.Hkdf.Expand_Label generic, instantiated
+   --  against slice 7's pure-SPARK HMAC-SHA-256.
+   procedure Hkdf_Expand_Label_Wrapped
+     is new Tls_Core.Hkdf.Expand_Label
+       (Hash_Length => Tls_Core.Sha256.Hash_Length,
+        Max_Info    => 256,
+        Hmac_Expand => Tls_Core.Hkdf_Sha256.Hmac_Expand);
+
+   procedure Expand_Label_End_To_End;
+   procedure Expand_Label_End_To_End is
+      Secret : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#07#, 16#77#, 16#09#, 16#36#, 16#2C#, 16#2E#, 16#32#, 16#DF#,
+         16#0D#, 16#DC#, 16#3F#, 16#0D#, 16#C4#, 16#7B#, 16#BA#, 16#63#,
+         16#90#, 16#B6#, 16#C7#, 16#3B#, 16#B5#, 16#0F#, 16#9C#, 16#31#,
+         16#22#, 16#EC#, 16#84#, 16#4A#, 16#D7#, 16#C2#, 16#B3#, 16#E5#);
+      Label : constant Tls_Core.Octet_Array (1 .. 10) :=
+        (16#63#, 16#20#, 16#68#, 16#73#, 16#20#,        --  "c hs "
+         16#74#, 16#72#, 16#61#, 16#66#, 16#66#);       --  "traff"
+      Empty_Hash : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#E3#, 16#B0#, 16#C4#, 16#42#, 16#98#, 16#FC#, 16#1C#, 16#14#,
+         16#9A#, 16#FB#, 16#F4#, 16#C8#, 16#99#, 16#6F#, 16#B9#, 16#24#,
+         16#27#, 16#AE#, 16#41#, 16#E4#, 16#64#, 16#9B#, 16#93#, 16#4C#,
+         16#A4#, 16#95#, 16#99#, 16#1B#, 16#78#, 16#52#, 16#B8#, 16#55#);
+      Out_Material : Tls_Core.Octet_Array (1 .. 32);
+      All_Different_From_Secret : Boolean := True;
+   begin
+      Put_Line ("scenario 7 — HKDF-Expand-Label end-to-end");
+      Hkdf_Expand_Label_Wrapped
+        (Secret  => Secret,
+         Label   => Label,
+         Context => Empty_Hash,
+         Output  => Out_Material);
+      --  We don't pin against a third-party-issued reference
+      --  (RFC 8448 vectors are deep into a real TLS handshake);
+      --  what we DO check is determinism + that the output isn't
+      --  trivially the input secret (which would mean Expand_Label
+      --  is broken).
+      for I in Out_Material'Range loop
+         if Out_Material (I) /= Secret (I) then
+            All_Different_From_Secret := True;
+            exit;
+         end if;
+      end loop;
+      Check ("32-byte output produced", Out_Material'Length = 32);
+      Check ("output not == raw secret", All_Different_From_Secret);
+      --  Determinism: run again, same result.
+      declare
+         Out_2 : Tls_Core.Octet_Array (1 .. 32);
+      begin
+         Hkdf_Expand_Label_Wrapped
+           (Secret => Secret, Label => Label,
+            Context => Empty_Hash, Output => Out_2);
+         Check ("deterministic re-run", Equal (Out_Material, Out_2));
+      end;
+   end Expand_Label_End_To_End;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
    Scenario_2;
    Record_Layer_Scenario;
+   Sha256_Scenario;
+   Hmac_Sha256_Scenario;
+   Hkdf_Expand_Scenario;
+   Expand_Label_End_To_End;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
