@@ -1,0 +1,48 @@
+--  Tls_Core.Ed25519 — Ed25519 signature verification (RFC 8032).
+--
+--  Source: RFC 8032 — Edwards-Curve Digital Signature Algorithm (EdDSA).
+--
+--  Ed25519 lives on the twisted Edwards curve
+--      −x^2 + y^2 = 1 + d * x^2 * y^2     over GF(2^255 - 19)
+--  with d = −121665/121666 (mod p).
+--
+--  Verification per §5.1.7:
+--      Given (A, M, sig) with sig = R ‖ s (32 + 32 bytes):
+--          k = SHA-512(R ‖ A ‖ M) reduced mod L
+--          Accept iff [s]B = R + [k]A
+--      where B is the curve's prime-order base point and
+--      L = 2^252 + 27742317777372353535851937790883648493.
+--
+--  This module covers verification only; signing is not needed for
+--  the TLS 1.3 server-cert path. Test vectors from RFC 8032 §7.1.
+--
+--  Same shape as Tls_Core.X25519 — a 16-limb 16-bit field
+--  representation, but Edwards-form point operations + the curve
+--  order arithmetic for reducing the SHA-512 hash mod L. Body sits
+--  outside SPARK_Mode for the same reasons X25519 does: the field
+--  arithmetic carry chains aren't a target for proof here; the
+--  proof obligation is RFC-vector match.
+
+with Tls_Core.Sha512;
+
+package Tls_Core.Ed25519
+with SPARK_Mode => Off
+is
+
+   subtype Bytes_32 is Octet_Array (1 .. 32);
+   subtype Signature is Octet_Array (1 .. 64);
+
+   --  Verify(public_key, message, signature). True iff valid.
+   --
+   --  RFC 8032 §5.1.7:
+   --     R = sig[0..32), s = sig[32..64)
+   --     A = decode(public_key)
+   --     k = SHA-512(R ‖ public_key ‖ M) reduced mod L
+   --     Accept iff [s]B = R + [k]A as encoded points.
+   function Verify
+     (Public_Key : Bytes_32;
+      Message    : Octet_Array;
+      Sig        : Signature)
+      return Boolean;
+
+end Tls_Core.Ed25519;

@@ -28,6 +28,8 @@ with Tls_Core.Handshake_Driver;
 with Tls_Core.Channel;
 with Tls_Core.X25519;
 with Tls_Core.Sha512;
+with Tls_Core.Ed25519;
+with Tls_Core.X509;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -1705,6 +1707,239 @@ procedure Tls_Core_Tests is
       end;
    end Sha512_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 22 — X509 Ed25519 self-signed certificate parser.
+   --
+   --  Cert was generated with
+   --      openssl req -x509 -newkey ed25519 -nodes -days 365 \
+   --          -subj "/CN=test" -outform DER -out test.der
+   --  and the bytes copied verbatim via `xxd -i test.der`.
+   --
+   --  The parser must (a) report OK, (b) name a non-empty TBS range
+   --  strictly inside the cert, (c) extract a 32-byte public key,
+   --  (d) extract a 64-byte signature. As a sanity capstone we also
+   --  feed the parser's outputs into Ed25519.Verify — the cert is
+   --  self-signed, so verification over the TBS must accept.
+   --------------------------------------------------------------------
+
+   procedure X509_Scenario;
+   procedure X509_Scenario is
+      Cert : constant Tls_Core.Octet_Array (1 .. 310) :=
+        (16#30#, 16#82#, 16#01#, 16#32#, 16#30#, 16#81#, 16#E5#, 16#A0#,
+         16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#56#, 16#8D#,
+         16#E2#, 16#DF#, 16#FB#, 16#BC#, 16#98#, 16#AF#, 16#80#, 16#FD#,
+         16#10#, 16#86#, 16#ED#, 16#3B#, 16#29#, 16#B4#, 16#1D#, 16#51#,
+         16#D7#, 16#BE#, 16#30#, 16#05#, 16#06#, 16#03#, 16#2B#, 16#65#,
+         16#70#, 16#30#, 16#0F#, 16#31#, 16#0D#, 16#30#, 16#0B#, 16#06#,
+         16#03#, 16#55#, 16#04#, 16#03#, 16#0C#, 16#04#, 16#74#, 16#65#,
+         16#73#, 16#74#, 16#30#, 16#1E#, 16#17#, 16#0D#, 16#32#, 16#36#,
+         16#30#, 16#35#, 16#30#, 16#35#, 16#31#, 16#32#, 16#30#, 16#33#,
+         16#33#, 16#30#, 16#5A#, 16#17#, 16#0D#, 16#32#, 16#37#, 16#30#,
+         16#35#, 16#30#, 16#35#, 16#31#, 16#32#, 16#30#, 16#33#, 16#33#,
+         16#30#, 16#5A#, 16#30#, 16#0F#, 16#31#, 16#0D#, 16#30#, 16#0B#,
+         16#06#, 16#03#, 16#55#, 16#04#, 16#03#, 16#0C#, 16#04#, 16#74#,
+         16#65#, 16#73#, 16#74#, 16#30#, 16#2A#, 16#30#, 16#05#, 16#06#,
+         16#03#, 16#2B#, 16#65#, 16#70#, 16#03#, 16#21#, 16#00#, 16#86#,
+         16#7B#, 16#5A#, 16#0F#, 16#9B#, 16#80#, 16#61#, 16#B3#, 16#89#,
+         16#E3#, 16#A8#, 16#1F#, 16#E0#, 16#B3#, 16#AF#, 16#87#, 16#FC#,
+         16#66#, 16#2D#, 16#59#, 16#86#, 16#A8#, 16#72#, 16#03#, 16#D8#,
+         16#61#, 16#7A#, 16#C2#, 16#99#, 16#CC#, 16#09#, 16#32#, 16#A3#,
+         16#53#, 16#30#, 16#51#, 16#30#, 16#1D#, 16#06#, 16#03#, 16#55#,
+         16#1D#, 16#0E#, 16#04#, 16#16#, 16#04#, 16#14#, 16#6E#, 16#8E#,
+         16#E2#, 16#E6#, 16#75#, 16#86#, 16#1D#, 16#89#, 16#36#, 16#B7#,
+         16#48#, 16#AC#, 16#8C#, 16#BA#, 16#E5#, 16#38#, 16#B8#, 16#A7#,
+         16#F6#, 16#F8#, 16#30#, 16#1F#, 16#06#, 16#03#, 16#55#, 16#1D#,
+         16#23#, 16#04#, 16#18#, 16#30#, 16#16#, 16#80#, 16#14#, 16#6E#,
+         16#8E#, 16#E2#, 16#E6#, 16#75#, 16#86#, 16#1D#, 16#89#, 16#36#,
+         16#B7#, 16#48#, 16#AC#, 16#8C#, 16#BA#, 16#E5#, 16#38#, 16#B8#,
+         16#A7#, 16#F6#, 16#F8#, 16#30#, 16#0F#, 16#06#, 16#03#, 16#55#,
+         16#1D#, 16#13#, 16#01#, 16#01#, 16#FF#, 16#04#, 16#05#, 16#30#,
+         16#03#, 16#01#, 16#01#, 16#FF#, 16#30#, 16#05#, 16#06#, 16#03#,
+         16#2B#, 16#65#, 16#70#, 16#03#, 16#41#, 16#00#, 16#B5#, 16#74#,
+         16#B9#, 16#8E#, 16#04#, 16#45#, 16#76#, 16#3F#, 16#C8#, 16#AA#,
+         16#7E#, 16#D0#, 16#8F#, 16#13#, 16#2A#, 16#79#, 16#D2#, 16#2E#,
+         16#31#, 16#E3#, 16#89#, 16#76#, 16#5B#, 16#87#, 16#9B#, 16#43#,
+         16#C6#, 16#3A#, 16#DA#, 16#52#, 16#FE#, 16#A7#, 16#7C#, 16#AA#,
+         16#BB#, 16#98#, 16#AE#, 16#9A#, 16#55#, 16#83#, 16#91#, 16#9C#,
+         16#A2#, 16#92#, 16#F7#, 16#03#, 16#7F#, 16#91#, 16#73#, 16#43#,
+         16#A8#, 16#86#, 16#DB#, 16#C4#, 16#88#, 16#09#, 16#38#, 16#D6#,
+         16#36#, 16#F4#, 16#C2#, 16#D6#, 16#ED#, 16#00#);
+
+      --  Expected pub-key first/last bytes (from xxd of the cert at
+      --  the 32-byte window after the SPKI BIT STRING unused-bits
+      --  byte). Cross-checks the offset arithmetic.
+      Expected_Pub_First : constant Tls_Core.Octet := 16#86#;
+      Expected_Pub_Last  : constant Tls_Core.Octet := 16#32#;
+      --  Likewise for the trailing signatureValue BIT STRING.
+      Expected_Sig_First : constant Tls_Core.Octet := 16#B5#;
+      Expected_Sig_Last  : constant Tls_Core.Octet := 16#00#;
+
+      Tbs_First : Natural;
+      Tbs_Last  : Natural;
+      Pub_Key   : Tls_Core.X509.Public_Key;
+      Sig       : Tls_Core.X509.Signature;
+      OK        : Boolean;
+   begin
+      Put_Line ("scenario 22 — X509 Ed25519 cert parser");
+
+      Tls_Core.X509.Parse_Ed25519_Cert
+        (Der       => Cert,
+         Tbs_First => Tbs_First,
+         Tbs_Last  => Tbs_Last,
+         Pub_Key   => Pub_Key,
+         Sig       => Sig,
+         OK        => OK);
+
+      Check ("X509: Parse_Ed25519_Cert returns OK", OK);
+      Check ("X509: TBS range non-empty",
+             Tbs_First <= Tbs_Last);
+      Check ("X509: TBS range strictly inside Der",
+             Tbs_First >= Cert'First and then Tbs_Last <= Cert'Last
+             and then (Tbs_First > Cert'First
+                       or else Tbs_Last < Cert'Last));
+      Check ("X509: pub-key first byte matches",
+             Pub_Key (1) = Expected_Pub_First);
+      Check ("X509: pub-key last byte matches",
+             Pub_Key (32) = Expected_Pub_Last);
+      Check ("X509: signature first byte matches",
+             Sig (1) = Expected_Sig_First);
+      Check ("X509: signature last byte matches",
+             Sig (64) = Expected_Sig_Last);
+
+      --  Pin TBS bounds at the byte level: TBS must begin with a
+      --  SEQUENCE tag (0x30), and the byte immediately after TBS
+      --  must be the signatureAlgorithm SEQUENCE tag. Catches any
+      --  off-by-one in either bound that the byte-position checks
+      --  above could miss.
+      Check ("X509: TBS starts with SEQUENCE tag",
+             Cert (Tbs_First) = 16#30#);
+      Check ("X509: byte after TBS is signatureAlgorithm tag",
+             Tbs_Last + 1 <= Cert'Last
+             and then Cert (Tbs_Last + 1) = 16#30#);
+
+      --  Negative: zero-length input must return OK=False.
+      declare
+         Empty : constant Tls_Core.Octet_Array (1 .. 0) :=
+           (others => 0);
+         Tf    : Natural := 0;
+         Tl    : Natural := 0;
+         Pk    : Tls_Core.X509.Public_Key;
+         Sg    : Tls_Core.X509.Signature;
+         Ok2   : Boolean;
+      begin
+         Tls_Core.X509.Parse_Ed25519_Cert
+           (Der       => Empty,
+            Tbs_First => Tf,
+            Tbs_Last  => Tl,
+            Pub_Key   => Pk,
+            Sig       => Sg,
+            OK        => Ok2);
+         Check ("X509: empty input rejected", not Ok2);
+      end;
+
+      --  Negative: truncated cert (drop last 16 bytes of signature)
+      --  must return OK=False; the trailing BIT STRING length check
+      --  catches this.
+      declare
+         Truncated : constant Tls_Core.Octet_Array :=
+           Cert (Cert'First .. Cert'Last - 16);
+         Tf  : Natural := 0;
+         Tl  : Natural := 0;
+         Pk  : Tls_Core.X509.Public_Key;
+         Sg  : Tls_Core.X509.Signature;
+         Ok2 : Boolean;
+      begin
+         Tls_Core.X509.Parse_Ed25519_Cert
+           (Der       => Truncated,
+            Tbs_First => Tf,
+            Tbs_Last  => Tl,
+            Pub_Key   => Pk,
+            Sig       => Sg,
+            OK        => Ok2);
+         Check ("X509: truncated cert rejected", not Ok2);
+      end;
+   end X509_Scenario;
+
+   --------------------------------------------------------------------
+   --  Scenario 23 — Ed25519 RFC 8032 §7.1 verification vectors.
+   --
+   --  TEST 1 (empty message), TEST 2 (1-byte message),
+   --  TEST 3 ("af82") plus a corrupted-signature rejection check
+   --  and a wrong-key rejection check.
+   --------------------------------------------------------------------
+   procedure Ed25519_Scenario;
+   procedure Ed25519_Scenario is
+      use type Tls_Core.Octet;
+
+      Pub_1 : constant Tls_Core.Ed25519.Bytes_32 :=
+        (16#D7#, 16#5A#, 16#98#, 16#01#, 16#82#, 16#B1#, 16#0A#, 16#B7#,
+         16#D5#, 16#4B#, 16#FE#, 16#D3#, 16#C9#, 16#64#, 16#07#, 16#3A#,
+         16#0E#, 16#E1#, 16#72#, 16#F3#, 16#DA#, 16#A6#, 16#23#, 16#25#,
+         16#AF#, 16#02#, 16#1A#, 16#68#, 16#F7#, 16#07#, 16#51#, 16#1A#);
+      Msg_1 : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+      Sig_1 : constant Tls_Core.Ed25519.Signature :=
+        (16#E5#, 16#56#, 16#43#, 16#00#, 16#C3#, 16#60#, 16#AC#, 16#72#,
+         16#90#, 16#86#, 16#E2#, 16#CC#, 16#80#, 16#6E#, 16#82#, 16#8A#,
+         16#84#, 16#87#, 16#7F#, 16#1E#, 16#B8#, 16#E5#, 16#D9#, 16#74#,
+         16#D8#, 16#73#, 16#E0#, 16#65#, 16#22#, 16#49#, 16#01#, 16#55#,
+         16#5F#, 16#B8#, 16#82#, 16#15#, 16#90#, 16#A3#, 16#3B#, 16#AC#,
+         16#C6#, 16#1E#, 16#39#, 16#70#, 16#1C#, 16#F9#, 16#B4#, 16#6B#,
+         16#D2#, 16#5B#, 16#F5#, 16#F0#, 16#59#, 16#5B#, 16#BE#, 16#24#,
+         16#65#, 16#51#, 16#41#, 16#43#, 16#8E#, 16#7A#, 16#10#, 16#0B#);
+
+      Pub_2 : constant Tls_Core.Ed25519.Bytes_32 :=
+        (16#3D#, 16#40#, 16#17#, 16#C3#, 16#E8#, 16#43#, 16#89#, 16#5A#,
+         16#92#, 16#B7#, 16#0A#, 16#A7#, 16#4D#, 16#1B#, 16#7E#, 16#BC#,
+         16#9C#, 16#98#, 16#2C#, 16#CF#, 16#2E#, 16#C4#, 16#96#, 16#8C#,
+         16#C0#, 16#CD#, 16#55#, 16#F1#, 16#2A#, 16#F4#, 16#66#, 16#0C#);
+      Msg_2 : constant Tls_Core.Octet_Array := (1 => 16#72#);
+      Sig_2 : constant Tls_Core.Ed25519.Signature :=
+        (16#92#, 16#A0#, 16#09#, 16#A9#, 16#F0#, 16#D4#, 16#CA#, 16#B8#,
+         16#72#, 16#0E#, 16#82#, 16#0B#, 16#5F#, 16#64#, 16#25#, 16#40#,
+         16#A2#, 16#B2#, 16#7B#, 16#54#, 16#16#, 16#50#, 16#3F#, 16#8F#,
+         16#B3#, 16#76#, 16#22#, 16#23#, 16#EB#, 16#DB#, 16#69#, 16#DA#,
+         16#08#, 16#5A#, 16#C1#, 16#E4#, 16#3E#, 16#15#, 16#99#, 16#6E#,
+         16#45#, 16#8F#, 16#36#, 16#13#, 16#D0#, 16#F1#, 16#1D#, 16#8C#,
+         16#38#, 16#7B#, 16#2E#, 16#AE#, 16#B4#, 16#30#, 16#2A#, 16#EE#,
+         16#B0#, 16#0D#, 16#29#, 16#16#, 16#12#, 16#BB#, 16#0C#, 16#00#);
+
+      Pub_3 : constant Tls_Core.Ed25519.Bytes_32 :=
+        (16#FC#, 16#51#, 16#CD#, 16#8E#, 16#62#, 16#18#, 16#A1#, 16#A3#,
+         16#8D#, 16#A4#, 16#7E#, 16#D0#, 16#02#, 16#30#, 16#F0#, 16#58#,
+         16#08#, 16#16#, 16#ED#, 16#13#, 16#BA#, 16#33#, 16#03#, 16#AC#,
+         16#5D#, 16#EB#, 16#91#, 16#15#, 16#48#, 16#90#, 16#80#, 16#25#);
+      Msg_3 : constant Tls_Core.Octet_Array (1 .. 2) := (16#AF#, 16#82#);
+      Sig_3 : constant Tls_Core.Ed25519.Signature :=
+        (16#62#, 16#91#, 16#D6#, 16#57#, 16#DE#, 16#EC#, 16#24#, 16#02#,
+         16#48#, 16#27#, 16#E6#, 16#9C#, 16#3A#, 16#BE#, 16#01#, 16#A3#,
+         16#0C#, 16#E5#, 16#48#, 16#A2#, 16#84#, 16#74#, 16#3A#, 16#44#,
+         16#5E#, 16#36#, 16#80#, 16#D7#, 16#DB#, 16#5A#, 16#C3#, 16#AC#,
+         16#18#, 16#FF#, 16#9B#, 16#53#, 16#8D#, 16#16#, 16#F2#, 16#90#,
+         16#AE#, 16#67#, 16#F7#, 16#60#, 16#98#, 16#4D#, 16#C6#, 16#59#,
+         16#4A#, 16#7C#, 16#15#, 16#E9#, 16#71#, 16#6E#, 16#D2#, 16#8D#,
+         16#C0#, 16#27#, 16#BE#, 16#CE#, 16#EA#, 16#1E#, 16#C4#, 16#0A#);
+   begin
+      Put_Line ("scenario 23 — Ed25519 RFC 8032 §7.1 verify vectors");
+
+      Check ("Ed25519 TEST 1 (empty msg) verifies",
+             Tls_Core.Ed25519.Verify (Pub_1, Msg_1, Sig_1));
+      Check ("Ed25519 TEST 2 (1-byte msg) verifies",
+             Tls_Core.Ed25519.Verify (Pub_2, Msg_2, Sig_2));
+      Check ("Ed25519 TEST 3 (2-byte msg) verifies",
+             Tls_Core.Ed25519.Verify (Pub_3, Msg_3, Sig_3));
+
+      declare
+         Bad_Sig : Tls_Core.Ed25519.Signature := Sig_1;
+      begin
+         Bad_Sig (1) := Bad_Sig (1) xor 16#01#;
+         Check ("Ed25519 rejects tampered signature",
+                not Tls_Core.Ed25519.Verify (Pub_1, Msg_1, Bad_Sig));
+      end;
+
+      Check ("Ed25519 rejects wrong public key",
+             not Tls_Core.Ed25519.Verify (Pub_2, Msg_1, Sig_1));
+   end Ed25519_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -1728,6 +1963,8 @@ begin
    Ecdhe_Schedule_Scenario;
    Ecdhe_Driver_Loopback;
    Sha512_Scenario;
+   X509_Scenario;
+   Ed25519_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
