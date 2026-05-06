@@ -16,7 +16,8 @@
 --  client-side join in subsequent phases.
 
 with Tls_Core.Channel;
-with Tls_Core.Handshake;
+with Tls_Core.Key_Schedule;
+with Tls_Core.Sha256;
 with Tls_Core.Transcript;
 
 package Tls_Core.Tls13_Driver
@@ -26,8 +27,10 @@ is
    type Role is (Client, Server);
 
    type State is
-     (Awaiting_CH,        --  Server's initial state.
-      Awaiting_Cf,        --  Server has sent SH+EE+SF; awaiting client Finished.
+     (Idle,               --  Client's initial state.
+      Awaiting_CH,        --  Server's initial state.
+      Awaiting_Sf,        --  Client sent CH; awaiting SH+EE+SF flight.
+      Awaiting_Cf,        --  Server sent SH+EE+SF; awaiting client Finished.
       Done,
       Failed);
 
@@ -37,6 +40,12 @@ is
    --  the peer (e.g. openssl s_client -psk) uses; Identity is the
    --  external PSK identity it advertises.
    procedure Init_Psk_Server
+     (D            : out Driver;
+      PSK          : Octet_Array;
+      Psk_Identity : Octet_Array);
+
+   --  Initialise as PSK_KE client.
+   procedure Init_Psk_Client
      (D            : out Driver;
       PSK          : Octet_Array;
       Psk_Identity : Octet_Array);
@@ -83,8 +92,21 @@ private
       Hs_Out_Dir  : Tls_Core.Channel.Direction;
       Hs_In_Dir   : Tls_Core.Channel.Direction;
 
-      --  Application-data secrets (filled at Done).
-      App_Out_Sec : Tls_Core.Handshake.Traffic_Secrets;
+      --  Saved handshake-stage state used after Awaiting_CH.
+      C_Hs_Sec    : Tls_Core.Key_Schedule.Secret := (others => 0);
+      S_Hs_Sec    : Tls_Core.Key_Schedule.Secret := (others => 0);
+      Hs_Secret   : Tls_Core.Key_Schedule.Secret := (others => 0);
+
+      --  Expected client Finished verify_data, computed at the
+      --  moment server Finished is sent — saved here so the
+      --  Awaiting_Cf path can do a constant-time compare against
+      --  the decrypted body.
+      Expected_Cf : Tls_Core.Sha256.Digest := (others => 0);
+
+      --  Application-data secrets (filled at the same time, used
+      --  via Open_App_Directions after Done).
+      App_C_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
+      App_S_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
       App_Set     : Boolean := False;
    end record;
 

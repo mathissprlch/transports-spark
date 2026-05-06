@@ -54,6 +54,23 @@ is
       D.App_Set := False;
    end Init_Psk_Server;
 
+   procedure Init_Psk_Client
+     (D            : out Driver;
+      PSK          : Octet_Array;
+      Psk_Identity : Octet_Array)
+   is
+   begin
+      D.My_Role := Client;
+      D.Cur_State := Idle;
+      Tls_Core.Transcript.Init (D.Hash_Ctx);
+      D.PSK := (others => 0);
+      D.PSK := PSK;
+      D.Identity := (others => 0);
+      D.Identity_Len := Psk_Identity'Length;
+      D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
+      D.App_Set := False;
+   end Init_Psk_Client;
+
    ---------------------------------------------------------------------
    --  Helpers
    ---------------------------------------------------------------------
@@ -144,6 +161,290 @@ is
       Out_Last := 0;
 
       case D.Cur_State is
+         when Idle =>
+            --  Client only: emit ClientHello with PSK extension and
+            --  binder. Wrap as TLSPlaintext record.
+            if D.My_Role /= Client then
+               D.Cur_State := Failed;
+               return;
+            end if;
+            declare
+               Client_Random : constant Tls_Core.Hello.Random_Bytes :=
+                 (others => 16#A1#);
+               Ch_Body : Octet_Array (1 .. 512) := (others => 0);
+               Ch_Body_Last : Natural;
+               T_Last  : Natural;
+               Binder  : Tls_Core.Psk_Binder.Binder_Bytes;
+               Ch_Hs   : Octet_Array (1 .. 1024) := (others => 0);
+               Ch_Hs_Last : Natural;
+               Ch_Rec  : Octet_Array (1 .. 1024) := (others => 0);
+               Ch_Rec_Last : Natural;
+            begin
+               Tls_Core.Hello.Encode_Client_Hello_Psk
+                 (Client_Random,
+                  D.Identity (1 .. D.Identity_Len),
+                  Ch_Body, Ch_Body_Last, T_Last);
+               --  Compute binder over Ch_Body (1 .. T_Last).
+               Tls_Core.Psk_Binder.Compute
+                 (D.PSK,
+                  Ch_Body (1 .. T_Last),
+                  Binder);
+               Ch_Body (T_Last + 2 .. T_Last + 33) := Binder;
+               --  Wrap as handshake message (type 0x01 + u24 + body).
+               Encode_Hs_Message
+                 (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
+                  Ch_Hs, Ch_Hs_Last);
+               --  Append handshake message (NOT record wrapper) to transcript.
+               Tls_Core.Transcript.Append
+                 (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
+               --  Wrap in TLSPlaintext record.
+               Wrap_Tls_Plaintext
+                 (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
+               Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
+               Out_Last := Ch_Rec_Last;
+               D.Cur_State := Awaiting_Sf;
+            end;
+
+         when Awaiting_Sf =>
+            --  Client: parse server flight = TLSPlaintext SH ||
+            --  TLSCiphertext EE || TLSCiphertext Server-Finished.
+            --  After verifying SF, emit encrypted client Finished.
+            if D.My_Role /= Client then
+               D.Cur_State := Failed;
+               return;
+            end if;
+            declare
+               Cursor : Natural := In_Bytes'First;
+
+               --  Used to derive c_hs / s_hs after parsing SH.
+               Empty_Hash    : Tls_Core.Sha256.Digest;
+               Empty_In      : constant Octet_Array (1 .. 0) :=
+                 (others => 0);
+               Zero_Secret   : constant Tls_Core.Key_Schedule.Secret :=
+                 (others => 0);
+               Derived_Lab   : constant Octet_Array (1 .. 7) :=
+                 (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+               C_Hs_Lab      : constant Octet_Array (1 .. 12) :=
+                 (16#63#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
+                  16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+               S_Hs_Lab      : constant Octet_Array (1 .. 12) :=
+                 (16#73#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
+                  16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+               C_Ap_Lab      : constant Octet_Array (1 .. 12) :=
+                 (16#63#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
+                  16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+               S_Ap_Lab      : constant Octet_Array (1 .. 12) :=
+                 (16#73#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
+                  16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+
+               Early_Secret  : Tls_Core.Key_Schedule.Secret;
+               Derived_1     : Tls_Core.Key_Schedule.Secret;
+               Th_After_Sh   : Tls_Core.Sha256.Digest;
+               Th_After_Ee   : Tls_Core.Sha256.Digest;
+               Th_After_Sf   : Tls_Core.Sha256.Digest;
+            begin
+               --  Step 1: parse SH TLSPlaintext.
+               if Cursor + 4 > In_Bytes'Last
+                 or else In_Bytes (Cursor) /= Rec_Type_Handshake
+               then
+                  D.Cur_State := Failed;
+                  return;
+               end if;
+               declare
+                  Sh_Rec_Len : constant Natural :=
+                    Natural (In_Bytes (Cursor + 3)) * 256
+                    + Natural (In_Bytes (Cursor + 4));
+                  Sh_Rec_F : constant Natural := Cursor + 5;
+                  Sh_Rec_L : constant Natural := Sh_Rec_F + Sh_Rec_Len - 1;
+               begin
+                  if Sh_Rec_L > In_Bytes'Last
+                    or else Sh_Rec_Len < 4
+                    or else In_Bytes (Sh_Rec_F) /= Hs_Type_SH
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  --  Append SH handshake message to transcript.
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, In_Bytes (Sh_Rec_F .. Sh_Rec_L));
+                  Cursor := Sh_Rec_L + 1;
+               end;
+
+               --  Step 2: derive handshake secrets.
+               Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Sh);
+               Tls_Core.Key_Schedule.Extract
+                 (Salt => Zero_Secret, IKM => D.PSK,
+                  Out_PRK => Early_Secret);
+               Tls_Core.Key_Schedule.Derive_Secret
+                 (Secret_In => Early_Secret,
+                  Label     => Derived_Lab,
+                  Messages  => Empty_In,
+                  Out_Secret => Derived_1);
+               Tls_Core.Key_Schedule.Extract
+                 (Salt => Derived_1, IKM => Zero_Secret,
+                  Out_PRK => D.Hs_Secret);
+               Hkdf_Expand_Label_Sha256
+                 (Secret  => D.Hs_Secret,
+                  Label   => C_Hs_Lab,
+                  Context => Th_After_Sh,
+                  Output  => D.C_Hs_Sec);
+               Hkdf_Expand_Label_Sha256
+                 (Secret  => D.Hs_Secret,
+                  Label   => S_Hs_Lab,
+                  Context => Th_After_Sh,
+                  Output  => D.S_Hs_Sec);
+               --  Client: in decrypts with s_hs; out encrypts with c_hs.
+               Tls_Core.Channel.Init (D.Hs_In_Dir,  D.S_Hs_Sec);
+               Tls_Core.Channel.Init (D.Hs_Out_Dir, D.C_Hs_Sec);
+
+               --  Step 3: decrypt EE record.
+               declare
+                  Pt_Buf : Octet_Array (1 .. 1024) := (others => 0);
+                  Pt_Last : Natural;
+                  Inner_Type : Octet;
+                  OK : Boolean;
+                  Rec_Len : Natural;
+                  Rec_End : Natural;
+               begin
+                  if Cursor + 4 > In_Bytes'Last
+                    or else In_Bytes (Cursor) /=
+                              Tls_Core.Channel.Inner_Type_Application_Data
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
+                             + Natural (In_Bytes (Cursor + 4));
+                  Rec_End := Cursor + 5 + Rec_Len - 1;
+                  if Rec_End > In_Bytes'Last then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Tls_Core.Channel.Receive
+                    (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
+                     Pt_Buf, Pt_Last, Inner_Type, OK);
+                  if not OK
+                    or else Inner_Type /= Tls_Core.Channel.Inner_Type_Handshake
+                    or else Pt_Last < 4
+                    or else Pt_Buf (1) /= Hs_Type_EE
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
+                  Cursor := Rec_End + 1;
+               end;
+
+               --  Step 4: decrypt server Finished record.
+               Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Ee);
+               declare
+                  Pt_Buf : Octet_Array (1 .. 1024) := (others => 0);
+                  Pt_Last : Natural;
+                  Inner_Type : Octet;
+                  OK : Boolean;
+                  Rec_Len : Natural;
+                  Rec_End : Natural;
+                  Expected_Sf : Tls_Core.Sha256.Digest;
+                  Diff : Octet := 0;
+               begin
+                  if Cursor + 4 > In_Bytes'Last
+                    or else In_Bytes (Cursor) /=
+                              Tls_Core.Channel.Inner_Type_Application_Data
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
+                             + Natural (In_Bytes (Cursor + 4));
+                  Rec_End := Cursor + 5 + Rec_Len - 1;
+                  if Rec_End > In_Bytes'Last then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Tls_Core.Channel.Receive
+                    (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
+                     Pt_Buf, Pt_Last, Inner_Type, OK);
+                  if not OK
+                    or else Inner_Type /= Tls_Core.Channel.Inner_Type_Handshake
+                    or else Pt_Last /= 4 + 32
+                    or else Pt_Buf (1) /= Hs_Type_Finished
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  --  Verify server Finished verify_data: HMAC of
+                  --  s_hs_finished_key over Th_After_Ee.
+                  Build_Finished_Body
+                    (D.S_Hs_Sec, Th_After_Ee, Expected_Sf);
+                  for I in 1 .. 32 loop
+                     Diff := Diff or
+                       (Pt_Buf (4 + I) xor Expected_Sf (I));
+                  end loop;
+                  if Diff /= 0 then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
+                  Cursor := Rec_End + 1;
+               end;
+
+               --  Step 5: derive app secrets.
+               Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Sf);
+               declare
+                  Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
+                  Master_Secret : Tls_Core.Key_Schedule.Secret;
+               begin
+                  Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
+                  Hkdf_Expand_Label_Sha256
+                    (Secret  => D.Hs_Secret,
+                     Label   => Derived_Lab,
+                     Context => Empty_Hash,
+                     Output  => Derived_2_Sec);
+                  Tls_Core.Key_Schedule.Extract
+                    (Salt => Derived_2_Sec, IKM => Zero_Secret,
+                     Out_PRK => Master_Secret);
+                  Hkdf_Expand_Label_Sha256
+                    (Secret  => Master_Secret,
+                     Label   => C_Ap_Lab,
+                     Context => Th_After_Sf,
+                     Output  => D.App_C_Ap);
+                  Hkdf_Expand_Label_Sha256
+                    (Secret  => Master_Secret,
+                     Label   => S_Ap_Lab,
+                     Context => Th_After_Sf,
+                     Output  => D.App_S_Ap);
+                  D.App_Set := True;
+               end;
+
+               --  Step 6: build + send client Finished.
+               declare
+                  Cf_Verify : Tls_Core.Sha256.Digest;
+                  Cf_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+                  Cf_Hs_Last : Natural;
+                  Cf_Rec : Octet_Array (1 .. 256) := (others => 0);
+                  Cf_Rec_Last : Natural;
+               begin
+                  Build_Finished_Body
+                    (D.C_Hs_Sec, Th_After_Sf, Cf_Verify);
+                  Encode_Hs_Message
+                    (Hs_Type_Finished, Cf_Verify,
+                     Cf_Hs, Cf_Hs_Last);
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, Cf_Hs (1 .. Cf_Hs_Last));
+                  Tls_Core.Channel.Send
+                    (D.Hs_Out_Dir,
+                     Cf_Hs (1 .. Cf_Hs_Last),
+                     Tls_Core.Channel.Inner_Type_Handshake,
+                     Cf_Rec, Cf_Rec_Last);
+                  Out_Buf (1 .. Cf_Rec_Last) := Cf_Rec (1 .. Cf_Rec_Last);
+                  Out_Last := Cf_Rec_Last;
+               end;
+
+               D.Cur_State := Done;
+            end;
+
          when Awaiting_CH =>
             --  Parse one TLSPlaintext record holding ClientHello.
             if In_Bytes'Length < 5
@@ -190,15 +491,16 @@ is
                      D.Cur_State := Failed;
                      return;
                   end if;
-                  --  Decode_*_Psk indices are RELATIVE to the slice we
-                  --  passed in; remap them to absolute In_Bytes indices.
+                  --  Decode_*_Psk returns absolute indices into the
+                  --  In_Bytes slice it was passed; that slice has
+                  --  'First = Hs_Body_F so the indices already are
+                  --  in our outer In_Bytes' coordinate space.
                   declare
-                     Slice_Off : constant Integer := Hs_Body_F - 1;
-                     Abs_Id_F : constant Natural := Id_F + Slice_Off;
-                     Abs_Id_L : constant Natural := Id_L + Slice_Off;
-                     Abs_Bf : constant Natural := Bf + Slice_Off;
-                     Abs_Bl : constant Natural := Bl + Slice_Off;
-                     Abs_T_Last : constant Natural := T_Last + Slice_Off;
+                     Abs_Id_F : constant Natural := Id_F;
+                     Abs_Id_L : constant Natural := Id_L;
+                     Abs_Bf : constant Natural := Bf;
+                     Abs_Bl : constant Natural := Bl;
+                     Abs_T_Last : constant Natural := T_Last;
 
                      --  Verify PSK identity matches expected.
                      Identity_OK : Boolean := True;
@@ -330,6 +632,12 @@ is
                Tls_Core.Channel.Init (D.Hs_Out_Dir, S_Hs_Sec);
                Tls_Core.Channel.Init (D.Hs_In_Dir,  C_Hs_Sec);
 
+               --  Save the secrets for later finished-key derivation
+               --  + master-secret derivation in this same Step body.
+               D.C_Hs_Sec := C_Hs_Sec;
+               D.S_Hs_Sec := S_Hs_Sec;
+               D.Hs_Secret := Hs_Secret;
+
                --  Build EE handshake message (empty extensions list).
                declare
                   Ee_Body : constant Octet_Array (1 .. 2) := (16#00#, 16#00#);
@@ -385,6 +693,61 @@ is
                           Fin_Rec (1 .. Fin_Rec_Last);
                         Out_Last := Cursor + Fin_Rec_Last;
                      end;
+
+                     --  Snapshot transcript hash CH || SH || EE || SF
+                     --  and use it for both:
+                     --    * expected client Finished verify_data (via c_hs)
+                     --    * application traffic secrets (via Master_Secret)
+                     declare
+                        Th_After_SF : Tls_Core.Sha256.Digest;
+
+                        Empty_Hash : Tls_Core.Sha256.Digest;
+                        Empty_In   : constant Octet_Array (1 .. 0) :=
+                          (others => 0);
+                        Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
+                        Master_Secret : Tls_Core.Key_Schedule.Secret;
+                        Zero_Secret : constant Tls_Core.Key_Schedule.Secret :=
+                          (others => 0);
+                        Derived_Lab : constant Octet_Array (1 .. 7) :=
+                          (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+                        C_Ap_Lab : constant Octet_Array (1 .. 12) :=
+                          (16#63#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
+                           16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+                        S_Ap_Lab : constant Octet_Array (1 .. 12) :=
+                          (16#73#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
+                           16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+                     begin
+                        Tls_Core.Transcript.Snapshot
+                          (D.Hash_Ctx, Th_After_SF);
+
+                        --  Derived_2 = Derive-Secret(Hs_Secret, "derived", "")
+                        Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
+                        Hkdf_Expand_Label_Sha256
+                          (Secret  => D.Hs_Secret,
+                           Label   => Derived_Lab,
+                           Context => Empty_Hash,
+                           Output  => Derived_2_Sec);
+                        Tls_Core.Key_Schedule.Extract
+                          (Salt    => Derived_2_Sec,
+                           IKM     => Zero_Secret,
+                           Out_PRK => Master_Secret);
+                        Hkdf_Expand_Label_Sha256
+                          (Secret  => Master_Secret,
+                           Label   => C_Ap_Lab,
+                           Context => Th_After_SF,
+                           Output  => D.App_C_Ap);
+                        Hkdf_Expand_Label_Sha256
+                          (Secret  => Master_Secret,
+                           Label   => S_Ap_Lab,
+                           Context => Th_After_SF,
+                           Output  => D.App_S_Ap);
+                        D.App_Set := True;
+
+                        --  Expected client Finished body — HMAC of
+                        --  c_hs_finished_key over Th_After_SF.
+                        Build_Finished_Body
+                          (D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
+                     end;
                   end;
                end;
 
@@ -404,15 +767,25 @@ is
                   Pt_Buf, Pt_Last, Inner_Type, OK);
                if not OK
                  or else Inner_Type /= Tls_Core.Channel.Inner_Type_Handshake
-                 or else Pt_Last < 4
+                 or else Pt_Last /= 4 + 32
                  or else Pt_Buf (1) /= Hs_Type_Finished
                then
                   D.Cur_State := Failed;
                   return;
                end if;
-               --  Verify the client Finished verify_data matches.
-               --  Skip in this slice — assume opt-in once we have
-               --  c_hs traffic-secret based verify_data computed.
+               --  Constant-time compare of received verify_data
+               --  against the expected value computed at SF send time.
+               declare
+                  Diff : Octet := 0;
+               begin
+                  for I in 1 .. 32 loop
+                     Diff := Diff or (Pt_Buf (4 + I) xor D.Expected_Cf (I));
+                  end loop;
+                  if Diff /= 0 then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+               end;
                Tls_Core.Transcript.Append (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
                D.Cur_State := Done;
             end;
@@ -428,11 +801,16 @@ is
       In_Dir  : out Tls_Core.Channel.Direction)
    is
    begin
-      --  Stub: not yet computing app secrets in this slice.
-      Tls_Core.Channel.Init
-        (Out_Dir, D.App_Out_Sec.Server_App);
-      Tls_Core.Channel.Init
-        (In_Dir, D.App_Out_Sec.Client_App);
+      case D.My_Role is
+         when Server =>
+            --  Server: out encrypts with s_ap; in decrypts with c_ap.
+            Tls_Core.Channel.Init (Out_Dir, D.App_S_Ap);
+            Tls_Core.Channel.Init (In_Dir,  D.App_C_Ap);
+         when Client =>
+            --  Client: out encrypts with c_ap; in decrypts with s_ap.
+            Tls_Core.Channel.Init (Out_Dir, D.App_C_Ap);
+            Tls_Core.Channel.Init (In_Dir,  D.App_S_Ap);
+      end case;
    end Open_App_Directions;
 
 end Tls_Core.Tls13_Driver;

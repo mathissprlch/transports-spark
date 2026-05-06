@@ -34,6 +34,7 @@ with Tls_Core.Hello;
 with Tls_Core.Transport;
 with Tls_Core.Tcp_Transport;
 with Tls_Core.Psk_Binder;
+with Tls_Core.Tls13_Driver;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -3034,6 +3035,125 @@ procedure Tls_Core_Tests is
       end;
    end Psk_Hello_Roundtrip;
 
+   --------------------------------------------------------------------
+   --  Scenario 30 — Tls13_Driver Ada-to-Ada PSK_KE handshake
+   --
+   --  Two Tls13_Driver instances (Client + Server) drive the
+   --  spec-compliant TLS 1.3 PSK_KE handshake against each other:
+   --    1. Client emits CH (TLSPlaintext record).
+   --    2. Server consumes, emits SH || {EE} || {Finished} flight.
+   --    3. Client consumes, emits {Finished} encrypted record.
+   --    4. Server consumes, transitions to Done.
+   --  After Done both sides Open_App_Directions; client sends an
+   --  encrypted application-data record, server decrypts → matches.
+   --
+   --  This is the unit test that validates wire-format correctness
+   --  before any external-reference-impl interop test is run.
+   --------------------------------------------------------------------
+   procedure Tls13_Loopback;
+   procedure Tls13_Loopback is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Tls_Core.Octet;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+
+      C, S : Tls_Core.Tls13_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf_Last : Natural := 0;
+   begin
+      Put_Line ("scenario 30 — Tls13_Driver Ada-to-Ada PSK_KE");
+
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+
+      --  Flight 1: client → CH
+      Tls_Core.Tls13_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      Check ("Tls13: client produced CH record", Buf_Last > 50);
+      Check ("Tls13: CH outer is handshake (0x16)",
+             Buf (1) = 16#16#);
+
+      --  Flight 2: server consumes CH, emits SH+EE+SF
+      declare
+         Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Ch, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Tls13: server reached Awaiting_Cf",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Awaiting_Cf);
+         Check ("Tls13: server flight has SH plaintext + 2 ciphertext records",
+                Reply_Last > 100
+                and then Reply (1) = 16#16#  --  SH plaintext
+                and then Reply (Natural (Reply (4)) * 256
+                              + Natural (Reply (5)) + 6) = 16#17#);
+         --  Byte 6 + SH-rec-len is the start of the next record (EE encrypted),
+         --  whose outer type should be 0x17 application_data.
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Flight 3: client consumes SH+EE+SF, emits CF
+      declare
+         Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Sf_Flight,
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Tls13: client reached Done",
+                Tls_Core.Tls13_Driver.Current_State (C)
+                  = Tls_Core.Tls13_Driver.Done);
+         Check ("Tls13: client emitted encrypted Finished",
+                Reply_Last > 16 and then Reply (1) = 16#17#);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Server consumes client Finished, → Done
+      declare
+         Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Cf, Out_Buf => Discard, Out_Last => Discard_Last);
+         Check ("Tls13: server reached Done after CF",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Done);
+      end;
+
+      --  Application data round-trip: client encrypts plaintext under
+      --  c_ap_traffic_secret; server decrypts under same.
+      declare
+         Out_Cli, In_Cli, Out_Srv, In_Srv : Tls_Core.Channel.Direction;
+         Pt : constant Tls_Core.Octet_Array :=
+           (16#48#, 16#69#);  --  "Hi"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got_Last : Natural;
+         OK : Boolean;
+      begin
+         Tls_Core.Tls13_Driver.Open_App_Directions (C, Out_Cli, In_Cli);
+         Tls_Core.Tls13_Driver.Open_App_Directions (S, Out_Srv, In_Srv);
+         Tls_Core.Channel.Send (Out_Cli, Pt, Wire, Wire_Last);
+         Tls_Core.Channel.Receive
+           (In_Srv, Wire (1 .. Wire_Last), Got, Got_Last, OK);
+         Check ("Tls13: app data c→s decrypts", OK);
+         Check ("Tls13: app data c→s round-trips",
+                Got_Last = Pt'Length
+                and then Equal (Got (1 .. Got_Last), Pt));
+      end;
+   end Tls13_Loopback;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -3065,6 +3185,7 @@ begin
    Tcp_Loopback_Scenario;
    Psk_Binder_Scenario;
    Psk_Hello_Roundtrip;
+   Tls13_Loopback;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
