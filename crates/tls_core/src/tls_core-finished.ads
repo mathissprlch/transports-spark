@@ -22,6 +22,13 @@ is
    --  HMAC-SHA-256 output, 32 bytes — matches RFC 8446 §4.4.4
    --  for the SHA-256 cipher suites.
 
+   --  Abstract RFC 8446 §4.4.4 verify_data.
+   function Spec_Verify_Data
+     (Base_Key        : Tls_Core.Key_Schedule.Secret;
+      Transcript_Hash : Tls_Core.Sha256.Digest)
+      return Verify_Data
+   with Ghost;
+
    --  Compute the verify_data for a given base key + transcript
    --  hash. The "finished" label per RFC 8446 §7.1 is just
    --  "finished" in ASCII (no Tls13_Prefix prefix is added by us;
@@ -29,6 +36,7 @@ is
    procedure Compute
      (Base_Key        : Tls_Core.Key_Schedule.Secret;
       Transcript_Hash : Tls_Core.Sha256.Digest;
-      Out_Verify      : out Verify_Data);
+      Out_Verify      : out Verify_Data)
+   with Post => Out_Verify = Spec_Verify_Data (Base_Key, Transcript_Hash);
 
 end Tls_Core.Finished;

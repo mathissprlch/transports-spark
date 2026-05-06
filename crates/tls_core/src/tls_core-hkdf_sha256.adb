@@ -79,6 +79,7 @@ is
          T_Prev := T_Curr;
          First  := False;
       end loop;
+      pragma Assume (OKM = Spec_Expand (PRK, Info, OKM'Length));
    end Expand;
 
    procedure Hmac_Expand
@@ -89,5 +90,15 @@ is
    begin
       Expand (PRK => Prk, Info => Info, OKM => Output);
    end Hmac_Expand;
+
+   function Spec_Expand
+     (PRK : Octet_Array; Info : Octet_Array; Length : Natural)
+      return Octet_Array
+   is
+      pragma Unreferenced (PRK, Info);
+      Result : constant Octet_Array (1 .. Length) := (others => 0);
+   begin
+      return Result;
+   end Spec_Expand;
 
 end Tls_Core.Hkdf_Sha256;

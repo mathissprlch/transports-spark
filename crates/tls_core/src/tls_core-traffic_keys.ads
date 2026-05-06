@@ -20,11 +20,23 @@ is
    subtype Aead_Key is Octet_Array (1 .. 32);
    subtype Aead_Iv  is Tls_Core.Record_Layer.IV_Array;
 
+   --  Abstract RFC 8446 §7.3 traffic-key derivation.
+   function Spec_Key (Secret_In : Tls_Core.Key_Schedule.Secret)
+                      return Aead_Key
+   with Ghost;
+
+   function Spec_IV  (Secret_In : Tls_Core.Key_Schedule.Secret)
+                      return Aead_Iv
+   with Ghost;
+
    --  Compute (write_key, write_iv) for a single direction from
    --  the corresponding traffic secret.
    procedure Derive
      (Secret_In : Tls_Core.Key_Schedule.Secret;
       Out_Key   : out Aead_Key;
-      Out_IV    : out Aead_Iv);
+      Out_IV    : out Aead_Iv)
+   with Post =>
+     Out_Key = Spec_Key (Secret_In)
+     and then Out_IV = Spec_IV (Secret_In);
 
 end Tls_Core.Traffic_Keys;
