@@ -62,11 +62,11 @@ is
    with
      Pre =>
        Ciphertext'Length = Plaintext'Length
-       and then AAD'Length <= 1024
-       and then Plaintext'Length <= 1024
-       and then AAD'Last < Integer'Last - 1024
-       and then Plaintext'Last < Integer'Last - 1024
-       and then Ciphertext'Last < Integer'Last - 1024,
+       and then AAD'Length <= 16640
+       and then Plaintext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Plaintext'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640,
      Post =>
        Ciphertext = Spec_Seal_Ct (Key, Nonce, AAD, Plaintext)
        and then Tag = Spec_Seal_Tag (Key, Nonce, AAD, Plaintext);
@@ -86,11 +86,11 @@ is
    with
      Pre =>
        Plaintext'Length = Ciphertext'Length
-       and then AAD'Length <= 1024
-       and then Ciphertext'Length <= 1024
-       and then AAD'Last < Integer'Last - 1024
-       and then Ciphertext'Last < Integer'Last - 1024
-       and then Plaintext'Last < Integer'Last - 1024,
+       and then AAD'Length <= 16640
+       and then Ciphertext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640
+       and then Plaintext'Last < Integer'Last - 16640,
      Post => OK = Spec_Open_OK (Key, Nonce, AAD, Ciphertext, Tag);
 
 end Tls_Core.Aead_Chacha20_Poly1305;

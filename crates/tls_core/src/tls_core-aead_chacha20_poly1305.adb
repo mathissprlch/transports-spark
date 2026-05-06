@@ -49,8 +49,8 @@ is
       Mac_Last   : out Natural)
    with
      Pre =>
-       AAD'Length <= 1024
-       and then Ciphertext'Length <= 1024
+       AAD'Length <= 16640
+       and then Ciphertext'Length <= 16640
        and then Mac_Data'Length
                 >= AAD'Length + Pad16_Length (AAD'Length)
                    + Ciphertext'Length + Pad16_Length (Ciphertext'Length)
