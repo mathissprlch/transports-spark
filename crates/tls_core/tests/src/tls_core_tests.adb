@@ -1309,7 +1309,7 @@ procedure Tls_Core_Tests is
                 and then Wire1 (2) = 16#03#
                 and then Wire1 (3) = 16#03#);
          Check ("Channel: record 1 wire length matches",
-                Wire1_L = 5 + Pt1'Length + 16);
+                Wire1_L = 5 + Pt1'Length + 1 + 16);
 
          --  Open them in order.
          Tls_Core.Channel.Receive
@@ -2152,7 +2152,7 @@ procedure Tls_Core_Tests is
          Tls_Core.Transport.Send (Client_Pipe, Pt);
          Tls_Core.Transport.Drain (Client_Pipe, Wire, Wire_Last);
          Check ("Transport: client Drain produced wire bytes",
-                Wire_Last = 5 + Pt'Length + 16);
+                Wire_Last = 5 + Pt'Length + 1 + 16);
 
          Tls_Core.Transport.Inject
            (Server_Pipe, Wire (1 .. Wire_Last));
@@ -2179,7 +2179,7 @@ procedure Tls_Core_Tests is
          Tls_Core.Transport.Send (Server_Pipe, Pt);
          Tls_Core.Transport.Drain (Server_Pipe, Wire, Wire_Last);
          Check ("Transport: server Drain produced wire bytes",
-                Wire_Last = 5 + Pt'Length + 16);
+                Wire_Last = 5 + Pt'Length + 1 + 16);
 
          Tls_Core.Transport.Inject
            (Client_Pipe, Wire (1 .. Wire_Last));
@@ -2209,9 +2209,9 @@ procedure Tls_Core_Tests is
          Got_Last : Natural := 0;
          OK : Boolean := False;
          Expected_Wire : constant Natural :=
-           (5 + Pt1'Length + 16)
-           + (5 + Pt2'Length + 16)
-           + (5 + Pt3'Length + 16);
+           (5 + Pt1'Length + 1 + 16)
+           + (5 + Pt2'Length + 1 + 16)
+           + (5 + Pt3'Length + 1 + 16);
       begin
          Tls_Core.Transport.Send (Client_Pipe, Pt1);
          Tls_Core.Transport.Send (Client_Pipe, Pt2);
