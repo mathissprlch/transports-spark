@@ -89,4 +89,70 @@ is
       SH       : out Server_Hello;
       OK       : out Boolean);
 
+   ------------------------------------------------------------------
+   --  RFC 8446 §4.2.11 PSK profile — separate encode/decode shape.
+   --
+   --  External-PSK ClientHello extensions (in encoded order):
+   --     supported_versions      = [TLS 1.3]
+   --     psk_key_exchange_modes  = [psk_ke (= 0)]
+   --     pre_shared_key          = identity || binder    (MUST be last)
+   --
+   --  ServerHello extensions for PSK selection:
+   --     supported_versions      = TLS 1.3
+   --     pre_shared_key          = u16 selected_identity
+   --
+   --  We model exactly one identity / one binder — sufficient for
+   --  openssl s_client -psk and the v0.5 single-PSK story.
+   ------------------------------------------------------------------
+
+   subtype Psk_Identity_Len is Positive range 1 .. 64;
+   subtype Binder is Octet_Array (1 .. 32);
+
+   --  Encode a CH with the PSK extension stack. Out_Bytes will hold
+   --  the wire CH (no Handshake-header prefix). Truncated_Last is
+   --  the index of the last byte of the truncated ClientHello —
+   --  i.e. the last byte of the binders' length field, just before
+   --  the binder bytes themselves. Use Out_Bytes (Out_Buf'First ..
+   --  Truncated_Last) as the input to Tls_Core.Psk_Binder.Compute,
+   --  then patch the resulting 32-byte binder into
+   --  Out_Bytes (Truncated_Last + 1 .. Truncated_Last + 32).
+   procedure Encode_Client_Hello_Psk
+     (Random          : Random_Bytes;
+      Identity        : Octet_Array;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural;
+      Truncated_Last  : out Natural)
+   with Pre =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 256
+       and then Identity'Length in Psk_Identity_Len;
+
+   --  Decode the PSK ext from a received CH. Sets OK := False if
+   --  the shape doesn't match (no PSK ext, multiple identities,
+   --  binder length /= 32, etc.). Identity_First..Identity_Last and
+   --  Binder_First..Binder_Last are absolute indices into In_Bytes
+   --  naming the identity and binder slices. Truncated_Last is the
+   --  last byte of the truncated CH (caller hashes
+   --  In_Bytes(In_Bytes'First..Truncated_Last) for the binder
+   --  recompute).
+   procedure Decode_Client_Hello_Psk
+     (In_Bytes        : Octet_Array;
+      Random          : out Random_Bytes;
+      Identity_First  : out Natural;
+      Identity_Last   : out Natural;
+      Binder_First    : out Natural;
+      Binder_Last     : out Natural;
+      Truncated_Last  : out Natural;
+      OK              : out Boolean);
+
+   --  Encode a ServerHello echoing selected_identity = 0 and the
+   --  TLS 1.3 supported_versions.
+   procedure Encode_Server_Hello_Psk
+     (Random   : Random_Bytes;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with Pre =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 128;
+
 end Tls_Core.Hello;

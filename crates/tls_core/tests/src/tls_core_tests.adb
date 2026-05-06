@@ -2953,6 +2953,87 @@ procedure Tls_Core_Tests is
       end;
    end Psk_Binder_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 29 — PSK ClientHello wire-format round-trip with binder.
+   --
+   --  Encode a CH for the PSK profile, compute the binder over the
+   --  truncated bytes, splice it in, decode the result and confirm:
+   --    - the random echoes,
+   --    - the identity is recovered,
+   --    - the binder slice indices match what we wrote,
+   --    - re-computing the binder over the decoded truncation gives
+   --      the same 32 bytes the encoder produced.
+   --  This is the wire-level prerequisite for openssl s_client -psk.
+   --------------------------------------------------------------------
+   procedure Psk_Hello_Roundtrip;
+   procedure Psk_Hello_Roundtrip is
+      use type Tls_Core.Octet;
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Random : constant Tls_Core.Hello.Random_Bytes := (others => 16#7E#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+
+      Wire : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Wire_Last : Natural;
+      Truncated_Last : Natural;
+      Computed_Binder : Tls_Core.Psk_Binder.Binder_Bytes;
+
+      Decoded_Random : Tls_Core.Hello.Random_Bytes;
+      Id_F, Id_L, Bf, Bl, T_Last : Natural;
+      Decode_OK : Boolean;
+   begin
+      Put_Line ("scenario 29 — PSK ClientHello wire-format + binder splice");
+
+      Tls_Core.Hello.Encode_Client_Hello_Psk
+        (Random, Identity, Wire, Wire_Last, Truncated_Last);
+      Check ("PSK CH: encoder emitted bytes", Wire_Last > Truncated_Last);
+      Check ("PSK CH: 32 binder bytes follow truncated CH",
+             Wire_Last = Truncated_Last + 1 + 32);
+
+      Tls_Core.Psk_Binder.Compute
+        (Psk, Wire (1 .. Truncated_Last), Computed_Binder);
+
+      --  Splice binder in (right after the u8 binder_len, which the
+      --  encoder already wrote at position Truncated_Last + 1).
+      Wire (Truncated_Last + 2 .. Truncated_Last + 1 + 32) := Computed_Binder;
+
+      Tls_Core.Hello.Decode_Client_Hello_Psk
+        (Wire (1 .. Wire_Last),
+         Decoded_Random, Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+      Check ("PSK CH: decoder accepts encoded bytes", Decode_OK);
+      Check ("PSK CH: random round-trips", Equal (Decoded_Random, Random));
+      Check ("PSK CH: identity round-trips",
+             Id_L - Id_F + 1 = Identity'Length
+             and then Equal (Wire (Id_F .. Id_L), Identity));
+      Check ("PSK CH: decoder Truncated_Last matches encoder",
+             T_Last = Truncated_Last);
+      Check ("PSK CH: binder slice has 32 bytes",
+             Bl - Bf + 1 = 32);
+
+      --  Re-compute the binder against decoder-reported truncation
+      --  and verify it equals what we spliced in.
+      declare
+         Recompute : Tls_Core.Psk_Binder.Binder_Bytes;
+      begin
+         Tls_Core.Psk_Binder.Compute
+           (Psk, Wire (1 .. T_Last), Recompute);
+         Check ("PSK CH: binder re-verifies on decoded truncation",
+                Tls_Core.Psk_Binder.Verify
+                  (Recompute, Wire (Bf .. Bl)));
+      end;
+
+      --  ServerHello echo round-trip.
+      declare
+         Sh_Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Sh_Last : Natural;
+      begin
+         Tls_Core.Hello.Encode_Server_Hello_Psk (Random, Sh_Wire, Sh_Last);
+         Check ("PSK SH: encoder produced bytes", Sh_Last > 40);
+         Check ("PSK SH: legacy_version 0x0303",
+                Sh_Wire (1) = 16#03# and then Sh_Wire (2) = 16#03#);
+      end;
+   end Psk_Hello_Roundtrip;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -2983,6 +3064,7 @@ begin
    Transport_Loopback_Scenario;
    Tcp_Loopback_Scenario;
    Psk_Binder_Scenario;
+   Psk_Hello_Roundtrip;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

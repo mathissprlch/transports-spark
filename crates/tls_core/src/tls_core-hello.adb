@@ -493,4 +493,259 @@ is
       OK := True;
    end Decode_Server_Hello;
 
+   ------------------------------------------------------------------
+   --  PSK-profile encode/decode
+   ------------------------------------------------------------------
+
+   Ext_Psk_Key_Exchange_Modes : constant := 16#002D#;
+   Ext_Pre_Shared_Key         : constant := 16#0029#;
+
+   procedure Encode_Client_Hello_Psk
+     (Random          : Random_Bytes;
+      Identity        : Octet_Array;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural;
+      Truncated_Last  : out Natural)
+   is
+      Cursor          : Natural := 0;
+      Ext_Len_Pos     : Natural;
+      Ext_Body_Start  : Natural;
+   begin
+      Out_Buf := (others => 0);
+      Truncated_Last := 0;
+
+      --  legacy_version, random, session_id (empty), cipher_suites,
+      --  legacy_compression_methods.
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_Bytes (Out_Buf, Cursor, Random);
+      W_U8 (Out_Buf, Cursor, 0);                  -- session_id_len
+      W_U16 (Out_Buf, Cursor, 2);                 -- cipher_suites length
+      W_U8 (Out_Buf, Cursor, Cipher_Suite_Hi);
+      W_U8 (Out_Buf, Cursor, Cipher_Suite_Lo);
+      W_U8 (Out_Buf, Cursor, 1);                  -- compression_methods length
+      W_U8 (Out_Buf, Cursor, 0);                  -- compression null
+
+      --  Extensions block — patch length after.
+      Cursor := Cursor + 1;
+      Ext_Len_Pos := Cursor;
+      Cursor := Cursor + 1;
+      Ext_Body_Start := Cursor + 1;
+
+      --  supported_versions = TLS 1.3.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 3) :=
+           (1 => 16#02#, 2 => 16#03#, 3 => 16#04#);
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
+      end;
+
+      --  psk_key_exchange_modes = [psk_ke (0)].
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 2) :=
+           (1 => 16#01#, 2 => 16#00#);  --  modes_len = 1, mode = 0 (psk_ke)
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Psk_Key_Exchange_Modes, Body_Bytes);
+      end;
+
+      --  pre_shared_key — MUST BE LAST. Layout:
+      --    u16 ext_data_len
+      --    u16 identities_total_len
+      --    u16 identity_len; identity_bytes; u32 obfuscated_ticket_age
+      --    u16 binders_total_len
+      --    u8  binder_len = 32; 32 binder bytes (filled by caller)
+      W_U16 (Out_Buf, Cursor, Ext_Pre_Shared_Key);
+      declare
+         Identities_Section_Len : constant Natural :=
+           2 + 2 + Identity'Length + 4;  --  list_len_field + id_len + id + age
+         Binders_Section_Len    : constant Natural :=
+           2 + 1 + 32;                   --  list_len_field + binder_len + 32 bytes
+         Ext_Data_Len           : constant Natural :=
+           Identities_Section_Len + Binders_Section_Len;
+      begin
+         W_U16 (Out_Buf, Cursor, Ext_Data_Len);
+         --  identities
+         W_U16 (Out_Buf, Cursor, 2 + Identity'Length + 4);
+         W_U16 (Out_Buf, Cursor, Identity'Length);
+         W_Bytes (Out_Buf, Cursor, Identity);
+         --  obfuscated_ticket_age = 0
+         W_U8 (Out_Buf, Cursor, 0);
+         W_U8 (Out_Buf, Cursor, 0);
+         W_U8 (Out_Buf, Cursor, 0);
+         W_U8 (Out_Buf, Cursor, 0);
+         --  binders length field — Truncate(ClientHello) ends here.
+         W_U16 (Out_Buf, Cursor, 1 + 32);
+         Truncated_Last := Cursor;
+         --  binder placeholder: u8 len + 32 zero bytes for caller to overwrite.
+         W_U8 (Out_Buf, Cursor, 32);
+         Cursor := Cursor + 32;
+      end;
+
+      --  Patch extensions-block length.
+      Patch_U16 (Out_Buf, Ext_Len_Pos, Cursor - Ext_Body_Start + 1);
+      Out_Last := Cursor;
+   end Encode_Client_Hello_Psk;
+
+   procedure Decode_Client_Hello_Psk
+     (In_Bytes        : Octet_Array;
+      Random          : out Random_Bytes;
+      Identity_First  : out Natural;
+      Identity_Last   : out Natural;
+      Binder_First    : out Natural;
+      Binder_Last     : out Natural;
+      Truncated_Last  : out Natural;
+      OK              : out Boolean)
+   is
+      P : Natural := In_Bytes'First;
+      Read_OK : Boolean := True;
+      U8_Val : Octet;
+      U16_Val : Natural;
+      Ext_Total_Len : Natural;
+      Ext_Block_Start : Natural;
+      Body_F, Body_L : Natural;
+      Find_OK : Boolean;
+   begin
+      Random := (others => 0);
+      Identity_First := 0;
+      Identity_Last := 0;
+      Binder_First := 0;
+      Binder_Last := 0;
+      Truncated_Last := 0;
+      OK := False;
+
+      --  legacy_version
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      if not Read_OK then return; end if;
+      --  random
+      if P + 31 > In_Bytes'Last then return; end if;
+      Random := In_Bytes (P .. P + 31);
+      P := P + 32;
+      --  legacy_session_id
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      if not Read_OK then return; end if;
+      if P + Natural (U8_Val) - 1 > In_Bytes'Last then return; end if;
+      P := P + Natural (U8_Val);
+      --  cipher_suites
+      R_U16 (In_Bytes, P, U16_Val, Read_OK);
+      if not Read_OK then return; end if;
+      if P + U16_Val - 1 > In_Bytes'Last then return; end if;
+      P := P + U16_Val;
+      --  legacy_compression_methods
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      if not Read_OK then return; end if;
+      if P + Natural (U8_Val) - 1 > In_Bytes'Last then return; end if;
+      P := P + Natural (U8_Val);
+      --  Extensions length
+      R_U16 (In_Bytes, P, Ext_Total_Len, Read_OK);
+      if not Read_OK then return; end if;
+      Ext_Block_Start := P;
+      if Ext_Block_Start + Ext_Total_Len - 1 > In_Bytes'Last then return; end if;
+
+      --  Find pre_shared_key extension — MUST be last in CH.
+      Find_Extension
+        (In_Bytes => In_Bytes,
+         Pos => Ext_Block_Start,
+         End_Pos => Ext_Block_Start + Ext_Total_Len,
+         Ext_Type => Ext_Pre_Shared_Key,
+         Body_First => Body_F,
+         Body_Last => Body_L,
+         OK => Find_OK);
+      if not Find_OK then return; end if;
+
+      --  Body layout:
+      --    u16 identities_total_len
+      --    one identity: u16 id_len + id + u32 age
+      --    u16 binders_total_len
+      --    one binder: u8 binder_len + N
+      declare
+         Q : Natural := Body_F;
+         Identities_Total : Natural;
+         Identity_Length  : Natural;
+         Binders_Total    : Natural;
+         Binder_Length    : Natural;
+      begin
+         if Q + 1 > Body_L then return; end if;
+         Identities_Total := Natural (In_Bytes (Q)) * 256 + Natural (In_Bytes (Q + 1));
+         Q := Q + 2;
+         if Q + 1 > Body_L then return; end if;
+         Identity_Length := Natural (In_Bytes (Q)) * 256 + Natural (In_Bytes (Q + 1));
+         Q := Q + 2;
+         if Identity_Length = 0
+           or else Identity_Length > Body_L - Q + 1
+         then return; end if;
+         Identity_First := Q;
+         Identity_Last := Q + Identity_Length - 1;
+         Q := Q + Identity_Length;
+         --  obfuscated_ticket_age (u32)
+         if Q + 3 > Body_L then return; end if;
+         Q := Q + 4;
+         pragma Unreferenced (Identities_Total);
+         --  Truncated CH ends just before the binders array — i.e.
+         --  after the binders_total_len u16 has been read, we're at
+         --  the first binder byte. The truncation point is one byte
+         --  BEFORE the first binder's len byte.
+         if Q + 1 > Body_L then return; end if;
+         Binders_Total := Natural (In_Bytes (Q)) * 256 + Natural (In_Bytes (Q + 1));
+         Q := Q + 2;
+         Truncated_Last := Q - 1;
+         pragma Unreferenced (Binders_Total);
+         if Q > Body_L then return; end if;
+         Binder_Length := Natural (In_Bytes (Q));
+         Q := Q + 1;
+         if Binder_Length /= 32 then return; end if;
+         if Q + 31 > Body_L then return; end if;
+         Binder_First := Q;
+         Binder_Last := Q + 31;
+      end;
+
+      OK := True;
+   end Decode_Client_Hello_Psk;
+
+   procedure Encode_Server_Hello_Psk
+     (Random   : Random_Bytes;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   is
+      Cursor          : Natural := 0;
+      Ext_Len_Pos     : Natural;
+      Ext_Body_Start  : Natural;
+   begin
+      Out_Buf := (others => 0);
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_Bytes (Out_Buf, Cursor, Random);
+      W_U8 (Out_Buf, Cursor, 0);              -- session_id_len
+      W_U8 (Out_Buf, Cursor, Cipher_Suite_Hi);
+      W_U8 (Out_Buf, Cursor, Cipher_Suite_Lo);
+      W_U8 (Out_Buf, Cursor, 0);              -- compression_method
+      Cursor := Cursor + 1;
+      Ext_Len_Pos := Cursor;
+      Cursor := Cursor + 1;
+      Ext_Body_Start := Cursor + 1;
+
+      --  supported_versions = TLS 1.3.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 2) :=
+           (1 => 16#03#, 2 => 16#04#);
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
+      end;
+
+      --  pre_shared_key = u16 selected_identity = 0.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 2) :=
+           (1 => 16#00#, 2 => 16#00#);
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Pre_Shared_Key, Body_Bytes);
+      end;
+
+      Patch_U16 (Out_Buf, Ext_Len_Pos, Cursor - Ext_Body_Start + 1);
+      Out_Last := Cursor;
+   end Encode_Server_Hello_Psk;
+
 end Tls_Core.Hello;
