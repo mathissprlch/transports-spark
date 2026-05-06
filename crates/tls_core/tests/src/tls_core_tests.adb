@@ -2477,13 +2477,36 @@ procedure Tls_Core_Tests is
 
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
 
-      Listener : Tls_Core.Tcp_Transport.Listener;
-
       --  Plaintext the client encrypts and the server is expected
       --  to decrypt: ASCII for "hello tls 1.3".
       Plaintext : constant Tls_Core.Octet_Array (1 .. 13) :=
         (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#20#,
          16#74#, 16#6C#, 16#73#, 16#20#, 16#31#, 16#2E#, 16#33#);
+
+      --  Rendezvous: the server task binds the listener and posts
+      --  the kernel-assigned port; the main thread waits on Get_Port
+      --  before it tries to Connect.
+      protected type Port_Rendezvous is
+         entry Get_Port (P : out Natural);
+         procedure Post_Port (P : Natural);
+      private
+         Posted : Boolean := False;
+         Port_Val : Natural := 0;
+      end Port_Rendezvous;
+
+      protected body Port_Rendezvous is
+         entry Get_Port (P : out Natural) when Posted is
+         begin
+            P := Port_Val;
+         end Get_Port;
+         procedure Post_Port (P : Natural) is
+         begin
+            Port_Val := P;
+            Posted   := True;
+         end Post_Port;
+      end Port_Rendezvous;
+
+      Port_Box : Port_Rendezvous;
 
       --  Out-band channel for the server task to surface its
       --  results back to the main thread.
@@ -2660,9 +2683,10 @@ procedure Tls_Core_Tests is
       --  Accept's). On termination posts results into Server_Box.
       task Server_Task;
       task body Server_Task is
-         S      : Tls_Core.Handshake_Driver.Driver;
-         Sock   : Tls_Core.Tcp_Transport.Channel;
-         OK     : Boolean := False;
+         S        : Tls_Core.Handshake_Driver.Driver;
+         Listener : Tls_Core.Tcp_Transport.Listener;
+         Sock     : Tls_Core.Tcp_Transport.Channel;
+         OK       : Boolean := False;
          Server_Reached_Done : Boolean := False;
          Server_Secrets : Tls_Core.Handshake.Traffic_Secrets;
          Recv_PT  : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
@@ -2671,6 +2695,12 @@ procedure Tls_Core_Tests is
       begin
          Tls_Core.Handshake_Driver.Init
            (S, Tls_Core.Handshake_Driver.Server, Psk);
+
+         --  Bind on 127.0.0.1:0 — kernel picks a free port; query
+         --  it back via Bound_Port and hand it to the main thread.
+         Tls_Core.Tcp_Transport.Listen (Listener, "127.0.0.1", 0);
+         Port_Box.Post_Port
+           (Tls_Core.Tcp_Transport.Bound_Port (Listener));
 
          Tls_Core.Tcp_Transport.Accept_One (Listener, Sock);
 
@@ -2734,6 +2764,7 @@ procedure Tls_Core_Tests is
          end if;
 
          Tls_Core.Tcp_Transport.Close (Sock);
+         Tls_Core.Tcp_Transport.Stop (Listener);
 
          Server_Box.Post_Result
            (State_OK      => Server_Reached_Done,
@@ -2770,12 +2801,10 @@ procedure Tls_Core_Tests is
    begin
       Put_Line ("scenario 27 — Tls_Core.Tcp_Transport TCP loopback");
 
-      --  Bind the listener on 127.0.0.1:0 → kernel picks a free
-      --  port; query it back so the client knows where to connect.
-      Tls_Core.Tcp_Transport.Listen (Listener, "127.0.0.1", 0);
-      Port := Tls_Core.Tcp_Transport.Bound_Port (Listener);
-
-      --  Server task elaborated above starts running concurrently.
+      --  Server task is activated at this `begin`; it Listens on
+      --  127.0.0.1:0 and posts the kernel-assigned port via
+      --  Port_Box.Post_Port. Wait for that, then Connect.
+      Port_Box.Get_Port (Port);
 
       --  Client side: connect, drive the PSK_KE handshake.
       Tls_Core.Handshake_Driver.Init
@@ -2874,8 +2903,6 @@ procedure Tls_Core_Tests is
                   (Srv_PT_Buf'First
                    .. Srv_PT_Buf'First + Srv_PT_Len - 1),
                 Plaintext));
-
-      Tls_Core.Tcp_Transport.Stop (Listener);
    end Tcp_Loopback_Scenario;
 
 begin
@@ -2902,15 +2929,11 @@ begin
    Ecdhe_Driver_Loopback;
    Sha512_Scenario;
    X509_Scenario;
-   --  scenario_27 (Tcp_Loopback_Scenario) is currently disabled
-   --  pending a sync fix on the server-task accept/post-results
-   --  rendezvous; the in-process Pipe loopback (scenario_25)
-   --  exercises the same Channel + Driver code path until then.
    Ed25519_Scenario;
    Hello_Scenario;
    Cert_Driver_Loopback;
    Transport_Loopback_Scenario;
-   --  Tcp_Loopback_Scenario;  --  disabled — see comment above
+   Tcp_Loopback_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
