@@ -33,6 +33,7 @@ with Tls_Core.X509;
 with Tls_Core.Hello;
 with Tls_Core.Transport;
 with Tls_Core.Tcp_Transport;
+with Tls_Core.Psk_Binder;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 
@@ -2905,6 +2906,53 @@ procedure Tls_Core_Tests is
                 Plaintext));
    end Tcp_Loopback_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 28 — RFC 8446 §4.2.11.2 PSK binder.
+   --
+   --  No external test vector is published for the binder shape on
+   --  external PSK; we exercise the helper structurally:
+   --    - deterministic on identical inputs,
+   --    - sensitive to the PSK,
+   --    - sensitive to the truncated-CH bytes,
+   --    - constant-time Verify accepts equal binders, rejects flips.
+   --------------------------------------------------------------------
+   procedure Psk_Binder_Scenario;
+   procedure Psk_Binder_Scenario is
+      use type Tls_Core.Octet;
+      Psk_A : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#A1#);
+      Psk_B : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#A2#);
+      Tch_X : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#5A#);
+      Tch_Y : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#5B#);
+
+      B1, B2, B3, B4 : Tls_Core.Psk_Binder.Binder_Bytes;
+   begin
+      Put_Line ("scenario 28 — RFC 8446 §4.2.11.2 PSK binder structural");
+
+      Tls_Core.Psk_Binder.Compute (Psk_A, Tch_X, B1);
+      Tls_Core.Psk_Binder.Compute (Psk_A, Tch_X, B2);
+      Check ("PSK binder: deterministic", Equal (B1, B2));
+
+      Tls_Core.Psk_Binder.Compute (Psk_B, Tch_X, B3);
+      Check ("PSK binder: differs on different PSK",
+             not Equal (B1, B3));
+
+      Tls_Core.Psk_Binder.Compute (Psk_A, Tch_Y, B4);
+      Check ("PSK binder: differs on different truncated-CH",
+             not Equal (B1, B4));
+
+      Check ("PSK binder Verify accepts equal", Tls_Core.Psk_Binder.Verify (B1, B2));
+      Check ("PSK binder Verify rejects PSK-flip",
+             not Tls_Core.Psk_Binder.Verify (B1, B3));
+
+      declare
+         Tampered : Tls_Core.Psk_Binder.Binder_Bytes := B1;
+      begin
+         Tampered (1) := Tampered (1) xor 16#01#;
+         Check ("PSK binder Verify rejects 1-bit tamper",
+                not Tls_Core.Psk_Binder.Verify (B1, Tampered));
+      end;
+   end Psk_Binder_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -2934,6 +2982,7 @@ begin
    Cert_Driver_Loopback;
    Transport_Loopback_Scenario;
    Tcp_Loopback_Scenario;
+   Psk_Binder_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
