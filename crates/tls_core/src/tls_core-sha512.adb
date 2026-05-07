@@ -7,7 +7,8 @@ is
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
-   --  FIPS 180-4 §4.2.3 round constants K[0..79].
+   --  FIPS 180-4 §4.2.3 round constants K[0..79] —
+   --  HACL* `Spec.SHA2.Constants.k384_512` (lib/Spec.SHA2.Constants.fst:27).
    ---------------------------------------------------------------------
 
    K : constant array (0 .. 79) of Word :=
@@ -53,18 +54,10 @@ is
       16#5FCB_6FAB_3AD6_FAEC#, 16#6C44_198C_4A47_5817#);
 
    ---------------------------------------------------------------------
-   --  FIPS 180-4 §5.3.5 initial hash values H(0).
-   ---------------------------------------------------------------------
-
-   H_Init : constant Hash_State :=
-     (16#6A09_E667_F3BC_C908#, 16#BB67_AE85_84CA_A73B#,
-      16#3C6E_F372_FE94_F82B#, 16#A54F_F53A_5F1D_36F1#,
-      16#510E_527F_ADE6_82D1#, 16#9B05_688C_2B3E_6C1F#,
-      16#1F83_D9AB_FB41_BD6B#, 16#5BE0_CD19_137E_2179#);
-
-   ---------------------------------------------------------------------
-   --  FIPS 180-4 §4.1.3 — six bit-mixing functions for SHA-512.
-   --  Note the rotation amounts differ from SHA-256 §4.1.2.
+   --  FIPS 180-4 §4.1.3 — six bit-mixing functions.
+   --  Mirrors HACL* `_Ch` / `_Maj` / `_Sigma0/1` / `_sigma0/1`
+   --  (specs/Spec.SHA2.fst:113-138) with the SHA2_512 rotation
+   --  amounts from `op384_512` (specs/Spec.SHA2.fst:54).
    ---------------------------------------------------------------------
 
    function ROTR (X : Word; N : Natural) return Word
@@ -106,16 +99,18 @@ is
    with Pre => Offset <= Block_Length - 7;
 
    ---------------------------------------------------------------------
-   --  Process_Block — FIPS 180-4 §6.4.2.
+   --  HACL* spec port bodies.
    ---------------------------------------------------------------------
 
-   procedure Process_Block (Ctx : in out Context; B : Block);
-   procedure Process_Block (Ctx : in out Context; B : Block) is
+   function Update_Block_Spec
+     (S : Hash_State;
+      B : Block) return Hash_State
+   is
       W : array (0 .. 79) of Word := (others => 0);
       A, Bv, C, D, E, F, G, H : Word;
       T1, T2 : Word;
+      Out_S : Hash_State := (others => 0);
    begin
-      --  Step 1: prepare the message schedule.
       for I in 0 .. 15 loop
          W (I) := BE_Word (B, B'First + 8 * I);
       end loop;
@@ -125,17 +120,15 @@ is
            + Small_Sigma_0 (W (I - 15)) + W (I - 16);
       end loop;
 
-      --  Step 2: initialize working variables.
-      A  := Ctx.H (1);
-      Bv := Ctx.H (2);
-      C  := Ctx.H (3);
-      D  := Ctx.H (4);
-      E  := Ctx.H (5);
-      F  := Ctx.H (6);
-      G  := Ctx.H (7);
-      H  := Ctx.H (8);
+      A  := S (1);
+      Bv := S (2);
+      C  := S (3);
+      D  := S (4);
+      E  := S (5);
+      F  := S (6);
+      G  := S (7);
+      H  := S (8);
 
-      --  Step 3: 80 rounds.
       for I in 0 .. 79 loop
          T1 := H + Big_Sigma_1 (E) + Ch (E, F, G) + K (I) + W (I);
          T2 := Big_Sigma_0 (A) + Maj (A, Bv, C);
@@ -149,7 +142,132 @@ is
          A  := T1 + T2;
       end loop;
 
-      --  Step 4: accumulate.
+      Out_S (1) := S (1) + A;
+      Out_S (2) := S (2) + Bv;
+      Out_S (3) := S (3) + C;
+      Out_S (4) := S (4) + D;
+      Out_S (5) := S (5) + E;
+      Out_S (6) := S (6) + F;
+      Out_S (7) := S (7) + G;
+      Out_S (8) := S (8) + H;
+      return Out_S;
+   end Update_Block_Spec;
+
+   function Block_At
+     (Padded : Octet_Array;
+      I      : Natural) return Block
+   is
+      B : Block := (others => 0);
+   begin
+      for J in Block_Index loop
+         B (J) := Padded (I * 128 + J);
+      end loop;
+      return B;
+   end Block_At;
+
+   function Spec_Hash_Blocks
+     (S0     : Hash_State;
+      Padded : Octet_Array;
+      N      : Natural) return Hash_State
+   is
+   begin
+      if N = 0 then
+         return S0;
+      else
+         return Update_Block_Spec
+           (Spec_Hash_Blocks (S0, Padded, N - 1),
+            Block_At (Padded, N - 1));
+      end if;
+   end Spec_Hash_Blocks;
+
+   function Pad_SHA512 (Input : Octet_Array) return Octet_Array is
+      Pad_Len  : constant Positive := Spec_Pad_Length (Input'Length);
+      Total    : constant Positive := Input'Length + Pad_Len;
+      Bits     : constant Interfaces.Unsigned_64
+        := Interfaces.Unsigned_64 (Input'Length) * 8;
+      Out_Buf  : Octet_Array (1 .. Total) := (others => 0);
+   begin
+      if Input'Length > 0 then
+         Out_Buf (1 .. Input'Length) := Input;
+      end if;
+      Out_Buf (Input'Length + 1) := 16#80#;
+      --  Upper 64 bits of the 128-bit BE length: zero (since we
+      --  track only 64-bit byte counts). Already zero from the
+      --  default-initialized buffer; explicit assignment for clarity.
+      for I in 1 .. 8 loop
+         Out_Buf (Total - 16 + I) := 0;
+      end loop;
+      --  Lower 64 bits: the bit count, BE.
+      for I in 1 .. 8 loop
+         Out_Buf (Total - 8 + I) :=
+           Octet (Shift_Right (Bits, Natural (8 * (8 - I))) and 16#FF#);
+      end loop;
+      return Out_Buf;
+   end Pad_SHA512;
+
+   function Finalize_State (S : Hash_State) return Digest is
+      D : Digest := (others => 0);
+   begin
+      for I in 1 .. 8 loop
+         for J in 1 .. 8 loop
+            D (8 * (I - 1) + J) :=
+              Octet
+                (Shift_Right (S (I), Natural (8 * (8 - J))) and 16#FF#);
+         end loop;
+      end loop;
+      return D;
+   end Finalize_State;
+
+   function Spec_SHA512 (Input : Octet_Array) return Digest is
+      Padded   : constant Octet_Array := Pad_SHA512 (Input);
+      N_Blocks : constant Natural := Padded'Length / 128;
+      Final_S  : constant Hash_State :=
+        Spec_Hash_Blocks (Initial_State_SHA512, Padded, N_Blocks);
+   begin
+      return Finalize_State (Final_S);
+   end Spec_SHA512;
+
+   ---------------------------------------------------------------------
+   --  Imperative streaming Process_Block.
+   ---------------------------------------------------------------------
+
+   procedure Process_Block (Ctx : in out Context; B : Block);
+   procedure Process_Block (Ctx : in out Context; B : Block) is
+      W : array (0 .. 79) of Word := (others => 0);
+      A, Bv, C, D, E, F, G, H : Word;
+      T1, T2 : Word;
+   begin
+      for I in 0 .. 15 loop
+         W (I) := BE_Word (B, B'First + 8 * I);
+      end loop;
+      for I in 16 .. 79 loop
+         W (I) :=
+           Small_Sigma_1 (W (I - 2)) + W (I - 7)
+           + Small_Sigma_0 (W (I - 15)) + W (I - 16);
+      end loop;
+
+      A  := Ctx.H (1);
+      Bv := Ctx.H (2);
+      C  := Ctx.H (3);
+      D  := Ctx.H (4);
+      E  := Ctx.H (5);
+      F  := Ctx.H (6);
+      G  := Ctx.H (7);
+      H  := Ctx.H (8);
+
+      for I in 0 .. 79 loop
+         T1 := H + Big_Sigma_1 (E) + Ch (E, F, G) + K (I) + W (I);
+         T2 := Big_Sigma_0 (A) + Maj (A, Bv, C);
+         H  := G;
+         G  := F;
+         F  := E;
+         E  := D + T1;
+         D  := C;
+         C  := Bv;
+         Bv := A;
+         A  := T1 + T2;
+      end loop;
+
       Ctx.H (1) := Ctx.H (1) + A;
       Ctx.H (2) := Ctx.H (2) + Bv;
       Ctx.H (3) := Ctx.H (3) + C;
@@ -161,12 +279,12 @@ is
    end Process_Block;
 
    ---------------------------------------------------------------------
-   --  Init / Update / Finalize — same shape as Sha256, just wider.
+   --  Init / Update / Finalize — streaming API.
    ---------------------------------------------------------------------
 
    procedure Init (Ctx : out Context) is
    begin
-      Ctx.H         := H_Init;
+      Ctx.H         := Initial_State_SHA512;
       Ctx.Buf       := (others => 0);
       Ctx.Buf_Len   := 0;
       Ctx.Total_Len := 0;
@@ -240,9 +358,6 @@ is
       Ctx.Buf (Filled + 1) := 16#80#;
       Filled := Filled + 1;
 
-      --  SHA-512 reserves the last 16 bytes of the final block for
-      --  a 128-bit BE message length. We support up to 2^64 bits,
-      --  so the upper 64 bits of the length field are always zero.
       if Filled > Block_Length - 16 then
          if Filled < Block_Length then
             for I in Filled + 1 .. Block_Length loop
@@ -265,15 +380,12 @@ is
       end if;
       Ctx.Buf_Len := 0;
 
-      --  Upper 64 bits of length: zero (we track only 64-bit byte-counts).
       for I in 1 .. 8 loop
          Ctx.Buf (Block_Length - 16 + I) := 0;
       end loop;
-      --  Lower 64 bits: the bit count, BE.
       for I in 1 .. 8 loop
          Ctx.Buf (Block_Length - 8 + I) :=
-           Octet
-             (Shift_Right (Bits, Natural (8 * (8 - I))) and 16#FF#);
+           Octet (Shift_Right (Bits, Natural (8 * (8 - I))) and 16#FF#);
       end loop;
 
       declare
@@ -282,7 +394,6 @@ is
          Process_Block (Ctx, Snap);
       end;
 
-      --  Emit hash state as 64 bytes BE.
       for I in 1 .. 8 loop
          for J in 1 .. 8 loop
             Out_Digest (8 * (I - 1) + J) :=
@@ -293,15 +404,16 @@ is
       end loop;
    end Finalize;
 
+   ---------------------------------------------------------------------
+   --  One-shot Hash — direct call to the spec.
+   ---------------------------------------------------------------------
+
    procedure Hash
      (Data       : Octet_Array;
       Out_Digest : out Digest)
    is
-      Ctx : Context;
    begin
-      Init (Ctx);
-      Update (Ctx, Data);
-      Finalize (Ctx, Out_Digest);
+      Out_Digest := Spec_SHA512 (Data);
    end Hash;
 
 end Tls_Core.Sha512;
