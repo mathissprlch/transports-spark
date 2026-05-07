@@ -80,10 +80,18 @@ is
    --  GHASH iteration over a multi-block input (NIST §6.4).
    --  Y_0 = 0; Y_i = (Y_{i-1} XOR X_i) · H. Out_X is initially Y_0
    --  (caller can use this to chain or restart).
+   --
+   --  Bound: Data'Length <= 33326 covers the worst-case Mac_Buf
+   --  built from AAD ≤ 16640 + Ciphertext ≤ 16640 (RFC 8446 max
+   --  TLSCiphertext) — i.e. 16640 + 15 + 16640 + 15 + 16 = 33326.
    procedure Ghash
      (H     : Block_16;
       Data  : Octet_Array;
-      Out_X : in out Block_16);
+      Out_X : in out Block_16)
+   with
+     Pre =>
+       Data'Length <= 33326
+       and then Data'Last < Integer'Last - 16640;
 
    --  AES-CTR encryption — generic over the AES Encrypt primitive.
    --  Encrypt_Block is the per-suite AES variant: Aes128.Encrypt_Block
