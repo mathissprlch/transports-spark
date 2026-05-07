@@ -7,7 +7,8 @@ is
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
-   --  Round constants K[0..79] — identical to SHA-512 (FIPS §4.2.3).
+   --  Round constants K[0..79] — identical to SHA-512.
+   --  HACL* `Spec.SHA2.Constants.k384_512` (lib/Spec.SHA2.Constants.fst:27).
    ---------------------------------------------------------------------
 
    K : constant array (0 .. 79) of Word :=
@@ -53,17 +54,10 @@ is
       16#5FCB_6FAB_3AD6_FAEC#, 16#6C44_198C_4A47_5817#);
 
    ---------------------------------------------------------------------
-   --  FIPS 180-4 §5.3.4 — SHA-384 initial hash values.
-   ---------------------------------------------------------------------
-
-   H_Init : constant Hash_State :=
-     (16#CBBB_9D5D_C105_9ED8#, 16#629A_292A_367C_D507#,
-      16#9159_015A_3070_DD17#, 16#152F_ECD8_F70E_5939#,
-      16#6733_2667_FFC0_0B31#, 16#8EB4_4A87_6858_1511#,
-      16#DB0C_2E0D_64F9_8FA7#, 16#47B5_481D_BEFA_4FA4#);
-
-   ---------------------------------------------------------------------
    --  FIPS 180-4 §4.1.3 — same six bit-mixing functions as SHA-512.
+   --  Mirrors HACL* `_Ch` / `_Maj` / `_Sigma0/1` / `_sigma0/1`
+   --  (specs/Spec.SHA2.fst:113-138) with rotation amounts from
+   --  `op384_512` (specs/Spec.SHA2.fst:54).
    ---------------------------------------------------------------------
 
    function ROTR (X : Word; N : Natural) return Word
@@ -99,6 +93,138 @@ is
       or Shift_Left (Word (B (Offset + 6)), 8)
       or Word (B (Offset + 7)))
    with Pre => Offset <= Block_Length - 7;
+
+   ---------------------------------------------------------------------
+   --  HACL* spec port bodies — same structure as SHA-512.
+   ---------------------------------------------------------------------
+
+   function Update_Block_Spec
+     (S : Hash_State;
+      B : Block) return Hash_State
+   is
+      W : array (0 .. 79) of Word := (others => 0);
+      A, Bv, C, D, E, F, G, H : Word;
+      T1, T2 : Word;
+      Out_S : Hash_State := (others => 0);
+   begin
+      for I in 0 .. 15 loop
+         W (I) := BE_Word (B, B'First + 8 * I);
+      end loop;
+      for I in 16 .. 79 loop
+         W (I) :=
+           Small_Sigma_1 (W (I - 2)) + W (I - 7)
+           + Small_Sigma_0 (W (I - 15)) + W (I - 16);
+      end loop;
+
+      A  := S (1);
+      Bv := S (2);
+      C  := S (3);
+      D  := S (4);
+      E  := S (5);
+      F  := S (6);
+      G  := S (7);
+      H  := S (8);
+
+      for I in 0 .. 79 loop
+         T1 := H + Big_Sigma_1 (E) + Ch (E, F, G) + K (I) + W (I);
+         T2 := Big_Sigma_0 (A) + Maj (A, Bv, C);
+         H  := G;
+         G  := F;
+         F  := E;
+         E  := D + T1;
+         D  := C;
+         C  := Bv;
+         Bv := A;
+         A  := T1 + T2;
+      end loop;
+
+      Out_S (1) := S (1) + A;
+      Out_S (2) := S (2) + Bv;
+      Out_S (3) := S (3) + C;
+      Out_S (4) := S (4) + D;
+      Out_S (5) := S (5) + E;
+      Out_S (6) := S (6) + F;
+      Out_S (7) := S (7) + G;
+      Out_S (8) := S (8) + H;
+      return Out_S;
+   end Update_Block_Spec;
+
+   function Block_At
+     (Padded : Octet_Array;
+      I      : Natural) return Block
+   is
+      B : Block := (others => 0);
+   begin
+      for J in Block_Index loop
+         B (J) := Padded (I * 128 + J);
+      end loop;
+      return B;
+   end Block_At;
+
+   function Spec_Hash_Blocks
+     (S0     : Hash_State;
+      Padded : Octet_Array;
+      N      : Natural) return Hash_State
+   is
+   begin
+      if N = 0 then
+         return S0;
+      else
+         return Update_Block_Spec
+           (Spec_Hash_Blocks (S0, Padded, N - 1),
+            Block_At (Padded, N - 1));
+      end if;
+   end Spec_Hash_Blocks;
+
+   function Pad_SHA384 (Input : Octet_Array) return Octet_Array is
+      Pad_Len  : constant Positive := Spec_Pad_Length (Input'Length);
+      Total    : constant Positive := Input'Length + Pad_Len;
+      Bits     : constant Interfaces.Unsigned_64
+        := Interfaces.Unsigned_64 (Input'Length) * 8;
+      Out_Buf  : Octet_Array (1 .. Total) := (others => 0);
+   begin
+      if Input'Length > 0 then
+         Out_Buf (1 .. Input'Length) := Input;
+      end if;
+      Out_Buf (Input'Length + 1) := 16#80#;
+      for I in 1 .. 8 loop
+         Out_Buf (Total - 16 + I) := 0;
+      end loop;
+      for I in 1 .. 8 loop
+         Out_Buf (Total - 8 + I) :=
+           Octet (Shift_Right (Bits, Natural (8 * (8 - I))) and 16#FF#);
+      end loop;
+      return Out_Buf;
+   end Pad_SHA384;
+
+   function Finalize_State (S : Hash_State) return Digest is
+      D : Digest := (others => 0);
+   begin
+      --  Truncate to first 6 words = 48 bytes (Spec.Agile.Hash.fst:54
+      --  finish_md slices hashw 0..hash_word_length, with
+      --  hash_word_length 6 for SHA-384).
+      for I in 1 .. 6 loop
+         for J in 1 .. 8 loop
+            D (8 * (I - 1) + J) :=
+              Octet
+                (Shift_Right (S (I), Natural (8 * (8 - J))) and 16#FF#);
+         end loop;
+      end loop;
+      return D;
+   end Finalize_State;
+
+   function Spec_SHA384 (Input : Octet_Array) return Digest is
+      Padded   : constant Octet_Array := Pad_SHA384 (Input);
+      N_Blocks : constant Natural := Padded'Length / 128;
+      Final_S  : constant Hash_State :=
+        Spec_Hash_Blocks (Initial_State_SHA384, Padded, N_Blocks);
+   begin
+      return Finalize_State (Final_S);
+   end Spec_SHA384;
+
+   ---------------------------------------------------------------------
+   --  Imperative streaming Process_Block — identical to SHA-512.
+   ---------------------------------------------------------------------
 
    procedure Process_Block (Ctx : in out Context; B : Block);
    procedure Process_Block (Ctx : in out Context; B : Block) is
@@ -149,7 +275,7 @@ is
 
    procedure Init (Ctx : out Context) is
    begin
-      Ctx.H         := H_Init;
+      Ctx.H         := Initial_State_SHA384;
       Ctx.Buf       := (others => 0);
       Ctx.Buf_Len   := 0;
       Ctx.Total_Len := 0;
@@ -275,11 +401,8 @@ is
      (Data       : Octet_Array;
       Out_Digest : out Digest)
    is
-      Ctx : Context;
    begin
-      Init (Ctx);
-      Update (Ctx, Data);
-      Finalize (Ctx, Out_Digest);
+      Out_Digest := Spec_SHA384 (Data);
    end Hash;
 
 end Tls_Core.Sha384;
