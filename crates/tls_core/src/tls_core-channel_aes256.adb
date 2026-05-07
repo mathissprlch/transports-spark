@@ -160,6 +160,9 @@ is
       begin
          if Enc_Len < 17 then return; end if;
          if In_Buf'Length < 5 + Enc_Len then return; end if;
+         --  Cap at AEAD primitive bound (RFC 8446 §5.2 max 16640 +
+         --  16 tag). Mirrors HACL* AES-GCM input-length invariant.
+         if Enc_Len - 16 > 16640 then return; end if;
          declare
             Inner_Len : constant Natural := Enc_Len - 16;
             AAD : constant Octet_Array (1 .. 5) := In_Buf (F .. F + 4);

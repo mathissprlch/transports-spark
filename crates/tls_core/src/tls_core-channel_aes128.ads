@@ -11,10 +11,13 @@ with Tls_Core.Aead_Aes128_Gcm;
 with Tls_Core.Record_Layer;
 with Tls_Core.Traffic_Keys_Aes128;
 with Tls_Core.Key_Schedule;
+with Interfaces;
 
 package Tls_Core.Channel_Aes128
 with SPARK_Mode
 is
+
+   use type Interfaces.Unsigned_64;
 
    subtype Key_Type is Tls_Core.Traffic_Keys_Aes128.Aead_Key;
    subtype Tag_Type is Tls_Core.Aead_Aes128_Gcm.Tag_Array;
@@ -34,6 +37,9 @@ is
      (D      : out Direction;
       Secret : Tls_Core.Key_Schedule.Secret);
 
+   --  Following miTLS' StAE pattern: every encrypt/decrypt call requires
+   --  the per-stream sequence number to be below max (else nonce reuse).
+   --  miTLS reference: src/tls/MiTLS.StAE.fst — `encrypt`/`decrypt` Pre.
    procedure Send
      (D          : in out Direction;
       Plaintext  : Octet_Array;
@@ -43,7 +49,9 @@ is
    with Pre =>
      Plaintext'Length in 0 .. 16384
      and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
-     and then Out_Buf'First = 1;
+     and then Out_Buf'First = 1
+     and then Tls_Core.Record_Layer.Seq_Of (D.Stream)
+              < Tls_Core.Record_Layer.Seq_Number'Last;
 
    procedure Receive
      (D          : in out Direction;
@@ -56,6 +64,8 @@ is
      In_Buf'Length >= 5
      and then In_Buf'First = 1
      and then Out_Buf'First = 1
-     and then Out_Buf'Length >= In_Buf'Length;
+     and then Out_Buf'Length >= In_Buf'Length
+     and then Tls_Core.Record_Layer.Seq_Of (D.Stream)
+              < Tls_Core.Record_Layer.Seq_Number'Last;
 
 end Tls_Core.Channel_Aes128;
