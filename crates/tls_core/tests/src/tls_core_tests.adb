@@ -5663,66 +5663,51 @@ procedure Tls_Core_Tests is
    end Alert_Bad_Record_Mac_Scenario;
 
    ---------------------------------------------------------------------
-   --  Scenario — handshake_failure when client offers no supported
-   --  cipher suite (server only accepts SHA-256-based suites).
+   --  Scenario — server emits a plaintext decode_error alert when the
+   --  ClientHello record header is malformed (RFC 8446 §6.2 / §5.1).
    --
-   --  We wire-craft a CH that offers ONLY TLS_AES_256_GCM_SHA384.
-   --  Server should walk the offered list, find no acceptable suite,
-   --  and emit a plaintext handshake_failure alert.
+   --  Driver is in Awaiting_CH. We feed it a 5-byte fragment whose
+   --  outer-type byte is neither Handshake (0x16) nor Alert (0x15).
+   --  Per Awaiting_CH, this falls through to Fail_Plaintext
+   --  (decode_error) and emits a 7-byte TLSPlaintext Alert record.
    ---------------------------------------------------------------------
 
-   procedure Alert_Handshake_Failure_Scenario;
-   procedure Alert_Handshake_Failure_Scenario is
+   procedure Alert_Decode_Error_Scenario;
+   procedure Alert_Decode_Error_Scenario is
       use type Tls_Core.Tls13_Driver.State;
       use type Tls_Core.Octet;
-
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
-
-      C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
-      Buf_Last : Natural := 0;
+        (16#54#, 16#65#, 16#73#, 16#74#);
+      S : Tls_Core.Tls13_Driver.Driver;
+      Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Reply_Last : Natural;
    begin
-      Put_Line ("scenario — Alert handshake_failure on bad cipher suite");
-
+      Put_Line ("scenario — Alert plaintext decode_error on bad CH");
       Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
-
-      --  Get the (well-formed) CH the client emits.
-      Tls_Core.Tls13_Driver.Step
-        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
-
-      --  The client always offers all three suites. To exercise the
-      --  no-compatible-suite path we'd need to mangle the wire
-      --  bytes; instead, we test the fail-on-decode path: corrupt
-      --  the CH so the server's parser rejects it. The server
-      --  should emit a plaintext alert.
-      Buf (1) := 16#15#;  --  flip outer record content type so the
-                          --  server interprets it as alert and
-                          --  follows the early-alert path.
-
       declare
-         Bad_Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
-         Reply_Last : Natural;
+         Garbage : constant Tls_Core.Octet_Array (1 .. 5) :=
+           (16#FF#, 16#03#, 16#03#, 16#00#, 16#00#);
       begin
          Tls_Core.Tls13_Driver.Step
-           (S, In_Bytes => Bad_Ch, Out_Buf => Reply, Out_Last => Reply_Last);
-         --  Server saw an outer alert (made-up bytes) — it tries to
-         --  decode and fails (the bytes after the rec header don't
-         --  parse as a valid 2-byte alert), so it emits a plaintext
-         --  decode_error alert and goes Failed. Either Closed or
-         --  Failed is acceptable depending on what the random CH
-         --  payload happens to look like — we check we did NOT end
-         --  up in Awaiting_Cf (the success continuation).
-         Check ("Alert/handshake_failure: server did not advance to Awaiting_Cf",
-                Tls_Core.Tls13_Driver.Current_State (S) /=
-                  Tls_Core.Tls13_Driver.Awaiting_Cf);
-         Check ("Alert/handshake_failure: server emitted alert bytes",
-                Reply_Last > 0);
+           (S, In_Bytes => Garbage,
+            Out_Buf => Reply, Out_Last => Reply_Last);
       end;
-   end Alert_Handshake_Failure_Scenario;
+      Check ("Alert/decode_error: server transitions to Failed",
+             Tls_Core.Tls13_Driver.Current_State (S)
+               = Tls_Core.Tls13_Driver.Failed);
+      Check ("Alert/decode_error: alert is 7-byte plaintext",
+             Reply_Last = 7);
+      Check ("Alert/decode_error: outer type 0x15",
+             Reply (1) = 16#15#);
+      Check ("Alert/decode_error: level fatal",
+             Reply (6) = Tls_Core.Alert.Level_Fatal);
+      Check ("Alert/decode_error: description = decode_error",
+             Reply (7) = Tls_Core.Alert.Desc_Decode_Error);
+      Check ("Alert/decode_error: Last_Alert recorded",
+             Tls_Core.Tls13_Driver.Last_Alert_Description (S)
+               = Tls_Core.Alert.Desc_Decode_Error);
+   end Alert_Decode_Error_Scenario;
 
    ---------------------------------------------------------------------
    --  Scenario — Send_Fatal_Alert before keys exist emits plaintext.
@@ -5825,7 +5810,7 @@ begin
    Alert_Codec_Scenario;
    Alert_Close_Notify_Scenario;
    Alert_Bad_Record_Mac_Scenario;
-   Alert_Handshake_Failure_Scenario;
+   Alert_Decode_Error_Scenario;
    Alert_Plaintext_Fatal_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
