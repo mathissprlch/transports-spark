@@ -280,7 +280,9 @@ is
        Current_State (D) = Done
        and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
                  or else Selected_Suite (D)
-                           = Tls_Core.Suites.Aes_128_Gcm_Sha256);
+                           = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then not Out_Dir'Constrained
+       and then not In_Dir'Constrained;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Send a KeyUpdate post-handshake message
