@@ -241,7 +241,10 @@ is
         Octet_Array (Key (17 .. 32));
       S_Val   : constant Big.Big_Natural :=
         Spec_Nat_From_Bytes_Le (S_Bytes);
-      Result  : Tag_Array := (others => 0);
+      --  Result is fully overwritten by the loop below; gnatprove
+      --  flow-tracks the per-index assignment so we don't need a
+      --  default-init aggregate.
+      Result  : Tag_Array;
       Cur     : Big.Big_Natural :=
         (Acc + S_Val) mod Spec_Pow2 (128);
       package Big_U64 is new Big.Unsigned_Conversions (Int => U64);
