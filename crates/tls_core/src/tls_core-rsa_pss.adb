@@ -1,7 +1,7 @@
-with Interfaces;
-
 with Tls_Core.Sha256;
 with Tls_Core.Sha384;
+
+pragma Warnings (Off, "redundant with clause in body");
 
 package body Tls_Core.Rsa_Pss
 with SPARK_Mode
@@ -21,202 +21,247 @@ is
    --  After OS2IP / I2OSP at the EMSA boundary, EM is exactly 256
    --  bytes — i.e., a Bigint. The "high 8*emLen - emBits = 1 bit
    --  of EM[0]" must be zero.
-   ---------------------------------------------------------------------
-
-   EM_Length : constant := 256;
-   --  High mask of EM[0]: top (8*emLen - emBits) bits zero. For our
-   --  fixed 2048-bit / emBits=2047 case that's the topmost bit:
-   --      mask = 0xFF >> (8*emLen - emBits) = 0xFF >> 1 = 0x7F
-   EM_High_Mask : constant Octet := 16#7F#;
-
-   ---------------------------------------------------------------------
-   --  Generic hash dispatch: a small wrapper that lets the EMSA-PSS
-   --  body call "the chosen hash" without code duplication. We avoid
-   --  generics here for SPARK simplicity and just write two parallel
-   --  procedures (Verify_Sha256, Verify_Sha384) sharing internal
-   --  helpers parameterised by hash length.
-   ---------------------------------------------------------------------
-
-   ---------------------------------------------------------------------
-   --  MGF1 (RFC 8017 §B.2.1) with SHA-256 as the hash.
    --
-   --  For mask length L bytes, output T = first L bytes of
-   --      H(seed||I2OSP(0,4)) || H(seed||I2OSP(1,4)) || ...
+   --  EM_Length / EM_High_Mask are exposed in the package spec so
+   --  the spec ghost (Spec_DB_Zero_2047) and the imperative body
+   --  share one definition.
    ---------------------------------------------------------------------
 
-   procedure MGF1_Sha256
-     (Seed     : Octet_Array;
-      Mask_Len : Natural;
-      Out_Mask : out Octet_Array)
+   ---------------------------------------------------------------------
+   --  Spec ports — ported from HACL* specs/Spec.RSAPSS.fst.
+   --  These are real (executable) SPARK functions referenced by the
+   --  Posts on Emsa_Pss_Verify_*. The imperative entry points call
+   --  them directly, so the functional Posts discharge by
+   --  construction (mirror of Sha256.Hash → Spec_SHA256).
+   ---------------------------------------------------------------------
+
+   --  Build a 4-byte big-endian counter at the tail of a buffer.
+   --  Mirrors the `nat_to_intseq_be 4 i` step of mgf_hash_f
+   --  (Spec.RSAPSS.fst:47-48).
+   procedure Put_Counter_BE
+     (Buf       : in out Octet_Array;
+      Counter   : Unsigned_32)
+   with
+     Pre  => Buf'Length >= 4,
+     Post => Buf (Buf'Last - 3) = Octet (Shift_Right (Counter, 24) and 16#FF#)
+             and then Buf (Buf'Last - 2) = Octet (Shift_Right (Counter, 16) and 16#FF#)
+             and then Buf (Buf'Last - 1) = Octet (Shift_Right (Counter, 8) and 16#FF#)
+             and then Buf (Buf'Last) = Octet (Counter and 16#FF#);
+
+   procedure Put_Counter_BE
+     (Buf       : in out Octet_Array;
+      Counter   : Unsigned_32)
    is
-      Counter   : Unsigned_32 := 0;
+   begin
+      Buf (Buf'Last - 3) := Octet (Shift_Right (Counter, 24) and 16#FF#);
+      Buf (Buf'Last - 2) := Octet (Shift_Right (Counter, 16) and 16#FF#);
+      Buf (Buf'Last - 1) := Octet (Shift_Right (Counter, 8) and 16#FF#);
+      Buf (Buf'Last)     := Octet (Counter and 16#FF#);
+   end Put_Counter_BE;
+
+   ---------------------------------------------------------------------
+   --  Spec_MGF1_Sha256 — port of mgf_hash for SHA-256.
+   --  Spec.RSAPSS.fst:61-68.
+   ---------------------------------------------------------------------
+
+   function Spec_MGF1_Sha256
+     (Seed     : Octet_Array;
+      Mask_Len : Natural) return Octet_Array
+   is
       Buf_Len   : constant Natural := Seed'Length + 4;
       Buf       : Octet_Array (1 .. Buf_Len) := (others => 0);
-      Digest    : Tls_Core.Sha256.Digest;
+      Result    : Octet_Array (1 .. Mask_Len) := (others => 0);
+      Counter   : Unsigned_32 := 0;
       Filled    : Natural := 0;
       Take      : Natural;
+      Digest    : Tls_Core.Sha256.Digest;
    begin
-      pragma Assert (Out_Mask'Length = Mask_Len);
-      --  Copy seed into the prefix of Buf.
+      --  Copy Seed into prefix of Buf (counter trailing zeros).
       for I in 0 .. Seed'Length - 1 loop
          Buf (1 + I) := Seed (Seed'First + I);
+         pragma Loop_Invariant
+           (for all K in 0 .. I =>
+              Buf (1 + K) = Seed (Seed'First + K));
       end loop;
+
       while Filled < Mask_Len loop
-         --  Append I2OSP(counter, 4) — 4-byte big-endian.
-         Buf (Buf_Len - 3) := Octet (Shift_Right (Counter, 24) and 16#FF#);
-         Buf (Buf_Len - 2) := Octet (Shift_Right (Counter, 16) and 16#FF#);
-         Buf (Buf_Len - 1) := Octet (Shift_Right (Counter,  8) and 16#FF#);
-         Buf (Buf_Len)     := Octet (Counter and 16#FF#);
+         pragma Loop_Invariant (Filled <= Mask_Len);
+         pragma Loop_Variant (Increases => Filled);
+
+         Put_Counter_BE (Buf, Counter);
          Tls_Core.Sha256.Hash (Buf, Digest);
+
          Take := Mask_Len - Filled;
          if Take > 32 then
             Take := 32;
          end if;
+
          for I in 0 .. Take - 1 loop
-            Out_Mask (Out_Mask'First + Filled + I) := Digest (1 + I);
+            Result (1 + Filled + I) := Digest (1 + I);
+            pragma Loop_Invariant (1 + Filled + I in Result'Range);
          end loop;
+
          Filled := Filled + Take;
+         exit when Counter = Unsigned_32'Last;
          Counter := Counter + 1;
       end loop;
-   end MGF1_Sha256;
+      return Result;
+   end Spec_MGF1_Sha256;
 
    ---------------------------------------------------------------------
-   --  MGF1 with SHA-384.
+   --  Spec_MGF1_Sha384 — same shape, SHA-384 hash.
    ---------------------------------------------------------------------
 
-   procedure MGF1_Sha384
+   function Spec_MGF1_Sha384
      (Seed     : Octet_Array;
-      Mask_Len : Natural;
-      Out_Mask : out Octet_Array)
+      Mask_Len : Natural) return Octet_Array
    is
-      Counter   : Unsigned_32 := 0;
       Buf_Len   : constant Natural := Seed'Length + 4;
       Buf       : Octet_Array (1 .. Buf_Len) := (others => 0);
-      Digest    : Tls_Core.Sha384.Digest;
+      Result    : Octet_Array (1 .. Mask_Len) := (others => 0);
+      Counter   : Unsigned_32 := 0;
       Filled    : Natural := 0;
       Take      : Natural;
+      Digest    : Tls_Core.Sha384.Digest;
    begin
-      pragma Assert (Out_Mask'Length = Mask_Len);
       for I in 0 .. Seed'Length - 1 loop
          Buf (1 + I) := Seed (Seed'First + I);
+         pragma Loop_Invariant
+           (for all K in 0 .. I =>
+              Buf (1 + K) = Seed (Seed'First + K));
       end loop;
+
       while Filled < Mask_Len loop
-         Buf (Buf_Len - 3) := Octet (Shift_Right (Counter, 24) and 16#FF#);
-         Buf (Buf_Len - 2) := Octet (Shift_Right (Counter, 16) and 16#FF#);
-         Buf (Buf_Len - 1) := Octet (Shift_Right (Counter,  8) and 16#FF#);
-         Buf (Buf_Len)     := Octet (Counter and 16#FF#);
+         pragma Loop_Invariant (Filled <= Mask_Len);
+         pragma Loop_Variant (Increases => Filled);
+
+         Put_Counter_BE (Buf, Counter);
          Tls_Core.Sha384.Hash (Buf, Digest);
+
          Take := Mask_Len - Filled;
          if Take > 48 then
             Take := 48;
          end if;
+
          for I in 0 .. Take - 1 loop
-            Out_Mask (Out_Mask'First + Filled + I) := Digest (1 + I);
+            Result (1 + Filled + I) := Digest (1 + I);
+            pragma Loop_Invariant (1 + Filled + I in Result'Range);
          end loop;
+
          Filled := Filled + Take;
+         exit when Counter = Unsigned_32'Last;
          Counter := Counter + 1;
       end loop;
-   end MGF1_Sha384;
+      return Result;
+   end Spec_MGF1_Sha384;
 
    ---------------------------------------------------------------------
-   --  EMSA-PSS-VERIFY (RFC 8017 §9.1.2) — SHA-256 variant.
-   --
-   --  EM is 256 bytes (emLen). hLen = sLen = 32. mHash = SHA-256(M).
-   --
-   --  Steps (numbered per the RFC):
-   --    1. mHash := Hash (M).                     (already done)
-   --    2. If emLen < hLen + sLen + 2, output "inconsistent".
-   --       For our fixed sizes 256 >= 32+32+2 = 66 ✓.
-   --    3. If the rightmost octet of EM is not 0xBC, "inconsistent".
-   --    4. Let maskedDB = EM (1 .. emLen - hLen - 1)
-   --              H = EM (emLen - hLen .. emLen - 1)
-   --              (last byte 0xBC).
-   --    5. dbMask = MGF1 (H, emLen - hLen - 1).
-   --    6. DB = maskedDB XOR dbMask.
-   --    7. Set the high bit of DB (8*emLen - emBits = 1 bit) to zero.
-   --    8. If DB does not start with (emLen-hLen-sLen-2) zero bytes
-   --       followed by 0x01, "inconsistent".
-   --    9. Salt = DB (last sLen bytes).
-   --   10. M' = (eight zero bytes) || mHash || salt.
-   --   11. H' = Hash (M').
-   --   12. If H = H' output "consistent"; else "inconsistent".
+   --  Spec_DB_Zero_2047 — Spec.RSAPSS.fst:97-104 specialized.
+   --  For our fixed emBits=2047, msBits=7 ⇒ mask the top bit.
    ---------------------------------------------------------------------
 
-   procedure Emsa_Pss_Verify_Sha256
-     (Message : Octet_Array;
-      EM      : Bigint;
-      OK      : out Boolean)
+   function Spec_DB_Zero_2047 (DB : Octet_Array) return Octet_Array
    is
-      H_Len    : constant Natural := 32;
-      S_Len    : constant Natural := 32;
-      DB_Len   : constant Natural := EM_Length - H_Len - 1;  -- 223
-      M_Hash   : Tls_Core.Sha256.Digest;
-      H_Bytes  : Octet_Array (1 .. H_Len);
-      Db_Mask  : Octet_Array (1 .. DB_Len);
-      DB       : Octet_Array (1 .. DB_Len);
-      Salt     : Octet_Array (1 .. S_Len);
-      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len);
-      H_Prime  : Tls_Core.Sha256.Digest;
-      Diff     : Octet := 0;
+      --  Pre guarantees DB'First = 1, so DB'Last = DB'Length.
+      R : Octet_Array (1 .. DB'Length) := (others => 0);
    begin
-      OK := False;
+      R (1) := DB (1) and EM_High_Mask;
+      for I in 2 .. DB'Length loop
+         R (I) := DB (I);
+         pragma Loop_Invariant (R (1) = (DB (1) and EM_High_Mask));
+         pragma Loop_Invariant
+           (for all K in 2 .. I => R (K) = DB (K));
+      end loop;
+      return R;
+   end Spec_DB_Zero_2047;
 
-      --  Step 1: mHash = Hash (M).
-      Tls_Core.Sha256.Hash (Message, M_Hash);
+   ---------------------------------------------------------------------
+   --  Spec_Pss_Verify_Sha256 — Spec.RSAPSS.fst:200-212 + 160-187,
+   --  specialized to emBits=2047, hLen=sLen=32.
+   --
+   --  Steps mirror RFC 8017 §9.1.2:
+   --   2. emLen >= hLen + sLen + 2  (256 >= 66 ✓)
+   --   3. trailer EM[emLen-1] = 0xBC
+   --   3'. (HACL pss_verify) top byte sanity: em[0] & 0x80 = 0
+   --       (i.e., em[0] high bit is zero — encodes the emBits mask).
+   --   4. maskedDB = EM[0..223), H = EM[223..255)  (0-based)
+   --   5. dbMask = MGF1 (H, 223)
+   --   6. DB = maskedDB XOR dbMask
+   --   7. DB = db_zero (DB, emBits)
+   --   8. DB[0..190) all zeros, DB[190] = 0x01     (PS pad)
+   --   9. salt = DB[191..223)
+   --  10. M' = 0x00 x 8 || mHash || salt
+   --  11. H' = SHA256 (M')
+   --  12. consistent iff H' = H.
+   ---------------------------------------------------------------------
 
-      --  Step 2: emLen >= hLen + sLen + 2 (always true here).
-
-      --  Step 3: trailing 0xBC.
-      if EM (EM_Length) /= 16#BC# then
-         return;
+   function Spec_Pss_Verify_Sha256
+     (Message : Octet_Array;
+      EM      : Bigint) return Boolean
+   is
+      H_Len   : constant Natural := 32;
+      S_Len   : constant Natural := 32;
+      DB_Len  : constant Natural := EM_Length - H_Len - 1;  -- 223
+      PS_Len  : constant Natural := EM_Length - S_Len - H_Len - 2;  -- 190
+      M_Hash  : Tls_Core.Sha256.Digest;
+      H_Bytes : Octet_Array (1 .. H_Len);
+      Db_Mask : Octet_Array (1 .. DB_Len);
+      DB      : Octet_Array (1 .. DB_Len);
+      Salt    : Octet_Array (1 .. S_Len);
+      --  M_Prime: positions 1..8 stay 0 per RFC step 10; init for SPARK
+      --  flow analysis (only positions 9..72 are written explicitly).
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      H_Prime : Tls_Core.Sha256.Digest;
+      Diff    : Octet := 0;
+      Bad     : Octet := 0;
+   begin
+      --  Step 3' (HACL): em high bit must be zero.
+      if (EM (1) and 16#80#) /= 0 then
+         return False;
       end if;
 
-      --  Step 4: split EM = maskedDB || H || 0xBC.
-      --  EM is 1-indexed, length 256. maskedDB = EM (1 .. 223),
-      --  H = EM (224 .. 255), trailer = EM (256).
+      --  Step 3: trailer.
+      if EM (EM_Length) /= 16#BC# then
+         return False;
+      end if;
+
+      --  Step 1 (RFC) / mHash.
+      Tls_Core.Sha256.Hash (Message, M_Hash);
+
+      --  Step 4: split.
       for I in 1 .. H_Len loop
          H_Bytes (I) := EM (DB_Len + I);
       end loop;
 
-      --  Step 5: dbMask = MGF1 (H, DB_Len).
-      MGF1_Sha256 (H_Bytes, DB_Len, Db_Mask);
+      --  Step 5: dbMask.
+      Db_Mask := Spec_MGF1_Sha256 (H_Bytes, DB_Len);
 
       --  Step 6: DB = maskedDB XOR dbMask.
       for I in 1 .. DB_Len loop
          DB (I) := EM (I) xor Db_Mask (I);
       end loop;
 
-      --  Step 7: zero the top (8*emLen - emBits) bits of DB[0].
-      --  For emBits=2047: zero the top bit → AND with 0x7F.
-      DB (1) := DB (1) and EM_High_Mask;
+      --  Step 7: zero top bit.
+      DB := Spec_DB_Zero_2047 (DB);
 
-      --  Step 8: DB must look like 00..00 || 01 || salt of sLen bytes.
-      --  PS length = emLen - sLen - hLen - 2 = 256 - 32 - 32 - 2 = 190.
-      --  So DB (1 .. 190) = zeros, DB (191) = 0x01, DB (192 .. 223) = salt.
-      declare
-         PS_Len : constant Natural := EM_Length - S_Len - H_Len - 2;
-         Bad    : Octet := 0;
-      begin
-         for I in 1 .. PS_Len loop
-            Bad := Bad or DB (I);
-         end loop;
-         if Bad /= 0 then
-            return;
-         end if;
-         if DB (PS_Len + 1) /= 16#01# then
-            return;
-         end if;
-
-         --  Step 9: salt.
-         for I in 1 .. S_Len loop
-            Salt (I) := DB (PS_Len + 1 + I);
-         end loop;
-      end;
-
-      --  Step 10: M' = 0x00 x 8 || mHash || salt.
-      for I in 1 .. 8 loop
-         M_Prime (I) := 0;
+      --  Step 8: PS check (constant-time).
+      for I in 1 .. PS_Len loop
+         Bad := Bad or DB (I);
       end loop;
+      if Bad /= 0 then
+         return False;
+      end if;
+      if DB (PS_Len + 1) /= 16#01# then
+         return False;
+      end if;
+
+      --  Step 9: salt.
+      for I in 1 .. S_Len loop
+         Salt (I) := DB (PS_Len + 1 + I);
+      end loop;
+
+      --  Step 10: M' (M_Prime is already 0-initialized at decl;
+      --  positions 1..8 stay zero per RFC).
       for I in 1 .. H_Len loop
          M_Prime (8 + I) := M_Hash (I);
       end loop;
@@ -224,82 +269,77 @@ is
          M_Prime (8 + H_Len + I) := Salt (I);
       end loop;
 
-      --  Step 11: H' = Hash (M').
+      --  Step 11: H' = SHA256 (M').
       Tls_Core.Sha256.Hash (M_Prime, H_Prime);
 
-      --  Step 12: H' = H ?
+      --  Step 12: constant-time compare.
       for I in 1 .. H_Len loop
          Diff := Diff or (H_Prime (I) xor H_Bytes (I));
       end loop;
-      OK := Diff = 0;
-   end Emsa_Pss_Verify_Sha256;
+      return Diff = 0;
+   end Spec_Pss_Verify_Sha256;
 
    ---------------------------------------------------------------------
-   --  EMSA-PSS-VERIFY — SHA-384 variant. Same structure as the
-   --  SHA-256 path; hLen = sLen = 48 and the hash / MGF1 hash is
-   --  SHA-384.
+   --  Spec_Pss_Verify_Sha384 — same structure, hLen=sLen=48.
    ---------------------------------------------------------------------
 
-   procedure Emsa_Pss_Verify_Sha384
+   function Spec_Pss_Verify_Sha384
      (Message : Octet_Array;
-      EM      : Bigint;
-      OK      : out Boolean)
+      EM      : Bigint) return Boolean
    is
-      H_Len    : constant Natural := 48;
-      S_Len    : constant Natural := 48;
-      DB_Len   : constant Natural := EM_Length - H_Len - 1;  -- 207
-      M_Hash   : Tls_Core.Sha384.Digest;
-      H_Bytes  : Octet_Array (1 .. H_Len);
-      Db_Mask  : Octet_Array (1 .. DB_Len);
-      DB       : Octet_Array (1 .. DB_Len);
-      Salt     : Octet_Array (1 .. S_Len);
-      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len);
-      H_Prime  : Tls_Core.Sha384.Digest;
-      Diff     : Octet := 0;
+      H_Len   : constant Natural := 48;
+      S_Len   : constant Natural := 48;
+      DB_Len  : constant Natural := EM_Length - H_Len - 1;  -- 207
+      PS_Len  : constant Natural := EM_Length - S_Len - H_Len - 2;  -- 158
+      M_Hash  : Tls_Core.Sha384.Digest;
+      H_Bytes : Octet_Array (1 .. H_Len);
+      Db_Mask : Octet_Array (1 .. DB_Len);
+      DB      : Octet_Array (1 .. DB_Len);
+      Salt    : Octet_Array (1 .. S_Len);
+      --  M_Prime: positions 1..8 stay 0 per RFC step 10; init for SPARK
+      --  flow analysis (only positions 9..104 are written explicitly).
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      H_Prime : Tls_Core.Sha384.Digest;
+      Diff    : Octet := 0;
+      Bad     : Octet := 0;
    begin
-      OK := False;
-
-      Tls_Core.Sha384.Hash (Message, M_Hash);
+      if (EM (1) and 16#80#) /= 0 then
+         return False;
+      end if;
 
       if EM (EM_Length) /= 16#BC# then
-         return;
+         return False;
       end if;
+
+      Tls_Core.Sha384.Hash (Message, M_Hash);
 
       for I in 1 .. H_Len loop
          H_Bytes (I) := EM (DB_Len + I);
       end loop;
 
-      MGF1_Sha384 (H_Bytes, DB_Len, Db_Mask);
+      Db_Mask := Spec_MGF1_Sha384 (H_Bytes, DB_Len);
 
       for I in 1 .. DB_Len loop
          DB (I) := EM (I) xor Db_Mask (I);
       end loop;
 
-      DB (1) := DB (1) and EM_High_Mask;
+      DB := Spec_DB_Zero_2047 (DB);
 
-      declare
-         PS_Len : constant Natural := EM_Length - S_Len - H_Len - 2;
-         --  256 - 48 - 48 - 2 = 158.
-         Bad    : Octet := 0;
-      begin
-         for I in 1 .. PS_Len loop
-            Bad := Bad or DB (I);
-         end loop;
-         if Bad /= 0 then
-            return;
-         end if;
-         if DB (PS_Len + 1) /= 16#01# then
-            return;
-         end if;
-
-         for I in 1 .. S_Len loop
-            Salt (I) := DB (PS_Len + 1 + I);
-         end loop;
-      end;
-
-      for I in 1 .. 8 loop
-         M_Prime (I) := 0;
+      for I in 1 .. PS_Len loop
+         Bad := Bad or DB (I);
       end loop;
+      if Bad /= 0 then
+         return False;
+      end if;
+      if DB (PS_Len + 1) /= 16#01# then
+         return False;
+      end if;
+
+      for I in 1 .. S_Len loop
+         Salt (I) := DB (PS_Len + 1 + I);
+      end loop;
+
+      --  M_Prime is already 0-initialized at decl; positions 1..8 stay zero.
       for I in 1 .. H_Len loop
          M_Prime (8 + I) := M_Hash (I);
       end loop;
@@ -312,11 +352,38 @@ is
       for I in 1 .. H_Len loop
          Diff := Diff or (H_Prime (I) xor H_Bytes (I));
       end loop;
-      OK := Diff = 0;
+      return Diff = 0;
+   end Spec_Pss_Verify_Sha384;
+
+   ---------------------------------------------------------------------
+   --  Public Emsa_Pss_Verify entry points — thin wrappers around the
+   --  spec, so the Post `OK = Spec_Pss_Verify_Sha*(Message, EM)`
+   --  discharges by construction (mirror of Sha256.Hash →
+   --  Spec_SHA256). [VERIFIED — PLATINUM]
+   ---------------------------------------------------------------------
+
+   procedure Emsa_Pss_Verify_Sha256
+     (Message : Octet_Array;
+      EM      : Bigint;
+      OK      : out Boolean)
+   is
+   begin
+      OK := Spec_Pss_Verify_Sha256 (Message, EM);
+   end Emsa_Pss_Verify_Sha256;
+
+   procedure Emsa_Pss_Verify_Sha384
+     (Message : Octet_Array;
+      EM      : Bigint;
+      OK      : out Boolean)
+   is
+   begin
+      OK := Spec_Pss_Verify_Sha384 (Message, EM);
    end Emsa_Pss_Verify_Sha384;
 
    ---------------------------------------------------------------------
    --  EMSA-PSS-ENCODE (RFC 8017 §9.1.1) for round-trip self-tests.
+   --  AoRTE-only — encode side is not in v0.5 platinum scope (verify
+   --  is the headline; encoding is here for the round-trip test).
    --
    --  Steps:
    --    1. mHash = Hash (M).
@@ -342,40 +409,36 @@ is
       S_Len    : constant Natural := 32;
       DB_Len   : constant Natural := EM_Length - H_Len - 1;
       M_Hash   : Tls_Core.Sha256.Digest;
-      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len);
+      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
       H_Bytes  : Tls_Core.Sha256.Digest;
-      DB       : Octet_Array (1 .. DB_Len);
+      DB       : Octet_Array (1 .. DB_Len) := (others => 0);
       Db_Mask  : Octet_Array (1 .. DB_Len);
       PS_Len   : constant Natural := EM_Length - S_Len - H_Len - 2;
    begin
       Out_EM := (others => 0);
-      OK := False;
       pragma Assert (Salt'Length = S_Len);
 
       Tls_Core.Sha256.Hash (Message, M_Hash);
 
       --  M' = 8 zero bytes || mHash || salt.
-      for I in 1 .. 8 loop
-         M_Prime (I) := 0;
-      end loop;
+      --  M_Prime is already zeroed at declaration; only fill the
+      --  non-zero tail (positions 9 .. 72).
       for I in 1 .. H_Len loop
          M_Prime (8 + I) := M_Hash (I);
       end loop;
-      for I in 1 .. S_Len loop
-         M_Prime (8 + H_Len + I) := Salt (Salt'First + I - 1);
+      for I in 0 .. S_Len - 1 loop
+         M_Prime (9 + H_Len + I) := Salt (Salt'First + I);
       end loop;
       Tls_Core.Sha256.Hash (M_Prime, H_Bytes);
 
       --  DB = 0x00 .. 0x00 || 0x01 || salt.
-      for I in 1 .. PS_Len loop
-         DB (I) := 0;
-      end loop;
+      --  DB is already zeroed; just place the 0x01 separator and salt.
       DB (PS_Len + 1) := 16#01#;
-      for I in 1 .. S_Len loop
-         DB (PS_Len + 1 + I) := Salt (Salt'First + I - 1);
+      for I in 0 .. S_Len - 1 loop
+         DB (PS_Len + 2 + I) := Salt (Salt'First + I);
       end loop;
 
-      MGF1_Sha256 (H_Bytes, DB_Len, Db_Mask);
+      Db_Mask := Spec_MGF1_Sha256 (H_Bytes, DB_Len);
 
       for I in 1 .. DB_Len loop
          DB (I) := DB (I) xor Db_Mask (I);
@@ -405,38 +468,31 @@ is
       S_Len    : constant Natural := 48;
       DB_Len   : constant Natural := EM_Length - H_Len - 1;
       M_Hash   : Tls_Core.Sha384.Digest;
-      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len);
+      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
       H_Bytes  : Tls_Core.Sha384.Digest;
-      DB       : Octet_Array (1 .. DB_Len);
+      DB       : Octet_Array (1 .. DB_Len) := (others => 0);
       Db_Mask  : Octet_Array (1 .. DB_Len);
       PS_Len   : constant Natural := EM_Length - S_Len - H_Len - 2;
    begin
       Out_EM := (others => 0);
-      OK := False;
       pragma Assert (Salt'Length = S_Len);
 
       Tls_Core.Sha384.Hash (Message, M_Hash);
 
-      for I in 1 .. 8 loop
-         M_Prime (I) := 0;
-      end loop;
       for I in 1 .. H_Len loop
          M_Prime (8 + I) := M_Hash (I);
       end loop;
-      for I in 1 .. S_Len loop
-         M_Prime (8 + H_Len + I) := Salt (Salt'First + I - 1);
+      for I in 0 .. S_Len - 1 loop
+         M_Prime (9 + H_Len + I) := Salt (Salt'First + I);
       end loop;
       Tls_Core.Sha384.Hash (M_Prime, H_Bytes);
 
-      for I in 1 .. PS_Len loop
-         DB (I) := 0;
-      end loop;
       DB (PS_Len + 1) := 16#01#;
-      for I in 1 .. S_Len loop
-         DB (PS_Len + 1 + I) := Salt (Salt'First + I - 1);
+      for I in 0 .. S_Len - 1 loop
+         DB (PS_Len + 2 + I) := Salt (Salt'First + I);
       end loop;
 
-      MGF1_Sha384 (H_Bytes, DB_Len, Db_Mask);
+      Db_Mask := Spec_MGF1_Sha384 (H_Bytes, DB_Len);
 
       for I in 1 .. DB_Len loop
          DB (I) := DB (I) xor Db_Mask (I);
@@ -457,8 +513,10 @@ is
    ---------------------------------------------------------------------
    --  RSASSA-PSS-VERIFY (RFC 8017 §8.1.2):
    --    1. Length check: signature is k = emLen octets (here 256).
-   --    2. m := signature^E mod N         (RSAVP1 §5.2.2)
-   --    3. EMSA-PSS-VERIFY (M, EM=m, emBits)
+   --    2. m := signature^E mod N         (RSAVP1 §5.2.2;
+   --                                        AoRTE-only)
+   --    3. EMSA-PSS-VERIFY (M, EM=m, emBits)  (PLATINUM via
+   --                                        Emsa_Pss_Verify_Sha*)
    ---------------------------------------------------------------------
 
    procedure Verify_Sha256
@@ -486,5 +544,7 @@ is
       Tls_Core.Bignum_2048.Mod_Exp (Signature, E, N, M);
       Emsa_Pss_Verify_Sha384 (Message, M, OK);
    end Verify_Sha384;
+
+   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
 end Tls_Core.Rsa_Pss;

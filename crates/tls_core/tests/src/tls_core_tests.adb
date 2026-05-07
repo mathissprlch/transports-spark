@@ -45,6 +45,7 @@ with Tls_Core.P256;
 with Tls_Core.P256_Field;
 with Tls_Core.P256_Order;
 with Tls_Core.Ecdsa_P256;
+with Tls_Core.Rsa_Pss;
 
 procedure Tls_Core_Tests is
 
@@ -3898,6 +3899,125 @@ procedure Tls_Core_Tests is
       Check ("self-signed signature verifies", Ver_OK);
    end Ecdsa_P256_Sign_Scenario;
 
+   ---------------------------------------------------------------------
+   --  RSA-PSS round-trip (Encode → Emsa_Pss_Verify) and rejection
+   --  scenarios. The encode side is the test harness; the verify side
+   --  carries the [VERIFIED — PLATINUM] tag and a Post referencing
+   --  the HACL* Spec.RSAPSS.fst port.
+   ---------------------------------------------------------------------
+
+   procedure Rsa_Pss_Sha256_Roundtrip_Scenario;
+   procedure Rsa_Pss_Sha256_Roundtrip_Scenario is
+      Msg  : constant Tls_Core.Octet_Array (1 .. 13) :=
+        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#2C#, 16#20#, 16#52#,
+         16#53#, 16#41#, 16#21#, 16#21#, 16#21#);   -- "Hello, RSA!!!"
+
+      --  Deterministic salt for round-trip — sLen = hLen = 32.
+      Salt : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (1 => 16#00#, 2 => 16#11#, 3 => 16#22#, 4 => 16#33#,
+         5 => 16#44#, 6 => 16#55#, 7 => 16#66#, 8 => 16#77#,
+         9 => 16#88#, 10 => 16#99#, 11 => 16#AA#, 12 => 16#BB#,
+         13 => 16#CC#, 14 => 16#DD#, 15 => 16#EE#, 16 => 16#FF#,
+         17 => 16#0F#, 18 => 16#1E#, 19 => 16#2D#, 20 => 16#3C#,
+         21 => 16#4B#, 22 => 16#5A#, 23 => 16#69#, 24 => 16#78#,
+         25 => 16#87#, 26 => 16#96#, 27 => 16#A5#, 28 => 16#B4#,
+         29 => 16#C3#, 30 => 16#D2#, 31 => 16#E1#, 32 => 16#F0#);
+
+      EM      : Tls_Core.Rsa_Pss.Bigint;
+      EM_Bad  : Tls_Core.Rsa_Pss.Bigint;
+      Enc_OK  : Boolean;
+      Ver_OK  : Boolean;
+
+      Other   : constant Tls_Core.Octet_Array (1 .. 13) :=
+        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#2C#, 16#20#, 16#52#,
+         16#53#, 16#41#, 16#21#, 16#21#, 16#22#);   -- last byte differs
+   begin
+      Put_Line ("scenario 46 — RSA-PSS-SHA256 Encode → Verify round-trip");
+
+      Tls_Core.Rsa_Pss.Encode_Sha256 (Msg, Salt, EM, Enc_OK);
+      Check ("Encode_Sha256 returned OK", Enc_OK);
+
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha256 (Msg, EM, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha256 accepts valid encoding", Ver_OK);
+
+      --  Wrong message must reject (Step 12 of RFC 8017 §9.1.2).
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha256 (Other, EM, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha256 rejects different message",
+             not Ver_OK);
+
+      --  Tamper trailer 0xBC → expect rejection (Step 3).
+      EM_Bad := EM;
+      EM_Bad (256) := 16#BD#;
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha256 (Msg, EM_Bad, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha256 rejects bad trailer",
+             not Ver_OK);
+
+      --  Tamper top bit (Step 3' — em_0 high bit must be zero).
+      EM_Bad := EM;
+      EM_Bad (1) := EM_Bad (1) or 16#80#;
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha256 (Msg, EM_Bad, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha256 rejects non-zero high bit",
+             not Ver_OK);
+
+      --  Bit flip somewhere in the middle of the masked DB → SHA-256
+      --  of M' will mismatch → reject.
+      EM_Bad := EM;
+      EM_Bad (100) := EM_Bad (100) xor 16#01#;
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha256 (Msg, EM_Bad, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha256 rejects bit-flip in masked DB",
+             not Ver_OK);
+   end Rsa_Pss_Sha256_Roundtrip_Scenario;
+
+   procedure Rsa_Pss_Sha384_Roundtrip_Scenario;
+   procedure Rsa_Pss_Sha384_Roundtrip_Scenario is
+      Msg : constant Tls_Core.Octet_Array (1 .. 5) :=
+        (16#54#, 16#4C#, 16#53#, 16#21#, 16#33#);   -- "TLS!3"
+
+      --  sLen = hLen = 48 for SHA-384.
+      Salt : constant Tls_Core.Octet_Array (1 .. 48) :=
+        (1 => 16#A1#, 2 => 16#B2#, 3 => 16#C3#, 4 => 16#D4#,
+         5 => 16#E5#, 6 => 16#F6#, 7 => 16#07#, 8 => 16#18#,
+         9 => 16#29#, 10 => 16#3A#, 11 => 16#4B#, 12 => 16#5C#,
+         13 => 16#6D#, 14 => 16#7E#, 15 => 16#8F#, 16 => 16#90#,
+         17 => 16#A1#, 18 => 16#B2#, 19 => 16#C3#, 20 => 16#D4#,
+         21 => 16#E5#, 22 => 16#F6#, 23 => 16#07#, 24 => 16#18#,
+         25 => 16#29#, 26 => 16#3A#, 27 => 16#4B#, 28 => 16#5C#,
+         29 => 16#6D#, 30 => 16#7E#, 31 => 16#8F#, 32 => 16#90#,
+         33 => 16#11#, 34 => 16#22#, 35 => 16#33#, 36 => 16#44#,
+         37 => 16#55#, 38 => 16#66#, 39 => 16#77#, 40 => 16#88#,
+         41 => 16#99#, 42 => 16#AA#, 43 => 16#BB#, 44 => 16#CC#,
+         45 => 16#DD#, 46 => 16#EE#, 47 => 16#FF#, 48 => 16#00#);
+
+      EM      : Tls_Core.Rsa_Pss.Bigint;
+      EM_Bad  : Tls_Core.Rsa_Pss.Bigint;
+      Enc_OK  : Boolean;
+      Ver_OK  : Boolean;
+   begin
+      Put_Line ("scenario 47 — RSA-PSS-SHA384 Encode → Verify round-trip");
+
+      Tls_Core.Rsa_Pss.Encode_Sha384 (Msg, Salt, EM, Enc_OK);
+      Check ("Encode_Sha384 returned OK", Enc_OK);
+
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha384 (Msg, EM, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha384 accepts valid encoding", Ver_OK);
+
+      --  Tamper PS-pad section — mutate one byte that's part of the
+      --  zero-padding region after unmasking. Easiest is to flip the
+      --  trailer or a byte in the H section.
+      EM_Bad := EM;
+      EM_Bad (256) := 16#00#;
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha384 (Msg, EM_Bad, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha384 rejects zeroed trailer",
+             not Ver_OK);
+
+      --  Bit flip in the H field (positions 208..255 for SHA-384).
+      EM_Bad := EM;
+      EM_Bad (220) := EM_Bad (220) xor 16#01#;
+      Tls_Core.Rsa_Pss.Emsa_Pss_Verify_Sha384 (Msg, EM_Bad, Ver_OK);
+      Check ("Emsa_Pss_Verify_Sha384 rejects bit-flip in H section",
+             not Ver_OK);
+   end Rsa_Pss_Sha384_Roundtrip_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -3946,6 +4066,8 @@ begin
    Ecdsa_P256_Range_Scenario;
    Ecdsa_P256_Wrongmsg_Scenario;
    Ecdsa_P256_Sign_Scenario;
+   Rsa_Pss_Sha256_Roundtrip_Scenario;
+   Rsa_Pss_Sha384_Roundtrip_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
