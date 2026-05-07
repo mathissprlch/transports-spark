@@ -17,6 +17,264 @@ is
    Mask_26 : constant U64 := 16#03FF_FFFF#;
 
    ---------------------------------------------------------------------
+   --  Spec_* ghost function bodies (HACL\* port)
+   ---------------------------------------------------------------------
+
+   ---------------------------------------------------------------------
+   --  Spec_* lemma bodies
+   ---------------------------------------------------------------------
+
+   --  With Spec_Pow2 now an expression function in the spec, the
+   --  identity `Spec_Pow2 (N + 1) = 2 * Spec_Pow2 (N)` is true by
+   --  inline-expansion of the definition; the lemma body is empty.
+   procedure Lemma_Pow2_Step (N : Natural) is
+   begin
+      null;
+   end Lemma_Pow2_Step;
+
+   --  Spec_Pow2 (N + 8) = 256 * Spec_Pow2 (N). Eight applications
+   --  of Lemma_Pow2_Step plus simple commutative-associative algebra
+   --  on the literal 2^8 = 256.
+   procedure Lemma_Pow2_Plus_8 (N : Natural) is
+      Two : constant Big.Big_Natural := Big.To_Big_Integer (2);
+      P0  : constant Big.Big_Natural := Spec_Pow2 (N);
+      P1  : constant Big.Big_Natural := Spec_Pow2 (N + 1);
+      P2  : constant Big.Big_Natural := Spec_Pow2 (N + 2);
+      P3  : constant Big.Big_Natural := Spec_Pow2 (N + 3);
+      P4  : constant Big.Big_Natural := Spec_Pow2 (N + 4);
+      P5  : constant Big.Big_Natural := Spec_Pow2 (N + 5);
+      P6  : constant Big.Big_Natural := Spec_Pow2 (N + 6);
+      P7  : constant Big.Big_Natural := Spec_Pow2 (N + 7);
+      P8  : constant Big.Big_Natural := Spec_Pow2 (N + 8);
+   begin
+      Lemma_Pow2_Step (N);      --  P1 = 2 * P0
+      Lemma_Pow2_Step (N + 1);  --  P2 = 2 * P1
+      Lemma_Pow2_Step (N + 2);
+      Lemma_Pow2_Step (N + 3);
+      Lemma_Pow2_Step (N + 4);
+      Lemma_Pow2_Step (N + 5);
+      Lemma_Pow2_Step (N + 6);
+      Lemma_Pow2_Step (N + 7);
+      pragma Assert (P1 = Two * P0);
+      pragma Assert (P2 = Two * P1);
+      pragma Assert (P3 = Two * P2);
+      pragma Assert (P4 = Two * P3);
+      pragma Assert (P5 = Two * P4);
+      pragma Assert (P6 = Two * P5);
+      pragma Assert (P7 = Two * P6);
+      pragma Assert (P8 = Two * P7);
+      pragma Assert (P8 = Big.To_Big_Integer (256) * P0);
+   end Lemma_Pow2_Plus_8;
+
+   procedure Lemma_Pow2_Monotone (M, N : Natural) is
+   begin
+      if M = N then
+         return;
+      end if;
+      --  Strict M < N; chain unit-step lemma along M..N-1.
+      for K in M .. N - 1 loop
+         Lemma_Pow2_Step (K);
+         pragma Loop_Invariant
+           (Spec_Pow2 (M) <= Spec_Pow2 (K + 1));
+      end loop;
+   end Lemma_Pow2_Monotone;
+
+   procedure Lemma_Pow2_128_Lt_Prime is
+   begin
+      --  Spec_Prime = Spec_Pow2 (130) - 5
+      --             = 4 * Spec_Pow2 (128) - 5
+      --  So Spec_Pow2 (128) < Spec_Prime  ⇔  Spec_Pow2 (128) > 5/3,
+      --  trivially since Spec_Pow2 (128) >= 128.
+      Lemma_Pow2_Step (128);  --  2^129 = 2 * 2^128
+      Lemma_Pow2_Step (129);  --  2^130 = 2 * 2^129 = 4 * 2^128
+      pragma Assert
+        (Spec_Pow2 (130) =
+           Big.To_Big_Integer (4) * Spec_Pow2 (128));
+      pragma Assert
+        (Spec_Pow2 (128) >= Big.To_Big_Integer (128));
+   end Lemma_Pow2_128_Lt_Prime;
+
+   procedure Lemma_Bytes_Bound (B : Octet_Array) is
+   begin
+      if B'Length = 0 then
+         return;
+      end if;
+      declare
+         L_Minus_1 : constant Natural := B'Length - 1;
+         Front     : constant Octet_Array := B (B'First .. B'Last - 1);
+         Pow_Hi    : constant Big.Big_Natural := Spec_Pow2 (8 * L_Minus_1);
+         Last_Byte : constant Big.Big_Natural :=
+           Octet_Bigint.To_Big_Integer (B (B'Last));
+         Front_Val : constant Big.Big_Natural :=
+           Spec_Nat_From_Bytes_Le (Front);
+      begin
+         Lemma_Bytes_Bound (Front);
+         --  IH: Front_Val < Spec_Pow2 (8 * L_Minus_1) = Pow_Hi.
+         pragma Assert (Front_Val < Pow_Hi);
+         pragma Assert (Last_Byte <= Big.To_Big_Integer (255));
+         --  Result of Spec_Nat_From_Bytes_Le (B) = Front_Val + Last_Byte * Pow_Hi
+         pragma Assert
+           (Spec_Nat_From_Bytes_Le (B) = Front_Val + Last_Byte * Pow_Hi);
+         --  Last_Byte * Pow_Hi <= 255 * Pow_Hi
+         pragma Assert
+           (Last_Byte * Pow_Hi <= Big.To_Big_Integer (255) * Pow_Hi);
+         --  Sum bound: Front_Val + Last_Byte * Pow_Hi
+         --           < Pow_Hi + 255 * Pow_Hi = 256 * Pow_Hi
+         pragma Assert
+           (Front_Val + Last_Byte * Pow_Hi
+              < Pow_Hi + Big.To_Big_Integer (255) * Pow_Hi);
+         pragma Assert
+           (Pow_Hi + Big.To_Big_Integer (255) * Pow_Hi
+              = Big.To_Big_Integer (256) * Pow_Hi);
+         --  Now connect 256 * Pow_Hi = Spec_Pow2 (8 * B'Length).
+         Lemma_Pow2_Plus_8 (8 * L_Minus_1);
+         pragma Assert
+           (Spec_Pow2 (8 * L_Minus_1 + 8)
+              = Big.To_Big_Integer (256) * Pow_Hi);
+         pragma Assert (8 * L_Minus_1 + 8 = 8 * B'Length);
+      end;
+   end Lemma_Bytes_Bound;
+
+   --  Spec_Nat_From_Bytes_Le is an expression function in the spec.
+
+   --  Spec_Encode_R — port of HACL\* `poly1305_encode_r`.
+   --
+   --  Operationally identical to `nat_from_bytes_le (clamp(rb))`.
+   --  We construct it as (clamped low 64 bits) + 2^64 * (clamped high
+   --  64 bits) — exactly the F\* version.
+   function Spec_Encode_R (Rb : Octet_Array) return Big.Big_Natural is
+      --  HACL\* mask0 = 0x0ffffffc0fffffff (LE form)
+      --      → bytes[0..7] = FF FF FF 0F FC FF FF 0F (low 64 bits)
+      --  HACL\* mask1 = 0x0ffffffc0ffffffc
+      --      → bytes[8..15] = FC FF FF 0F FC FF FF 0F (high 64 bits)
+      Clamped : Octet_Array (1 .. 16);
+   begin
+      for I in 1 .. 16 loop
+         Clamped (I) := Rb (Rb'First + I - 1);
+      end loop;
+      --  Apply the byte-level clamp pattern from RFC 8439 §2.5.1.
+      Clamped (4)  := Clamped (4)  and 16#0F#;
+      Clamped (8)  := Clamped (8)  and 16#0F#;
+      Clamped (12) := Clamped (12) and 16#0F#;
+      Clamped (16) := Clamped (16) and 16#0F#;
+      Clamped (5)  := Clamped (5)  and 16#FC#;
+      Clamped (9)  := Clamped (9)  and 16#FC#;
+      Clamped (13) := Clamped (13) and 16#FC#;
+      --  Discharge Post < 2^128 via the generic-array byte-bound lemma.
+      Lemma_Bytes_Bound (Clamped);
+      return Spec_Nat_From_Bytes_Le (Clamped);
+   end Spec_Encode_R;
+
+   --  Spec_Encode_Block — port of HACL\* `encode`:
+   --     2^(8*len) + nat_from_bytes_le b
+   function Spec_Encode_Block
+     (B : Octet_Array; Len : Natural) return Big.Big_Natural
+   is
+   begin
+      return Spec_Pow2 (8 * Len) + Spec_Nat_From_Bytes_Le (B);
+   end Spec_Encode_Block;
+
+   --  Spec_Update1 — port of HACL\* `poly1305_update1`:
+   --     (encode b len + acc) * r mod prime
+   function Spec_Update1
+     (Acc, R : Big.Big_Natural;
+      B      : Octet_Array;
+      Len    : Natural)
+      return Big.Big_Natural
+   is
+      Encoded : constant Big.Big_Natural := Spec_Encode_Block (B, Len);
+      Sum     : constant Big.Big_Natural := Encoded + Acc;
+      Prod    : constant Big.Big_Natural := Sum * R;
+   begin
+      return Prod mod Spec_Prime;
+   end Spec_Update1;
+
+   --  Spec_Update_Last — port of HACL\* `poly1305_update_last`.
+   --  Empty trailing block leaves acc unchanged (RFC 8439 §2.5
+   --  step 4 says trailing zero-byte blocks are skipped).
+   function Spec_Update_Last
+     (Acc, R : Big.Big_Natural;
+      B      : Octet_Array;
+      Len    : Natural)
+      return Big.Big_Natural
+   is
+   begin
+      if Len = 0 then
+         return Acc;
+      else
+         return Spec_Update1 (Acc, R, B, Len);
+      end if;
+   end Spec_Update_Last;
+
+   --  Spec_Update_All — port of HACL\* `poly1305_update`:
+   --  process all 16-byte blocks then a partial tail. Recursive on
+   --  Text length to make the structure-translation to gnatprove
+   --  decidable.
+   function Spec_Update_All
+     (Text   : Octet_Array;
+      Acc, R : Big.Big_Natural)
+      return Big.Big_Natural
+   is
+      Acc1 : Big.Big_Natural;
+   begin
+      if Text'Length < 16 then
+         return Spec_Update_Last (Acc, R, Text, Text'Length);
+      end if;
+      Acc1 :=
+        Spec_Update1
+          (Acc, R,
+           Text (Text'First .. Text'First + 15),
+           16);
+      return
+        Spec_Update_All
+          (Text (Text'First + 16 .. Text'Last), Acc1, R);
+   end Spec_Update_All;
+
+   --  Spec_Finish — port of HACL\* `poly1305_finish`:
+   --    s = nat_from_bytes_le (slice key 16 32)
+   --    n = (acc + s) mod 2^128
+   --    tag = nat_to_bytes_le 16 n
+   function Spec_Finish
+     (Key : Key_Array; Acc : Big.Big_Natural) return Tag_Array
+   is
+      S_Bytes : constant Octet_Array (1 .. 16) :=
+        Octet_Array (Key (17 .. 32));
+      S_Val   : constant Big.Big_Natural :=
+        Spec_Nat_From_Bytes_Le (S_Bytes);
+      Result  : Tag_Array := (others => 0);
+      Cur     : Big.Big_Natural :=
+        (Acc + S_Val) mod Spec_Pow2 (128);
+      package Big_U64 is new Big.Unsigned_Conversions (Int => U64);
+   begin
+      --  Serialise Cur as 16-byte little-endian: byte i = (Cur mod 256).
+      for I in Tag_Array'Range loop
+         declare
+            Lo   : constant Big.Big_Natural :=
+              Cur mod Big.To_Big_Integer (256);
+            Lo_U : constant U64 := Big_U64.From_Big_Integer (Lo);
+         begin
+            Result (I) := Octet (Lo_U and 16#FF#);
+            Cur := Cur / Big.To_Big_Integer (256);
+         end;
+      end loop;
+      return Result;
+   end Spec_Finish;
+
+   --  Spec_Poly1305_Mac — top-level port of HACL\* `poly1305_mac`.
+   function Spec_Poly1305_Mac
+     (Key : Key_Array; Message : Octet_Array) return Tag_Array
+   is
+      R_Bytes : constant Octet_Array (1 .. 16) :=
+        Octet_Array (Key (1 .. 16));
+      R_Val   : constant Big.Big_Natural := Spec_Encode_R (R_Bytes);
+      Acc0    : constant Big.Big_Natural := Big.To_Big_Integer (0);
+      Acc_F   : constant Big.Big_Natural :=
+        Spec_Update_All (Message, Acc0, R_Val);
+   begin
+      return Spec_Finish (Key, Acc_F);
+   end Spec_Poly1305_Mac;
+
+   ---------------------------------------------------------------------
    --  Pack a 16-byte little-endian integer (with the implicit
    --  trailing 1 bit for full blocks) into the 5-limb form.
    ---------------------------------------------------------------------
