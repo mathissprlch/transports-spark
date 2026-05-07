@@ -14,37 +14,77 @@
 --       changing the round-key schedule.
 --
 --  Source: FIPS 197 §5.1 (the round transformations).
+--
+--  Functional Post pinning:
+--    Each public round op carries a functional Post tying the
+--    in-out Block to the corresponding Aes_Spec function (HACL\*
+--    Spec.AES.fst port).  Both code paths — round-by-round and
+--    T-tables — discharge the same Post; the T-tables path is no
+--    longer gated.
+
+with Interfaces;
+with Tls_Core.Aes_Spec;
 
 package Tls_Core.Aes_Core
 with SPARK_Mode
 is
 
+   use type Interfaces.Unsigned_8;
+   --  Bring the byte-equality operator into scope so the Posts below
+   --  can compare Octet values directly.
+
    subtype Block is Octet_Array (1 .. 16);
 
-   --  No functional Posts. FIPS 197 §C.* test vectors at the
-   --  Aes128 / Aes256 layer exercise the composed primitives.
+   --  AES-256 has Nr = 14, so Round ranges over 0..14 across the
+   --  AddRoundKey calls.  Bounding here prevents 32-bit overflow
+   --  on `Round * 16` in the Pre clauses below.
+   subtype Round_Index is Natural range 0 .. 14;
+
+   ---------------------------------------------------------------------
+   --  The 16-byte round key at index Round in the expanded key
+   --  schedule.  Used by every functional Post below.  Non-ghost: the
+   --  bodies of Add_Round_Key / Full_Round / Final_Round can call it
+   --  directly to obtain a byte-identical 16-byte slice.
+   ---------------------------------------------------------------------
+
+   function Round_Key_Slice
+     (RK    : Octet_Array;
+      Round : Round_Index) return Aes_Spec.Block_16
+   with Pre  => RK'First = 1
+                and then Round * 16 + 16 <= RK'Length,
+        Post => (for all I in 1 .. 16 =>
+                   Round_Key_Slice'Result (I) = RK (Round * 16 + I));
 
    --  FIPS 197 §5.1.1 SubBytes — apply the S-box byte-wise.
-   procedure Sub_Bytes (S : in out Block);
+   procedure Sub_Bytes (S : in out Block)
+   with
+     Post => S = Aes_Spec.Sub_Bytes (S'Old);
 
    --  FIPS 197 §5.1.2 ShiftRows — cyclic-left-shift rows 1, 2, 3 by
    --  1, 2, 3 bytes respectively (row 0 is unchanged).
-   procedure Shift_Rows (S : in out Block);
+   procedure Shift_Rows (S : in out Block)
+   with
+     Post => S = Aes_Spec.Shift_Rows (S'Old);
 
    --  FIPS 197 §5.1.3 MixColumns — multiply each column by the
    --  fixed polynomial {03}x^3 + {01}x^2 + {01}x + {02} mod
    --  (x^4 + 1) over GF(2^8).
-   procedure Mix_Columns (S : in out Block);
+   procedure Mix_Columns (S : in out Block)
+   with
+     Post => S = Aes_Spec.Mix_Columns (S'Old);
 
    --  FIPS 197 §5.1.4 AddRoundKey — XOR the 16-byte slice of RK
    --  starting at Round * 16 + 1 into S.
    procedure Add_Round_Key
      (S     : in out Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Round_Index)
    with
      Pre  => RK'First = 1
-             and then Round * 16 + 16 <= RK'Length;
+             and then Round * 16 + 16 <= RK'Length,
+     Post => S =
+               Aes_Spec.Add_Round_Key
+                 (Round_Key_Slice (RK, Round), S'Old);
 
    --  Combined SubBytes + ShiftRows + MixColumns + AddRoundKey for
    --  one full round of AES (rounds 1..Nr-1; the final round skips
@@ -52,19 +92,25 @@ is
    procedure Full_Round
      (S     : in out Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Round_Index)
    with
      Pre  => RK'First = 1
-             and then Round * 16 + 16 <= RK'Length;
+             and then Round * 16 + 16 <= RK'Length,
+     Post => S =
+               Aes_Spec.Aes_Enc
+                 (Round_Key_Slice (RK, Round), S'Old);
 
    --  Final round: SubBytes + ShiftRows + AddRoundKey (no MixColumns).
    procedure Final_Round
      (S     : in out Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Round_Index)
    with
      Pre  => RK'First = 1
-             and then Round * 16 + 16 <= RK'Length;
+             and then Round * 16 + 16 <= RK'Length,
+     Post => S =
+               Aes_Spec.Aes_Enc_Last
+                 (Round_Key_Slice (RK, Round), S'Old);
 
    --  S-box and Xtime exposed because the per-AES-variant key
    --  schedule (AES-128 KeyExpansion, AES-256 KeyExpansion) needs

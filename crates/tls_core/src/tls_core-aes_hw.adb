@@ -9,7 +9,7 @@ is
    procedure Hw_Full_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Tls_Core.Aes_Core.Round_Index)
    is
    begin
       Tls_Core.Aes_Core.Sub_Bytes (S);
@@ -21,7 +21,7 @@ is
    procedure Hw_Final_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Tls_Core.Aes_Core.Round_Index)
    is
    begin
       Tls_Core.Aes_Core.Sub_Bytes (S);

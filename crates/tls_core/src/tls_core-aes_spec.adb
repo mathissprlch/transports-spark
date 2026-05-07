@@ -98,6 +98,23 @@ is
 
    function Inv_Sub_Byte (B : Octet) return Octet is (Inv_S_Box (B));
 
+   function Spec_Xtime (B : Octet) return Octet
+   is
+     (if (B and 16#80#) /= 0
+        then (Octet (Shift_Left (Unsigned_8 (B), 1))) xor 16#1B#
+        else (Octet (Shift_Left (Unsigned_8 (B), 1))));
+
+   function Mix_Col_Byte
+     (A, B, C, D : Octet;
+      Row        : Natural) return Octet
+   is
+     (case Row is
+        when 0 => Spec_Xtime (A) xor (Spec_Xtime (B) xor B) xor C xor D,
+        when 1 => A xor Spec_Xtime (B) xor (Spec_Xtime (C) xor C) xor D,
+        when 2 => A xor B xor Spec_Xtime (C) xor (Spec_Xtime (D) xor D),
+        when 3 => (Spec_Xtime (A) xor A) xor B xor C xor Spec_Xtime (D),
+        when others => 0);
+
    ---------------------------------------------------------------------
    --  GF(2^8) helpers — `xtime` doubles a byte modulo the AES
    --  reduction polynomial 0x11B (FIPS 197 §4.2). HACL\* uses
@@ -172,11 +189,25 @@ is
    ---------------------------------------------------------------------
 
    --  Internal helper — apply Shift_Row(i, shift) per HACL\* line 73.
+   --
+   --  Post: in row I (= state indices I+1, I+5, I+9, I+13), each
+   --  output byte at column C in 0..3 reads from input column
+   --  (C + Shift) mod 4 of the same row.  Other rows are unchanged.
+   --  The "other rows unchanged" clause is expressed as: every
+   --  output index whose row /= I keeps the input value.
    function Shift_Row
      (I     : Natural;
       Shift : Natural;
       S     : Block_16) return Block_16
-   with Pre => I in 1 .. 3 and then Shift in 1 .. 3;
+   with Pre  => I in 1 .. 3 and then Shift in 1 .. 3,
+        Post =>
+          (for all C in 0 .. 3 =>
+             Shift_Row'Result (I + 1 + 4 * C) =
+               S (I + 1 + 4 * ((C + Shift) mod 4)))
+          and then
+          (for all J in Block_16'Range =>
+             (if (J - 1) mod 4 /= I then
+                Shift_Row'Result (J) = S (J)));
 
    function Shift_Row
      (I     : Natural;
@@ -194,15 +225,99 @@ is
       Out_S (I + 1 + 4)  := Tmp1;
       Out_S (I + 1 + 8)  := Tmp2;
       Out_S (I + 1 + 12) := Tmp3;
+      pragma Assert (Out_S (I + 1) = S (I + 1 + 4 * (Shift mod 4)));
+      pragma Assert
+        (Out_S (I + 1 + 4) = S (I + 1 + 4 * ((Shift + 1) mod 4)));
+      pragma Assert
+        (Out_S (I + 1 + 8) = S (I + 1 + 4 * ((Shift + 2) mod 4)));
+      pragma Assert
+        (Out_S (I + 1 + 12) = S (I + 1 + 4 * ((Shift + 3) mod 4)));
       return Out_S;
    end Shift_Row;
 
    function Shift_Rows (S : Block_16) return Block_16 is
-      T : Block_16;
+      T1, T2, T : Block_16;
    begin
-      T := Shift_Row (1, 1, S);
-      T := Shift_Row (2, 2, T);
-      T := Shift_Row (3, 3, T);
+      T1 := Shift_Row (1, 1, S);
+      --  T1: row 1 shifted, rows 0/2/3 still equal S.
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T1 (1 + 1 + 4 * C) = S (1 + 1 + 4 * ((C + 1) mod 4)));
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T1 (4 * C + 1) = S (4 * C + 1));      --  row 0 untouched
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T1 (4 * C + 3) = S (4 * C + 3));      --  row 2 untouched
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T1 (4 * C + 4) = S (4 * C + 4));      --  row 3 untouched
+
+      T2 := Shift_Row (2, 2, T1);
+      --  T2: row 2 shifted relative to T1 (which has row 2 = S row 2).
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T2 (4 * C + 1) = S (4 * C + 1));      --  row 0 untouched
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T2 (1 + 1 + 4 * C) = S (1 + 1 + 4 * ((C + 1) mod 4)));
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T2 (2 + 1 + 4 * C) = S (2 + 1 + 4 * ((C + 2) mod 4)));
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T2 (4 * C + 4) = S (4 * C + 4));      --  row 3 untouched
+
+      T := Shift_Row (3, 3, T2);
+
+      --  Stage the unified Post expression by separately asserting
+      --  each row, then conjoining.  The single quantifier over both
+      --  C and R confuses the prover; per-row quantifiers do not.
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T (4 * C + 1) = S (4 * ((C + 0) mod 4) + 0 + 1));  --  row 0
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T (4 * C + 2) =
+             S (4 * ((C + 1) mod 4) + 1 + 1));               --  row 1
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T (4 * C + 3) =
+             S (4 * ((C + 2) mod 4) + 2 + 1));               --  row 2
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           T (4 * C + 4) =
+             S (4 * ((C + 3) mod 4) + 3 + 1));               --  row 3
+
+      --  Chain the four per-row asserts into the unified
+      --  for-all-C-and-R form.  SPARK's SMT backend does not
+      --  combine universal quantifiers from separate hypotheses
+      --  by default, so we manually instantiate at each (C, R).
+      for C in 0 .. 3 loop
+         pragma Assert
+           (T (4 * C + 0 + 1) = S (4 * ((C + 0) mod 4) + 0 + 1));
+         pragma Assert
+           (T (4 * C + 1 + 1) = S (4 * ((C + 1) mod 4) + 1 + 1));
+         pragma Assert
+           (T (4 * C + 2 + 1) = S (4 * ((C + 2) mod 4) + 2 + 1));
+         pragma Assert
+           (T (4 * C + 3 + 1) = S (4 * ((C + 3) mod 4) + 3 + 1));
+         pragma Assert
+           (for all R in 0 .. 3 =>
+              T (4 * C + R + 1) =
+                S (4 * ((C + R) mod 4) + R + 1));
+         pragma Loop_Invariant
+           (for all C2 in 0 .. C =>
+              (for all R in 0 .. 3 =>
+                 T (4 * C2 + R + 1) =
+                   S (4 * ((C2 + R) mod 4) + R + 1)));
+      end loop;
+
+      pragma Assert
+        (for all C in 0 .. 3 =>
+           (for all R in 0 .. 3 =>
+              T (4 * C + R + 1) =
+                S (4 * ((C + R) mod 4) + R + 1)));
       return T;
    end Shift_Rows;
 
@@ -225,8 +340,13 @@ is
    --  row of the {02 03 01 01} circulant matrix · column.
    ---------------------------------------------------------------------
 
+   --  Mix4 (s0, s1, s2, s3) is the row-0 byte of the column matrix
+   --  multiply per HACL\* `mix4` (Spec.AES.fst:113).  Other rows of
+   --  the same column are obtained by rotating the inputs:
+   --    row r of column = Mix4 (s_r, s_(r+1), s_(r+2), s_(r+3))
+   --  Implemented as Mix_Col_Byte at row 0 — same value.
    function Mix4 (S0, S1, S2, S3 : Octet) return Octet is
-     ((Xtime (S0)) xor (Xtime (S1) xor S1) xor S2 xor S3);
+     (Mix_Col_Byte (S0, S1, S2, S3, 0));
 
    --  Inv_Mix4 — HACL\* `inv_mix4` (line 101).
    --  14*s0 + 11*s1 + 13*s2 + 9*s3 (FIPS 197 §5.3.3).
@@ -242,10 +362,49 @@ is
          S1 := Out_S (4 * Col + 2);
          S2 := Out_S (4 * Col + 3);
          S3 := Out_S (4 * Col + 4);
+         pragma Assert (S0 = S (4 * Col + 1));
+         pragma Assert (S1 = S (4 * Col + 2));
+         pragma Assert (S2 = S (4 * Col + 3));
+         pragma Assert (S3 = S (4 * Col + 4));
          Out_S (4 * Col + 1) := Mix4 (S0, S1, S2, S3);
          Out_S (4 * Col + 2) := Mix4 (S1, S2, S3, S0);
          Out_S (4 * Col + 3) := Mix4 (S2, S3, S0, S1);
          Out_S (4 * Col + 4) := Mix4 (S3, S0, S1, S2);
+
+         --  Match each Mix4 expression to the corresponding
+         --  Mix_Col_Byte (s0, s1, s2, s3, R).  XOR is commutative,
+         --  so Mix4 (a, b, c, d) (which is row 0 over (a, b, c, d))
+         --  equals Mix_Col_Byte over (s0, s1, s2, s3) at the
+         --  appropriate rotated row.
+         pragma Assert
+           (Mix4 (S0, S1, S2, S3) = Mix_Col_Byte (S0, S1, S2, S3, 0));
+         pragma Assert
+           (Mix4 (S1, S2, S3, S0) = Mix_Col_Byte (S0, S1, S2, S3, 1));
+         pragma Assert
+           (Mix4 (S2, S3, S0, S1) = Mix_Col_Byte (S0, S1, S2, S3, 2));
+         pragma Assert
+           (Mix4 (S3, S0, S1, S2) = Mix_Col_Byte (S0, S1, S2, S3, 3));
+
+         pragma Loop_Invariant
+           (for all K in 0 .. Col =>
+              Out_S (4 * K + 1) =
+                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
+                              S (4 * K + 3), S (4 * K + 4), 0)
+              and then Out_S (4 * K + 2) =
+                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
+                              S (4 * K + 3), S (4 * K + 4), 1)
+              and then Out_S (4 * K + 3) =
+                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
+                              S (4 * K + 3), S (4 * K + 4), 2)
+              and then Out_S (4 * K + 4) =
+                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
+                              S (4 * K + 3), S (4 * K + 4), 3));
+         pragma Loop_Invariant
+           (for all K in Col + 1 .. 3 =>
+              Out_S (4 * K + 1) = S (4 * K + 1)
+              and then Out_S (4 * K + 2) = S (4 * K + 2)
+              and then Out_S (4 * K + 3) = S (4 * K + 3)
+              and then Out_S (4 * K + 4) = S (4 * K + 4));
       end loop;
       return Out_S;
    end Mix_Columns;

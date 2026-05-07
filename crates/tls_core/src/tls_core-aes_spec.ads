@@ -43,9 +43,14 @@
 --  No SPARK_Mode switch-off, no `pragma Assume` — this package is
 --  the spec, not an implementation, and it is callable.
 
+with Interfaces;
+
 package Tls_Core.Aes_Spec
 with SPARK_Mode
 is
+
+   use type Interfaces.Unsigned_8;
+   --  Bring byte equality into scope for the byte-level Posts below.
 
    --  HACL\* `block` (Spec.AES.fst:29): 16 GF(2^8) elements.
    subtype Block_16 is Octet_Array (1 .. 16);
@@ -73,20 +78,59 @@ is
    function Inv_Sub_Byte (B : Octet) return Octet;
 
    ---------------------------------------------------------------------
+   --  GF(2^8) byte multiplications used in MixColumns.
+   ---------------------------------------------------------------------
+
+   --  HACL\* Spec.AES `xtime` (Spec.AES.fst:108) — multiply byte by 2
+   --  in GF(2^8) modulo 0x11B.  Same definition as Aes_Core.Xtime.
+   function Spec_Xtime (B : Octet) return Octet;
+
+   --  Mix_Col_Byte (a, b, c, d, R) computes the R-th row of the
+   --  output column when the column matrix M = circulant({02, 03,
+   --  01, 01}) is applied to (a, b, c, d).  R in 0..3 selects which
+   --  output byte of that column to return:
+   --    R = 0 -> 2*a + 3*b + c + d
+   --    R = 1 -> a + 2*b + 3*c + d
+   --    R = 2 -> a + b + 2*c + 3*d
+   --    R = 3 -> 3*a + b + c + 2*d
+   --  Per FIPS 197 §5.1.3 Eq.(5.6).  Same algebra as HACL\* `mix4`.
+   function Mix_Col_Byte
+     (A, B, C, D : Octet;
+      Row        : Natural) return Octet
+   with Pre => Row in 0 .. 3;
+
+   ---------------------------------------------------------------------
    --  Block-level transformations.  Each is a pure function returning
    --  a fresh Block_16 — same shape as the HACL\* spec, where
    --  immutable lseq is the rule.
    ---------------------------------------------------------------------
 
    --  HACL\* `subBytes` (Spec.AES.fst:67) — apply Sub_Byte byte-wise.
-   function Sub_Bytes (S : Block_16) return Block_16;
+   function Sub_Bytes (S : Block_16) return Block_16
+   with
+     Post => (for all I in Block_16'Range =>
+                Sub_Bytes'Result (I) = Sub_Byte (S (I)));
 
    --  HACL\* `inv_subBytes` (Spec.AES.fst:70).
-   function Inv_Sub_Bytes (S : Block_16) return Block_16;
+   function Inv_Sub_Bytes (S : Block_16) return Block_16
+   with
+     Post => (for all I in Block_16'Range =>
+                Inv_Sub_Bytes'Result (I) = Inv_Sub_Byte (S (I)));
 
    --  HACL\* `shiftRows` (Spec.AES.fst:84) — left-rotate each
    --  non-zero row by its row index.
-   function Shift_Rows (S : Block_16) return Block_16;
+   --
+   --  Byte-level Post per FIPS 197 §5.1.2: in column-major layout,
+   --  out[row r, col c] := in[row r, col (c + r) mod 4].  Indices
+   --  are 1-based, so position 4*c + r + 1 reads from position
+   --  4*((c + r) mod 4) + r + 1.
+   function Shift_Rows (S : Block_16) return Block_16
+   with
+     Post =>
+       (for all C in 0 .. 3 =>
+          (for all R in 0 .. 3 =>
+             Shift_Rows'Result (4 * C + R + 1) =
+               S (4 * ((C + R) mod 4) + R + 1)));
 
    --  HACL\* `inv_shiftRows` (Spec.AES.fst:90) — right-rotate each
    --  non-zero row by its row index (= left-rotate by 4 - i).
@@ -95,7 +139,31 @@ is
    --  HACL\* `mixColumns` (Spec.AES.fst:125) — multiply each column
    --  by the polynomial {03}x^3 + {01}x^2 + {01}x + {02} mod
    --  (x^4 + 1) over GF(2^8) (FIPS 197 §5.1.3).
-   function Mix_Columns (S : Block_16) return Block_16;
+   --
+   --  Byte-level Post per HACL\* `mixColumn` (Spec.AES.fst:113):
+   --  for column c with bytes (s0, s1, s2, s3) at positions
+   --  4*c + 1 .. 4*c + 4, output rows are:
+   --    row 0: 2*s0 + 3*s1 + s2 + s3 = Mix4 (s0, s1, s2, s3)
+   --    row 1: s0 + 2*s1 + 3*s2 + s3 = Mix4 (s1, s2, s3, s0)
+   --    row 2: s0 + s1 + 2*s2 + 3*s3 = Mix4 (s2, s3, s0, s1)
+   --    row 3: 3*s0 + s1 + s2 + 2*s3 = Mix4 (s3, s0, s1, s2)
+   --  where Mix4 (a,b,c,d) := 2*a + 3*b + c + d.
+   function Mix_Columns (S : Block_16) return Block_16
+   with
+     Post =>
+       (for all C in 0 .. 3 =>
+          Mix_Columns'Result (4 * C + 1) =
+            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
+                          S (4 * C + 3), S (4 * C + 4), 0)
+          and then Mix_Columns'Result (4 * C + 2) =
+            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
+                          S (4 * C + 3), S (4 * C + 4), 1)
+          and then Mix_Columns'Result (4 * C + 3) =
+            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
+                          S (4 * C + 3), S (4 * C + 4), 2)
+          and then Mix_Columns'Result (4 * C + 4) =
+            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
+                          S (4 * C + 3), S (4 * C + 4), 3));
 
    --  HACL\* `inv_mixColumns` (Spec.AES.fst:144) — inverse of
    --  Mix_Columns; column matrix is {0B}{0D}{09}{0E} (FIPS 197 §5.3.3).
@@ -105,7 +173,12 @@ is
    --  round-key block into the state.
    function Add_Round_Key
      (Key   : Block_16;
-      State : Block_16) return Block_16;
+      State : Block_16) return Block_16
+   with
+     Post => (for all I in Block_16'Range =>
+                Add_Round_Key'Result (I) =
+                  Octet (Interfaces.Unsigned_8 (State (I))
+                         xor Interfaces.Unsigned_8 (Key (I))));
 
    ---------------------------------------------------------------------
    --  Round drivers.
@@ -115,13 +188,26 @@ is
    --  Sub_Bytes ∘ Shift_Rows ∘ Mix_Columns ∘ AddRoundKey.
    function Aes_Enc
      (Key   : Block_16;
-      State : Block_16) return Block_16;
+      State : Block_16) return Block_16
+   with
+     Post => Aes_Enc'Result =
+               Add_Round_Key
+                 (Key,
+                  Mix_Columns
+                    (Shift_Rows
+                       (Sub_Bytes (State))));
 
    --  HACL\* `aes_enc_last` (Spec.AES.fst:164) — final round, no
    --  Mix_Columns.
    function Aes_Enc_Last
      (Key   : Block_16;
-      State : Block_16) return Block_16;
+      State : Block_16) return Block_16
+   with
+     Post => Aes_Enc_Last'Result =
+               Add_Round_Key
+                 (Key,
+                  Shift_Rows
+                    (Sub_Bytes (State)));
 
    --  Per FIPS 197 §5.3 InvCipher (direct form): InvSubBytes →
    --  InvShiftRows → AddRoundKey → InvMixColumns.  HACL\*'s

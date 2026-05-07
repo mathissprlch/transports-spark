@@ -42,7 +42,7 @@ is
    procedure Hw_Full_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Tls_Core.Aes_Core.Round_Index)
    with
      Pre  => RK'First = 1
              and then Round * 16 + 16 <= RK'Length;
@@ -51,7 +51,7 @@ is
    procedure Hw_Final_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
-      Round : Natural)
+      Round : Tls_Core.Aes_Core.Round_Index)
    with
      Pre  => RK'First = 1
              and then Round * 16 + 16 <= RK'Length;
