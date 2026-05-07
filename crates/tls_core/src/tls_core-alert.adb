@@ -11,8 +11,7 @@ is
       Out_Bytes : out Alert_Bytes)
    is
    begin
-      Out_Bytes (1) := A.Level;
-      Out_Bytes (2) := A.Description;
+      Out_Bytes := (A.Level, A.Description);
    end Encode;
 
    ---------------------------------------------------------------------

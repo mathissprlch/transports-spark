@@ -169,6 +169,12 @@ is
    --  recorded; defaults to 0 (Desc_Close_Notify) on Closed.
    function Last_Alert_Description (D : Driver) return Octet;
 
+   --  True iff the driver has derived the application traffic
+   --  secrets — Step transitions to Done only after this is set,
+   --  but the converse isn't enforced by the type system, so the
+   --  alert APIs require the predicate explicitly.
+   function App_Secrets_Set (D : Driver) return Boolean;
+
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Build a §6.1 close_notify alert record for
    --                      graceful shutdown after the handshake.
@@ -196,6 +202,7 @@ is
    with
      Pre =>
        Current_State (D) = Done
+       and then App_Secrets_Set (D)
        and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
                  or else Selected_Suite (D)
                            = Tls_Core.Suites.Aes_128_Gcm_Sha256)
@@ -222,8 +229,11 @@ is
       Out_Last    : out Natural)
    with
      Pre =>
-       (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
-        or else Selected_Suite (D) = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       (Current_State (D) in Idle | Awaiting_CH | Done)
+       and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D)
+                           = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then (if Current_State (D) = Done then App_Secrets_Set (D))
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 5 + 2 + 1 + 16;
 
@@ -265,7 +275,12 @@ is
      (D       : Driver;
       Out_Dir : out Tls_Core.Aead_Channel.Direction;
       In_Dir  : out Tls_Core.Aead_Channel.Direction)
-   with Pre => Current_State (D) = Done;
+   with
+     Pre =>
+       Current_State (D) = Done
+       and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D)
+                           = Tls_Core.Suites.Aes_128_Gcm_Sha256);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Send a KeyUpdate post-handshake message
@@ -463,5 +478,7 @@ private
    is (D.Suite);
 
    function Last_Alert_Description (D : Driver) return Octet is (D.Last_Alert);
+
+   function App_Secrets_Set (D : Driver) return Boolean is (D.App_Set);
 
 end Tls_Core.Tls13_Driver;
