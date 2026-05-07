@@ -70,14 +70,16 @@ is
      Pre  => Buf'First = 1
              and then Buf'Last < Integer'Last - 16,
      Post => (if OK then
-                Value_Pos in Buf'First .. Buf'Last + 1
+                Value_Pos > Pos
+                and then Value_Pos in Buf'First .. Buf'Last + 1
                 and then Value_Len <= Buf'Length
                 and then (if Value_Len > 0 then
                             Value_Pos in Buf'Range
                             and then Value_Pos + Value_Len - 1
                                        in Buf'Range)
                 and then Next_Pos = Value_Pos + Value_Len
-                and then Next_Pos in Buf'First .. Buf'Last + 1);
+                and then Next_Pos in Buf'First .. Buf'Last + 1
+                and then Next_Pos > Pos);
 
    procedure Read_Tlv
      (Buf       : Octet_Array;
