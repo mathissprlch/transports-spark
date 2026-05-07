@@ -41,6 +41,10 @@ is
        --  Bound caller's First so the index arithmetic in the body
        --  cannot overflow Integer.
        and then Key'Last < Integer'Last - 1024
-       and then Message'Last < Integer'Last - 1024;
+       and then Message'Last < Integer'Last - 1024
+       --  Pre-hash branch calls Sha256.Hash, which now carries the
+       --  HACL*-ported functional Post requiring its input to be
+       --  1-based.
+       and then Key'First = 1;
 
 end Tls_Core.Hmac_Sha256;

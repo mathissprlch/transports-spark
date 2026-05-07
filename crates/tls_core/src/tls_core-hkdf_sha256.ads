@@ -51,7 +51,8 @@ is
        and then Info'Length <= 1024
        and then PRK'Last < Integer'Last - 1024
        and then Info'Last < Integer'Last - 1024
-       and then OKM'Last < Integer'Last - 1024;
+       and then OKM'Last < Integer'Last - 1024
+       and then PRK'First = 1;
 
    --  Adapter matching the Hmac_Expand formal of
    --  Tls_Core.Hkdf.Expand_Label. Renames Expand under the
@@ -67,6 +68,7 @@ is
        and then Info'Length <= 1024
        and then Prk'Last < Integer'Last - 1024
        and then Info'Last < Integer'Last - 1024
-       and then Output'Last < Integer'Last - 1024;
+       and then Output'Last < Integer'Last - 1024
+       and then Prk'First = 1;
 
 end Tls_Core.Hkdf_Sha256;

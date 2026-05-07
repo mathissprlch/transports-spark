@@ -157,6 +157,9 @@ is
        and then Label'Last < Integer'Last - 256
        and then Context'Last < Integer'Last - 256
        and then Secret'Last < Integer'Last - 1024
-       and then Output'Last < Integer'Last - 1024;
+       and then Output'Last < Integer'Last - 1024
+       --  Hmac_Expand instantiations call Sha256.Hash transitively;
+       --  the HACL*-ported functional Post requires 1-based input.
+       and then Secret'First = 1;
 
 end Tls_Core.Hkdf;
