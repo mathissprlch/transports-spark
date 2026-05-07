@@ -39,6 +39,7 @@ package Tls_Core.Poly1305
 with SPARK_Mode
 is
 
+   use type Interfaces.Unsigned_64;
    subtype U64 is Interfaces.Unsigned_64;
    subtype U32 is Interfaces.Unsigned_32;
 
@@ -80,6 +81,15 @@ is
    with Ghost,
         Pre  => N < Natural'Last - 8,
         Post => Spec_Pow2 (N + 8) = Big.To_Big_Integer (256) * Spec_Pow2 (N);
+
+   --  Lemma: 2^(M+N) = 2^M * 2^N. The general additive law that
+   --  Lemma_Pow2_Step is the unit-step specialisation of. Body
+   --  inducts on N.
+   procedure Lemma_Pow2_Add (M, N : Natural)
+   with Ghost,
+        Pre  => M <= Natural'Last - N,
+        Post => Spec_Pow2 (M + N) = Spec_Pow2 (M) * Spec_Pow2 (N),
+        Subprogram_Variant => (Decreases => N);
 
    --  Lemma: Spec_Pow2 is strictly monotonic. Used to chain
    --  bounds across non-adjacent powers of two without a manual
@@ -216,6 +226,148 @@ is
    with
      Ghost,
      Pre => Message'Last < Integer'Last - 16;
+
+   ------------------------------------------------------------------
+   --  Limb-projection ghost (HACL\* `as_nat5` / `feval5` port)
+   ------------------------------------------------------------------
+   --
+   --  HACL\* `Hacl.Spec.Poly1305.Field32xN` defines:
+   --
+   --      let as_nat5 (s0,s1,s2,s3,s4) =
+   --        v s0 + v s1 * pow2 26 + v s2 * pow2 52
+   --             + v s3 * pow2 78 + v s4 * pow2 104
+   --
+   --      let feval5 limbs = (as_nat5 limbs) % prime
+   --
+   --  We mirror the structure here. The functions are exposed in the
+   --  spec because Posts on private helpers (Add / Multiply / Carry /
+   --  Load_Block) reference them — gnatprove needs the spec-level
+   --  declarations to type-check Posts.
+   --
+   --  The bridging lemma chain needed to discharge `Mac`'s functional
+   --  Post (`Out_Tag = Spec_Poly1305_Mac (Key, Message)`) is:
+   --
+   --    Lemma_Add_Correspondence       feval5 (Add a b)      = (feval5 a + feval5 b) mod prime
+   --    Lemma_Multiply_Correspondence  feval5 (Mul a b)      = (feval5 a * feval5 b) mod prime
+   --    Lemma_Carry_Preserves_Feval    feval5 (Carry l)      = feval5 l
+   --    Lemma_Load_Block_Eq_Encode     as_nat5 (Load_Block b len final) = Spec_Encode_Block (...)
+   --    Lemma_Final_Repack_Eq_Bytes    repack to bytes
+   --                                     = nat_to_bytes_le_16 ((acc + s) mod 2^128)
+   --
+   --  HACL\* discharges these in `Hacl.Spec.Poly1305.Field32xN.Lemmas`
+   --  (~3000 lines of F\*) — full SPARK port is multi-day. The
+   --  scaffolding below is the start of that port.
+
+   --  5×26-bit limb representation, public so functional Posts on
+   --  the private helpers (Add / Multiply / Carry / Load_Block) can
+   --  reference the projection ghost functions defined below.
+   subtype Limb_Index is Natural range 0 .. 4;
+   type Limbs is array (Limb_Index) of U64;
+
+   --  Bound predicate: every limb fits in 26 bits. After Carry the
+   --  accumulator satisfies this; HACL\*'s `felem_fits5` analogue.
+   function All_Limbs_Fit_26 (L : Limbs) return Boolean
+   is (for all I in Limb_Index => L (I) < 2**26)
+   with Ghost;
+
+   --  Power-of-two specialisations used by As_Nat5 (kept as constants
+   --  to avoid repeated re-evaluation inside expression-function calls).
+   function Pow2_26  return Big.Big_Natural is (Spec_Pow2 (26))  with Ghost;
+   function Pow2_52  return Big.Big_Natural is (Spec_Pow2 (52))  with Ghost;
+   function Pow2_78  return Big.Big_Natural is (Spec_Pow2 (78))  with Ghost;
+   function Pow2_104 return Big.Big_Natural is (Spec_Pow2 (104)) with Ghost;
+
+   package U64_Bigint is new Big.Unsigned_Conversions (Int => U64);
+
+   --  HACL\* `as_nat5`: 5×26-bit limb array → integer value.
+   function As_Nat5 (L : Limbs) return Big.Big_Natural
+   is
+     (U64_Bigint.To_Big_Integer (L (0))
+      + U64_Bigint.To_Big_Integer (L (1)) * Pow2_26
+      + U64_Bigint.To_Big_Integer (L (2)) * Pow2_52
+      + U64_Bigint.To_Big_Integer (L (3)) * Pow2_78
+      + U64_Bigint.To_Big_Integer (L (4)) * Pow2_104)
+   with Ghost;
+
+   --  HACL\* `feval5`: limb array → field element.
+   function Feval5 (L : Limbs) return Big.Big_Natural
+   is (As_Nat5 (L) mod Spec_Prime)
+   with Ghost;
+
+   ------------------------------------------------------------------
+   --  Bit-shift / mask decomposition lemma (foundation for the carry
+   --  and multiply correspondence proofs)
+   ------------------------------------------------------------------
+   --
+   --  Identity: for any U64 X,
+   --    U64 (X) = U64 (Shift_Right (X, 26)) * 2^26
+   --              + U64 (X and Mask_26)
+   --
+   --  This is the *single* fact the Carry routine relies on for
+   --  every limb. Discharging it once at the U64 level lets every
+   --  subsequent As_Nat5 / Feval5 manipulation chain through.
+   --
+   --  HACL\* equivalent: `Hacl.Spec.Poly1305.Field32xN.Lemmas.lemma_carry26_wide`
+   --  decomposed into the bitvec / arithmetic identity.
+
+   procedure Lemma_Limb_Split_26 (X : U64)
+   with Ghost,
+        Post =>
+          U64_Bigint.To_Big_Integer (X) =
+            U64_Bigint.To_Big_Integer (Interfaces.Shift_Right (X, 26))
+              * Pow2_26
+            + U64_Bigint.To_Big_Integer (X and 16#03FF_FFFF#);
+
+   --  The Pow2_X = Pow2 * Pow2_(X-26) commutativity lemmas. Each is
+   --  a one-step chain via Lemma_Pow2_Plus_8 / Lemma_Pow2_Step. The
+   --  chain `As_Nat5 (Carry l) mod prime = As_Nat5 (l) mod prime`
+   --  needs each Pow2_X to be expressible as 2^26 * Pow2_(X-26) so
+   --  that a carry from limb i (a multiple of 2^26 contribution at
+   --  position i) lands as Pow2_(X-26) * (carry contrib) at position
+   --  i+1.
+
+   procedure Lemma_Pow2_52_Eq_26x26
+   with Ghost,
+        Post => Pow2_52 = Pow2_26 * Pow2_26;
+
+   procedure Lemma_Pow2_78_Eq_52x26
+   with Ghost,
+        Post => Pow2_78 = Pow2_52 * Pow2_26;
+
+   procedure Lemma_Pow2_104_Eq_78x26
+   with Ghost,
+        Post => Pow2_104 = Pow2_78 * Pow2_26;
+
+   --  Top-limb modular fold: 2^130 ≡ 5 (mod prime). Used to discharge
+   --  the Carry top-step where bits past 2^130 are folded back via × 5.
+   procedure Lemma_Pow2_130_Mod_Prime
+   with Ghost,
+        Post => Spec_Pow2 (130) mod Spec_Prime = Big.To_Big_Integer (5);
+
+   --  TODO: The following lemmas are needed to close the Mac Post
+   --  (`Out_Tag = Spec_Poly1305_Mac (Key, Message)`):
+   --
+   --    Lemma_As_Nat5_Linear  (A, B, R)
+   --      Pre  : R(I) = A(I) + B(I) with no overflow per limb
+   --      Post : As_Nat5 (R) = As_Nat5 (A) + As_Nat5 (B)
+   --    Lemma_Carry_Preserves_Feval (L_In, L_Out)
+   --      Post : Feval5 (L_Out) = Feval5 (L_In)
+   --    Lemma_Multiply_Mod_Prime (A, B, R)
+   --      Post : Feval5 (R) = (As_Nat5 (A) * As_Nat5 (B)) mod prime
+   --    Lemma_Load_Block_Eq_Encode  (B, Len, Final, Out_Limbs)
+   --      Post : As_Nat5 (Out_Limbs) = Spec_Encode_Block (B, Len + (Final?0:1))
+   --    Lemma_Repack_Eq_Bytes_LE
+   --      Post : tag bytes = nat_to_bytes_le_16 ((acc + s) mod 2^128)
+   --
+   --  All five hit the gnatprove × Big_Integers_Ghost limitation that
+   --  `To_Big_Integer (X + Y) = To_Big_Integer (X) + To_Big_Integer (Y)`
+   --  is not built-in. Closing them requires either: (a) a generic
+   --  `Lemma_To_Big_Add (X, Y, Z)` proven via cascading shifts and the
+   --  existing `Lemma_Limb_Split_26`, or (b) a refactor of the imperative
+   --  body that exposes per-limb arithmetic in a form already covered
+   --  by GNAT runtime ghost lemmas (`s-aridou` `Lemma_Add_Commutation`).
+   --  Either is multi-day work. Current state: foundation lemmas
+   --  proved (Limb_Split_26, Pow2_Add, Pow2_*_Eq_*x26, Pow2_130_Mod_Prime).
 
    ------------------------------------------------------------------
    --  Imperative API

@@ -6,13 +6,8 @@ is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
-   --  We represent 130-bit integers as 5 limbs of 26 bits each
-   --  (5 * 26 = 130). Each limb sits in a u64 so we have 38 bits
-   --  of carry headroom for one multiply-add before partial
-   --  reduction. The arithmetic mirrors HACL\*'s
-   --  Hacl.Spec.Poly1305.Field32.
-   subtype Limb_Index is Natural range 0 .. 4;
-   type Limbs is array (Limb_Index) of U64;
+   --  Limb_Index / Limbs are now declared in the spec so functional
+   --  Posts on the private helpers can reference As_Nat5 / Feval5.
 
    Mask_26 : constant U64 := 16#03FF_FFFF#;
 
@@ -93,6 +88,61 @@ is
       pragma Assert
         (Spec_Pow2 (128) >= Big.To_Big_Integer (128));
    end Lemma_Pow2_128_Lt_Prime;
+
+   procedure Lemma_Limb_Split_26 (X : U64) is
+      Hi  : constant U64 := Shift_Right (X, 26);
+      Lo  : constant U64 := X and 16#03FF_FFFF#;
+   begin
+      --  At the U64 level: X = Hi * 2^26 + Lo, with Lo < 2^26.
+      --  This is the standard "shift+mask = quot+rem" decomposition;
+      --  modular-arithmetic provers handle it natively when the shift
+      --  amount and mask agree on the same power of two.
+      pragma Assert (Lo < 2**26);
+      pragma Assert (X = Shift_Left (Hi, 26) + Lo);
+      pragma Assert (Shift_Left (Hi, 26) = Hi * 2**26);
+      pragma Assert (X = Hi * 2**26 + Lo);
+   end Lemma_Limb_Split_26;
+
+   procedure Lemma_Pow2_Add (M, N : Natural) is
+   begin
+      if N = 0 then
+         --  2^(M+0) = 2^M = 2^M * 1 = 2^M * 2^0
+         pragma Assert (Spec_Pow2 (0) = Big.To_Big_Integer (1));
+         return;
+      end if;
+      --  Inductive step: 2^(M + N) = 2 * 2^(M + N - 1)
+      --                            = 2 * (2^M * 2^(N-1))   [IH]
+      --                            = 2^M * (2 * 2^(N-1))
+      --                            = 2^M * 2^N
+      Lemma_Pow2_Add (M, N - 1);     --  IH
+      Lemma_Pow2_Step (M + N - 1);   --  2^(M+N) = 2 * 2^(M+N-1)
+      Lemma_Pow2_Step (N - 1);       --  2^N     = 2 * 2^(N-1)
+   end Lemma_Pow2_Add;
+
+   procedure Lemma_Pow2_52_Eq_26x26 is
+   begin
+      Lemma_Pow2_Add (26, 26);
+   end Lemma_Pow2_52_Eq_26x26;
+
+   procedure Lemma_Pow2_78_Eq_52x26 is
+   begin
+      Lemma_Pow2_Add (52, 26);
+   end Lemma_Pow2_78_Eq_52x26;
+
+   procedure Lemma_Pow2_104_Eq_78x26 is
+   begin
+      Lemma_Pow2_Add (78, 26);
+   end Lemma_Pow2_104_Eq_78x26;
+
+   procedure Lemma_Pow2_130_Mod_Prime is
+   begin
+      --  Spec_Prime = Spec_Pow2 (130) - 5  ⇒  Spec_Pow2 (130) = Spec_Prime + 5
+      --  Hence Spec_Pow2 (130) mod Spec_Prime = 5 mod Spec_Prime = 5
+      --  (since Spec_Prime > 5).
+      Lemma_Pow2_128_Lt_Prime;  --  pulls in 2^128 < Prime, so Prime > 5
+   end Lemma_Pow2_130_Mod_Prime;
+
+   --  Lemma_As_Nat5_Linear body deferred (see ads-side TODO).
 
    procedure Lemma_Bytes_Bound (B : Octet_Array) is
    begin
