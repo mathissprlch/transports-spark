@@ -3480,6 +3480,345 @@ procedure Tls_Core_Tests is
    end Key_Update_Roundtrip_Scenario;
 
    --------------------------------------------------------------------
+   --  Scenario 30d — Tls13_Driver HelloRetryRequest loopback
+   --
+   --  RFC 8446 §4.1.4 + §4.4.1. Server is initialised to demand HRR
+   --  on first CH (named-group renegotiation, here demanding
+   --  secp256r1 even though our PSK_KE driver doesn't carry an
+   --  ECDHE key_share — the renegotiation is structural and the
+   --  cookie echo is the cryptographic receipt). Client is
+   --  initialised HRR-aware; the second CH echoes the cookie and
+   --  the rest of the handshake proceeds normally.
+   --
+   --  Flight order:
+   --    Client → CH1                                  (TLSPlaintext)
+   --    Server → HRR                                  (TLSPlaintext)
+   --    Client → CH2 with cookie echo                 (TLSPlaintext)
+   --    Server → SH || EE-ct || SF-ct                 (TLSPlaintext+ct)
+   --    Client → CF-ct                                (TLSCiphertext)
+   --
+   --  Expected: both sides reach Done; transcript hashes track
+   --  synthetic(CH1)||HRR||CH2||SH||EE||SF on both ends; HRR
+   --  random equals Hello_Retry.Magic_Random; selected_group is
+   --  the demanded group; cookie echoes byte-for-byte.
+   --------------------------------------------------------------------
+   procedure Tls13_Hrr_Loopback;
+   procedure Tls13_Hrr_Loopback is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Tls_Core.Octet;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+      --  An eight-byte cookie — chosen as a fixed bytestring so the
+      --  test can assert byte-for-byte echo.
+      Cookie : constant Tls_Core.Octet_Array (1 .. 8) :=
+        (16#C0#, 16#0C#, 16#1E#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#);
+
+      C, S : Tls_Core.Tls13_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf_Last : Natural := 0;
+   begin
+      Put_Line ("scenario 30b — Tls13_Driver HRR loopback");
+
+      --  Server demands HRR with secp256r1 + cookie; client is HRR-
+      --  aware (Idle → Awaiting_Sh_Or_Hrr).
+      Tls_Core.Tls13_Driver.Init_Psk_Server_With_Hrr
+        (S, Psk, Identity,
+         Tls_Core.Suites.Group_Secp256r1, Cookie);
+      Tls_Core.Tls13_Driver.Init_Psk_Client_Hrr_Aware
+        (C, Psk, Identity);
+
+      --  Flight 1: client → CH1
+      Tls_Core.Tls13_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      Check ("HRR: client produced CH1", Buf_Last > 50);
+      Check ("HRR: client transitioned to Awaiting_Sh_Or_Hrr",
+             Tls_Core.Tls13_Driver.Current_State (C)
+               = Tls_Core.Tls13_Driver.Awaiting_Sh_Or_Hrr);
+      Check ("HRR: CH1 outer is handshake (0x16)",
+             Buf (1) = 16#16#);
+
+      --  Flight 2: server consumes CH1 → emits HRR (single TLSPlaintext)
+      declare
+         Ch1 : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Ch1, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("HRR: server transitioned to Awaiting_Ch_2",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Awaiting_Ch_2);
+         Check ("HRR: server emitted single TLSPlaintext record",
+                Reply_Last > 50
+                and then Reply (1) = 16#16#);
+         --  HRR record body starts at byte 6 (after 5-byte record
+         --  header). Handshake header = 4 bytes (type 0x02 + u24
+         --  length). Random sits at offset 6+4+2 = 12 .. 12+31.
+         Check ("HRR: handshake type byte is 0x02 (SH/HRR)",
+                Reply (6) = 16#02#);
+         declare
+            Random_Slice : constant Tls_Core.Octet_Array (1 .. 32) :=
+              Reply (12 .. 12 + 31);
+         begin
+            Check ("HRR: server random equals Magic_Random",
+                   Tls_Core.Hello_Retry.Is_Hrr_Random (Random_Slice));
+         end;
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Flight 3: client consumes HRR → emits CH2 (TLSPlaintext)
+      declare
+         Hrr_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Hrr_Bytes,
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("HRR: client transitioned to Awaiting_Sf",
+                Tls_Core.Tls13_Driver.Current_State (C)
+                  = Tls_Core.Tls13_Driver.Awaiting_Sf);
+         Check ("HRR: client emitted CH2", Reply_Last > 50);
+         Check ("HRR: CH2 outer is handshake", Reply (1) = 16#16#);
+         Check ("HRR: CH2 handshake type is CH (0x01)",
+                Reply (6) = 16#01#);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Flight 4: server consumes CH2 → emits SH+EE+SF
+      declare
+         Ch2 : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Ch2, Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("HRR: server reached Awaiting_Cf",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Awaiting_Cf);
+         Check ("HRR: server flight has SH plaintext + 2 ciphertexts",
+                Reply_Last > 100
+                and then Reply (1) = 16#16#);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Flight 5: client consumes SH+EE+SF → emits CF
+      declare
+         Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Sf_Flight,
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("HRR: client reached Done",
+                Tls_Core.Tls13_Driver.Current_State (C)
+                  = Tls_Core.Tls13_Driver.Done);
+         Check ("HRR: client emitted encrypted Finished",
+                Reply_Last > 16 and then Reply (1) = 16#17#);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Flight 6: server consumes CF → Done
+      declare
+         Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Cf, Out_Buf => Discard, Out_Last => Discard_Last);
+         Check ("HRR: server reached Done after CF",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Done);
+      end;
+
+      --  App-data round trip exercises the same secrets the §4.1.4
+      --  + §4.4.1 transcript-substituted key schedule produced.
+      declare
+         use type Tls_Core.Suites.Cipher_Suite_Id;
+         Out_Cli, In_Cli, Out_Srv, In_Srv : Tls_Core.Aead_Channel.Direction;
+         Pt : constant Tls_Core.Octet_Array :=
+           (16#48#, 16#69#);  --  "Hi"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got_Last : Natural;
+         Inner : Tls_Core.Octet;
+         OK : Boolean;
+      begin
+         Check ("HRR: client + server agree on suite",
+                Tls_Core.Tls13_Driver.Selected_Suite (C)
+                  = Tls_Core.Tls13_Driver.Selected_Suite (S));
+         Tls_Core.Tls13_Driver.Open_App_Directions (C, Out_Cli, In_Cli);
+         Tls_Core.Tls13_Driver.Open_App_Directions (S, Out_Srv, In_Srv);
+         Tls_Core.Aead_Channel.Send
+           (Out_Cli, Pt,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (In_Srv, Wire (1 .. Wire_Last),
+            Got, Got_Last, Inner, OK);
+         Check ("HRR: app data c→s decrypts", OK);
+         Check ("HRR: app data c→s round-trips",
+                Got_Last = Pt'Length
+                and then Equal (Got (1 .. Got_Last), Pt));
+      end;
+   end Tls13_Hrr_Loopback;
+
+   --------------------------------------------------------------------
+   --  Scenario 30e — Hello_Retry primitives unit tests.
+   --
+   --  Direct exercise of Encode_Hrr / Decode_Hrr round-trip,
+   --  Cookies_Equal constant-time compare, and Build_Synthetic_Msg
+   --  / Is_Hrr_Random shape checks.
+   --------------------------------------------------------------------
+   procedure Hello_Retry_Unit;
+   procedure Hello_Retry_Unit is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Suites.U16;
+
+      Demo_Cookie : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#11#, 16#22#, 16#33#, 16#44#);
+      Other_Cookie : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#11#, 16#22#, 16#33#, 16#45#);
+      Hrr_Buf : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Hrr_Last : Natural;
+      Cs, Group : Tls_Core.Suites.U16;
+      Cookie_Out : Tls_Core.Hello_Retry.Cookie_Bytes;
+      Cookie_Len : Natural;
+      OK : Boolean;
+      Want_Cookie : Tls_Core.Hello_Retry.Cookie_Bytes := (others => 0);
+   begin
+      Put_Line ("scenario 30c — Hello_Retry primitives");
+
+      --  Is_Hrr_Random
+      Check ("HRR: Magic_Random recognised",
+             Tls_Core.Hello_Retry.Is_Hrr_Random
+               (Tls_Core.Hello_Retry.Magic_Random));
+      Check ("HRR: zero random not magic",
+             not Tls_Core.Hello_Retry.Is_Hrr_Random
+                   (Tls_Core.Octet_Array'(1 .. 32 => 0)));
+
+      --  Synthetic message_hash shape (§4.4.1)
+      declare
+         Synth : Tls_Core.Octet_Array (1 .. 36) := (others => 0);
+         Hash  : constant Tls_Core.Sha256.Digest := (others => 16#5A#);
+      begin
+         Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256 (Hash, Synth);
+         Check ("HRR: synthetic header type 0xFE", Synth (1) = 16#FE#);
+         Check ("HRR: synthetic length u24 = 0x000020",
+                Synth (2) = 0
+                and then Synth (3) = 0
+                and then Synth (4) = 16#20#);
+         Check ("HRR: synthetic body carries hash",
+                (for all I in 1 .. 32 => Synth (4 + I) = Hash (I)));
+      end;
+
+      --  Encode_Hrr / Decode_Hrr round-trip with cookie
+      Tls_Core.Hello_Retry.Encode_Hrr
+        (Selected_Suite => Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
+         Selected_Group => Tls_Core.Suites.Group_Secp256r1,
+         Cookie         => Demo_Cookie,
+         Out_Buf        => Hrr_Buf,
+         Out_Last       => Hrr_Last);
+      Check ("HRR: encode produced bytes", Hrr_Last > 40);
+      --  legacy_version
+      Check ("HRR: legacy_version 0x0303",
+             Hrr_Buf (1) = 16#03# and then Hrr_Buf (2) = 16#03#);
+      --  random
+      Check ("HRR: encoded random is Magic_Random",
+             Tls_Core.Hello_Retry.Is_Hrr_Random
+               (Hrr_Buf (3 .. 3 + 31)));
+      Tls_Core.Hello_Retry.Decode_Hrr
+        (Hrr_Buf (1 .. Hrr_Last),
+         Cs, Group, Cookie_Out, Cookie_Len, OK);
+      Check ("HRR: decode succeeds on round-trip", OK);
+      Check ("HRR: cipher_suite round-trips",
+             Cs = Tls_Core.Suites.TLS_AES_128_GCM_SHA256);
+      Check ("HRR: selected_group round-trips",
+             Group = Tls_Core.Suites.Group_Secp256r1);
+      Check ("HRR: cookie length round-trips",
+             Cookie_Len = Demo_Cookie'Length);
+      Check ("HRR: cookie bytes round-trip",
+             (for all I in 1 .. Demo_Cookie'Length =>
+                Cookie_Out (I) = Demo_Cookie (I)));
+
+      --  Cookies_Equal — constant-time compare
+      for I in 1 .. Demo_Cookie'Length loop
+         Want_Cookie (I) := Demo_Cookie (I);
+      end loop;
+      Check ("HRR: cookies equal when matched",
+             Tls_Core.Hello_Retry.Cookies_Equal
+               (Demo_Cookie, Want_Cookie, Demo_Cookie'Length));
+      Check ("HRR: cookies unequal when one byte differs",
+             not Tls_Core.Hello_Retry.Cookies_Equal
+                   (Other_Cookie, Want_Cookie, Demo_Cookie'Length));
+      Check ("HRR: cookies unequal when length differs",
+             not Tls_Core.Hello_Retry.Cookies_Equal
+                   (Demo_Cookie (1 .. 3), Want_Cookie, Demo_Cookie'Length));
+
+      --  Encode_Hrr with empty cookie omits the cookie ext.
+      declare
+         Hrr_No_Cookie : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         No_Cookie_Last : Natural;
+         No_Cookie_Out : Tls_Core.Hello_Retry.Cookie_Bytes;
+         No_Cookie_Len : Natural;
+         No_Cookie_OK  : Boolean;
+         No_Cs, No_Group : Tls_Core.Suites.U16;
+         Empty_Cookie : constant Tls_Core.Octet_Array (1 .. 0) :=
+           (others => 0);
+      begin
+         Tls_Core.Hello_Retry.Encode_Hrr
+           (Selected_Suite => Tls_Core.Suites.TLS_CHACHA20_POLY1305_SHA256,
+            Selected_Group => Tls_Core.Suites.Group_X25519,
+            Cookie         => Empty_Cookie,
+            Out_Buf        => Hrr_No_Cookie,
+            Out_Last       => No_Cookie_Last);
+         Tls_Core.Hello_Retry.Decode_Hrr
+           (Hrr_No_Cookie (1 .. No_Cookie_Last),
+            No_Cs, No_Group, No_Cookie_Out, No_Cookie_Len, No_Cookie_OK);
+         Check ("HRR: empty-cookie encode → decode succeeds",
+                No_Cookie_OK);
+         Check ("HRR: empty-cookie length is zero",
+                No_Cookie_Len = 0);
+         Check ("HRR: empty-cookie group round-trips",
+                No_Group = Tls_Core.Suites.Group_X25519);
+      end;
+
+      --  Decode rejects non-magic random.
+      declare
+         Bogus_Hrr : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Bogus_OK  : Boolean;
+         Bogus_Cs, Bogus_Group : Tls_Core.Suites.U16;
+         Bogus_Cookie_Out : Tls_Core.Hello_Retry.Cookie_Bytes;
+         Bogus_Cookie_Len : Natural;
+      begin
+         Bogus_Hrr (1 .. Hrr_Last) := Hrr_Buf (1 .. Hrr_Last);
+         --  Flip a byte of the random.
+         Bogus_Hrr (5) := Bogus_Hrr (5) xor 16#01#;
+         Tls_Core.Hello_Retry.Decode_Hrr
+           (Bogus_Hrr (1 .. Hrr_Last),
+            Bogus_Cs, Bogus_Group, Bogus_Cookie_Out,
+            Bogus_Cookie_Len, Bogus_OK);
+         Check ("HRR: decode rejects non-magic random",
+                not Bogus_OK);
+      end;
+   end Hello_Retry_Unit;
+
+   --------------------------------------------------------------------
+
+
+   --------------------------------------------------------------------
    --  Scenario 31 — AES-128 single-block FIPS 197 §C.1 test vector.
    --
    --    Key   = 000102030405060708090A0B0C0D0E0F
@@ -5098,6 +5437,8 @@ begin
    Tls13_Loopback;
    Key_Update_Wire_Scenario;
    Key_Update_Roundtrip_Scenario;
+   Tls13_Hrr_Loopback;
+   Hello_Retry_Unit;
    Aes128_Scenario;
    Aes_Gcm_Scenario;
    Sha384_Scenario;

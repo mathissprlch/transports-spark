@@ -1,5 +1,6 @@
 with Tls_Core.Aead_Channel;
 with Tls_Core.Hello;
+with Tls_Core.Hello_Retry;
 with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 with Tls_Core.Hmac_Sha256;
@@ -8,6 +9,7 @@ with Tls_Core.Key_Update;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Sha256;
 with Tls_Core.Suites;
+with Tls_Core.Transcript;
 
 package body Tls_Core.Tls13_Driver
 with SPARK_Mode
@@ -79,6 +81,14 @@ is
       D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
       D.App_Set := False;
       Prime_Driver_Defaults (D);
+      D.Hrr_Demand    := False;
+      D.Hrr_Sent      := False;
+      D.Hrr_Aware     := False;
+      D.Hrr_Seen      := False;
+      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
+      D.Hrr_Cookie    := (others => 0);
+      D.Hrr_Cookie_Len := 0;
+      D.Hrr_Ch1_Hash  := (others => 0);
    end Init_Psk_Server;
 
    procedure Init_Psk_Client
@@ -97,7 +107,54 @@ is
       D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
       D.App_Set := False;
       Prime_Driver_Defaults (D);
+      D.Hrr_Demand    := False;
+      D.Hrr_Sent      := False;
+      D.Hrr_Aware     := False;
+      D.Hrr_Seen      := False;
+      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
+      D.Hrr_Cookie    := (others => 0);
+      D.Hrr_Cookie_Len := 0;
+      D.Hrr_Ch1_Hash  := (others => 0);
    end Init_Psk_Client;
+
+   ---------------------------------------------------------------------
+   --  Init_Psk_Server_With_Hrr / Init_Psk_Client_Hrr_Aware
+   --  (RFC 8446 §4.1.4 — HelloRetryRequest)
+   ---------------------------------------------------------------------
+
+   procedure Init_Psk_Server_With_Hrr
+     (D                 : out Driver;
+      PSK               : Octet_Array;
+      Psk_Identity      : Octet_Array;
+      Demanded_Group    : Tls_Core.Suites.U16;
+      Cookie            : Octet_Array)
+   is
+   begin
+      Init_Psk_Server (D, PSK, Psk_Identity);
+      D.Hrr_Demand := True;
+      D.Hrr_Sent   := False;
+      D.Hrr_Group  := Demanded_Group;
+      D.Hrr_Cookie := (others => 0);
+      D.Hrr_Cookie_Len := Cookie'Length;
+      if Cookie'Length > 0 then
+         for I in 1 .. Cookie'Length loop
+            pragma Loop_Invariant (I in 1 .. Cookie'Length);
+            pragma Loop_Invariant
+              (Cookie'Length <= Tls_Core.Hello_Retry.Max_Cookie_Length);
+            D.Hrr_Cookie (I) := Cookie (Cookie'First + I - 1);
+         end loop;
+      end if;
+   end Init_Psk_Server_With_Hrr;
+
+   procedure Init_Psk_Client_Hrr_Aware
+     (D            : out Driver;
+      PSK          : Octet_Array;
+      Psk_Identity : Octet_Array)
+   is
+   begin
+      Init_Psk_Client (D, PSK, Psk_Identity);
+      D.Hrr_Aware := True;
+   end Init_Psk_Client_Hrr_Aware;
 
    ---------------------------------------------------------------------
    --  Helpers
@@ -231,7 +288,16 @@ is
                  (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
                Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
                Out_Last := Ch_Rec_Last;
-               D.Cur_State := Awaiting_Sf;
+               --  HRR-aware client transitions to Awaiting_Sh_Or_Hrr;
+               --  the next Step inspects the server's first record and
+               --  dispatches by ServerHello.random == magic per
+               --  RFC 8446 §4.1.4. Non-HRR-aware client falls through
+               --  to the historical Awaiting_Sf direct path.
+               if D.Hrr_Aware then
+                  D.Cur_State := Awaiting_Sh_Or_Hrr;
+               else
+                  D.Cur_State := Awaiting_Sf;
+               end if;
             end;
 
          when Awaiting_Sf =>
@@ -652,6 +718,68 @@ is
                end;
             end;
 
+            --  RFC 8446 §4.1.4 — HelloRetryRequest emission branch.
+            --
+            --  If the server was initialised with Hrr_Demand and has
+            --  not yet sent an HRR, we now emit one *instead* of the
+            --  SH+EE+SF flight. We also rebuild the transcript per
+            --  §4.4.1: snapshot CH1's current accumulator, re-init,
+            --  feed synthetic message_hash, then feed HRR. Subsequent
+            --  CH2 will be appended on top of that.
+            if D.Hrr_Demand and then not D.Hrr_Sent then
+               declare
+                  Hrr_Body     : Tls_Core.Octet_Array (1 .. 256) :=
+                    (others => 0);
+                  Hrr_Body_Last : Natural;
+                  Hrr_Hs       : Tls_Core.Octet_Array (1 .. 512) :=
+                    (others => 0);
+                  Hrr_Hs_Last  : Natural;
+                  Hrr_Rec      : Tls_Core.Octet_Array (1 .. 1024) :=
+                    (others => 0);
+                  Hrr_Rec_Last : Natural;
+                  Synthetic    : Tls_Core.Octet_Array (1 .. 36) :=
+                    (others => 0);
+                  Cookie_Slice : constant Tls_Core.Octet_Array :=
+                    D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len);
+               begin
+                  --  Snapshot CH1 hash (transcript currently holds
+                  --  exactly CH1) — we save it for diagnostic
+                  --  introspection and feed it into the synthetic.
+                  Tls_Core.Transcript.Snapshot
+                    (D.Hash_Ctx, D.Hrr_Ch1_Hash);
+                  --  Encode HRR body.
+                  Tls_Core.Hello_Retry.Encode_Hrr
+                    (Selected_Suite => Tls_Core.Suites.Code_Of_Suite (D.Suite),
+                     Selected_Group => D.Hrr_Group,
+                     Cookie         => Cookie_Slice,
+                     Out_Buf        => Hrr_Body,
+                     Out_Last       => Hrr_Body_Last);
+                  --  Wrap as a Handshake message (type 0x02 — same
+                  --  type as ServerHello per §4.1.4).
+                  Encode_Hs_Message
+                    (Hs_Type_SH,
+                     Hrr_Body (1 .. Hrr_Body_Last),
+                     Hrr_Hs, Hrr_Hs_Last);
+                  --  Rebuild transcript per RFC 8446 §4.4.1:
+                  --    new transcript = synthetic(CH1_hash) || HRR
+                  Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256
+                    (D.Hrr_Ch1_Hash, Synthetic);
+                  Tls_Core.Transcript.Init (D.Hash_Ctx);
+                  Tls_Core.Transcript.Append (D.Hash_Ctx, Synthetic);
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, Hrr_Hs (1 .. Hrr_Hs_Last));
+                  --  Wrap HRR as TLSPlaintext on the wire.
+                  Wrap_Tls_Plaintext
+                    (Hrr_Hs (1 .. Hrr_Hs_Last), Hrr_Rec, Hrr_Rec_Last);
+                  Out_Buf (1 .. Hrr_Rec_Last) :=
+                    Hrr_Rec (1 .. Hrr_Rec_Last);
+                  Out_Last := Hrr_Rec_Last;
+                  D.Hrr_Sent := True;
+                  D.Cur_State := Awaiting_Ch_2;
+                  return;
+               end;
+            end if;
+
             --  Build SH (handshake message), append to transcript,
             --  derive handshake secrets, build EE + Finished,
             --  encrypt, write the whole flight.
@@ -900,6 +1028,554 @@ is
                end;
                Tls_Core.Transcript.Append (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
                D.Cur_State := Done;
+            end;
+
+         when Awaiting_Sh_Or_Hrr =>
+            --  RFC 8446 §4.1.4 — client just sent CH1; server's first
+            --  record is either a regular SH (proceed as Awaiting_Sf)
+            --  or an HRR (rebuild transcript per §4.4.1, emit CH2).
+            --
+            --  Wall-hit: this branch only services the *HRR* case
+            --  (random == Magic_Random). A server that honors CH1's
+            --  key_share without HRR triggers the Failed transition
+            --  here. Real production clients dispatch back into
+            --  Awaiting_Sf in that situation; doing so cleanly
+            --  requires factoring Awaiting_Sf's body into a helper
+            --  that takes In_Bytes — left as v0.6 work since the
+            --  HRR-aware client init is opt-in and pairs only with
+            --  HRR-demanding servers in v0.5 tests. The non-HRR
+            --  client init (Init_Psk_Client) doesn't enter this state.
+            if D.My_Role /= Client then
+               D.Cur_State := Failed;
+               return;
+            end if;
+            declare
+               --  Same parse shell as the start of Awaiting_Sf: read
+               --  the SH-shaped TLSPlaintext record, but inspect the
+               --  random field instead of decoding the body.
+               Cursor : constant Natural := In_Bytes'First;
+               Rec_Len : Natural;
+               Rec_F, Rec_L : Natural;
+               Random_Slice : Tls_Core.Octet_Array (1 .. 32) :=
+                 (others => 0);
+            begin
+               if Cursor + 4 > In_Bytes'Last
+                 or else In_Bytes (Cursor) /= Rec_Type_Handshake
+               then
+                  D.Cur_State := Failed;
+                  return;
+               end if;
+               Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
+                          + Natural (In_Bytes (Cursor + 4));
+               Rec_F := Cursor + 5;
+               Rec_L := Rec_F + Rec_Len - 1;
+               if Rec_L > In_Bytes'Last
+                 or else Rec_Len < 4
+                 or else In_Bytes (Rec_F) /= Hs_Type_SH
+               then
+                  D.Cur_State := Failed;
+                  return;
+               end if;
+               --  Random sits at offset 4 + 2 (handshake header +
+               --  legacy_version) into the record's body.
+               if Rec_F + 37 > In_Bytes'Last then
+                  D.Cur_State := Failed;
+                  return;
+               end if;
+               Random_Slice :=
+                 In_Bytes (Rec_F + 6 .. Rec_F + 6 + 31);
+               if not Tls_Core.Hello_Retry.Is_Hrr_Random (Random_Slice) then
+                  --  Not an HRR: see wall-hit note above.
+                  D.Cur_State := Failed;
+                  return;
+               end if;
+               --  Decode the HRR body (the bytes after the 4-byte
+               --  handshake header).
+               declare
+                  Hrr_Body_F : constant Natural := Rec_F + 4;
+                  Hrr_Body_L : constant Natural := Rec_L;
+                  Hrr_Cs     : Tls_Core.Suites.U16;
+                  Hrr_Group  : Tls_Core.Suites.U16;
+                  Hrr_Cookie : Tls_Core.Hello_Retry.Cookie_Bytes;
+                  Hrr_Cookie_Length : Natural;
+                  Hrr_OK     : Boolean;
+                  use type Tls_Core.Suites.U16;
+               begin
+                  if Hrr_Body_L > In_Bytes'Last then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Tls_Core.Hello_Retry.Decode_Hrr
+                    (In_Bytes (Hrr_Body_F .. Hrr_Body_L),
+                     Hrr_Cs, Hrr_Group,
+                     Hrr_Cookie, Hrr_Cookie_Length,
+                     Hrr_OK);
+                  if not Hrr_OK then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  --  Validate echoed cipher suite (must be one we
+                  --  offered) and remember it for later.
+                  if not Tls_Core.Suites.Is_Supported_Suite (Hrr_Cs)
+                    or else Hrr_Cs = Tls_Core.Suites.TLS_AES_256_GCM_SHA384
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  D.Suite := Tls_Core.Suites.Suite_Of_Code (Hrr_Cs);
+                  --  Save the demanded named-group + cookie for the CH2
+                  --  emission that follows.
+                  D.Hrr_Group := Hrr_Group;
+                  D.Hrr_Cookie := Hrr_Cookie;
+                  D.Hrr_Cookie_Len := Hrr_Cookie_Length;
+                  D.Hrr_Seen := True;
+               end;
+               --  RFC 8446 §4.4.1 — rebuild transcript:
+               --    new transcript = synthetic(CH1_hash) || HRR
+               declare
+                  Synthetic : Tls_Core.Octet_Array (1 .. 36) :=
+                    (others => 0);
+               begin
+                  Tls_Core.Transcript.Snapshot
+                    (D.Hash_Ctx, D.Hrr_Ch1_Hash);
+                  Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256
+                    (D.Hrr_Ch1_Hash, Synthetic);
+                  Tls_Core.Transcript.Init (D.Hash_Ctx);
+                  Tls_Core.Transcript.Append (D.Hash_Ctx, Synthetic);
+                  --  Append the HRR handshake message (NOT the wire
+                  --  record envelope) to the transcript — same offsets
+                  --  used during the magic check above, Rec_F .. Rec_L
+                  --  brackets exactly the type+u24-len + body bytes.
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, In_Bytes (Rec_F .. Rec_L));
+               end;
+            end;
+
+            --  Build CH2: same shape as CH1 (we don't carry actual
+            --  ECDHE key_share in PSK_KE mode, so the cookie echo is
+            --  the only HRR-specific addition). Encode_Client_Hello_Psk
+            --  emits the standard PSK CH; we then patch in the cookie
+            --  extension if non-empty before computing the binder.
+            --
+            --  v0.5 simplification: PSK_KE has no real key_share, so
+            --  the named-group renegotiation is structural rather
+            --  than cryptographic — the CH2 echoes back only the
+            --  cookie and the binder is recomputed over the new
+            --  truncated CH2. The transcript sees CH2 as a fresh CH
+            --  message, and the synthetic+HRR prefix is already in
+            --  place. End-to-end correctness is exercised by the
+            --  loopback test scenario.
+            declare
+               Client_Random : constant Tls_Core.Hello.Random_Bytes :=
+                 (others => 16#A2#);  --  distinct from CH1's 0xA1
+               Ch_Body : Tls_Core.Octet_Array (1 .. 512) :=
+                 (others => 0);
+               Ch_Body_Last : Natural;
+               T_Last  : Natural;
+               Binder  : Tls_Core.Psk_Binder.Binder_Bytes;
+               Ch_Hs   : Tls_Core.Octet_Array (1 .. 1024) :=
+                 (others => 0);
+               Ch_Hs_Last : Natural;
+               Ch_Rec  : Tls_Core.Octet_Array (1 .. 1024) :=
+                 (others => 0);
+               Ch_Rec_Last : Natural;
+            begin
+               Tls_Core.Hello.Encode_Client_Hello_Psk_With_Cookie
+                 (Client_Random,
+                  D.Identity (1 .. D.Identity_Len),
+                  D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len),
+                  Ch_Body, Ch_Body_Last, T_Last);
+               Tls_Core.Psk_Binder.Compute
+                 (D.PSK,
+                  Ch_Body (1 .. T_Last),
+                  Binder);
+               Ch_Body (T_Last + 2 .. T_Last + 33) := Binder;
+               Encode_Hs_Message
+                 (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
+                  Ch_Hs, Ch_Hs_Last);
+               Tls_Core.Transcript.Append
+                 (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
+               Wrap_Tls_Plaintext
+                 (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
+               Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
+               Out_Last := Ch_Rec_Last;
+               D.Cur_State := Awaiting_Sf;
+            end;
+
+         when Awaiting_Ch_2 =>
+            --  RFC 8446 §4.1.4 — server already emitted HRR; the
+            --  client should now send CH2. We reuse the CH1 parse
+            --  shell from Awaiting_CH (fixed shape) and additionally
+            --  validate that the cookie extension echoes our HRR
+            --  cookie byte-for-byte.
+            if D.My_Role /= Server then
+               D.Cur_State := Failed;
+               return;
+            end if;
+            if In_Bytes'Length < 5
+              or else In_Bytes (In_Bytes'First) /= Rec_Type_Handshake
+            then
+               D.Cur_State := Failed;
+               return;
+            end if;
+            declare
+               Rec_Len : constant Natural :=
+                 Natural (In_Bytes (In_Bytes'First + 3)) * 256
+                 + Natural (In_Bytes (In_Bytes'First + 4));
+               Rec_F : constant Natural := In_Bytes'First + 5;
+               Rec_L : constant Natural := Rec_F + Rec_Len - 1;
+            begin
+               if Rec_L > In_Bytes'Last
+                 or else Rec_Len < 4
+                 or else In_Bytes (Rec_F) /= Hs_Type_CH
+               then
+                  D.Cur_State := Failed;
+                  return;
+               end if;
+               declare
+                  Hs_Body_Len : constant Natural :=
+                    Natural (In_Bytes (Rec_F + 1)) * 65536
+                    + Natural (In_Bytes (Rec_F + 2)) * 256
+                    + Natural (In_Bytes (Rec_F + 3));
+                  Hs_Body_F : constant Natural := Rec_F + 4;
+                  Hs_Body_L : constant Natural := Hs_Body_F + Hs_Body_Len - 1;
+                  Random : Tls_Core.Hello.Random_Bytes;
+                  Suites_F, Suites_L : Natural;
+                  Id_F, Id_L, Bf, Bl, T_Last : Natural;
+                  Decode_OK : Boolean;
+               begin
+                  if Hs_Body_L > Rec_L then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  Tls_Core.Hello.Decode_Client_Hello_Psk
+                    (In_Bytes (Hs_Body_F .. Hs_Body_L),
+                     Random, Suites_F, Suites_L,
+                     Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+                  if not Decode_OK then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  --  Verify PSK identity (same constant-time pattern
+                  --  as Awaiting_CH).
+                  declare
+                     Identity_OK : Boolean := True;
+                  begin
+                     if Id_L - Id_F + 1 /= D.Identity_Len then
+                        Identity_OK := False;
+                     else
+                        for I in 1 .. D.Identity_Len loop
+                           pragma Loop_Invariant (I in 1 .. D.Identity_Len);
+                           if In_Bytes (Id_F + I - 1) /= D.Identity (I) then
+                              Identity_OK := False;
+                           end if;
+                        end loop;
+                     end if;
+                     if not Identity_OK then
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
+                  end;
+                  --  Verify PSK binder over CH2's truncated bytes.
+                  declare
+                     Computed : Tls_Core.Psk_Binder.Binder_Bytes;
+                     Received : Tls_Core.Psk_Binder.Binder_Bytes;
+                  begin
+                     Tls_Core.Psk_Binder.Compute
+                       (D.PSK,
+                        In_Bytes (Hs_Body_F .. T_Last),
+                        Computed);
+                     for I in 1 .. 32 loop
+                        pragma Loop_Invariant (I in 1 .. 32);
+                        Received (I) := In_Bytes (Bf + I - 1);
+                     end loop;
+                     if not Tls_Core.Psk_Binder.Verify
+                              (Computed, Received)
+                     then
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
+                  end;
+                  --  Append CH2 handshake message (without record
+                  --  envelope) to the transcript. After this:
+                  --    transcript = synthetic(CH1) || HRR || CH2
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, In_Bytes (Rec_F .. Rec_L));
+                  --  Cookie validation: walk CH2's extensions, find
+                  --  cookie ext, compare to D.Hrr_Cookie. If we
+                  --  emitted no cookie (Hrr_Cookie_Len = 0), no
+                  --  cookie ext should appear.
+                  --
+                  --  CH body extensions block layout (Decode_*_Psk
+                  --  consumed Random, Suites_F/L, Identity, Binder
+                  --  but didn't surface the broader extensions
+                  --  walker — for v0.5 we walk it here directly).
+                  if D.Hrr_Cookie_Len > 0 then
+                     declare
+                        --  Step past legacy_version (2) + random (32)
+                        --  + sid_len (1) + sid + cipher_suites
+                        --  + compression in the CH body. Easier path:
+                        --  start from Suites_L + 1 (immediately after
+                        --  cipher_suites), then 1+1 compression, then
+                        --  u16 ext-block length, then walk.
+                        --  Suites_L is absolute index into In_Bytes.
+                        Walk_P : Natural := Suites_L + 1;
+                        Cookie_Ok : Boolean := False;
+                     begin
+                        --  legacy_compression_methods: u8 len + N
+                        if Walk_P > In_Bytes'Last then
+                           D.Cur_State := Failed;
+                           return;
+                        end if;
+                        declare
+                           Comp_Len : constant Natural :=
+                             Natural (In_Bytes (Walk_P));
+                        begin
+                           Walk_P := Walk_P + 1 + Comp_Len;
+                        end;
+                        --  Extensions block u16 length
+                        if Walk_P + 1 > In_Bytes'Last then
+                           D.Cur_State := Failed;
+                           return;
+                        end if;
+                        declare
+                           Ext_Total_Len : constant Natural :=
+                             Natural (In_Bytes (Walk_P)) * 256
+                             + Natural (In_Bytes (Walk_P + 1));
+                           Ext_Block_Start : constant Natural :=
+                             Walk_P + 2;
+                           Ext_Block_End : constant Natural :=
+                             Ext_Block_Start + Ext_Total_Len;
+                           Q : Natural := Ext_Block_Start;
+                        begin
+                           if Ext_Block_End - 1 > In_Bytes'Last then
+                              D.Cur_State := Failed;
+                              return;
+                           end if;
+                           while Q + 3 < Ext_Block_End loop
+                              pragma Loop_Invariant
+                                (Q in Ext_Block_Start .. Ext_Block_End);
+                              declare
+                                 T_Val : constant Natural :=
+                                   Natural (In_Bytes (Q)) * 256
+                                   + Natural (In_Bytes (Q + 1));
+                                 L_Val : constant Natural :=
+                                   Natural (In_Bytes (Q + 2)) * 256
+                                   + Natural (In_Bytes (Q + 3));
+                              begin
+                                 if Q + 4 + L_Val - 1 >= Ext_Block_End then
+                                    D.Cur_State := Failed;
+                                    return;
+                                 end if;
+                                 if T_Val = 16#002C# then
+                                    --  Cookie extension; body =
+                                    --  u16 cookie_len + cookie_bytes.
+                                    if L_Val < 2 then
+                                       D.Cur_State := Failed;
+                                       return;
+                                    end if;
+                                    declare
+                                       Cookie_Data_Len : constant Natural :=
+                                         Natural (In_Bytes (Q + 4)) * 256
+                                         + Natural (In_Bytes (Q + 5));
+                                    begin
+                                       if Cookie_Data_Len /= L_Val - 2 then
+                                          D.Cur_State := Failed;
+                                          return;
+                                       end if;
+                                       if Tls_Core.Hello_Retry.Cookies_Equal
+                                            (In_Bytes
+                                               (Q + 6 ..
+                                                Q + 6 + Cookie_Data_Len - 1),
+                                             D.Hrr_Cookie,
+                                             D.Hrr_Cookie_Len)
+                                       then
+                                          Cookie_Ok := True;
+                                       end if;
+                                    end;
+                                 end if;
+                                 Q := Q + 4 + L_Val;
+                              end;
+                           end loop;
+                           if not Cookie_Ok then
+                              D.Cur_State := Failed;
+                              return;
+                           end if;
+                        end;
+                     end;
+                  end if;
+               end;
+            end;
+            --  Cookie validated (or not required). Set Cur_State to
+            --  Awaiting_CH and re-dispatch into the SH+EE+SF branch
+            --  by treating CH2 as the canonical CH. Hrr_Sent is True
+            --  so the HRR branch above won't re-fire.
+            D.Cur_State := Awaiting_CH;
+            --  We've already appended CH2 to the transcript and run
+            --  binder/identity checks; the SH-build half of the
+            --  Awaiting_CH path doesn't depend on In_Bytes (it reads
+            --  from D.Suite + D.Hash_Ctx). To avoid a recursive Step
+            --  call, fall through into the SH builder by re-raising
+            --  the case-loop manually here. Implementation: build
+            --  the SH+EE+SF flight inline using the same helpers.
+            declare
+               Sh_Body : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+               Sh_Body_Last : Natural;
+               Sh_Hs_Msg : Tls_Core.Octet_Array (1 .. 512) := (others => 0);
+               Sh_Hs_Last : Natural;
+               Sh_Record : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+               Sh_Record_Last : Natural;
+               Server_Random : constant Tls_Core.Hello.Random_Bytes :=
+                 (others => 16#5E#);
+               Zero32 : constant Octet_Array (1 .. 32) := (others => 0);
+               Empty  : constant Octet_Array (1 .. 0)  := (others => 0);
+               Derived_Label : constant Octet_Array (1 .. 7) :=
+                 (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+               C_Hs_Label : constant Octet_Array (1 .. 12) :=
+                 (16#63#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
+                  16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+               S_Hs_Label : constant Octet_Array (1 .. 12) :=
+                 (16#73#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
+                  16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+               Early_Secret : Tls_Core.Key_Schedule.Secret;
+               Derived_1    : Tls_Core.Key_Schedule.Secret;
+               Hs_Secret    : Tls_Core.Key_Schedule.Secret;
+               C_Hs_Sec     : Tls_Core.Key_Schedule.Secret;
+               S_Hs_Sec     : Tls_Core.Key_Schedule.Secret;
+               Th_After_SH  : Tls_Core.Sha256.Digest;
+            begin
+               Tls_Core.Hello.Encode_Server_Hello_Psk
+                 (Server_Random,
+                  Tls_Core.Suites.Code_Of_Suite (D.Suite),
+                  Sh_Body, Sh_Body_Last);
+               Encode_Hs_Message
+                 (Hs_Type_SH, Sh_Body (1 .. Sh_Body_Last),
+                  Sh_Hs_Msg, Sh_Hs_Last);
+               Tls_Core.Transcript.Append
+                 (D.Hash_Ctx, Sh_Hs_Msg (1 .. Sh_Hs_Last));
+               Wrap_Tls_Plaintext
+                 (Sh_Hs_Msg (1 .. Sh_Hs_Last), Sh_Record, Sh_Record_Last);
+               Tls_Core.Key_Schedule.Extract
+                 (Salt => Zero32, IKM => D.PSK, Out_PRK => Early_Secret);
+               Tls_Core.Key_Schedule.Derive_Secret
+                 (Secret_In  => Early_Secret,
+                  Label      => Derived_Label,
+                  Messages   => Empty,
+                  Out_Secret => Derived_1);
+               Tls_Core.Key_Schedule.Extract
+                 (Salt => Derived_1, IKM => Zero32, Out_PRK => Hs_Secret);
+               Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_SH);
+               Hkdf_Expand_Label_Sha256
+                 (Secret  => Hs_Secret,
+                  Label   => C_Hs_Label,
+                  Context => Th_After_SH,
+                  Output  => C_Hs_Sec);
+               Hkdf_Expand_Label_Sha256
+                 (Secret  => Hs_Secret,
+                  Label   => S_Hs_Label,
+                  Context => Th_After_SH,
+                  Output  => S_Hs_Sec);
+               Tls_Core.Aead_Channel.Init_Sha256
+                 (D.Hs_Out_Dir, D.Suite, S_Hs_Sec);
+               Tls_Core.Aead_Channel.Init_Sha256
+                 (D.Hs_In_Dir,  D.Suite, C_Hs_Sec);
+               D.C_Hs_Sec := C_Hs_Sec;
+               D.S_Hs_Sec := S_Hs_Sec;
+               D.Hs_Secret := Hs_Secret;
+
+               declare
+                  Ee_Body : constant Octet_Array (1 .. 2) := (16#00#, 16#00#);
+                  Ee_Hs   : Octet_Array (1 .. 6) := (others => 0);
+                  Ee_Hs_Last : Natural;
+                  Ee_Rec  : Octet_Array (1 .. 256) := (others => 0);
+                  Ee_Rec_Last : Natural;
+                  Th_After_EE : Tls_Core.Sha256.Digest;
+                  Verify_Data : Tls_Core.Sha256.Digest;
+                  Fin_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+                  Fin_Hs_Last : Natural;
+                  Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
+                  Fin_Rec_Last : Natural;
+                  Th_After_SF : Tls_Core.Sha256.Digest;
+                  Empty_Hash  : Tls_Core.Sha256.Digest;
+                  Empty_In    : constant Octet_Array (1 .. 0) :=
+                    (others => 0);
+                  Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
+                  Master_Secret : Tls_Core.Key_Schedule.Secret;
+                  Zero_Secret   : constant Tls_Core.Key_Schedule.Secret :=
+                    (others => 0);
+                  Derived_Lab : constant Octet_Array (1 .. 7) :=
+                    (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+                  C_Ap_Lab : constant Octet_Array (1 .. 12) :=
+                    (16#63#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
+                     16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+                  S_Ap_Lab : constant Octet_Array (1 .. 12) :=
+                    (16#73#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
+                     16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+               begin
+                  Encode_Hs_Message
+                    (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, Ee_Hs (1 .. Ee_Hs_Last));
+                  Tls_Core.Aead_Channel.Send
+                    (D.Hs_Out_Dir,
+                     Ee_Hs (1 .. Ee_Hs_Last),
+                     Tls_Core.Aead_Channel.Inner_Type_Handshake,
+                     Ee_Rec, Ee_Rec_Last);
+
+                  Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_EE);
+                  Build_Finished_Body (S_Hs_Sec, Th_After_EE, Verify_Data);
+                  Encode_Hs_Message
+                    (Hs_Type_Finished, Verify_Data,
+                     Fin_Hs, Fin_Hs_Last);
+                  Tls_Core.Transcript.Append
+                    (D.Hash_Ctx, Fin_Hs (1 .. Fin_Hs_Last));
+                  Tls_Core.Aead_Channel.Send
+                    (D.Hs_Out_Dir,
+                     Fin_Hs (1 .. Fin_Hs_Last),
+                     Tls_Core.Aead_Channel.Inner_Type_Handshake,
+                     Fin_Rec, Fin_Rec_Last);
+
+                  declare
+                     Cursor : Natural := 0;
+                  begin
+                     Out_Buf (1 .. Sh_Record_Last) :=
+                       Sh_Record (1 .. Sh_Record_Last);
+                     Cursor := Sh_Record_Last;
+                     Out_Buf (Cursor + 1 .. Cursor + Ee_Rec_Last) :=
+                       Ee_Rec (1 .. Ee_Rec_Last);
+                     Cursor := Cursor + Ee_Rec_Last;
+                     Out_Buf (Cursor + 1 .. Cursor + Fin_Rec_Last) :=
+                       Fin_Rec (1 .. Fin_Rec_Last);
+                     Out_Last := Cursor + Fin_Rec_Last;
+                  end;
+
+                  Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_SF);
+                  Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
+                  Hkdf_Expand_Label_Sha256
+                    (Secret  => D.Hs_Secret,
+                     Label   => Derived_Lab,
+                     Context => Empty_Hash,
+                     Output  => Derived_2_Sec);
+                  Tls_Core.Key_Schedule.Extract
+                    (Salt    => Derived_2_Sec,
+                     IKM     => Zero_Secret,
+                     Out_PRK => Master_Secret);
+                  Hkdf_Expand_Label_Sha256
+                    (Secret  => Master_Secret,
+                     Label   => C_Ap_Lab,
+                     Context => Th_After_SF,
+                     Output  => D.App_C_Ap);
+                  Hkdf_Expand_Label_Sha256
+                    (Secret  => Master_Secret,
+                     Label   => S_Ap_Lab,
+                     Context => Th_After_SF,
+                     Output  => D.App_S_Ap);
+                  D.App_Set := True;
+                  Build_Finished_Body
+                    (D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
+               end;
+
+               D.Cur_State := Awaiting_Cf;
             end;
 
          when others =>

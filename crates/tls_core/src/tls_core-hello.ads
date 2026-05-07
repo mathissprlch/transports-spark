@@ -146,6 +146,27 @@ is
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 
+   --  HRR-aware variant: emit a CH with an additional cookie
+   --  extension placed before the (mandatory-last) pre_shared_key.
+   --  Cookie may be empty (length = 0) — in that case the layout is
+   --  identical to Encode_Client_Hello_Psk. Used by the client's
+   --  CH2 emission after consuming HRR per RFC 8446 §4.1.4.
+   procedure Encode_Client_Hello_Psk_With_Cookie
+     (Random          : Random_Bytes;
+      Identity        : Octet_Array;
+      Cookie          : Octet_Array;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural;
+      Truncated_Last  : out Natural)
+   with
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 256
+       and then Identity'Length in Psk_Identity_Len
+       and then Cookie'Length <= 64,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
+
    --  Decode the PSK ext from a received CH. Sets OK := False if
    --  the shape doesn't match (no PSK ext, multiple identities,
    --  binder length /= 32, etc.). Identity_First..Identity_Last and

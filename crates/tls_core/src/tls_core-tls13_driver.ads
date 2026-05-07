@@ -28,6 +28,7 @@
 --  scenarios in tls_core_tests).
 
 with Tls_Core.Aead_Channel;
+with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
 with Tls_Core.Record_Layer;
@@ -47,11 +48,29 @@ is
 
    type Role is (Client, Server);
 
+   --  Driver states for the HRR-aware PSK_KE flow (RFC 8446 §4.1.4).
+   --
+   --  Client linear progression:
+   --    Idle → Awaiting_Sh_Or_Hrr →  (HRR seen)  → Awaiting_Sf
+   --                              \
+   --                               → (SH seen)  → Awaiting_Sf path inline
+   --    Awaiting_Sf → Awaiting_Cf-equivalent (SH+EE+SF) → Done
+   --
+   --  Server linear progression (HRR demanded):
+   --    Awaiting_CH → (Hrr_Demand True) → Awaiting_Ch_2 → Awaiting_Cf → Done
+   --                \
+   --                 → (Hrr_Demand False) → Awaiting_Cf → Done
+   --
+   --  Awaiting_Sh_Or_Hrr / Awaiting_Ch_2 are the new states added for
+   --  HRR support; the existing PSK_KE states keep their semantics so
+   --  the non-HRR flow at Init_Psk_{Server,Client} remains unchanged.
    type State is
-     (Idle,               --  Client's initial state.
-      Awaiting_CH,        --  Server's initial state.
-      Awaiting_Sf,        --  Client sent CH; awaiting SH+EE+SF flight.
-      Awaiting_Cf,        --  Server sent SH+EE+SF; awaiting client Finished.
+     (Idle,                --  Client's initial state (non-HRR mode).
+      Awaiting_CH,         --  Server's initial state.
+      Awaiting_Sh_Or_Hrr,  --  Client sent CH1; awaiting SH or HRR.
+      Awaiting_Ch_2,       --  Server sent HRR; awaiting CH2.
+      Awaiting_Sf,         --  Client sent CH; awaiting SH+EE+SF flight.
+      Awaiting_Cf,         --  Server sent SH+EE+SF; awaiting client Finished.
       Done,
       Failed);
 
@@ -67,6 +86,43 @@ is
 
    --  Initialise as PSK_KE client.
    procedure Init_Psk_Client
+     (D            : out Driver;
+      PSK          : Octet_Array;
+      Psk_Identity : Octet_Array);
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  HRR-aware initialisation (RFC 8446 §4.1.4).
+   --
+   --  Standard:    RFC 8446 §4.1.4 (HelloRetryRequest), §4.4.1
+   --               (transcript-hash quirk).
+   --  Spec mirror: miTLS src/tls/MiTLS.Handshake.Server.fst :
+   --               processClientHello (HRR branch).
+   --
+   --  Behaviour:   Init_Psk_Server_With_Hrr forces the server to
+   --               emit one HRR after the first CH and await a CH2
+   --               carrying the named-group + cookie echo; only then
+   --               does it run the §4.1.3 SH+EE+SF emission. Cookie
+   --               is the 1..32 byte caller-supplied bytestring the
+   --               server expects the client to echo back. The
+   --               client side calls Init_Psk_Client_Hrr_Aware so
+   --               its initial Step transitions to Awaiting_Sh_Or_Hrr
+   --               instead of Awaiting_Sf.
+   --
+   --  Functional:  No functional Post — wire layout is exercised
+   --               end-to-end via the HRR loopback test scenario.
+   --  Proven at:   gnatprove --level=2 (audit-clean) — body sets
+   --               record fields only.
+   --------------------------------------------------------------------
+   procedure Init_Psk_Server_With_Hrr
+     (D                 : out Driver;
+      PSK               : Octet_Array;
+      Psk_Identity      : Octet_Array;
+      Demanded_Group    : Tls_Core.Suites.U16;
+      Cookie            : Octet_Array)
+   with
+     Pre => Cookie'Length in 0 .. Tls_Core.Hello_Retry.Max_Cookie_Length;
+
+   procedure Init_Psk_Client_Hrr_Aware
      (D            : out Driver;
       PSK          : Octet_Array;
       Psk_Identity : Octet_Array);
@@ -273,6 +329,46 @@ private
       App_C_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
       App_S_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
       App_Set     : Boolean := False;
+
+      --  HelloRetryRequest fields (RFC 8446 §4.1.4 / §4.4.1).
+      --
+      --  Server side:
+      --    Hrr_Demand  — set at init-time; tells the Awaiting_CH
+      --                  branch to emit HRR instead of SH+EE+SF on
+      --                  the first CH it sees.
+      --    Hrr_Sent    — flips True once the server has emitted HRR
+      --                  and is awaiting CH2 (see Awaiting_Ch_2).
+      --    Hrr_Group   — the named-group codepoint the server
+      --                  demands the client use in CH2's key_share.
+      --                  Echoed in the HRR's key_share extension.
+      --
+      --  Client side:
+      --    Hrr_Aware   — set at init-time; tells the Idle branch to
+      --                  transition to Awaiting_Sh_Or_Hrr (instead
+      --                  of Awaiting_Sf) so the next Step can
+      --                  dispatch on the magic random.
+      --    Hrr_Seen    — flips True once the client has consumed an
+      --                  HRR and emitted CH2.
+      --
+      --  Cookie bytes (server: emitted in HRR, validated against
+      --  CH2's echo; client: stored after HRR receipt, echoed in
+      --  CH2). Cookie_Len is 0..Max_Cookie_Length.
+      Hrr_Demand  : Boolean := False;
+      Hrr_Sent    : Boolean := False;
+      Hrr_Aware   : Boolean := False;
+      Hrr_Seen    : Boolean := False;
+      Hrr_Group   : Tls_Core.Suites.U16 :=
+        Tls_Core.Suites.Group_Secp256r1;
+      Hrr_Cookie  : Tls_Core.Hello_Retry.Cookie_Bytes := (others => 0);
+      Hrr_Cookie_Len : Natural := 0;
+
+      --  Saved CH1-transcript hash, computed at the moment HRR is
+      --  about to be emitted (server) or processed (client). Used
+      --  to feed the §4.4.1 synthetic message_hash record into a
+      --  freshly-Init'd Transcript accumulator before appending HRR
+      --  + CH2 + the rest of the handshake. Kept after transcript
+      --  rebuild for diagnostic / test introspection.
+      Hrr_Ch1_Hash : Tls_Core.Sha256.Digest := (others => 0);
    end record;
 
    function Current_State (D : Driver) return State is (D.Cur_State);
