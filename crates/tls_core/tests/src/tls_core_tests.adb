@@ -42,6 +42,8 @@ with Tls_Core.Aead_Aes256_Gcm;
 with Tls_Core.Channel_Aes128;
 with Tls_Core.Channel_Aes256;
 with Tls_Core.Key_Schedule_Sha384;
+with Tls_Core.Suites;
+with Tls_Core.Aead_Channel;
 with Tls_Core.P256;
 with Tls_Core.P256_Field;
 with Tls_Core.P256_Order;
@@ -2899,6 +2901,7 @@ procedure Tls_Core_Tests is
       Computed_Binder : Tls_Core.Psk_Binder.Binder_Bytes;
 
       Decoded_Random : Tls_Core.Hello.Random_Bytes;
+      Suites_F, Suites_L : Natural;
       Id_F, Id_L, Bf, Bl, T_Last : Natural;
       Decode_OK : Boolean;
    begin
@@ -2919,7 +2922,9 @@ procedure Tls_Core_Tests is
 
       Tls_Core.Hello.Decode_Client_Hello_Psk
         (Wire (1 .. Wire_Last),
-         Decoded_Random, Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+         Decoded_Random,
+         Suites_F, Suites_L,
+         Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
       Check ("PSK CH: decoder accepts encoded bytes", Decode_OK);
       Check ("PSK CH: random round-trips", Equal (Decoded_Random, Random));
       Check ("PSK CH: identity round-trips",
@@ -2929,6 +2934,17 @@ procedure Tls_Core_Tests is
              T_Last = Truncated_Last);
       Check ("PSK CH: binder slice has 32 bytes",
              Bl - Bf + 1 = 32);
+      Check ("PSK CH: cipher_suites slice spans 3 suites (6 bytes)",
+             Suites_L - Suites_F + 1 = 6);
+      Check ("PSK CH: first offered suite is TLS_CHACHA20_POLY1305_SHA256",
+             Wire (Suites_F)     = 16#13#
+             and then Wire (Suites_F + 1) = 16#03#);
+      Check ("PSK CH: second offered suite is TLS_AES_128_GCM_SHA256",
+             Wire (Suites_F + 2) = 16#13#
+             and then Wire (Suites_F + 3) = 16#01#);
+      Check ("PSK CH: third offered suite is TLS_AES_256_GCM_SHA384",
+             Wire (Suites_F + 4) = 16#13#
+             and then Wire (Suites_F + 5) = 16#02#);
 
       --  Re-compute the binder against decoder-reported truncation
       --  and verify it equals what we spliced in.
@@ -2942,15 +2958,21 @@ procedure Tls_Core_Tests is
                   (Recompute, Wire (Bf .. Bl)));
       end;
 
-      --  ServerHello echo round-trip.
+      --  ServerHello echo round-trip — server selects AES-128.
       declare
          Sh_Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
          Sh_Last : Natural;
       begin
-         Tls_Core.Hello.Encode_Server_Hello_Psk (Random, Sh_Wire, Sh_Last);
+         Tls_Core.Hello.Encode_Server_Hello_Psk
+           (Random,
+            Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
+            Sh_Wire, Sh_Last);
          Check ("PSK SH: encoder produced bytes", Sh_Last > 40);
          Check ("PSK SH: legacy_version 0x0303",
                 Sh_Wire (1) = 16#03# and then Sh_Wire (2) = 16#03#);
+         --  cipher_suite at offset 35 (2 + 32 + 1).
+         Check ("PSK SH: selected suite echoes AES-128",
+                Sh_Wire (36) = 16#13# and then Sh_Wire (37) = 16#01#);
       end;
    end Psk_Hello_Roundtrip;
 
@@ -3050,26 +3072,48 @@ procedure Tls_Core_Tests is
       end;
 
       --  Application data round-trip: client encrypts plaintext under
-      --  c_ap_traffic_secret; server decrypts under same.
+      --  c_ap_traffic_secret; server decrypts under same. Aead_Channel
+      --  dispatches the AEAD on the negotiated suite (AES-128-GCM in
+      --  this loopback scenario — server preference puts AES-128
+      --  ahead of chacha20).
       declare
-         Out_Cli, In_Cli, Out_Srv, In_Srv : Tls_Core.Channel.Direction;
+         use type Tls_Core.Suites.Cipher_Suite_Id;
+         Out_Cli, In_Cli, Out_Srv, In_Srv : Tls_Core.Aead_Channel.Direction;
          Pt : constant Tls_Core.Octet_Array :=
            (16#48#, 16#69#);  --  "Hi"
          Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
          Wire_Last : Natural;
          Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
          Got_Last : Natural;
+         Inner : Tls_Core.Octet;
          OK : Boolean;
       begin
+         --  Server walks the client's offered list in client order
+         --  (RFC 8446 §4.1.3 leaves preference policy to the impl).
+         --  Our client list: chacha first, AES-128 second, AES-256
+         --  third. Server accepts SHA-256-based suites only — so it
+         --  picks chacha as the first acceptable.
+         Check ("Tls13: client negotiated chacha20",
+                Tls_Core.Tls13_Driver.Selected_Suite (C)
+                  = Tls_Core.Suites.Chacha20_Poly1305_Sha256);
+         Check ("Tls13: server selected chacha20",
+                Tls_Core.Tls13_Driver.Selected_Suite (S)
+                  = Tls_Core.Suites.Chacha20_Poly1305_Sha256);
          Tls_Core.Tls13_Driver.Open_App_Directions (C, Out_Cli, In_Cli);
          Tls_Core.Tls13_Driver.Open_App_Directions (S, Out_Srv, In_Srv);
-         Tls_Core.Channel.Send (Out_Cli, Pt, Wire, Wire_Last);
-         Tls_Core.Channel.Receive
-           (In_Srv, Wire (1 .. Wire_Last), Got, Got_Last, OK);
+         Tls_Core.Aead_Channel.Send
+           (Out_Cli, Pt,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (In_Srv, Wire (1 .. Wire_Last),
+            Got, Got_Last, Inner, OK);
          Check ("Tls13: app data c→s decrypts", OK);
          Check ("Tls13: app data c→s round-trips",
                 Got_Last = Pt'Length
                 and then Equal (Got (1 .. Got_Last), Pt));
+         Check ("Tls13: inner type preserved (application_data)",
+                Inner = Tls_Core.Aead_Channel.Inner_Type_Application_Data);
       end;
    end Tls13_Loopback;
 
@@ -3517,6 +3561,122 @@ procedure Tls_Core_Tests is
       Check ("Channel_Aes256: inner type preserved",
              Inner = Tls_Core.Channel_Aes256.Inner_Type_Application_Data);
    end Channel_Aes256_Roundtrip_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario — Aead_Channel variant-record round-trip, one per
+   --  cipher suite. Validates Tls_Core.Aead_Channel dispatches Send
+   --  / Receive correctly for each of the three v0.5 production
+   --  suites (RFC 8446 §B.4). This is the unit that the Tls13_Driver
+   --  integrates against for runtime cipher-suite negotiation; if
+   --  any of these three round-trips fails, the driver cannot
+   --  negotiate to that suite.
+   ---------------------------------------------------------------------
+
+   procedure Aead_Channel_Chacha_Scenario;
+   procedure Aead_Channel_Chacha_Scenario is
+      use type Tls_Core.Octet;
+      Secret : constant Tls_Core.Key_Schedule.Secret :=
+        (others => 16#71#);
+      Tx, Rx : Tls_Core.Aead_Channel.Direction;
+      Pt : constant Tls_Core.Octet_Array :=
+        (16#43#, 16#68#, 16#61#);  --  "Cha"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Wire_Last : Natural;
+      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got_Last : Natural;
+      Inner : Tls_Core.Octet;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario — Aead_Channel chacha20-poly1305 round-trip");
+      Tls_Core.Aead_Channel.Init_Sha256
+        (Tx, Tls_Core.Suites.Chacha20_Poly1305_Sha256, Secret);
+      Tls_Core.Aead_Channel.Init_Sha256
+        (Rx, Tls_Core.Suites.Chacha20_Poly1305_Sha256, Secret);
+      Tls_Core.Aead_Channel.Send
+        (Tx, Pt,
+         Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+         Wire, Wire_Last);
+      Check ("Aead_Channel/chacha: wire bytes produced",
+             Wire_Last >= 5 + Pt'Length + 1 + 16);
+      Tls_Core.Aead_Channel.Receive
+        (Rx, Wire (1 .. Wire_Last), Got, Got_Last, Inner, OK);
+      Check ("Aead_Channel/chacha: decrypt OK", OK);
+      Check ("Aead_Channel/chacha: round-trip plaintext",
+             Got_Last = Pt'Length
+             and then Equal (Got (1 .. Got_Last), Pt));
+      Check ("Aead_Channel/chacha: inner type preserved",
+             Inner = Tls_Core.Aead_Channel.Inner_Type_Application_Data);
+   end Aead_Channel_Chacha_Scenario;
+
+   procedure Aead_Channel_Aes128_Scenario;
+   procedure Aead_Channel_Aes128_Scenario is
+      use type Tls_Core.Octet;
+      Secret : constant Tls_Core.Key_Schedule.Secret :=
+        (others => 16#72#);
+      Tx, Rx : Tls_Core.Aead_Channel.Direction;
+      Pt : constant Tls_Core.Octet_Array :=
+        (16#41#, 16#31#, 16#32#, 16#38#);  --  "A128"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Wire_Last : Natural;
+      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got_Last : Natural;
+      Inner : Tls_Core.Octet;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario — Aead_Channel AES-128-GCM round-trip");
+      Tls_Core.Aead_Channel.Init_Sha256
+        (Tx, Tls_Core.Suites.Aes_128_Gcm_Sha256, Secret);
+      Tls_Core.Aead_Channel.Init_Sha256
+        (Rx, Tls_Core.Suites.Aes_128_Gcm_Sha256, Secret);
+      Tls_Core.Aead_Channel.Send
+        (Tx, Pt,
+         Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+         Wire, Wire_Last);
+      Check ("Aead_Channel/aes128: wire bytes produced",
+             Wire_Last >= 5 + Pt'Length + 1 + 16);
+      Tls_Core.Aead_Channel.Receive
+        (Rx, Wire (1 .. Wire_Last), Got, Got_Last, Inner, OK);
+      Check ("Aead_Channel/aes128: decrypt OK", OK);
+      Check ("Aead_Channel/aes128: round-trip plaintext",
+             Got_Last = Pt'Length
+             and then Equal (Got (1 .. Got_Last), Pt));
+      Check ("Aead_Channel/aes128: inner type preserved",
+             Inner = Tls_Core.Aead_Channel.Inner_Type_Application_Data);
+   end Aead_Channel_Aes128_Scenario;
+
+   procedure Aead_Channel_Aes256_Scenario;
+   procedure Aead_Channel_Aes256_Scenario is
+      use type Tls_Core.Octet;
+      Secret : constant Tls_Core.Key_Schedule_Sha384.Secret :=
+        (others => 16#73#);  --  48-byte SHA-384 secret
+      Tx, Rx : Tls_Core.Aead_Channel.Direction;
+      Pt : constant Tls_Core.Octet_Array :=
+        (16#41#, 16#32#, 16#35#, 16#36#);  --  "A256"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Wire_Last : Natural;
+      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got_Last : Natural;
+      Inner : Tls_Core.Octet;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario — Aead_Channel AES-256-GCM round-trip");
+      Tls_Core.Aead_Channel.Init_Sha384 (Tx, Secret);
+      Tls_Core.Aead_Channel.Init_Sha384 (Rx, Secret);
+      Tls_Core.Aead_Channel.Send
+        (Tx, Pt,
+         Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+         Wire, Wire_Last);
+      Check ("Aead_Channel/aes256: wire bytes produced",
+             Wire_Last >= 5 + Pt'Length + 1 + 16);
+      Tls_Core.Aead_Channel.Receive
+        (Rx, Wire (1 .. Wire_Last), Got, Got_Last, Inner, OK);
+      Check ("Aead_Channel/aes256: decrypt OK", OK);
+      Check ("Aead_Channel/aes256: round-trip plaintext",
+             Got_Last = Pt'Length
+             and then Equal (Got (1 .. Got_Last), Pt));
+      Check ("Aead_Channel/aes256: inner type preserved",
+             Inner = Tls_Core.Aead_Channel.Inner_Type_Application_Data);
+   end Aead_Channel_Aes256_Scenario;
 
    ---------------------------------------------------------------------
    --  Scenario 38 — NIST P-256 generator decodes (curve membership).
@@ -4584,6 +4744,9 @@ begin
    Hkdf_Sha384_Scenario;
    Channel_Aes128_Roundtrip_Scenario;
    Channel_Aes256_Roundtrip_Scenario;
+   Aead_Channel_Chacha_Scenario;
+   Aead_Channel_Aes128_Scenario;
+   Aead_Channel_Aes256_Scenario;
    P256_Generator_Scenario;
    P256_One_G_Scenario;
    P256_Two_G_Scenario;

@@ -1,3 +1,4 @@
+with Tls_Core.Aead_Channel;
 with Tls_Core.Hello;
 with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
@@ -5,7 +6,7 @@ with Tls_Core.Hmac_Sha256;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Sha256;
-with Tls_Core.Traffic_Keys;
+with Tls_Core.Suites;
 
 package body Tls_Core.Tls13_Driver
 with SPARK_Mode
@@ -38,6 +39,29 @@ is
    --  Init_Psk_Server
    ---------------------------------------------------------------------
 
+   --  Helper: prime the Driver's variant-record / secret fields so
+   --  flow analysis sees every member as initialised even though
+   --  the actual handshake logic in Step overwrites them later.
+   --  Hs_Out_Dir / Hs_In_Dir start as the default chacha20 variant;
+   --  Step swaps them to the negotiated variant once D.Suite is set.
+   procedure Prime_Driver_Defaults (D : in out Driver);
+   procedure Prime_Driver_Defaults (D : in out Driver) is
+      Zero_Secret : constant Tls_Core.Key_Schedule.Secret := (others => 0);
+      Zero_Digest : constant Tls_Core.Sha256.Digest := (others => 0);
+   begin
+      D.Suite := Tls_Core.Suites.Chacha20_Poly1305_Sha256;
+      D.C_Hs_Sec  := Zero_Secret;
+      D.S_Hs_Sec  := Zero_Secret;
+      D.Hs_Secret := Zero_Secret;
+      D.Expected_Cf := Zero_Digest;
+      D.App_C_Ap := Zero_Secret;
+      D.App_S_Ap := Zero_Secret;
+      Tls_Core.Aead_Channel.Init_Sha256
+        (D.Hs_Out_Dir, Tls_Core.Suites.Chacha20_Poly1305_Sha256, Zero_Secret);
+      Tls_Core.Aead_Channel.Init_Sha256
+        (D.Hs_In_Dir,  Tls_Core.Suites.Chacha20_Poly1305_Sha256, Zero_Secret);
+   end Prime_Driver_Defaults;
+
    procedure Init_Psk_Server
      (D            : out Driver;
       PSK          : Octet_Array;
@@ -53,6 +77,7 @@ is
       D.Identity_Len := Psk_Identity'Length;
       D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
       D.App_Set := False;
+      Prime_Driver_Defaults (D);
    end Init_Psk_Server;
 
    procedure Init_Psk_Client
@@ -70,6 +95,7 @@ is
       D.Identity_Len := Psk_Identity'Length;
       D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
       D.App_Set := False;
+      Prime_Driver_Defaults (D);
    end Init_Psk_Client;
 
    ---------------------------------------------------------------------
@@ -253,6 +279,7 @@ is
                   return;
                end if;
                declare
+                  use type Tls_Core.Suites.U16;
                   Sh_Rec_Len : constant Natural :=
                     Natural (In_Bytes (Cursor + 3)) * 256
                     + Natural (In_Bytes (Cursor + 4));
@@ -266,6 +293,36 @@ is
                      D.Cur_State := Failed;
                      return;
                   end if;
+                  --  Extract server's selected cipher_suite from SH
+                  --  per RFC 8446 §4.1.3. SH wire layout (after the
+                  --  4-byte Handshake header at Sh_Rec_F):
+                  --    + 4 ..  5  legacy_version  (0x0303)
+                  --    + 6 .. 37  random          (32 bytes)
+                  --    + 38       session_id_len  (== 0 for v0.5)
+                  --    + 39 .. 40 cipher_suite    (u16)
+                  if Sh_Rec_F + 40 > In_Bytes'Last
+                    or else In_Bytes (Sh_Rec_F + 38) /= 0
+                  then
+                     D.Cur_State := Failed;
+                     return;
+                  end if;
+                  declare
+                     Code : constant Tls_Core.Suites.U16 :=
+                       Tls_Core.Suites.U16 (In_Bytes (Sh_Rec_F + 39)) * 256
+                       + Tls_Core.Suites.U16 (In_Bytes (Sh_Rec_F + 40));
+                  begin
+                     if not Tls_Core.Suites.Is_Supported_Suite (Code)
+                       or else Code =
+                                 Tls_Core.Suites.TLS_AES_256_GCM_SHA384
+                     then
+                        --  Unrecognised, or AES-256-GCM-SHA384 (driver
+                        --  schedule path is SHA-256-only — see package
+                        --  wall-hit note).
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
+                     D.Suite := Tls_Core.Suites.Suite_Of_Code (Code);
+                  end;
                   --  Append SH handshake message to transcript.
                   Tls_Core.Transcript.Append
                     (D.Hash_Ctx, In_Bytes (Sh_Rec_F .. Sh_Rec_L));
@@ -296,8 +353,11 @@ is
                   Context => Th_After_Sh,
                   Output  => D.S_Hs_Sec);
                --  Client: in decrypts with s_hs; out encrypts with c_hs.
-               Tls_Core.Channel.Init (D.Hs_In_Dir,  D.S_Hs_Sec);
-               Tls_Core.Channel.Init (D.Hs_Out_Dir, D.C_Hs_Sec);
+               --  Init_Sha256 dispatches the AEAD by D.Suite.
+               Tls_Core.Aead_Channel.Init_Sha256
+                 (D.Hs_In_Dir,  D.Suite, D.S_Hs_Sec);
+               Tls_Core.Aead_Channel.Init_Sha256
+                 (D.Hs_Out_Dir, D.Suite, D.C_Hs_Sec);
 
                --  Step 3: decrypt EE record.
                declare
@@ -310,7 +370,7 @@ is
                begin
                   if Cursor + 4 > In_Bytes'Last
                     or else In_Bytes (Cursor) /=
-                              Tls_Core.Channel.Inner_Type_Application_Data
+                              Tls_Core.Aead_Channel.Inner_Type_Application_Data
                   then
                      D.Cur_State := Failed;
                      return;
@@ -322,11 +382,12 @@ is
                      D.Cur_State := Failed;
                      return;
                   end if;
-                  Tls_Core.Channel.Receive
+                  Tls_Core.Aead_Channel.Receive
                     (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
                      Pt_Buf, Pt_Last, Inner_Type, OK);
                   if not OK
-                    or else Inner_Type /= Tls_Core.Channel.Inner_Type_Handshake
+                    or else Inner_Type /=
+                              Tls_Core.Aead_Channel.Inner_Type_Handshake
                     or else Pt_Last < 4
                     or else Pt_Buf (1) /= Hs_Type_EE
                   then
@@ -352,7 +413,7 @@ is
                begin
                   if Cursor + 4 > In_Bytes'Last
                     or else In_Bytes (Cursor) /=
-                              Tls_Core.Channel.Inner_Type_Application_Data
+                              Tls_Core.Aead_Channel.Inner_Type_Application_Data
                   then
                      D.Cur_State := Failed;
                      return;
@@ -364,11 +425,12 @@ is
                      D.Cur_State := Failed;
                      return;
                   end if;
-                  Tls_Core.Channel.Receive
+                  Tls_Core.Aead_Channel.Receive
                     (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
                      Pt_Buf, Pt_Last, Inner_Type, OK);
                   if not OK
-                    or else Inner_Type /= Tls_Core.Channel.Inner_Type_Handshake
+                    or else Inner_Type /=
+                              Tls_Core.Aead_Channel.Inner_Type_Handshake
                     or else Pt_Last /= 4 + 32
                     or else Pt_Buf (1) /= Hs_Type_Finished
                   then
@@ -435,10 +497,10 @@ is
                      Cf_Hs, Cf_Hs_Last);
                   Tls_Core.Transcript.Append
                     (D.Hash_Ctx, Cf_Hs (1 .. Cf_Hs_Last));
-                  Tls_Core.Channel.Send
+                  Tls_Core.Aead_Channel.Send
                     (D.Hs_Out_Dir,
                      Cf_Hs (1 .. Cf_Hs_Last),
-                     Tls_Core.Channel.Inner_Type_Handshake,
+                     Tls_Core.Aead_Channel.Inner_Type_Handshake,
                      Cf_Rec, Cf_Rec_Last);
                   Out_Buf (1 .. Cf_Rec_Last) := Cf_Rec (1 .. Cf_Rec_Last);
                   Out_Last := Cf_Rec_Last;
@@ -478,6 +540,7 @@ is
                   Hs_Body_L : constant Natural := Hs_Body_F + Hs_Body_Len - 1;
 
                   Random : Tls_Core.Hello.Random_Bytes;
+                  Suites_F, Suites_L : Natural;
                   Id_F, Id_L, Bf, Bl, T_Last : Natural;
                   Decode_OK : Boolean;
                begin
@@ -488,11 +551,50 @@ is
                   --  Decode the CH body
                   Tls_Core.Hello.Decode_Client_Hello_Psk
                     (In_Bytes (Hs_Body_F .. Hs_Body_L),
-                     Random, Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+                     Random,
+                     Suites_F, Suites_L,
+                     Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
                   if not Decode_OK then
                      D.Cur_State := Failed;
                      return;
                   end if;
+                  --  Server cipher-suite selection (RFC 8446 §4.1.3):
+                  --  walk client's offered list in order and pick
+                  --  the first that we actually accept. v0.5 driver
+                  --  internal key schedule is SHA-256-only (see
+                  --  package wall-hit note), so we only accept the
+                  --  two SHA-256-based suites here. If none match
+                  --  → Failed (handshake_failure equivalent).
+                  declare
+                     use type Tls_Core.Suites.U16;
+                     Found : Boolean := False;
+                     Code  : Tls_Core.Suites.U16;
+                     Q : Natural := Suites_F;
+                  begin
+                     while Q + 1 <= Suites_L loop
+                        pragma Loop_Invariant
+                          (Q in Suites_F .. Suites_L + 1);
+                        Code :=
+                          Tls_Core.Suites.U16 (In_Bytes (Q)) * 256
+                          + Tls_Core.Suites.U16 (In_Bytes (Q + 1));
+                        if Code = Tls_Core.Suites.TLS_AES_128_GCM_SHA256 then
+                           D.Suite := Tls_Core.Suites.Aes_128_Gcm_Sha256;
+                           Found := True;
+                           exit;
+                        elsif Code =
+                              Tls_Core.Suites.TLS_CHACHA20_POLY1305_SHA256
+                        then
+                           D.Suite := Tls_Core.Suites.Chacha20_Poly1305_Sha256;
+                           Found := True;
+                           exit;
+                        end if;
+                        Q := Q + 2;
+                     end loop;
+                     if not Found then
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
+                  end;
                   --  Decode_*_Psk returns absolute indices into the
                   --  In_Bytes slice it was passed; that slice has
                   --  'First = Hs_Body_F so the indices already are
@@ -588,9 +690,12 @@ is
             begin
                pragma Unreferenced (Empty_Identity_Buf);
 
-               --  SH body = canonical PSK SH (echoes selected_identity = 0)
+               --  SH body = canonical PSK SH (echoes selected_identity = 0
+               --  and the server's chosen cipher suite per RFC 8446 §4.1.3).
                Tls_Core.Hello.Encode_Server_Hello_Psk
-                 (Server_Random, Sh_Body, Sh_Body_Last);
+                 (Server_Random,
+                  Tls_Core.Suites.Code_Of_Suite (D.Suite),
+                  Sh_Body, Sh_Body_Last);
                --  Wrap body into Handshake message (type + u24 + body).
                Encode_Hs_Message
                  (Hs_Type_SH,
@@ -629,10 +734,13 @@ is
                   Context => Transcript_Hash_After_SH,
                   Output  => S_Hs_Sec);
 
-               --  Open Channel Hs_Out_Dir / Hs_In_Dir (server: out
-               --  encrypts with s_hs, in decrypts with c_hs).
-               Tls_Core.Channel.Init (D.Hs_Out_Dir, S_Hs_Sec);
-               Tls_Core.Channel.Init (D.Hs_In_Dir,  C_Hs_Sec);
+               --  Open Aead_Channel Hs_Out_Dir / Hs_In_Dir (server:
+               --  out encrypts with s_hs, in decrypts with c_hs). The
+               --  Init_Sha256 dispatcher pins the variant to D.Suite.
+               Tls_Core.Aead_Channel.Init_Sha256
+                 (D.Hs_Out_Dir, D.Suite, S_Hs_Sec);
+               Tls_Core.Aead_Channel.Init_Sha256
+                 (D.Hs_In_Dir,  D.Suite, C_Hs_Sec);
 
                --  Save the secrets for later finished-key derivation
                --  + master-secret derivation in this same Step body.
@@ -652,10 +760,10 @@ is
                     (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
                   Tls_Core.Transcript.Append
                     (D.Hash_Ctx, Ee_Hs (1 .. Ee_Hs_Last));
-                  Tls_Core.Channel.Send
+                  Tls_Core.Aead_Channel.Send
                     (D.Hs_Out_Dir,
                      Ee_Hs (1 .. Ee_Hs_Last),
-                     Tls_Core.Channel.Inner_Type_Handshake,
+                     Tls_Core.Aead_Channel.Inner_Type_Handshake,
                      Ee_Rec, Ee_Rec_Last);
 
                   --  Build Server Finished.
@@ -675,10 +783,10 @@ is
                         Fin_Hs, Fin_Hs_Last);
                      Tls_Core.Transcript.Append
                        (D.Hash_Ctx, Fin_Hs (1 .. Fin_Hs_Last));
-                     Tls_Core.Channel.Send
+                     Tls_Core.Aead_Channel.Send
                        (D.Hs_Out_Dir,
                         Fin_Hs (1 .. Fin_Hs_Last),
-                        Tls_Core.Channel.Inner_Type_Handshake,
+                        Tls_Core.Aead_Channel.Inner_Type_Handshake,
                         Fin_Rec, Fin_Rec_Last);
 
                      --  Concatenate SH || EE-encrypted || Finished-encrypted.
@@ -764,11 +872,12 @@ is
                Inner_Type : Octet;
                OK : Boolean;
             begin
-               Tls_Core.Channel.Receive
+               Tls_Core.Aead_Channel.Receive
                  (D.Hs_In_Dir, In_Bytes,
                   Pt_Buf, Pt_Last, Inner_Type, OK);
                if not OK
-                 or else Inner_Type /= Tls_Core.Channel.Inner_Type_Handshake
+                 or else Inner_Type /=
+                           Tls_Core.Aead_Channel.Inner_Type_Handshake
                  or else Pt_Last /= 4 + 32
                  or else Pt_Buf (1) /= Hs_Type_Finished
                then
@@ -799,19 +908,23 @@ is
 
    procedure Open_App_Directions
      (D       : Driver;
-      Out_Dir : out Tls_Core.Channel.Direction;
-      In_Dir  : out Tls_Core.Channel.Direction)
+      Out_Dir : out Tls_Core.Aead_Channel.Direction;
+      In_Dir  : out Tls_Core.Aead_Channel.Direction)
    is
    begin
       case D.My_Role is
          when Server =>
             --  Server: out encrypts with s_ap; in decrypts with c_ap.
-            Tls_Core.Channel.Init (Out_Dir, D.App_S_Ap);
-            Tls_Core.Channel.Init (In_Dir,  D.App_C_Ap);
+            Tls_Core.Aead_Channel.Init_Sha256
+              (Out_Dir, D.Suite, D.App_S_Ap);
+            Tls_Core.Aead_Channel.Init_Sha256
+              (In_Dir,  D.Suite, D.App_C_Ap);
          when Client =>
             --  Client: out encrypts with c_ap; in decrypts with s_ap.
-            Tls_Core.Channel.Init (Out_Dir, D.App_C_Ap);
-            Tls_Core.Channel.Init (In_Dir,  D.App_S_Ap);
+            Tls_Core.Aead_Channel.Init_Sha256
+              (Out_Dir, D.Suite, D.App_C_Ap);
+            Tls_Core.Aead_Channel.Init_Sha256
+              (In_Dir,  D.Suite, D.App_S_Ap);
       end case;
    end Open_App_Directions;
 

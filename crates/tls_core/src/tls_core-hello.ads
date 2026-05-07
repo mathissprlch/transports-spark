@@ -25,13 +25,18 @@
 --
 --  We support exactly the negotiation surface the handshake
 --  driver needs:
---      cipher_suite   = TLS_CHACHA20_POLY1305_SHA256   (0x1303)
+--      cipher_suite   = one of TLS_CHACHA20_POLY1305_SHA256 (0x1303),
+--                       TLS_AES_128_GCM_SHA256 (0x1301),
+--                       TLS_AES_256_GCM_SHA384 (0x1302)
+--                       — runtime-negotiated per RFC 8446 §4.1.3
 --      named_group    = x25519                          (0x001D)
 --      signature_alg  = ed25519                         (0x0807)
 --      legacy_version = 0x0303 (TLS 1.2 marker)
 --      negotiated_ver = 0x0304 (TLS 1.3, in supported_versions ext)
 --
 --  Other suites / groups / algorithms are out of scope for v0.5.
+
+with Tls_Core.Suites;
 
 package Tls_Core.Hello
 with SPARK_Mode
@@ -148,10 +153,14 @@ is
    --  naming the identity and binder slices. Truncated_Last is the
    --  last byte of the truncated CH (caller hashes
    --  In_Bytes(In_Bytes'First..Truncated_Last) for the binder
-   --  recompute).
+   --  recompute). Suites_First..Suites_Last bracket the
+   --  cipher_suites list bytes (RFC 8446 §4.1.2 — flat-packed u16
+   --  codepoints) so the caller can run its own selection policy.
    procedure Decode_Client_Hello_Psk
      (In_Bytes        : Octet_Array;
       Random          : out Random_Bytes;
+      Suites_First    : out Natural;
+      Suites_Last     : out Natural;
       Identity_First  : out Natural;
       Identity_Last   : out Natural;
       Binder_First    : out Natural;
@@ -160,11 +169,14 @@ is
       OK              : out Boolean);
 
    --  Encode a ServerHello echoing selected_identity = 0 and the
-   --  TLS 1.3 supported_versions.
+   --  TLS 1.3 supported_versions. Selected_Suite is the cipher
+   --  suite the server picked from the client's offered list (RFC
+   --  8446 §4.1.3).
    procedure Encode_Server_Hello_Psk
-     (Random   : Random_Bytes;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (Random         : Random_Bytes;
+      Selected_Suite : Tls_Core.Suites.U16;
+      Out_Buf        : out Octet_Array;
+      Out_Last       : out Natural)
    with
      Pre  =>
        Out_Buf'First = 1

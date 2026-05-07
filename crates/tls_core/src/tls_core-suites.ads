@@ -41,6 +41,39 @@ is
        or else Code = TLS_AES_256_GCM_SHA384
        or else Code = TLS_CHACHA20_POLY1305_SHA256);
 
+   --  Symbolic enum used as the discriminant of variant-record
+   --  dispatchers (see Tls_Core.Aead_Channel). Maps 1-to-1 onto
+   --  the three §B.4 codepoints above.
+   type Cipher_Suite_Id is
+     (Chacha20_Poly1305_Sha256,
+      Aes_128_Gcm_Sha256,
+      Aes_256_Gcm_Sha384);
+
+   --  Lift an IANA codepoint to the enum. Caller must check
+   --  Is_Supported_Suite (Code) first — an unsupported code falls
+   --  through to Chacha20_Poly1305_Sha256 by convention; the Pre
+   --  prevents that path being reached by accident. RFC 8446 §4.1.3
+   --  server selection: send handshake_failure if no offered suite
+   --  is acceptable, before ever calling Suite_Of_Code.
+   function Suite_Of_Code (Code : U16) return Cipher_Suite_Id
+   is (if Code = TLS_AES_128_GCM_SHA256       then Aes_128_Gcm_Sha256
+       elsif Code = TLS_AES_256_GCM_SHA384    then Aes_256_Gcm_Sha384
+       else Chacha20_Poly1305_Sha256)
+   with
+     Pre  => Is_Supported_Suite (Code),
+     Post =>
+       (case Suite_Of_Code'Result is
+          when Chacha20_Poly1305_Sha256 => Code = TLS_CHACHA20_POLY1305_SHA256,
+          when Aes_128_Gcm_Sha256       => Code = TLS_AES_128_GCM_SHA256,
+          when Aes_256_Gcm_Sha384       => Code = TLS_AES_256_GCM_SHA384);
+
+   --  Inverse of Suite_Of_Code.
+   function Code_Of_Suite (Suite : Cipher_Suite_Id) return U16
+   is (case Suite is
+         when Chacha20_Poly1305_Sha256 => TLS_CHACHA20_POLY1305_SHA256,
+         when Aes_128_Gcm_Sha256       => TLS_AES_128_GCM_SHA256,
+         when Aes_256_Gcm_Sha384       => TLS_AES_256_GCM_SHA384);
+
    ---------------------------------------------------------------------
    --  Named groups — RFC 8446 §4.2.7 / RFC 8422 §5.1.1
    ---------------------------------------------------------------------

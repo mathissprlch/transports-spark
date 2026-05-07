@@ -520,9 +520,17 @@ is
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_Bytes (Out_Buf, Cursor, Random);
       W_U8 (Out_Buf, Cursor, 0);                  -- session_id_len
-      W_U16 (Out_Buf, Cursor, 2);                 -- cipher_suites length
-      W_U8 (Out_Buf, Cursor, Cipher_Suite_Hi);
-      W_U8 (Out_Buf, Cursor, Cipher_Suite_Lo);
+      --  Cipher suites: offer all three v0.5 production suites in
+      --  RFC-recommended preference order (chacha20 first per RFC
+      --  8446 §B.4 ordering, then AES-128, then AES-256). Server
+      --  picks one — see Decode_Client_Hello_Psk + Tls13_Driver.
+      W_U16 (Out_Buf, Cursor, 6);                 -- 3 suites × 2 bytes
+      W_U8 (Out_Buf, Cursor, 16#13#);             -- TLS_CHACHA20_POLY1305_SHA256
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_U8 (Out_Buf, Cursor, 16#13#);             -- TLS_AES_128_GCM_SHA256
+      W_U8 (Out_Buf, Cursor, 16#01#);
+      W_U8 (Out_Buf, Cursor, 16#13#);             -- TLS_AES_256_GCM_SHA384
+      W_U8 (Out_Buf, Cursor, 16#02#);
       W_U8 (Out_Buf, Cursor, 1);                  -- compression_methods length
       W_U8 (Out_Buf, Cursor, 0);                  -- compression null
 
@@ -591,6 +599,8 @@ is
    procedure Decode_Client_Hello_Psk
      (In_Bytes        : Octet_Array;
       Random          : out Random_Bytes;
+      Suites_First    : out Natural;
+      Suites_Last     : out Natural;
       Identity_First  : out Natural;
       Identity_Last   : out Natural;
       Binder_First    : out Natural;
@@ -608,6 +618,8 @@ is
       Find_OK : Boolean;
    begin
       Random := (others => 0);
+      Suites_First := 0;
+      Suites_Last := 0;
       Identity_First := 0;
       Identity_Last := 0;
       Binder_First := 0;
@@ -628,10 +640,15 @@ is
       if not Read_OK then return; end if;
       if P + Natural (U8_Val) - 1 > In_Bytes'Last then return; end if;
       P := P + Natural (U8_Val);
-      --  cipher_suites
+      --  cipher_suites — record the slice bounds so the caller can
+      --  pick a suite. RFC 8446 §4.1.2: u16 length (must be even,
+      --  >= 2), then N flat-packed u16 codepoints.
       R_U16 (In_Bytes, P, U16_Val, Read_OK);
       if not Read_OK then return; end if;
+      if U16_Val < 2 or else U16_Val mod 2 /= 0 then return; end if;
       if P + U16_Val - 1 > In_Bytes'Last then return; end if;
+      Suites_First := P;
+      Suites_Last  := P + U16_Val - 1;
       P := P + U16_Val;
       --  legacy_compression_methods
       R_U8 (In_Bytes, P, U8_Val, Read_OK);
@@ -705,21 +722,27 @@ is
    end Decode_Client_Hello_Psk;
 
    procedure Encode_Server_Hello_Psk
-     (Random   : Random_Bytes;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (Random         : Random_Bytes;
+      Selected_Suite : Tls_Core.Suites.U16;
+      Out_Buf        : out Octet_Array;
+      Out_Last       : out Natural)
    is
+      use type Tls_Core.Suites.U16;
       Cursor          : Natural := 0;
       Ext_Len_Pos     : Natural;
       Ext_Body_Start  : Natural;
+      Suite_Hi        : constant Octet :=
+        Octet (Selected_Suite / 16#0100#);
+      Suite_Lo        : constant Octet :=
+        Octet (Selected_Suite mod 16#0100#);
    begin
       Out_Buf := (others => 0);
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_Bytes (Out_Buf, Cursor, Random);
       W_U8 (Out_Buf, Cursor, 0);              -- session_id_len
-      W_U8 (Out_Buf, Cursor, Cipher_Suite_Hi);
-      W_U8 (Out_Buf, Cursor, Cipher_Suite_Lo);
+      W_U8 (Out_Buf, Cursor, Suite_Hi);       -- selected cipher suite
+      W_U8 (Out_Buf, Cursor, Suite_Lo);
       W_U8 (Out_Buf, Cursor, 0);              -- compression_method
       Cursor := Cursor + 1;
       Ext_Len_Pos := Cursor;
