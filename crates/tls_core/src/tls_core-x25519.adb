@@ -3,7 +3,7 @@ with Interfaces;
 with Tls_Core.Field25519;
 
 package body Tls_Core.X25519
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -77,17 +77,7 @@ is
       F_Inv (T1, C);
       F_Mul (T2, A, T1);
       Pack (Out_Q, T2);
-      pragma Assume (Out_Q = Spec_Scalar_Mult (Scalar, U_Coord));
    end Scalar_Mult;
-
-   function Spec_Scalar_Mult
-     (Scalar : Bytes_32; U_Coord : Bytes_32) return Bytes_32
-   is
-      pragma Unreferenced (Scalar, U_Coord);
-      Result : constant Bytes_32 := (others => 0);
-   begin
-      return Result;
-   end Spec_Scalar_Mult;
 
    ---------------------------------------------------------------------
    --  Derive_Public — base point u-coordinate is 9 (LE).

@@ -268,9 +268,9 @@ is
 
    --  DER walker — RFC 5280 §4.1.2.7. Driven by the Read_TLV_Header
    --  combinator above so that cumulative cursor advance never opens
-   --  the Cur+Used overflow class to the prover.  Trust axiom on the
-   --  ghost Spec_Decode_OK / Spec_Decode_Kind functions is the same
-   --  pattern as Tls_Core.Ed25519.Mod_L_Core.
+   --  the Cur+Used overflow class to the prover. The Post on Decode
+   --  is imperative: when OK is True the returned slice indices live
+   --  in Buf'Range and Kind is one of the supported key types.
    procedure Decode
      (Buf       : Octet_Array;
       OK        : out Boolean;
@@ -313,7 +313,6 @@ is
         (Buf, Buf'First, Tag_Sequence,
          Outer_BF, Outer_BL, Outer_AF, Step_OK);
       if not Step_OK then
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
       --  Outer_BF in Buf'First+2 .. Buf'Last+1 (cursor past header)
@@ -323,7 +322,6 @@ is
         (Buf, Outer_BF, Tag_Sequence,
          Alg_BF, Alg_BL, Alg_AF, Step_OK);
       if not Step_OK then
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
       --  Alg_BF .. Alg_BL is the algorithm-id body; Alg_AF is the
@@ -334,12 +332,10 @@ is
         (Buf, Alg_BF, Tag_Oid,
          Oid_BF, Oid_BL, Oid_AF, Step_OK);
       if not Step_OK then
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
       --  Oid_BL must lie within the algorithm body.
       if Oid_BL > Alg_BL then
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
 
@@ -361,7 +357,6 @@ is
          begin
             if Params_Cur > Alg_BL then
                --  Parameters absent — required for ecPublicKey.
-               pragma Assume (Spec_Decode_OK (Buf) = False);
                return;
             end if;
             --  Params_Cur in 1 .. Alg_BL <= Buf'Last so it's a valid
@@ -371,11 +366,9 @@ is
               (Buf, Params_Cur, Tag_Oid,
                Curve_BF, Curve_BL, Curve_AF, Sub_OK);
             if not Sub_OK then
-               pragma Assume (Spec_Decode_OK (Buf) = False);
                return;
             end if;
             if Curve_BL > Alg_BL then
-               pragma Assume (Spec_Decode_OK (Buf) = False);
                return;
             end if;
             if Curve_BF <= Curve_BL
@@ -384,12 +377,10 @@ is
             then
                Kind := Ecdsa_P256;
             else
-               pragma Assume (Spec_Decode_OK (Buf) = False);
                return;
             end if;
          end;
       else
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
 
@@ -400,14 +391,12 @@ is
       if not Step_OK then
          OK := False;
          Kind := Unknown;
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
       --  Need at least one byte of content (the unused-bits header).
       if Bs_BF > Bs_BL then
          OK := False;
          Kind := Unknown;
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
       --  Bs_BF in 1..Buf'Last by Read_TLV_Header post + Bs_BF<=Bs_BL.
@@ -415,23 +404,20 @@ is
       if Buf (Bs_BF) /= 0 then
          OK := False;
          Kind := Unknown;
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
       --  Key contents follow the unused-bits byte.
-      if Bs_BF + 1 > Bs_BL + 1 then
+      if Bs_BF >= Bs_BL then
          --  empty key body — degenerate; reject.
          OK := False;
          Kind := Unknown;
-         pragma Assume (Spec_Decode_OK (Buf) = False);
          return;
       end if;
+      --  Bs_BF < Bs_BL <= Buf'Last, so Bs_BF + 1 <= Bs_BL is a valid
+      --  index in Buf'Range. Key_First <= Key_Last.
       Key_First := Bs_BF + 1;
       Key_Last  := Bs_BL;
       OK := True;
-      pragma Assume
-        (OK = Spec_Decode_OK (Buf)
-         and then Kind = Spec_Decode_Kind (Buf));
    end Decode;
 
    --  RSAPublicKey ::= SEQUENCE { modulus INTEGER, publicExponent INTEGER }
@@ -472,7 +458,6 @@ is
         (Buf, Buf'First, Tag_Sequence,
          Outer_BF, Outer_BL, Outer_AF, Step_OK);
       if not Step_OK then
-         pragma Assume (Spec_Decode_Rsa_OK (Buf) = False);
          return;
       end if;
 
@@ -481,11 +466,9 @@ is
         (Buf, Outer_BF, Tag_Integer,
          Mod_BF, Mod_BL, Mod_AF, Step_OK);
       if not Step_OK then
-         pragma Assume (Spec_Decode_Rsa_OK (Buf) = False);
          return;
       end if;
       if Mod_BL > Outer_BL or else Mod_BF > Mod_BL then
-         pragma Assume (Spec_Decode_Rsa_OK (Buf) = False);
          return;
       end if;
 
@@ -494,11 +477,9 @@ is
         (Buf, Mod_AF, Tag_Integer,
          Exp_BF, Exp_BL, Exp_AF, Step_OK);
       if not Step_OK then
-         pragma Assume (Spec_Decode_Rsa_OK (Buf) = False);
          return;
       end if;
       if Exp_BL > Outer_BL or else Exp_BF > Exp_BL then
-         pragma Assume (Spec_Decode_Rsa_OK (Buf) = False);
          return;
       end if;
 
@@ -510,29 +491,6 @@ is
       Exp_First := Exp_BF;
       Exp_Last  := Exp_BL;
       OK := True;
-      pragma Assume (OK = Spec_Decode_Rsa_OK (Buf));
    end Decode_Rsa_Key;
-
-   ---------------------------------------------------------------------
-   --  Spec function placeholders.
-   ---------------------------------------------------------------------
-
-   function Spec_Decode_OK (Buf : Octet_Array) return Boolean is
-      pragma Unreferenced (Buf);
-   begin
-      return False;
-   end Spec_Decode_OK;
-
-   function Spec_Decode_Kind (Buf : Octet_Array) return Key_Kind is
-      pragma Unreferenced (Buf);
-   begin
-      return Unknown;
-   end Spec_Decode_Kind;
-
-   function Spec_Decode_Rsa_OK (Buf : Octet_Array) return Boolean is
-      pragma Unreferenced (Buf);
-   begin
-      return False;
-   end Spec_Decode_Rsa_OK;
 
 end Tls_Core.X509_Spki;

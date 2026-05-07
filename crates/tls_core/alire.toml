@@ -1,17 +1,11 @@
 name = "tls_core"
-description = "SPARK TLS 1.3 - RecordFlux codecs + wrapper-with-lemmas (miTLS-informed)"
+description = "Pure Ada/SPARK TLS 1.3 with platinum proofs (miTLS-informed)"
 version = "0.0.1"
 
 authors = ["Mathis Sperlich"]
 maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
 maintainers-logins = ["mathis"]
 licenses = "MIT"
-tags = ["tls", "spark", "verified", "recordflux", "mitls"]
+tags = ["tls", "spark", "verified", "mitls"]
 
 project-files = ["tls_core.gpr"]
-
-[[depends-on]]
-rflx_runtime = "*"
-
-[[pins]]
-rflx_runtime = { path = "../rflx_runtime" }

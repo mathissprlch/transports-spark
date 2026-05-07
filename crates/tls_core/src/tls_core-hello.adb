@@ -1,5 +1,5 @@
 package body Tls_Core.Hello
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");

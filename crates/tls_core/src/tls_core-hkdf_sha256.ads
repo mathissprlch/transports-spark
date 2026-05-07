@@ -35,19 +35,11 @@ is
    --  of Extract or any HashLen-byte secret); Info is the
    --  application-specific context; OKM is the requested-length
    --  output.
-   --  Abstract RFC 5869 §2.3 Expand. Pinned via pragma Assume in
-   --  the body — same trust pattern as Tls_Core.Sha256.Spec_Hash.
-   --  Composition-aware: Spec_Expand is a function of (PRK, Info,
-   --  Length) so callers above HKDF (Key_Schedule, Finished, ...)
-   --  can reason about Expand's output through Spec_Expand without
-   --  re-axiomatising the inner HMAC iteration.
-   function Spec_Expand
-     (PRK : Octet_Array; Info : Octet_Array; Length : Natural)
-      return Octet_Array
-   with Ghost,
-        Post => Spec_Expand'Result'Length = Length
-                and then Spec_Expand'Result'First = 1;
-
+   --
+   --  No functional Post: HKDF-Expand's mathematical content
+   --  (RFC 5869 §2.3) is not formalized inside this crate. RFC 5869
+   --  Appendix A test vectors in tls_core_tests are the functional
+   --  check.
    procedure Expand
      (PRK  : Octet_Array;
       Info : Octet_Array;
@@ -59,8 +51,7 @@ is
        and then Info'Length <= 1024
        and then PRK'Last < Integer'Last - 1024
        and then Info'Last < Integer'Last - 1024
-       and then OKM'Last < Integer'Last - 1024,
-     Post => OKM = Spec_Expand (PRK, Info, OKM'Length);
+       and then OKM'Last < Integer'Last - 1024;
 
    --  Adapter matching the Hmac_Expand formal of
    --  Tls_Core.Hkdf.Expand_Label. Renames Expand under the
@@ -76,7 +67,6 @@ is
        and then Info'Length <= 1024
        and then Prk'Last < Integer'Last - 1024
        and then Info'Last < Integer'Last - 1024
-       and then Output'Last < Integer'Last - 1024,
-     Post => Output = Spec_Expand (Prk, Info, Output'Length);
+       and then Output'Last < Integer'Last - 1024;
 
 end Tls_Core.Hkdf_Sha256;

@@ -35,7 +35,7 @@
 --  signatureAlgorithm both carry id-Ed25519 with no parameters.
 
 package Tls_Core.X509
-with SPARK_Mode => Off
+with SPARK_Mode
    --  DER parsing has too many byte-fiddling cases to push above
    --  silver; the Ed25519 verify caller is the proof boundary.
 is
@@ -51,12 +51,20 @@ is
    --    OK                     — True.
    --  On any deviation (wrong OID, bad TLV, truncation, etc.) sets
    --  OK := False; the out values are then meaningless.
+   --
+   --  Imperative Post: when OK is True the TBS slice indices are
+   --  inside Der.
    procedure Parse_Ed25519_Cert
      (Der        : Octet_Array;
       Tbs_First  : out Natural;
       Tbs_Last   : out Natural;
       Pub_Key    : out Public_Key;
       Sig        : out Signature;
-      OK         : out Boolean);
+      OK         : out Boolean)
+   with Post =>
+     (if OK then
+        Tbs_First in Der'Range
+        and then Tbs_Last in Der'Range
+        and then Tbs_First <= Tbs_Last);
 
 end Tls_Core.X509;

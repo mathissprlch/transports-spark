@@ -8,7 +8,7 @@ with Tls_Core.Sha256;
 with Tls_Core.Traffic_Keys;
 
 package body Tls_Core.Tls13_Driver
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -156,6 +156,7 @@ is
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
    is
+      Cur_State_Old : constant State := D.Cur_State;
    begin
       Out_Buf := (others => 0);
       Out_Last := 0;

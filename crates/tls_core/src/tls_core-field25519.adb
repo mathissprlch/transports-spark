@@ -1,7 +1,7 @@
 with Ada.Unchecked_Conversion;
 
 package body Tls_Core.Field25519
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -52,6 +52,7 @@ is
 
    procedure F_Add (O : out Felt; A, B : Felt) is
    begin
+      O := (others => 0);
       for I in Felt_Index loop
          O (I) := A (I) + B (I);
       end loop;
@@ -59,6 +60,7 @@ is
 
    procedure F_Sub (O : out Felt; A, B : Felt) is
    begin
+      O := (others => 0);
       for I in Felt_Index loop
          O (I) := A (I) - B (I);
       end loop;
@@ -71,6 +73,7 @@ is
    procedure F_Mul (O : out Felt; A, B : Felt) is
       T : Big_Buf := (others => 0);
    begin
+      O := (others => 0);
       for I in Felt_Index loop
          for J in Felt_Index loop
             T (I + J) := T (I + J) + A (I) * B (J);
@@ -99,6 +102,7 @@ is
    procedure F_Inv (O : out Felt; I_Val : Felt) is
       C, T : Felt;
    begin
+      O := (others => 0);
       C := I_Val;
       for K in reverse 0 .. 253 loop
          F_Sqr (T, C); C := T;
@@ -116,6 +120,7 @@ is
    procedure Pow_2523 (O : out Felt; Z : Felt) is
       C, T : Felt;
    begin
+      O := (others => 0);
       C := Z;
       for A in reverse 0 .. 250 loop
          F_Sqr (T, C); C := T;
@@ -153,6 +158,7 @@ is
       T, M : Felt;
       B    : Integer_64;
    begin
+      O := (others => 0);
       T := N;
       Carry (T); Carry (T); Carry (T);
       for J in 0 .. 1 loop
@@ -182,6 +188,7 @@ is
 
    procedure Unpack (O : out Felt; B : Bytes_32) is
    begin
+      O := (others => 0);
       for I in Felt_Index loop
          O (I) :=
            Integer_64 (B (1 + 2 * I))
@@ -196,9 +203,11 @@ is
 
    function Parity (N : Felt) return Integer_64 is
       Buf : Bytes_32;
+      Result : Integer_64;
    begin
       Pack (Buf, N);
-      return Integer_64 (Buf (1) and 1);
+      Result := Integer_64 (Buf (1) and 1);
+      return Result;
    end Parity;
 
 end Tls_Core.Field25519;

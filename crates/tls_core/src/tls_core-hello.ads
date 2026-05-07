@@ -34,7 +34,7 @@
 --  Other suites / groups / algorithms are out of scope for v0.5.
 
 package Tls_Core.Hello
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    subtype Random_Bytes is Octet_Array (1 .. 32);
@@ -57,24 +57,35 @@ is
       Key_Share        : Public_Key;  --  Server's X25519 public key
    end record;
 
+   --  No functional Posts on Encode/Decode: byte-layout invariants
+   --  (Out_Last in 0 .. Out_Buf'Last) are imperative; functional
+   --  byte-by-byte content is exercised via RFC 8448 vectors at
+   --  the handshake-driver level.
+
    --  Encode a ClientHello into Out_Buf. Returns the number of
    --  bytes written via Out_Last. Out_Buf'First must be 1.
    procedure Encode_Client_Hello
      (CH        : Client_Hello;
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
-   with Pre =>
+   with
+     Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 256;
+       and then Out_Buf'Length >= 256,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
 
    --  Encode a ServerHello into Out_Buf.
    procedure Encode_Server_Hello
      (SH        : Server_Hello;
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
-   with Pre =>
+   with
+     Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 256;
+       and then Out_Buf'Length >= 256,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
 
    --  Decode a ClientHello payload (the body after the 4-byte
    --  Handshake header has been stripped). Sets OK = False if the
@@ -122,10 +133,13 @@ is
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
-   with Pre =>
+   with
+     Pre  =>
        Out_Buf'First = 1
        and then Out_Buf'Length >= 256
-       and then Identity'Length in Psk_Identity_Len;
+       and then Identity'Length in Psk_Identity_Len,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
 
    --  Decode the PSK ext from a received CH. Sets OK := False if
    --  the shape doesn't match (no PSK ext, multiple identities,
@@ -151,8 +165,11 @@ is
      (Random   : Random_Bytes;
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural)
-   with Pre =>
+   with
+     Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 128;
+       and then Out_Buf'Length >= 128,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
 
 end Tls_Core.Hello;

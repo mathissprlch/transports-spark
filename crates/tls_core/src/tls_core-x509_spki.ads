@@ -17,22 +17,6 @@ is
 
    type Key_Kind is (Unknown, Rsa, Ecdsa_P256);
 
-   --  Spec functions — parser correctness as opaque ghosts. Callers
-   --  that need to reason about the parse outcome funnel through
-   --  Spec_Decode_OK / Spec_Decode_Kind. Pinned via pragma Assume
-   --  in the body.
-   function Spec_Decode_OK (Buf : Octet_Array) return Boolean
-   with Ghost,
-        Pre => Buf'First = 1 and then Buf'Length >= 2;
-
-   function Spec_Decode_Kind (Buf : Octet_Array) return Key_Kind
-   with Ghost,
-        Pre => Buf'First = 1 and then Buf'Length >= 2;
-
-   function Spec_Decode_Rsa_OK (Buf : Octet_Array) return Boolean
-   with Ghost,
-        Pre => Buf'First = 1 and then Buf'Length >= 2;
-
    --  Decode a SubjectPublicKeyInfo structure starting at Buf'First.
    --
    --  On success (OK = True), Kind says which key type was found,
@@ -42,6 +26,11 @@ is
    --  hands that slice to either the RSA module (which decodes the
    --  inner SEQUENCE { modulus, exponent }) or the ECDSA module
    --  (which expects the 65-byte 0x04||X||Y SEC1 encoding).
+   --
+   --  Imperative Post: when OK is True the returned indices identify
+   --  a non-empty slice strictly inside Buf and the returned Kind is
+   --  one of the supported key types. When OK is False the caller
+   --  must treat the index outputs as meaningless.
    procedure Decode
      (Buf       : Octet_Array;
       OK        : out Boolean;
@@ -53,8 +42,11 @@ is
              and then Buf'Length >= 2
              and then Buf'Last < Integer'Last - 16,
      Post =>
-       OK = Spec_Decode_OK (Buf)
-       and then (if OK then Kind = Spec_Decode_Kind (Buf));
+       (if OK then
+          Kind in Rsa | Ecdsa_P256
+          and then Key_First in Buf'Range
+          and then Key_Last in Buf'Range
+          and then Key_First <= Key_Last);
 
    --  For RSA SubjectPublicKey contents (the bytes inside the BIT
    --  STRING), parse the inner RSAPublicKey SEQUENCE and return the
@@ -63,6 +55,9 @@ is
    --     RSAPublicKey ::= SEQUENCE {
    --        modulus            INTEGER,
    --        publicExponent     INTEGER }
+   --
+   --  Imperative Post: when OK is True both INTEGER slices are
+   --  non-empty and live inside Buf.
    procedure Decode_Rsa_Key
      (Buf       : Octet_Array;
       OK        : out Boolean;
@@ -74,6 +69,13 @@ is
      Pre  => Buf'First = 1
              and then Buf'Length >= 2
              and then Buf'Last < Integer'Last - 16,
-     Post => OK = Spec_Decode_Rsa_OK (Buf);
+     Post =>
+       (if OK then
+          Mod_First in Buf'Range
+          and then Mod_Last in Buf'Range
+          and then Mod_First <= Mod_Last
+          and then Exp_First in Buf'Range
+          and then Exp_Last in Buf'Range
+          and then Exp_First <= Exp_Last);
 
 end Tls_Core.X509_Spki;

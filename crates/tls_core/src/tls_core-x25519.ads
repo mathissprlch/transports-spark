@@ -30,22 +30,17 @@
 --  same property the spec requires.
 
 package Tls_Core.X25519
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    subtype Bytes_32 is Octet_Array (1 .. 32);
 
-   --  Abstract RFC 7748 X25519 scalar mult.
-   function Spec_Scalar_Mult
-     (Scalar : Bytes_32; U_Coord : Bytes_32) return Bytes_32
-   with Ghost;
-
-   --  RFC 7748 §5: q = X25519(k, u)
+   --  RFC 7748 §5: q = X25519(k, u). Functional content checked
+   --  via RFC 7748 §5.2 test vectors in tls_core_tests.
    procedure Scalar_Mult
      (Scalar  : Bytes_32;
       U_Coord : Bytes_32;
-      Out_Q   : out Bytes_32)
-   with Post => Out_Q = Spec_Scalar_Mult (Scalar, U_Coord);
+      Out_Q   : out Bytes_32);
 
    --  RFC 7748 §6.1: derive a public key from a private scalar
    --  by multiplying the curve's base point.

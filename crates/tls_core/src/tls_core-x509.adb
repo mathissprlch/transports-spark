@@ -6,7 +6,7 @@
 --  then dump the bytes via `xxd -i test.der`.
 
 package body Tls_Core.X509
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");

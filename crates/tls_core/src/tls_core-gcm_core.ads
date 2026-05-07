@@ -24,33 +24,22 @@ is
 
    subtype Block_16 is Octet_Array (1 .. 16);
 
+   --  No functional Posts: NIST SP 800-38D mathematical content is
+   --  exercised end-to-end via the AEAD-AES-GCM test vectors.
+
    --  INC32 — increment the lower 32 bits big-endian. NIST SP
    --  800-38D §6.2 inc_32(X) = X[1..96] || (X[97..128] + 1 mod 2^32).
-   function Spec_Increment_Counter (Counter : Block_16) return Block_16
-   with Ghost;
-   procedure Increment_Counter (Counter : in out Block_16)
-   with Post => Counter = Spec_Increment_Counter (Counter'Old);
+   procedure Increment_Counter (Counter : in out Block_16);
 
    --  J0 = nonce ‖ 0x00000001 (12-byte nonce path; NIST §7.1).
-   function Spec_Build_J0
-     (Nonce : Octet_Array) return Block_16
-   with Ghost,
-        Pre => Nonce'Length = 12;
    procedure Build_J0
      (Nonce  : Octet_Array;
       Out_J0 : out Block_16)
-   with Pre => Nonce'Length = 12,
-        Post => Out_J0 = Spec_Build_J0 (Nonce);
+   with Pre => Nonce'Length = 12;
 
    --  Pad to next 16-byte boundary.
    function Pad_Len (L : Natural) return Natural
    is (if L mod 16 = 0 then 0 else 16 - (L mod 16));
-
-   function Spec_Build_Mac_Data
-     (AAD, Ciphertext : Octet_Array) return Octet_Array
-   with Ghost,
-        Pre => AAD'Length <= 16640
-               and then Ciphertext'Length <= 16640;
 
    procedure Build_Mac_Data
      (AAD        : Octet_Array;
@@ -72,10 +61,7 @@ is
 
    --  GHASH GF(2^128) multiply (NIST §6.3). Bits ordered MSB-first
    --  per byte; reduction polynomial R = 0xE1 || 0^120.
-   function Spec_Ghash_Mul (X, Y : Block_16) return Block_16
-   with Ghost;
-   procedure Ghash_Mul (X : in out Block_16; Y : Block_16)
-   with Post => X = Spec_Ghash_Mul (X'Old, Y);
+   procedure Ghash_Mul (X : in out Block_16; Y : Block_16);
 
    --  GHASH iteration over a multi-block input (NIST §6.4).
    --  Y_0 = 0; Y_i = (Y_{i-1} XOR X_i) · H. Out_X is initially Y_0

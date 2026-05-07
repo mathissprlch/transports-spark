@@ -32,7 +32,6 @@
 --
 --  See ../docs/v0.5-tls-plan.md for the slicing rationale.
 
-with RFLX.RFLX_Builtin_Types;
 
 package Tls_Core.Hkdf
 with SPARK_Mode
@@ -40,7 +39,6 @@ is
 
    use type Tls_Core.Octet;
    use type Interfaces.Unsigned_16;
-   use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
 
    --  The literal six-byte ASCII prefix per RFC 8446 §7.1.
    Tls13_Prefix : constant Octet_Array (1 .. 6) :=
@@ -121,26 +119,6 @@ is
                    Output
                      (3 + Tls13_Prefix'Length + Label'Length + 1 + I)
                    = Context (Context'First + I - 1));
-
-   --  Cross-check: builds the same bytes via the RecordFlux-
-   --  generated `Hkdf::Label` serializer. Used as an executable
-   --  consistency oracle for the hand-rolled Build_Info_Bytes.
-   --  Same Pre/Post (modulo the buffer-pointer plumbing). Lives
-   --  out of SPARK_Mode because the RFLX runtime does not yet
-   --  prove silver-clean.
-   procedure Build_Info_Bytes_Via_Rflx
-     (Length  : Interfaces.Unsigned_16;
-      Label   : Octet_Array;
-      Context : Octet_Array;
-      Buffer  : in out RFLX.RFLX_Builtin_Types.Bytes_Ptr;
-      Last    : out Natural)
-   with
-     Pre  => Buffer /= null
-             and then Label'Length in 1 .. 249
-             and then Context'Length in 0 .. 255
-             and then Buffer'Length
-                      >= Info_Size (Label'Length, Context'Length),
-     Post => Buffer /= null;
 
    --  HKDF-Expand-Label proper. The wrapper:
    --    1. Builds the info bytes with Build_Info_Bytes.

@@ -36,26 +36,6 @@ is
          Label   => Iv_Label,
          Context => Empty,
          Output  => Out_IV);
-      pragma Assume (Out_Key = Spec_Key (Secret_In)
-                     and then Out_IV = Spec_IV (Secret_In));
    end Derive;
-
-   function Spec_Key (Secret_In : Tls_Core.Key_Schedule.Secret)
-                      return Aead_Key
-   is
-      pragma Unreferenced (Secret_In);
-      Result : constant Aead_Key := (others => 0);
-   begin
-      return Result;
-   end Spec_Key;
-
-   function Spec_IV (Secret_In : Tls_Core.Key_Schedule.Secret)
-                     return Aead_Iv
-   is
-      pragma Unreferenced (Secret_In);
-      Result : constant Aead_Iv := (others => 0);
-   begin
-      return Result;
-   end Spec_IV;
 
 end Tls_Core.Traffic_Keys;

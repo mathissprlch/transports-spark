@@ -21,8 +21,10 @@ with Tls_Core.Sha256;
 with Tls_Core.Transcript;
 
 package Tls_Core.Tls13_Driver
-with SPARK_Mode => Off
+with SPARK_Mode
 is
+
+   pragma Unevaluated_Use_Of_Old (Allow);
 
    type Role is (Client, Server);
 
@@ -54,14 +56,21 @@ is
    --  TCP since the last Step (one or more TLSPlaintext /
    --  TLSCiphertext records concatenated). Driver writes the
    --  outbound flight to Out_Buf — also a concatenation of records.
+   --
+   --  No functional Post: the per-state RFC 8446 §4 / §7.1 mode-1
+   --  PSK_KE transitions are exercised end-to-end via the
+   --  RFC 8448 PSK vector at the test-harness level.
    procedure Step
      (D         : in out Driver;
       In_Bytes  : Octet_Array;
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
-   with Pre =>
+   with
+     Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 1024;
+       and then Out_Buf'Length >= 1024,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
 
    function Current_State (D : Driver) return State;
 

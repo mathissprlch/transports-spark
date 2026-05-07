@@ -3,9 +3,6 @@
 --  Two checks per scenario:
 --    1. Build_Info_Bytes (hand-rolled, SPARK contracts) emits the
 --       byte sequence the RFC 8446 §7.1 layout demands.
---    2. Build_Info_Bytes_Via_Rflx (RecordFlux serializer)
---       produces the IDENTICAL bytes for the same inputs. This
---       is our cross-check oracle for the contract.
 
 with Ada.Text_IO;
 with Ada.Command_Line;
@@ -20,7 +17,6 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Chacha20;
 with Tls_Core.Poly1305;
 with Tls_Core.Aead_Chacha20_Poly1305;
-with Tls_Core.Records;
 with Tls_Core.Transcript;
 with Tls_Core.Finished;
 with Tls_Core.Handshake;
@@ -35,8 +31,20 @@ with Tls_Core.Transport;
 with Tls_Core.Tcp_Transport;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Tls13_Driver;
-with RFLX.RFLX_Builtin_Types;
-with RFLX.RFLX_Types;
+with Tls_Core.Aes128;
+with Tls_Core.Aead_Aes128_Gcm;
+with Tls_Core.Sha384;
+with Tls_Core.Hmac_Sha384;
+with Tls_Core.Hkdf_Sha384;
+with Tls_Core.Aes256;
+with Tls_Core.Aead_Aes256_Gcm;
+with Tls_Core.Channel_Aes128;
+with Tls_Core.Channel_Aes256;
+with Tls_Core.Key_Schedule_Sha384;
+with Tls_Core.P256;
+with Tls_Core.P256_Field;
+with Tls_Core.P256_Order;
+with Tls_Core.Ecdsa_P256;
 
 procedure Tls_Core_Tests is
 
@@ -113,31 +121,6 @@ procedure Tls_Core_Tests is
       Check ("hand-rolled bytes match RFC §7.1",
              Equal (Out_Hand, Expected));
 
-      --  Cross-check via the RecordFlux serializer.
-      declare
-         Buf : RFLX.RFLX_Builtin_Types.Bytes_Ptr :=
-           new RFLX.RFLX_Types.Bytes'(1 .. 64 => 0);
-         Rflx_Last : Natural;
-      begin
-         Tls_Core.Hkdf.Build_Info_Bytes_Via_Rflx
-           (Length  => 32,
-            Label   => Label,
-            Context => Context,
-            Buffer  => Buf,
-            Last    => Rflx_Last);
-         declare
-            Out_Rflx : Tls_Core.Octet_Array
-              (1 .. Out_Hand'Length);
-         begin
-            for I in Out_Rflx'Range loop
-               Out_Rflx (I) :=
-                 Tls_Core.Octet (Buf.all (RFLX.RFLX_Types.Index (I)));
-            end loop;
-            Check
-              ("rflx-encoded bytes equal hand-rolled bytes",
-               Equal (Out_Hand, Out_Rflx));
-         end;
-      end;
    end Scenario_1;
 
    --------------------------------------------------------------------
@@ -182,30 +165,6 @@ procedure Tls_Core_Tests is
       Check ("hand-rolled bytes match RFC §7.1",
              Equal (Out_Hand, Expected));
 
-      declare
-         Buf : RFLX.RFLX_Builtin_Types.Bytes_Ptr :=
-           new RFLX.RFLX_Types.Bytes'(1 .. 64 => 0);
-         Rflx_Last : Natural;
-      begin
-         Tls_Core.Hkdf.Build_Info_Bytes_Via_Rflx
-           (Length  => 16,
-            Label   => Label,
-            Context => Context,
-            Buffer  => Buf,
-            Last    => Rflx_Last);
-         declare
-            Out_Rflx : Tls_Core.Octet_Array
-              (1 .. Out_Hand'Length);
-         begin
-            for I in Out_Rflx'Range loop
-               Out_Rflx (I) :=
-                 Tls_Core.Octet (Buf.all (RFLX.RFLX_Types.Index (I)));
-            end loop;
-            Check
-              ("rflx-encoded bytes equal hand-rolled bytes",
-               Equal (Out_Hand, Out_Rflx));
-         end;
-      end;
    end Scenario_2;
 
    --------------------------------------------------------------------
@@ -674,8 +633,6 @@ procedure Tls_Core_Tests is
    end Record_Aead_Roundtrip;
 
    --------------------------------------------------------------------
-   --  Records — TLSPlaintext encode/decode round-trip via the
-   --  RecordFlux-generated serializer in Tls_Core.Records.
    --------------------------------------------------------------------
 
    --------------------------------------------------------------------
@@ -908,50 +865,6 @@ procedure Tls_Core_Tests is
       end;
    end Transcript_Finished_Scenario;
 
-   procedure Records_Scenario;
-   procedure Records_Scenario is
-      use type Tls_Core.Records.Content_Type;
-      Buf : RFLX.RFLX_Builtin_Types.Bytes_Ptr :=
-        new RFLX.RFLX_Types.Bytes'(1 .. 256 => 0);
-      Frag : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#CA#, 16#FE#, 16#BA#, 16#BE#);
-      Last : Natural;
-      OK   : Boolean;
-      T    : Tls_Core.Records.Content_Type;
-      F1, F2 : Natural;
-   begin
-      Put_Line ("scenario 13 — Tls_Core.Records encode/decode round-trip");
-      Tls_Core.Records.Encode
-        (Buffer => Buf, Last => Last,
-         Type_Of => Tls_Core.Records.Application_Data,
-         Fragment => Frag);
-      --  Wire bytes: 17 03 03 00 04 CA FE BA BE
-      Check ("encoded length is 9 bytes", Last = 9);
-      Check ("byte 1 = 0x17 (application_data)",
-             Tls_Core.Octet (Buf.all (1)) = 16#17#);
-      Check ("byte 2 = 0x03 (legacy_version high)",
-             Tls_Core.Octet (Buf.all (2)) = 16#03#);
-      Check ("byte 3 = 0x03 (legacy_version low)",
-             Tls_Core.Octet (Buf.all (3)) = 16#03#);
-      Check ("byte 4 = 0x00 (length high)",
-             Tls_Core.Octet (Buf.all (4)) = 16#00#);
-      Check ("byte 5 = 0x04 (length low)",
-             Tls_Core.Octet (Buf.all (5)) = 16#04#);
-      Check ("bytes 6..9 = fragment",
-             Tls_Core.Octet (Buf.all (6)) = 16#CA#
-             and then Tls_Core.Octet (Buf.all (7)) = 16#FE#
-             and then Tls_Core.Octet (Buf.all (8)) = 16#BA#
-             and then Tls_Core.Octet (Buf.all (9)) = 16#BE#);
-
-      Tls_Core.Records.Decode
-        (Buffer => Buf, Last => Last,
-         OK => OK, Type_Of => T,
-         Fragment_First => F1, Fragment_Last => F2);
-      Check ("decode OK", OK);
-      Check ("type = application_data",
-             T = Tls_Core.Records.Application_Data);
-      Check ("fragment range 6..9", F1 = 6 and then F2 = 9);
-   end Records_Scenario;
 
    procedure Aead_Scenario;
    procedure Aead_Scenario is
@@ -3154,6 +3067,837 @@ procedure Tls_Core_Tests is
       end;
    end Tls13_Loopback;
 
+   --------------------------------------------------------------------
+   --  Scenario 31 — AES-128 single-block FIPS 197 §C.1 test vector.
+   --
+   --    Key   = 000102030405060708090A0B0C0D0E0F
+   --    Pt    = 00112233445566778899AABBCCDDEEFF
+   --    Ct    = 69C4E0D86A7B0430D8CDB78070B4C55A
+   --------------------------------------------------------------------
+   procedure Aes128_Scenario;
+   procedure Aes128_Scenario is
+      Key : constant Tls_Core.Aes128.Key_Array :=
+        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#);
+      Pt : constant Tls_Core.Aes128.Block :=
+        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+      Expected : constant Tls_Core.Aes128.Block :=
+        (16#69#, 16#C4#, 16#E0#, 16#D8#, 16#6A#, 16#7B#, 16#04#, 16#30#,
+         16#D8#, 16#CD#, 16#B7#, 16#80#, 16#70#, 16#B4#, 16#C5#, 16#5A#);
+
+      RK : Tls_Core.Aes128.Round_Keys;
+      Ct : Tls_Core.Aes128.Block;
+   begin
+      Put_Line ("scenario 31 — AES-128 FIPS 197 §C.1");
+      Tls_Core.Aes128.Expand_Key (Key, RK);
+      Tls_Core.Aes128.Encrypt_Block (RK, Pt, Ct);
+      Check ("AES-128 §C.1 ciphertext byte-exact",
+             Equal (Ct, Expected));
+   end Aes128_Scenario;
+
+   --------------------------------------------------------------------
+   --  Scenario 32 — AES-128-GCM NIST Test Case 3 (gcm-spec.pdf).
+   --
+   --    K  = feffe9928665731c6d6a8f9467308308
+   --    P  = d9313225f88406e5a55909c5aff5269a... (60 bytes)
+   --    IV = cafebabefacedbaddecaf888
+   --    C  = 42831ec2217774244b7221b784d0d49c... (60 bytes)
+   --    T  = 4d5c2af327cd64a62cf35abd2ba6fab4
+   --------------------------------------------------------------------
+   procedure Aes_Gcm_Scenario;
+   procedure Aes_Gcm_Scenario is
+      Key : constant Tls_Core.Aead_Aes128_Gcm.Key_Array :=
+        (16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
+         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#);
+      IV : constant Tls_Core.Aead_Aes128_Gcm.Nonce_Array :=
+        (16#CA#, 16#FE#, 16#BA#, 16#BE#, 16#FA#, 16#CE#, 16#DB#, 16#AD#,
+         16#DE#, 16#CA#, 16#F8#, 16#88#);
+      Pt : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (16#D9#, 16#31#, 16#32#, 16#25#, 16#F8#, 16#84#, 16#06#, 16#E5#,
+         16#A5#, 16#59#, 16#09#, 16#C5#, 16#AF#, 16#F5#, 16#26#, 16#9A#,
+         16#86#, 16#A7#, 16#A9#, 16#53#, 16#15#, 16#34#, 16#F7#, 16#DA#,
+         16#2E#, 16#4C#, 16#30#, 16#3D#, 16#8A#, 16#31#, 16#8A#, 16#72#,
+         16#1C#, 16#3C#, 16#0C#, 16#95#, 16#95#, 16#68#, 16#09#, 16#53#,
+         16#2F#, 16#CF#, 16#0E#, 16#24#, 16#49#, 16#A6#, 16#B5#, 16#25#,
+         16#B1#, 16#6A#, 16#ED#, 16#F5#, 16#AA#, 16#0D#, 16#E6#, 16#57#,
+         16#BA#, 16#63#, 16#7B#, 16#39#, 16#1A#, 16#AF#, 16#D2#, 16#55#);
+      AAD : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+      Expected_Ct : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (16#42#, 16#83#, 16#1E#, 16#C2#, 16#21#, 16#77#, 16#74#, 16#24#,
+         16#4B#, 16#72#, 16#21#, 16#B7#, 16#84#, 16#D0#, 16#D4#, 16#9C#,
+         16#E3#, 16#AA#, 16#21#, 16#2F#, 16#2C#, 16#02#, 16#A4#, 16#E0#,
+         16#35#, 16#C1#, 16#7E#, 16#23#, 16#29#, 16#AC#, 16#A1#, 16#2E#,
+         16#21#, 16#D5#, 16#14#, 16#B2#, 16#54#, 16#66#, 16#93#, 16#1C#,
+         16#7D#, 16#8F#, 16#6A#, 16#5A#, 16#AC#, 16#84#, 16#AA#, 16#05#,
+         16#1B#, 16#A3#, 16#0B#, 16#39#, 16#6A#, 16#0A#, 16#AC#, 16#97#,
+         16#3D#, 16#58#, 16#E0#, 16#91#, 16#47#, 16#3F#, 16#59#, 16#85#);
+      Expected_T : constant Tls_Core.Aead_Aes128_Gcm.Tag_Array :=
+        (16#4D#, 16#5C#, 16#2A#, 16#F3#, 16#27#, 16#CD#, 16#64#, 16#A6#,
+         16#2C#, 16#F3#, 16#5A#, 16#BD#, 16#2B#, 16#A6#, 16#FA#, 16#B4#);
+
+      Ct : Tls_Core.Octet_Array (1 .. 64);
+      T  : Tls_Core.Aead_Aes128_Gcm.Tag_Array;
+
+      Round_Pt : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+      OK : Boolean;
+   begin
+      Put_Line ("scenario 32 — AES-128-GCM NIST Test Case 3");
+      Tls_Core.Aead_Aes128_Gcm.Seal
+        (Key, IV, AAD, Pt, Ct, T);
+      Check ("AES-GCM ciphertext byte-exact",
+             Equal (Ct, Expected_Ct));
+      Check ("AES-GCM tag byte-exact",
+             Equal (T, Expected_T));
+
+      Tls_Core.Aead_Aes128_Gcm.Open
+        (Key, IV, AAD, Ct, T, Round_Pt, OK);
+      Check ("AES-GCM Open succeeds with valid tag", OK);
+      Check ("AES-GCM Open round-trips plaintext",
+             Equal (Round_Pt, Pt));
+
+      --  Tampered ciphertext rejected.
+      declare
+         Bad_Ct : Tls_Core.Octet_Array (1 .. 64) := Ct;
+         Pt2 : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+         OK2 : Boolean;
+      begin
+         Bad_Ct (1) := Bad_Ct (1) xor 16#01#;
+         Tls_Core.Aead_Aes128_Gcm.Open
+           (Key, IV, AAD, Bad_Ct, T, Pt2, OK2);
+         Check ("AES-GCM Open rejects tampered ciphertext", not OK2);
+      end;
+   end Aes_Gcm_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 33 — SHA-384 of "abc" (FIPS 180-4 §C.2 / B.4).
+   ---------------------------------------------------------------------
+
+   procedure Sha384_Scenario;
+   procedure Sha384_Scenario is
+      Msg : constant Tls_Core.Octet_Array (1 .. 3) :=
+        (16#61#, 16#62#, 16#63#);   --  "abc"
+      Expected : constant Tls_Core.Sha384.Digest :=
+        (16#CB#, 16#00#, 16#75#, 16#3F#, 16#45#, 16#A3#, 16#5E#, 16#8B#,
+         16#B5#, 16#A0#, 16#3D#, 16#69#, 16#9A#, 16#C6#, 16#50#, 16#07#,
+         16#27#, 16#2C#, 16#32#, 16#AB#, 16#0E#, 16#DE#, 16#D1#, 16#63#,
+         16#1A#, 16#8B#, 16#60#, 16#5A#, 16#43#, 16#FF#, 16#5B#, 16#ED#,
+         16#80#, 16#86#, 16#07#, 16#2B#, 16#A1#, 16#E7#, 16#CC#, 16#23#,
+         16#58#, 16#BA#, 16#EC#, 16#A1#, 16#34#, 16#C8#, 16#25#, 16#A7#);
+      Got : Tls_Core.Sha384.Digest;
+   begin
+      Put_Line ("scenario 33 — SHA-384 ""abc"" (FIPS 180-4 §C.2)");
+      Tls_Core.Sha384.Hash (Msg, Got);
+      Check ("SHA-384(""abc"") byte-exact", Equal (Got, Expected));
+   end Sha384_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 34 — AES-256 single-block (FIPS 197 §C.3).
+   ---------------------------------------------------------------------
+
+   procedure Aes256_Scenario;
+   procedure Aes256_Scenario is
+      Key : constant Tls_Core.Aes256.Key_Array :=
+        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#,
+         16#10#, 16#11#, 16#12#, 16#13#, 16#14#, 16#15#, 16#16#, 16#17#,
+         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#);
+      Pt : constant Tls_Core.Aes256.Block :=
+        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+      Expected : constant Tls_Core.Aes256.Block :=
+        (16#8E#, 16#A2#, 16#B7#, 16#CA#, 16#51#, 16#67#, 16#45#, 16#BF#,
+         16#EA#, 16#FC#, 16#49#, 16#90#, 16#4B#, 16#49#, 16#60#, 16#89#);
+      RK : Tls_Core.Aes256.Round_Keys;
+      Got : Tls_Core.Aes256.Block;
+   begin
+      Put_Line ("scenario 34 — AES-256 FIPS 197 §C.3");
+      Tls_Core.Aes256.Expand_Key (Key, RK);
+      Tls_Core.Aes256.Encrypt_Block (RK, Pt, Got);
+      Check ("AES-256 §C.3 ciphertext byte-exact",
+             Equal (Got, Expected));
+   end Aes256_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 35 — AES-256-GCM NIST SP 800-38D Test Case 15.
+   ---------------------------------------------------------------------
+
+   procedure Aes256_Gcm_Scenario;
+   procedure Aes256_Gcm_Scenario is
+      Key : constant Tls_Core.Aead_Aes256_Gcm.Key_Array :=
+        (16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
+         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#,
+         16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
+         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#);
+      IV : constant Tls_Core.Aead_Aes256_Gcm.Nonce_Array :=
+        (16#CA#, 16#FE#, 16#BA#, 16#BE#, 16#FA#, 16#CE#, 16#DB#, 16#AD#,
+         16#DE#, 16#CA#, 16#F8#, 16#88#);
+      Pt : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (16#D9#, 16#31#, 16#32#, 16#25#, 16#F8#, 16#84#, 16#06#, 16#E5#,
+         16#A5#, 16#59#, 16#09#, 16#C5#, 16#AF#, 16#F5#, 16#26#, 16#9A#,
+         16#86#, 16#A7#, 16#A9#, 16#53#, 16#15#, 16#34#, 16#F7#, 16#DA#,
+         16#2E#, 16#4C#, 16#30#, 16#3D#, 16#8A#, 16#31#, 16#8A#, 16#72#,
+         16#1C#, 16#3C#, 16#0C#, 16#95#, 16#95#, 16#68#, 16#09#, 16#53#,
+         16#2F#, 16#CF#, 16#0E#, 16#24#, 16#49#, 16#A6#, 16#B5#, 16#25#,
+         16#B1#, 16#6A#, 16#ED#, 16#F5#, 16#AA#, 16#0D#, 16#E6#, 16#57#,
+         16#BA#, 16#63#, 16#7B#, 16#39#, 16#1A#, 16#AF#, 16#D2#, 16#55#);
+      AAD : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+      Expected_Ct : constant Tls_Core.Octet_Array (1 .. 64) :=
+        (16#52#, 16#2D#, 16#C1#, 16#F0#, 16#99#, 16#56#, 16#7D#, 16#07#,
+         16#F4#, 16#7F#, 16#37#, 16#A3#, 16#2A#, 16#84#, 16#42#, 16#7D#,
+         16#64#, 16#3A#, 16#8C#, 16#DC#, 16#BF#, 16#E5#, 16#C0#, 16#C9#,
+         16#75#, 16#98#, 16#A2#, 16#BD#, 16#25#, 16#55#, 16#D1#, 16#AA#,
+         16#8C#, 16#B0#, 16#8E#, 16#48#, 16#59#, 16#0D#, 16#BB#, 16#3D#,
+         16#A7#, 16#B0#, 16#8B#, 16#10#, 16#56#, 16#82#, 16#88#, 16#38#,
+         16#C5#, 16#F6#, 16#1E#, 16#63#, 16#93#, 16#BA#, 16#7A#, 16#0A#,
+         16#BC#, 16#C9#, 16#F6#, 16#62#, 16#89#, 16#80#, 16#15#, 16#AD#);
+      Expected_T : constant Tls_Core.Aead_Aes256_Gcm.Tag_Array :=
+        (16#B0#, 16#94#, 16#DA#, 16#C5#, 16#D9#, 16#34#, 16#71#, 16#BD#,
+         16#EC#, 16#1A#, 16#50#, 16#22#, 16#70#, 16#E3#, 16#CC#, 16#6C#);
+
+      Ct : Tls_Core.Octet_Array (1 .. 64);
+      T  : Tls_Core.Aead_Aes256_Gcm.Tag_Array;
+      Round_Pt : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+      OK : Boolean;
+   begin
+      Put_Line ("scenario 35 — AES-256-GCM NIST Test Case 15");
+      Tls_Core.Aead_Aes256_Gcm.Seal (Key, IV, AAD, Pt, Ct, T);
+      Check ("AES-256-GCM ciphertext byte-exact",
+             Equal (Ct, Expected_Ct));
+      Check ("AES-256-GCM tag byte-exact",
+             Equal (T, Expected_T));
+      Tls_Core.Aead_Aes256_Gcm.Open (Key, IV, AAD, Ct, T, Round_Pt, OK);
+      Check ("AES-256-GCM Open succeeds with valid tag", OK);
+      Check ("AES-256-GCM Open round-trips plaintext",
+             Equal (Round_Pt, Pt));
+      declare
+         Bad_Ct : Tls_Core.Octet_Array (1 .. 64) := Ct;
+         Pt2 : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+         OK2 : Boolean;
+      begin
+         Bad_Ct (1) := Bad_Ct (1) xor 16#01#;
+         Tls_Core.Aead_Aes256_Gcm.Open (Key, IV, AAD, Bad_Ct, T, Pt2, OK2);
+         Check ("AES-256-GCM Open rejects tampered ciphertext", not OK2);
+      end;
+   end Aes256_Gcm_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 36 — HMAC-SHA-384 RFC 4231 §4.2 Test Case 1.
+   ---------------------------------------------------------------------
+
+   procedure Hmac_Sha384_Scenario;
+   procedure Hmac_Sha384_Scenario is
+      Key : constant Tls_Core.Octet_Array (1 .. 20) :=
+        (others => 16#0B#);
+      --  "Hi There"
+      Msg : constant Tls_Core.Octet_Array (1 .. 8) :=
+        (16#48#, 16#69#, 16#20#, 16#54#,
+         16#68#, 16#65#, 16#72#, 16#65#);
+      Expected : constant Tls_Core.Hmac_Sha384.Tag :=
+        (16#AF#, 16#D0#, 16#39#, 16#44#, 16#D8#, 16#48#, 16#95#, 16#62#,
+         16#6B#, 16#08#, 16#25#, 16#F4#, 16#AB#, 16#46#, 16#90#, 16#7F#,
+         16#15#, 16#F9#, 16#DA#, 16#DB#, 16#E4#, 16#10#, 16#1E#, 16#C6#,
+         16#82#, 16#AA#, 16#03#, 16#4C#, 16#7C#, 16#EB#, 16#C5#, 16#9C#,
+         16#FA#, 16#EA#, 16#9E#, 16#A9#, 16#07#, 16#6E#, 16#DE#, 16#7F#,
+         16#4A#, 16#F1#, 16#52#, 16#E8#, 16#B2#, 16#FA#, 16#9C#, 16#B6#);
+      Got : Tls_Core.Hmac_Sha384.Tag;
+   begin
+      Put_Line ("scenario 36 — HMAC-SHA-384 RFC 4231 Test Case 1");
+      Tls_Core.Hmac_Sha384.Compute (Key, Msg, Got);
+      Check ("HMAC-SHA-384 byte-exact", Equal (Got, Expected));
+   end Hmac_Sha384_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 37 — HKDF-SHA-384 self-roundtrip + non-zero output
+   --  smoke test (full RFC 5869 vectors are SHA-256 only; the
+   --  algorithm is identical except for HashLen, so a non-zero
+   --  output + monotonic-length check exercises the iteration).
+   ---------------------------------------------------------------------
+
+   procedure Hkdf_Sha384_Scenario;
+   procedure Hkdf_Sha384_Scenario is
+      Prk : constant Tls_Core.Octet_Array
+        (1 .. Tls_Core.Hkdf_Sha384.Hash_Length) := (others => 16#42#);
+      Info : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#74#, 16#65#, 16#73#, 16#74#);  --  "test"
+      Out48 : Tls_Core.Octet_Array (1 .. 48);
+      Out96 : Tls_Core.Octet_Array (1 .. 96);
+      All_Zero_48 : Boolean := True;
+      Prefix_Match : Boolean := True;
+   begin
+      Put_Line ("scenario 37 — HKDF-SHA-384 smoke");
+      Tls_Core.Hkdf_Sha384.Expand (Prk, Info, Out48);
+      Tls_Core.Hkdf_Sha384.Expand (Prk, Info, Out96);
+      for I in Out48'Range loop
+         if Out48 (I) /= 0 then
+            All_Zero_48 := False;
+         end if;
+         if Out48 (I) /= Out96 (I) then
+            Prefix_Match := False;
+         end if;
+      end loop;
+      --  The first HashLen bytes of Expand are independent of the
+      --  output length: T(1) is computed identically. Truncation
+      --  happens only at the tail.
+      Check ("HKDF-SHA-384 produces non-zero output", not All_Zero_48);
+      Check ("HKDF-SHA-384 prefix stable across lengths", Prefix_Match);
+   end Hkdf_Sha384_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario X — AES-128-GCM Channel round-trip.
+   --
+   --  Validates the Tls_Core.Channel_Aes128 module: derive AES-128
+   --  + IV from a traffic secret, send a plaintext through the
+   --  channel, decrypt at the receiving direction, confirm the
+   --  bytes round-trip. Bypasses the Tls13_Driver (which is
+   --  ChaCha20-only at v0.5).
+   ---------------------------------------------------------------------
+
+   procedure Channel_Aes128_Roundtrip_Scenario;
+   procedure Channel_Aes128_Roundtrip_Scenario is
+      use type Tls_Core.Octet;
+      Secret : constant Tls_Core.Key_Schedule.Secret :=
+        (others => 16#7A#);  --  arbitrary 32-byte secret
+      Tx, Rx : Tls_Core.Channel_Aes128.Direction;
+      Pt : constant Tls_Core.Octet_Array :=
+        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "Hello"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Wire_Last : Natural;
+      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got_Last : Natural;
+      Inner : Tls_Core.Octet;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario X — Channel_Aes128 round-trip");
+      Tls_Core.Channel_Aes128.Init (Tx, Secret);
+      Tls_Core.Channel_Aes128.Init (Rx, Secret);
+      Tls_Core.Channel_Aes128.Send
+        (Tx, Pt,
+         Tls_Core.Channel_Aes128.Inner_Type_Application_Data,
+         Wire, Wire_Last);
+      Check ("Channel_Aes128: wire bytes produced",
+             Wire_Last >= 5 + Pt'Length + 1 + 16);
+      Tls_Core.Channel_Aes128.Receive
+        (Rx, Wire (1 .. Wire_Last), Got, Got_Last, Inner, OK);
+      Check ("Channel_Aes128: decrypt OK", OK);
+      Check ("Channel_Aes128: round-trip plaintext",
+             Got_Last = Pt'Length
+             and then Equal (Got (1 .. Got_Last), Pt));
+      Check ("Channel_Aes128: inner type preserved",
+             Inner = Tls_Core.Channel_Aes128.Inner_Type_Application_Data);
+   end Channel_Aes128_Roundtrip_Scenario;
+
+   procedure Channel_Aes256_Roundtrip_Scenario;
+   procedure Channel_Aes256_Roundtrip_Scenario is
+      use type Tls_Core.Octet;
+      Secret : constant Tls_Core.Key_Schedule_Sha384.Secret :=
+        (others => 16#7B#);  --  arbitrary 48-byte SHA-384 secret
+      Tx, Rx : Tls_Core.Channel_Aes256.Direction;
+      Pt : constant Tls_Core.Octet_Array :=
+        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);
+      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Wire_Last : Natural;
+      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got_Last : Natural;
+      Inner : Tls_Core.Octet;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario X — Channel_Aes256 round-trip");
+      Tls_Core.Channel_Aes256.Init (Tx, Secret);
+      Tls_Core.Channel_Aes256.Init (Rx, Secret);
+      Tls_Core.Channel_Aes256.Send
+        (Tx, Pt,
+         Tls_Core.Channel_Aes256.Inner_Type_Application_Data,
+         Wire, Wire_Last);
+      Check ("Channel_Aes256: wire bytes produced",
+             Wire_Last >= 5 + Pt'Length + 1 + 16);
+      Tls_Core.Channel_Aes256.Receive
+        (Rx, Wire (1 .. Wire_Last), Got, Got_Last, Inner, OK);
+      Check ("Channel_Aes256: decrypt OK", OK);
+      Check ("Channel_Aes256: round-trip plaintext",
+             Got_Last = Pt'Length
+             and then Equal (Got (1 .. Got_Last), Pt));
+      Check ("Channel_Aes256: inner type preserved",
+             Inner = Tls_Core.Channel_Aes256.Inner_Type_Application_Data);
+   end Channel_Aes256_Roundtrip_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 38 — NIST P-256 generator decodes (curve membership).
+   --
+   --  SEC 1 §2.3.4 uncompressed encoding 04 || Gx || Gy. The decode
+   --  succeeds iff y^2 = x^3 - 3x + b over GF(p).
+   --  Generator from FIPS 186-4 §D.1.2.3.
+   ---------------------------------------------------------------------
+
+   procedure P256_Generator_Scenario;
+   procedure P256_Generator_Scenario is
+      Encoded : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+      Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
+         16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
+         16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
+         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#);
+      Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
+         16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
+         16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
+         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#);
+      P  : Tls_Core.P256.Point;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario 38 — P-256 generator on curve");
+      Encoded (2 .. 33) := Gx;
+      Encoded (34 .. 65) := Gy;
+      Tls_Core.P256.Decode_Uncompressed (Encoded, P, OK);
+      Check ("P-256 generator decodes (curve eqn satisfied)", OK);
+   end P256_Generator_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 39 — 1 * G = G (scalar mult identity check).
+   --
+   --  SEC 1 §3.2.1 with k = 1: scalar mult should leave the
+   --  encoding bit-for-bit unchanged.
+   ---------------------------------------------------------------------
+
+   procedure P256_One_G_Scenario;
+   procedure P256_One_G_Scenario is
+      Encoded : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+      Encoded_Out : Tls_Core.Octet_Array (1 .. 65);
+      Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
+         16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
+         16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
+         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#);
+      Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
+         16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
+         16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
+         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#);
+      Scalar : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+      P, R   : Tls_Core.P256.Point;
+      OK     : Boolean;
+   begin
+      Put_Line ("scenario 39 — P-256 1*G = G");
+      Encoded (2 .. 33) := Gx;
+      Encoded (34 .. 65) := Gy;
+      Tls_Core.P256.Decode_Uncompressed (Encoded, P, OK);
+      Scalar (32) := 1;
+      Tls_Core.P256.Scalar_Mul (Scalar, P, R);
+      Tls_Core.P256.Encode_Uncompressed (R, Encoded_Out);
+      Check ("P-256 1*G round-trip equals input encoding",
+             Equal (Encoded, Encoded_Out));
+   end P256_One_G_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 40 — 2 * G byte-exact.
+   --
+   --  Source: NIST CAVP P-256 known answer (also reproduced in
+   --  many references, e.g. Brown 2009 SEC 1 test vectors and
+   --  RFC 6979 §A.2.5):
+   --     2*Gx = 7CF27B188D034F7E8A52380304B51AC3C08969E2
+   --            77F21B35A60B48FC47669978
+   --     2*Gy = 07775510DB8ED040293D9AC69F7430DBBA7DADE6
+   --            3CE982299E04B79D227873D1
+   ---------------------------------------------------------------------
+
+   procedure P256_Two_G_Scenario;
+   procedure P256_Two_G_Scenario is
+      Encoded : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+      Encoded_Out : Tls_Core.Octet_Array (1 .. 65);
+      Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
+         16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
+         16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
+         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#);
+      Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
+         16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
+         16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
+         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#);
+      Two_Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#7C#, 16#F2#, 16#7B#, 16#18#, 16#8D#, 16#03#, 16#4F#, 16#7E#,
+         16#8A#, 16#52#, 16#38#, 16#03#, 16#04#, 16#B5#, 16#1A#, 16#C3#,
+         16#C0#, 16#89#, 16#69#, 16#E2#, 16#77#, 16#F2#, 16#1B#, 16#35#,
+         16#A6#, 16#0B#, 16#48#, 16#FC#, 16#47#, 16#66#, 16#99#, 16#78#);
+      Two_Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#07#, 16#77#, 16#55#, 16#10#, 16#DB#, 16#8E#, 16#D0#, 16#40#,
+         16#29#, 16#3D#, 16#9A#, 16#C6#, 16#9F#, 16#74#, 16#30#, 16#DB#,
+         16#BA#, 16#7D#, 16#AD#, 16#E6#, 16#3C#, 16#E9#, 16#82#, 16#29#,
+         16#9E#, 16#04#, 16#B7#, 16#9D#, 16#22#, 16#78#, 16#73#, 16#D1#);
+      Expected : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+      Scalar : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+      P, R   : Tls_Core.P256.Point;
+      OK     : Boolean;
+   begin
+      Put_Line ("scenario 40 — P-256 2*G byte-exact");
+      Encoded (2 .. 33) := Gx;
+      Encoded (34 .. 65) := Gy;
+      Expected (2 .. 33) := Two_Gx;
+      Expected (34 .. 65) := Two_Gy;
+      Tls_Core.P256.Decode_Uncompressed (Encoded, P, OK);
+      Scalar (32) := 2;
+      Tls_Core.P256.Scalar_Mul (Scalar, P, R);
+      Tls_Core.P256.Encode_Uncompressed (R, Encoded_Out);
+      Check ("P-256 2*G byte-exact", Equal (Encoded_Out, Expected));
+   end P256_Two_G_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 41 — RFC 5903 §8.1 / NIST SP 800-186 ECDH KAT.
+   --
+   --  Two parties (i, r) share secret X = (i * (r * G)).x =
+   --  (r * (i * G)).x. Both directions checked.
+   ---------------------------------------------------------------------
+
+   procedure P256_Ecdh_Scenario;
+   procedure P256_Ecdh_Scenario is
+      I_Scalar : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#C8#, 16#8F#, 16#01#, 16#F5#, 16#10#, 16#D9#, 16#AC#, 16#3F#,
+         16#70#, 16#A2#, 16#92#, 16#DA#, 16#A2#, 16#31#, 16#6D#, 16#E5#,
+         16#44#, 16#E9#, 16#AA#, 16#B8#, 16#AF#, 16#E8#, 16#40#, 16#49#,
+         16#C6#, 16#2A#, 16#9C#, 16#57#, 16#86#, 16#2D#, 16#14#, 16#33#);
+      R_Scalar : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#C6#, 16#EF#, 16#9C#, 16#5D#, 16#78#, 16#AE#, 16#01#, 16#2A#,
+         16#01#, 16#11#, 16#64#, 16#AC#, 16#B3#, 16#97#, 16#CE#, 16#20#,
+         16#88#, 16#68#, 16#5D#, 16#8F#, 16#06#, 16#BF#, 16#9B#, 16#E0#,
+         16#B2#, 16#83#, 16#AB#, 16#46#, 16#47#, 16#6B#, 16#EE#, 16#53#);
+      G_iX : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#DA#, 16#D0#, 16#B6#, 16#53#, 16#94#, 16#22#, 16#1C#, 16#F9#,
+         16#B0#, 16#51#, 16#E1#, 16#FE#, 16#CA#, 16#57#, 16#87#, 16#D0#,
+         16#98#, 16#DF#, 16#E6#, 16#37#, 16#FC#, 16#90#, 16#B9#, 16#EF#,
+         16#94#, 16#5D#, 16#0C#, 16#37#, 16#72#, 16#58#, 16#11#, 16#80#);
+      G_iY : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#52#, 16#71#, 16#A0#, 16#46#, 16#1C#, 16#DB#, 16#82#, 16#52#,
+         16#D6#, 16#1F#, 16#1C#, 16#45#, 16#6F#, 16#A3#, 16#E5#, 16#9A#,
+         16#B1#, 16#F4#, 16#5B#, 16#33#, 16#AC#, 16#CF#, 16#5F#, 16#58#,
+         16#38#, 16#9E#, 16#05#, 16#77#, 16#B8#, 16#99#, 16#0B#, 16#B3#);
+      G_rX : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#D1#, 16#2D#, 16#FB#, 16#52#, 16#89#, 16#C8#, 16#D4#, 16#F8#,
+         16#12#, 16#08#, 16#B7#, 16#02#, 16#70#, 16#39#, 16#8C#, 16#34#,
+         16#22#, 16#96#, 16#97#, 16#0A#, 16#0B#, 16#CC#, 16#B7#, 16#4C#,
+         16#73#, 16#6F#, 16#C7#, 16#55#, 16#44#, 16#94#, 16#BF#, 16#63#);
+      G_rY : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#56#, 16#FB#, 16#F3#, 16#CA#, 16#36#, 16#6C#, 16#C2#, 16#3E#,
+         16#81#, 16#57#, 16#85#, 16#4C#, 16#13#, 16#C5#, 16#8D#, 16#6A#,
+         16#AC#, 16#23#, 16#F0#, 16#46#, 16#AD#, 16#A3#, 16#0F#, 16#83#,
+         16#53#, 16#E7#, 16#4F#, 16#33#, 16#03#, 16#98#, 16#72#, 16#AB#);
+      Shared_X : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#D6#, 16#84#, 16#0F#, 16#6B#, 16#42#, 16#F6#, 16#ED#, 16#AF#,
+         16#D1#, 16#31#, 16#16#, 16#E0#, 16#E1#, 16#25#, 16#65#, 16#20#,
+         16#2F#, 16#EF#, 16#8E#, 16#9E#, 16#CE#, 16#7D#, 16#CE#, 16#03#,
+         16#81#, 16#24#, 16#64#, 16#D0#, 16#4B#, 16#94#, 16#42#, 16#DE#);
+
+      Encoded_I : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+      Encoded_R : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+      P_I, P_R, Shared_Pt_1, Shared_Pt_2 : Tls_Core.P256.Point;
+      Shared_X_1, Shared_X_2 : Tls_Core.P256_Field.Field;
+      OK_I, OK_R : Boolean;
+      Got_X_1 : Tls_Core.Octet_Array (1 .. 32);
+      Got_X_2 : Tls_Core.Octet_Array (1 .. 32);
+   begin
+      Put_Line ("scenario 41 — P-256 ECDH (RFC 5903 §8.1)");
+      Encoded_I (2 .. 33) := G_iX;
+      Encoded_I (34 .. 65) := G_iY;
+      Encoded_R (2 .. 33) := G_rX;
+      Encoded_R (34 .. 65) := G_rY;
+      Tls_Core.P256.Decode_Uncompressed (Encoded_I, P_I, OK_I);
+      Tls_Core.P256.Decode_Uncompressed (Encoded_R, P_R, OK_R);
+      Check ("alice's pubkey on curve", OK_I);
+      Check ("bob's pubkey on curve",   OK_R);
+
+      --  Direction 1: shared = i * (G_r)
+      Tls_Core.P256.Scalar_Mul (I_Scalar, P_R, Shared_Pt_1);
+      Tls_Core.P256.To_Affine_X (Shared_Pt_1, Shared_X_1);
+      for J in 0 .. 31 loop
+         Got_X_1 (1 + J) := Shared_X_1 (1 + J);
+      end loop;
+
+      --  Direction 2: shared = r * (G_i)
+      Tls_Core.P256.Scalar_Mul (R_Scalar, P_I, Shared_Pt_2);
+      Tls_Core.P256.To_Affine_X (Shared_Pt_2, Shared_X_2);
+      for J in 0 .. 31 loop
+         Got_X_2 (1 + J) := Shared_X_2 (1 + J);
+      end loop;
+
+      Check ("ECDH i*G_r .x matches RFC 5903",
+             Equal (Got_X_1, Shared_X));
+      Check ("ECDH r*G_i .x matches RFC 5903",
+             Equal (Got_X_2, Shared_X));
+      Check ("ECDH symmetric (i*G_r .x = r*G_i .x)",
+             Equal (Got_X_1, Got_X_2));
+   end P256_Ecdh_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 42 — ECDSA-P256 verify, RFC 6979 §A.2.5 KAT.
+   --
+   --  Public key Q = x*G with
+   --      x  = C9AFA9D845BA75166B5C215767B1D6934E50C3DB
+   --           36E89B127B8A622B120F6721
+   --      Ux = 60FED4BA255A9D31C961EB74C6356D68C049B892
+   --           3B61FA6CE669622E60F29FB6
+   --      Uy = 7903FE1008B8BC99A41AE9E95628BC64F2F1B20C
+   --           2D7E9F5177A3C294D4462299
+   --
+   --  Message  = "sample"
+   --  Signature (SHA-256, deterministic per RFC 6979):
+   --      r  = EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B
+   --           56AAF991C34D0EA84EAF3716
+   --      s  = F7CB1C942D657C41D436C7A1B6E29F65F3E900DB
+   --           B9AFF4064DC4AB2F843ACDA8
+   --
+   --  Tamper variants (incremented r, incremented s, flipped
+   --  message byte) must each be rejected.
+   ---------------------------------------------------------------------
+
+   procedure Ecdsa_P256_Verify_Scenario;
+   procedure Ecdsa_P256_Verify_Scenario is
+      Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+         16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
+         16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+      Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+         16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
+         16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+      Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+
+      Msg : constant Tls_Core.Octet_Array (1 .. 6) :=
+        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);  -- "sample"
+      R : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+         16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
+         16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+      S : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+         16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
+         16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+
+      OK     : Boolean;
+      R_Bad  : Tls_Core.Octet_Array (1 .. 32) := R;
+      S_Bad  : Tls_Core.Octet_Array (1 .. 32) := S;
+      Msg_Bad : Tls_Core.Octet_Array (1 .. 6) := Msg;
+   begin
+      Put_Line ("scenario 42 — ECDSA-P256 verify (RFC 6979 §A.2.5)");
+      Pubkey (2 .. 33) := Ux;
+      Pubkey (34 .. 65) := Uy;
+
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, R, S, OK);
+      Check ("RFC 6979 'sample' / SHA-256 verifies", OK);
+
+      --  Tamper r (last byte +1).
+      R_Bad (32) := R (32) + 1;
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, R_Bad, S, OK);
+      Check ("tampered r rejected", not OK);
+
+      --  Tamper s (last byte +1).
+      S_Bad (32) := S (32) + 1;
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, R, S_Bad, OK);
+      Check ("tampered s rejected", not OK);
+
+      --  Tamper message (flip a byte).
+      Msg_Bad (1) := Msg (1) xor 16#01#;
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg_Bad, R, S, OK);
+      Check ("tampered message rejected", not OK);
+   end Ecdsa_P256_Verify_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 43 — out-of-range r/s rejection (FIPS 186-4 §6.4.2 step 1).
+   ---------------------------------------------------------------------
+
+   procedure Ecdsa_P256_Range_Scenario;
+   procedure Ecdsa_P256_Range_Scenario is
+      Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+         16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
+         16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+      Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+         16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
+         16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+      Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+
+      Msg : constant Tls_Core.Octet_Array (1 .. 6) :=
+        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);
+
+      Order_N : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
+         16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
+         16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
+         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#);
+      Zero32 : constant Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+
+      Valid_R : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+         16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
+         16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+      Valid_S : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+         16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
+         16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+
+      OK : Boolean;
+   begin
+      Put_Line ("scenario 43 — ECDSA-P256 r/s range gates");
+      Pubkey (2 .. 33) := Ux;
+      Pubkey (34 .. 65) := Uy;
+
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, Zero32, Valid_S, OK);
+      Check ("r = 0 rejected", not OK);
+
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, Order_N, Valid_S, OK);
+      Check ("r = n rejected", not OK);
+
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, Valid_R, Zero32, OK);
+      Check ("s = 0 rejected", not OK);
+
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, Valid_R, Order_N, OK);
+      Check ("s = n rejected", not OK);
+   end Ecdsa_P256_Range_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 44 — wrong-message and bit-flip variants.
+   --
+   --  Take the RFC 6979 §A.2.5 valid signature for message "sample"
+   --  and verify it against message "sampld" (last byte differs by
+   --  one bit). It must NOT verify. Symmetric: flip a single bit of
+   --  r and confirm rejection.
+   ---------------------------------------------------------------------
+
+   procedure Ecdsa_P256_Wrongmsg_Scenario;
+   procedure Ecdsa_P256_Wrongmsg_Scenario is
+      Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+         16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
+         16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+      Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+         16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
+         16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+      Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+
+      --  "test" — RFC 6979 §A.2.5 also publishes a signature for
+      --  this message; using "sample"'s signature against "test"
+      --  must therefore fail.
+      Wrong_Msg : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#74#, 16#65#, 16#73#, 16#74#);
+
+      R : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+         16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
+         16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+      S : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+         16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
+         16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+
+      R_Bitflip : Tls_Core.Octet_Array (1 .. 32) := R;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario 44 — ECDSA-P256 wrong-message / bit-flip");
+
+      Pubkey (2 .. 33) := Ux;
+      Pubkey (34 .. 65) := Uy;
+
+      --  "sample"'s signature against the message "test" must fail.
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Wrong_Msg, R, S, OK);
+      Check ("signature for 'sample' against 'test' rejected", not OK);
+
+      --  Bit-flip a high byte of r — single-bit perturbation.
+      R_Bitflip (1) := R (1) xor 16#01#;
+      Tls_Core.Ecdsa_P256.Verify
+        (Pubkey,
+         (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#),
+         R_Bitflip, S, OK);
+      Check ("single-bit-flip of r rejected", not OK);
+   end Ecdsa_P256_Wrongmsg_Scenario;
+
+   ---------------------------------------------------------------------
+   --  Scenario 45 — Sign / Verify round-trip with RFC 6979 deterministic
+   --  k for "sample" + SHA-256 (RFC 6979 §A.2.5).
+   --
+   --  k = A6E3C57DD01ABE90086538398355DD4C3B17AA873382B0F24D6129493D8AAD60
+   --  d = C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+   --
+   --  Sign("sample") should reproduce the published (r, s); verifying
+   --  the produced signature must succeed.
+   ---------------------------------------------------------------------
+
+   procedure Ecdsa_P256_Sign_Scenario;
+   procedure Ecdsa_P256_Sign_Scenario is
+      D : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#C9#, 16#AF#, 16#A9#, 16#D8#, 16#45#, 16#BA#, 16#75#, 16#16#,
+         16#6B#, 16#5C#, 16#21#, 16#57#, 16#67#, 16#B1#, 16#D6#, 16#93#,
+         16#4E#, 16#50#, 16#C3#, 16#DB#, 16#36#, 16#E8#, 16#9B#, 16#12#,
+         16#7B#, 16#8A#, 16#62#, 16#2B#, 16#12#, 16#0F#, 16#67#, 16#21#);
+      K : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#A6#, 16#E3#, 16#C5#, 16#7D#, 16#D0#, 16#1A#, 16#BE#, 16#90#,
+         16#08#, 16#65#, 16#38#, 16#39#, 16#83#, 16#55#, 16#DD#, 16#4C#,
+         16#3B#, 16#17#, 16#AA#, 16#87#, 16#33#, 16#82#, 16#B0#, 16#F2#,
+         16#4D#, 16#61#, 16#29#, 16#49#, 16#3D#, 16#8A#, 16#AD#, 16#60#);
+      Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+         16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
+         16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+      Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+         16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
+         16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+      Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
+        (1 => 16#04#, others => 0);
+
+      Msg : constant Tls_Core.Octet_Array (1 .. 6) :=
+        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);
+
+      Expected_R : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+         16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
+         16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+      Expected_S : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+         16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
+         16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+
+      Got_R, Got_S : Tls_Core.Octet_Array (1 .. 32);
+      Sign_OK : Boolean;
+      Ver_OK  : Boolean;
+   begin
+      Put_Line ("scenario 45 — ECDSA-P256 sign + verify round-trip");
+      Pubkey (2 .. 33) := Ux;
+      Pubkey (34 .. 65) := Uy;
+
+      Tls_Core.Ecdsa_P256.Sign (D, Msg, K, Got_R, Got_S, Sign_OK);
+      Check ("sign returned OK", Sign_OK);
+      Check ("r matches RFC 6979 §A.2.5", Equal (Got_R, Expected_R));
+      Check ("s matches RFC 6979 §A.2.5", Equal (Got_S, Expected_S));
+
+      Tls_Core.Ecdsa_P256.Verify (Pubkey, Msg, Got_R, Got_S, Ver_OK);
+      Check ("self-signed signature verifies", Ver_OK);
+   end Ecdsa_P256_Sign_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -3168,7 +3912,6 @@ begin
    Poly1305_Scenario;
    Aead_Scenario;
    Record_Aead_Roundtrip;
-   Records_Scenario;
    Transcript_Finished_Scenario;
    Capstone_Scenario;
    Driver_Loopback_Scenario;
@@ -3186,6 +3929,23 @@ begin
    Psk_Binder_Scenario;
    Psk_Hello_Roundtrip;
    Tls13_Loopback;
+   Aes128_Scenario;
+   Aes_Gcm_Scenario;
+   Sha384_Scenario;
+   Aes256_Scenario;
+   Aes256_Gcm_Scenario;
+   Hmac_Sha384_Scenario;
+   Hkdf_Sha384_Scenario;
+   Channel_Aes128_Roundtrip_Scenario;
+   Channel_Aes256_Roundtrip_Scenario;
+   P256_Generator_Scenario;
+   P256_One_G_Scenario;
+   P256_Two_G_Scenario;
+   P256_Ecdh_Scenario;
+   Ecdsa_P256_Verify_Scenario;
+   Ecdsa_P256_Range_Scenario;
+   Ecdsa_P256_Wrongmsg_Scenario;
+   Ecdsa_P256_Sign_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

@@ -26,7 +26,7 @@ with Tls_Core.Transcript;
 with Tls_Core.X25519;
 
 package Tls_Core.Handshake_Driver
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    type Role is (Client, Server);

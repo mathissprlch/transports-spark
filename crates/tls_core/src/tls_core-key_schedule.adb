@@ -22,17 +22,7 @@ is
         (Key     => Salt,
          Message => IKM,
          Out_Tag => Out_PRK);
-      pragma Assume (Out_PRK = Spec_Extract (Salt, IKM));
    end Extract;
-
-   function Spec_Extract
-     (Salt : Octet_Array; IKM : Octet_Array) return Secret
-   is
-      pragma Unreferenced (Salt, IKM);
-      Result : constant Secret := (others => 0);
-   begin
-      return Result;
-   end Spec_Extract;
 
    ---------------------------------------------------------------------
    --  Derive-Secret — Expand-Label with context = SHA-256(Messages).
@@ -61,19 +51,6 @@ is
          Label   => Label,
          Context => Transcript_Hash,
          Output  => Out_Secret);
-      pragma Assume
-        (Out_Secret = Spec_Derive_Secret (Secret_In, Label, Messages));
    end Derive_Secret;
-
-   function Spec_Derive_Secret
-     (Secret_In : Secret;
-      Label     : Octet_Array;
-      Messages  : Octet_Array) return Secret
-   is
-      pragma Unreferenced (Secret_In, Label, Messages);
-      Result : constant Secret := (others => 0);
-   begin
-      return Result;
-   end Spec_Derive_Secret;
 
 end Tls_Core.Key_Schedule;

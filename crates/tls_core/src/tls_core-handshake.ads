@@ -42,18 +42,11 @@ is
       Server_App       : Tls_Core.Key_Schedule.Secret;
    end record;
 
-   --  Abstract RFC 8446 §7.1 mode-1 (PSK_KE) traffic-secret tree.
-   function Spec_Psk_Secrets
-     (PSK             : Octet_Array;
-      Client_Hello    : Octet_Array;
-      Server_Hello    : Octet_Array;
-      Server_Finished : Octet_Array)
-      return Traffic_Secrets
-   with Ghost;
-
    --  Compute the full PSK_KE traffic-secret tree from a 32-byte
    --  pre-shared key plus the recorded ClientHello and
    --  ServerHello byte sequences (header-included Handshake bodies).
+   --  Functional content checked end-to-end against the RFC 8448 PSK
+   --  vector via the test harness; no Post is asserted here.
    procedure Derive_Psk_Secrets
      (PSK            : Octet_Array;
       Client_Hello   : Octet_Array;
@@ -65,20 +58,7 @@ is
        and then PSK'Last < Integer'Last - 1024
        and then Client_Hello'Length <= 1024
        and then Server_Hello'Length <= 1024
-       and then Server_Finished'Length <= 1024,
-     Post =>
-       Out_Secrets =
-         Spec_Psk_Secrets
-           (PSK, Client_Hello, Server_Hello, Server_Finished);
-
-   --  Abstract RFC 8446 §7.1 mode-3 (pure ECDHE) traffic-secret tree.
-   function Spec_Ecdhe_Secrets
-     (ECDHE_Shared    : Octet_Array;
-      Client_Hello    : Octet_Array;
-      Server_Hello    : Octet_Array;
-      Server_Finished : Octet_Array)
-      return Traffic_Secrets
-   with Ghost;
+       and then Server_Finished'Length <= 1024;
 
    --  Pure-ECDHE schedule (TLS 1.3 §7.1 mode 3 — no PSK):
    --
@@ -88,6 +68,7 @@ is
    --     ... rest as in PSK_KE
    --
    --  ECDHE_Shared is the 32-byte X25519 output (RFC 7748 §5).
+   --  Functional content checked via RFC 8448 1-RTT vector.
    procedure Derive_Ecdhe_Secrets
      (ECDHE_Shared    : Octet_Array;
       Client_Hello    : Octet_Array;
@@ -99,10 +80,6 @@ is
        and then ECDHE_Shared'Last < Integer'Last - 1024
        and then Client_Hello'Length <= 1024
        and then Server_Hello'Length <= 1024
-       and then Server_Finished'Length <= 1024,
-     Post =>
-       Out_Secrets =
-         Spec_Ecdhe_Secrets
-           (ECDHE_Shared, Client_Hello, Server_Hello, Server_Finished);
+       and then Server_Finished'Length <= 1024;
 
 end Tls_Core.Handshake;

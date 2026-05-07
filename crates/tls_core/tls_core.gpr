@@ -1,24 +1,17 @@
-with "rflx_runtime.gpr";
-
 library project Tls_Core is
 
    for Library_Name use "tls_core";
    for Library_Kind use "static";
-   for Source_Dirs use ("src", "generated");
+   for Source_Dirs use ("src");
    for Object_Dir use "obj";
    for Library_Dir use "lib";
    for Create_Missing_Dirs use "True";
 
    package Compiler is
-      --  Note: -gnata intentionally absent. Spec ghost functions
-      --  (Tls_Core.Sha256.Spec_Hash, Tls_Core.Hmac_Sha256.Spec_Hmac,
-      --  ...) are abstract — their bodies return placeholder values
-      --  because their meaning is the FIPS / RFC pseudocode, axiomatized
-      --  via pragma Assume in the implementation bodies. With -gnata
-      --  the runtime would evaluate Post conditions like
-      --  `Out_Digest = Spec_Hash (Data)` and fail (placeholder ≠ real
-      --  hash). gnatprove uses contracts at compile time regardless of
-      --  this switch, so platinum proofs still apply.
+      --  All Posts in this crate are imperative (size / range / shape
+      --  invariants) — no Spec_X ghost functions remain. Functional
+      --  correctness ("this is FIPS 197 / RFC 8439 / ...") is checked
+      --  via the test vectors in tls_core_tests, not via a Post.
       for Default_Switches ("Ada") use
         ("-g", "-O0", "-gnat2022", "-gnatwa", "-gnatVa",
          "-gnatyM100");

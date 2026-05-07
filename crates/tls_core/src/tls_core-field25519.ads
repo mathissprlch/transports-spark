@@ -6,15 +6,19 @@
 --  Multiplication produces 32-bit limb-products; sums of 16 such
 --  in F_Mul plus the 38× fold-down stay safely inside Integer_64.
 --
---  This package centralises the field-element type and operations
---  so X25519 and Ed25519 don't duplicate ~150 lines of identical
---  carry/multiply/invert code.
+--  No functional Posts: GF(2^255 - 19) arithmetic is exercised
+--  end-to-end via the X25519 / Ed25519 RFC test vectors at
+--  callsite. The leaf operations here are pure SPARK over a
+--  Felt limb representation; absence of runtime errors is
+--  what gnatprove discharges.
 
 with Interfaces;
 
 package Tls_Core.Field25519
-with SPARK_Mode => Off
+with SPARK_Mode
 is
+
+   use type Interfaces.Integer_64;
 
    subtype Bytes_32 is Octet_Array (1 .. 32);
    subtype Felt_Index is Natural range 0 .. 15;
@@ -27,11 +31,13 @@ is
    --  Limb-wise add and subtract. No reduction (caller is expected
    --  to follow with a multiply or final reduction shortly).
    procedure F_Add (O : out Felt; A, B : Felt);
+
    procedure F_Sub (O : out Felt; A, B : Felt);
 
    --  Multiply mod p, with two carry passes producing canonical-
    --  ish output. F_Sqr(o, a) = F_Mul(o, a, a).
    procedure F_Mul (O : out Felt; A, B : Felt);
+
    procedure F_Sqr (O : out Felt; A : Felt);
 
    --  Inverse mod p via Fermat: a^(p-2). Uses the standard

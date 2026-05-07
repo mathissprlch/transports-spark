@@ -115,28 +115,7 @@ is
          Label      => S_Ap_Label,
          Messages   => Ch_Sh_Sf,
          Out_Secret => Out_Secrets.Server_App);
-      pragma Assume
-        (Out_Secrets =
-           Spec_Psk_Secrets
-             (PSK, Client_Hello, Server_Hello, Server_Finished));
    end Derive_Psk_Secrets;
-
-   function Spec_Psk_Secrets
-     (PSK             : Octet_Array;
-      Client_Hello    : Octet_Array;
-      Server_Hello    : Octet_Array;
-      Server_Finished : Octet_Array)
-      return Traffic_Secrets
-   is
-      pragma Unreferenced (PSK, Client_Hello, Server_Hello, Server_Finished);
-      Result : constant Traffic_Secrets :=
-        (Client_Handshake => (others => 0),
-         Server_Handshake => (others => 0),
-         Client_App       => (others => 0),
-         Server_App       => (others => 0));
-   begin
-      return Result;
-   end Spec_Psk_Secrets;
 
    ---------------------------------------------------------------------
    --  Derive_Ecdhe_Secrets — same shape as Derive_Psk_Secrets but
@@ -244,28 +223,6 @@ is
          Label      => S_Ap_Label,
          Messages   => Ch_Sh_Sf,
          Out_Secret => Out_Secrets.Server_App);
-      pragma Assume
-        (Out_Secrets =
-           Spec_Ecdhe_Secrets
-             (ECDHE_Shared, Client_Hello, Server_Hello, Server_Finished));
    end Derive_Ecdhe_Secrets;
-
-   function Spec_Ecdhe_Secrets
-     (ECDHE_Shared    : Octet_Array;
-      Client_Hello    : Octet_Array;
-      Server_Hello    : Octet_Array;
-      Server_Finished : Octet_Array)
-      return Traffic_Secrets
-   is
-      pragma Unreferenced
-        (ECDHE_Shared, Client_Hello, Server_Hello, Server_Finished);
-      Result : constant Traffic_Secrets :=
-        (Client_Handshake => (others => 0),
-         Server_Handshake => (others => 0),
-         Client_App       => (others => 0),
-         Server_App       => (others => 0));
-   begin
-      return Result;
-   end Spec_Ecdhe_Secrets;
 
 end Tls_Core.Handshake;

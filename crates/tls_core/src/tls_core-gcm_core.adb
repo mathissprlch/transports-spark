@@ -17,7 +17,6 @@ is
    procedure Increment_Counter (Counter : in out Block_16) is
       Carry : Unsigned_8 := 1;
       Idx   : Integer := 16;
-      Old_Counter : constant Block_16 := Counter;
    begin
       while Idx >= 13 and then Carry > 0 loop
          pragma Loop_Invariant (Idx in 13 .. 16);
@@ -35,15 +34,7 @@ is
          end;
          Idx := Idx - 1;
       end loop;
-      pragma Assume (Counter = Spec_Increment_Counter (Old_Counter));
    end Increment_Counter;
-
-   function Spec_Increment_Counter (Counter : Block_16) return Block_16 is
-      pragma Unreferenced (Counter);
-      Result : constant Block_16 := (others => 0);
-   begin
-      return Result;
-   end Spec_Increment_Counter;
 
    ---------------------------------------------------------------------
    --  Build_J0
@@ -57,17 +48,7 @@ is
       Out_J0 := (others => 0);
       Out_J0 (1 .. 12) := Nonce;
       Out_J0 (16) := 1;
-      pragma Assume (Out_J0 = Spec_Build_J0 (Nonce));
    end Build_J0;
-
-   function Spec_Build_J0
-     (Nonce : Octet_Array) return Block_16
-   is
-      pragma Unreferenced (Nonce);
-      Result : constant Block_16 := (others => 0);
-   begin
-      return Result;
-   end Spec_Build_J0;
 
    ---------------------------------------------------------------------
    --  Build_Mac_Data
@@ -107,19 +88,6 @@ is
       Out_Last := Cursor;
    end Build_Mac_Data;
 
-   function Spec_Build_Mac_Data
-     (AAD, Ciphertext : Octet_Array) return Octet_Array
-   is
-      pragma Unreferenced (AAD, Ciphertext);
-      Len : constant Natural :=
-        AAD'Length + Pad_Len (AAD'Length)
-        + Ciphertext'Length + Pad_Len (Ciphertext'Length)
-        + 16;
-      Result : constant Octet_Array (1 .. Len) := (others => 0);
-   begin
-      return Result;
-   end Spec_Build_Mac_Data;
-
    ---------------------------------------------------------------------
    --  Ghash_Mul — GF(2^128) multiply.
    ---------------------------------------------------------------------
@@ -129,7 +97,6 @@ is
       Z    : Block_16 := (others => 0);
       Msb  : Octet;
       Bit  : Natural;
-      Old_X : constant Block_16 := X;
    begin
       for I in 1 .. 16 loop
          for J in reverse 0 .. 7 loop
@@ -154,15 +121,7 @@ is
          end loop;
       end loop;
       X := Z;
-      pragma Assume (X = Spec_Ghash_Mul (Old_X, Y));
    end Ghash_Mul;
-
-   function Spec_Ghash_Mul (X, Y : Block_16) return Block_16 is
-      pragma Unreferenced (X, Y);
-      Result : constant Block_16 := (others => 0);
-   begin
-      return Result;
-   end Spec_Ghash_Mul;
 
    ---------------------------------------------------------------------
    --  Ghash — full-message accumulator.

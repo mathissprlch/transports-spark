@@ -66,9 +66,6 @@ is
         (Key     => Finished_Key,
          Message => Partial_Hash,
          Out_Tag => Out_Binder);
-
-      pragma Assume
-        (Out_Binder = Spec_Binder (PSK, Truncated_Client_Hello));
    end Compute;
 
    function Verify
@@ -82,16 +79,5 @@ is
       end loop;
       return Diff = 0;
    end Verify;
-
-   function Spec_Binder
-     (PSK                    : Octet_Array;
-      Truncated_Client_Hello : Octet_Array)
-      return Binder_Bytes
-   is
-      pragma Unreferenced (PSK, Truncated_Client_Hello);
-      Result : constant Binder_Bytes := (others => 0);
-   begin
-      return Result;
-   end Spec_Binder;
 
 end Tls_Core.Psk_Binder;

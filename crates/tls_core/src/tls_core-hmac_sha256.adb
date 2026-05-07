@@ -6,13 +6,6 @@ is
 
    use type Interfaces.Unsigned_8;
 
-   function Spec_Hmac (Key, Message : Octet_Array) return Tag is
-      pragma Unreferenced (Key, Message);
-      Result : constant Tag := (others => 0);
-   begin
-      return Result;
-   end Spec_Hmac;
-
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    Block_Length : constant := Tls_Core.Sha256.Block_Length;
@@ -60,10 +53,6 @@ is
       Tls_Core.Sha256.Update (Ctx, Outer_Pad);
       Tls_Core.Sha256.Update (Ctx, Inner_Hash);
       Tls_Core.Sha256.Finalize (Ctx, Out_Tag);
-      --  Axiom: this body computes RFC 2104 HMAC = H((K' xor opad)
-      --  || H((K' xor ipad) || M)) by inspection. Same trust
-      --  boundary as Sha256.Hash; no further mathematical content.
-      pragma Assume (Out_Tag = Spec_Hmac (Key, Message));
    end Compute;
 
 end Tls_Core.Hmac_Sha256;
