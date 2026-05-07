@@ -4,20 +4,24 @@
 --
 --  Streaming API: Init / Update* / Finalize. One-shot Hash for
 --  callers that already have the full message in a single buffer.
---  Functional correctness is "by inspection equal to the FIPS
---  pseudocode" — see the body for the Σ/σ/Ch/Maj definitions
---  matching FIPS 180-4 §4.1.2 and the round-constant table from
---  §4.2.2. Test vectors in tls_core_tests cover FIPS 180-4
---  Appendix B (empty string, "abc", and the 448-bit string).
 --
---  miTLS reference (project-everest/mitls-fstar):
---    miTLS itself does not implement SHA-256 in F\*; it imports
---    HACL\*'s `Hash.Definitions.Spec.SHA2_256` (a pure functional
---    spec) and `EverCrypt.Hash.Incremental` (the optimized
---    implementation). For our pure-Ada path we re-implement the
---    FIPS pseudocode directly; the spec/implementation separation
---    HACL\* maintains is what licenses miTLS' upper layers to
---    treat SHA-256 as opaque.
+--  HACL* spec porting (CLAUDE.md §0c): the public one-shot Hash
+--  procedure carries a functional Post `Output = Spec_SHA256 (Input)`
+--  where Spec_SHA256 is a SPARK port of HACL*'s `Spec.SHA2.fst` for
+--  the SHA2_256 algorithm:
+--
+--    https://github.com/hacl-star/hacl-star/blob/main/specs/Spec.SHA2.fst
+--
+--  Mirrored constructs: `init` (h256), `_Ch` / `_Maj` / `_Sigma0/1`
+--  / `_sigma0/1` (specs/Spec.SHA2.fst:113-138), `shuffle_core_pre_`
+--  (line 154), `ws_pre_inner` (line 175-189), `shuffle_pre`
+--  (line 195), `update_pre` (line 213). Padding from
+--  `Spec.Hash.MD.fst` `pad` (line 30-44). Constants from
+--  `Spec.SHA2.Constants.fst` (h256, k224_256). The streaming
+--  Init/Update/Finalize is imperatively structured; only the
+--  one-shot Hash carries the functional Post — proving the streaming
+--  API equivalent to the one-shot spec requires lemma machinery
+--  beyond v0.5 scope.
 
 with Interfaces;
 
@@ -96,7 +100,8 @@ is
    --  Mirrors `Spec.Hash.MD.pad` (specs/Spec.Hash.MD.fst:30-44).
    function Pad_SHA256 (Input : Octet_Array) return Octet_Array
    with
-     Pre  => Input'Length <= Natural'Last - 9 - 64,
+     Pre  => Input'First = 1
+             and then Input'Length <= Natural'Last - 9 - 64,
      Post => Pad_SHA256'Result'First = 1
              and then Pad_SHA256'Result'Length
                        = Input'Length + Spec_Pad_Length (Input'Length)
@@ -112,7 +117,8 @@ is
    --  for SHA2_256.
    function Spec_SHA256 (Input : Octet_Array) return Digest
    with
-     Pre => Input'Length <= Natural'Last - 9 - 64;
+     Pre => Input'First = 1
+            and then Input'Length <= Natural'Last - 9 - 64;
 
    ---------------------------------------------------------------------
    --  Streaming API
@@ -148,17 +154,16 @@ is
 
    --  One-shot convenience.
    --
-   --  No functional Post: SHA-256's mathematical content (FIPS 180-4
-   --  §6.2 pseudocode) is not formalized inside this crate. Out_Digest
-   --  is fully initialized to a 32-byte Digest by the body — that
-   --  initialization is what gnatprove discharges. Test vectors from
-   --  FIPS 180-4 Appendix B in tls_core_tests are the functional check.
+   --  Functional correctness: Out_Digest = Spec_SHA256 (Data) where
+   --  Spec_SHA256 is the HACL* SHA2_256 spec ported above. The
+   --  body of Hash is a thin wrapper that calls Spec_SHA256 once.
    procedure Hash
      (Data       : Octet_Array;
       Out_Digest : out Digest)
    with
-     Pre  => Interfaces.Unsigned_64 (Data'Length)
-              <= Interfaces.Unsigned_64'Last / 8
+     Pre  => Data'First = 1
+             and then Interfaces.Unsigned_64 (Data'Length)
+                      <= Interfaces.Unsigned_64'Last / 8
              and then Data'Last < Integer'Last - Block_Length
              and then Data'Length <= Natural'Last - 9 - 64,
      Post => Out_Digest = Spec_SHA256 (Data);
