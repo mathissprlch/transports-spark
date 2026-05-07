@@ -96,7 +96,88 @@ is
    end Build_Info_Bytes;
 
    ---------------------------------------------------------------------
+   --  Built_Info_Bytes — pure functional twin of Build_Info_Bytes.
+   --
+   --  Allocates a fresh Octet_Array sized to Info_Size and runs the
+   --  same imperative construction as Build_Info_Bytes, returning
+   --  the resulting array. Same wire shape (RFC 8446 §7.1).
+   ---------------------------------------------------------------------
+
+   function Built_Info_Bytes
+     (Length  : Natural;
+      Label   : Octet_Array;
+      Context : Octet_Array) return Octet_Array
+   is
+      use Interfaces;
+
+      Result : Octet_Array
+        (1 .. Info_Size (Label'Length, Context'Length)) := (others => 0);
+
+      Prefix_Off  : constant Positive := 4;
+      Label_Off   : constant Positive :=
+        Prefix_Off + Tls13_Prefix'Length;
+      Ctx_Len_Off : constant Positive := Label_Off + Label'Length;
+      Ctx_Off     : constant Positive := Ctx_Len_Off + 1;
+
+      L_U16 : constant Unsigned_16 := Unsigned_16 (Length);
+   begin
+      Result (1) := Octet (L_U16 / 256);
+      Result (2) := Octet (L_U16 mod 256);
+      Result (3) := Octet (Tls13_Prefix'Length + Label'Length);
+
+      Result (Prefix_Off .. Prefix_Off + Tls13_Prefix'Length - 1) :=
+        Tls13_Prefix;
+
+      for I in 1 .. Label'Length loop
+         Result (Label_Off + I - 1) := Label (Label'First + I - 1);
+         pragma Loop_Invariant
+           (Result (1) = Octet (L_U16 / 256)
+            and then Result (2) = Octet (L_U16 mod 256)
+            and then Result (3) =
+              Octet (Tls13_Prefix'Length + Label'Length)
+            and then
+              (for all J in 1 .. Tls13_Prefix'Length =>
+                 Result (Prefix_Off + J - 1) = Tls13_Prefix (J))
+            and then
+              (for all J in 1 .. I =>
+                 Result (Label_Off + J - 1)
+                 = Label (Label'First + J - 1)));
+      end loop;
+
+      Result (Ctx_Len_Off) := Octet (Context'Length);
+
+      for I in 1 .. Context'Length loop
+         Result (Ctx_Off + I - 1) := Context (Context'First + I - 1);
+         pragma Loop_Invariant
+           (Result (1) = Octet (L_U16 / 256)
+            and then Result (2) = Octet (L_U16 mod 256)
+            and then Result (3) =
+              Octet (Tls13_Prefix'Length + Label'Length)
+            and then
+              (for all J in 1 .. Tls13_Prefix'Length =>
+                 Result (Prefix_Off + J - 1) = Tls13_Prefix (J))
+            and then
+              (for all J in 1 .. Label'Length =>
+                 Result (Label_Off + J - 1)
+                 = Label (Label'First + J - 1))
+            and then Result (Ctx_Len_Off) = Octet (Context'Length)
+            and then
+              (for all J in 1 .. I =>
+                 Result (Ctx_Off + J - 1)
+                 = Context (Context'First + J - 1)));
+      end loop;
+
+      return Result;
+   end Built_Info_Bytes;
+
+   ---------------------------------------------------------------------
    --  Expand_Label — composition: build §7.1 info, hand to HMAC.
+   --
+   --  We build the info bytes via Built_Info_Bytes (a function — its
+   --  return value is referentially transparent so the Post can name
+   --  it), then call the formal Hmac_Expand. Hmac_Expand's Post pins
+   --  Output to Spec_Hmac_Expand at that info; the resulting Post on
+   --  Expand_Label discharges by congruence.
    ---------------------------------------------------------------------
 
    procedure Expand_Label
@@ -105,16 +186,9 @@ is
       Context : Octet_Array;
       Output  : out Octet_Array)
    is
-      Info  : Octet_Array
-        (1 .. Info_Size (Label'Length, Context'Length));
-      Ignored : Natural;
+      Info : constant Octet_Array :=
+        Built_Info_Bytes (Output'Length, Label, Context);
    begin
-      Build_Info_Bytes
-        (Length  => Interfaces.Unsigned_16 (Output'Length),
-         Label   => Label,
-         Context => Context,
-         Output  => Info,
-         Last    => Ignored);
       Hmac_Expand
         (Prk    => Secret,
          Info   => Info,

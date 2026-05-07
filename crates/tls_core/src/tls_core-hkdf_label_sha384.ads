@@ -15,7 +15,8 @@ is
 
    procedure Expand_Label
      is new Tls_Core.Hkdf.Expand_Label
-       (Hash_Length => Tls_Core.Hkdf_Sha384.Hash_Length,
-        Hmac_Expand => Tls_Core.Hkdf_Sha384.Hmac_Expand);
+       (Hash_Length      => Tls_Core.Hkdf_Sha384.Hash_Length,
+        Spec_Hmac_Expand => Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand,
+        Hmac_Expand      => Tls_Core.Hkdf_Sha384.Hmac_Expand);
 
 end Tls_Core.Hkdf_Label_Sha384;

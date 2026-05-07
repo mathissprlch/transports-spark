@@ -169,8 +169,9 @@ procedure Tls_Perf_Bench is
    procedure Bench_Hkdf_Expand_Label (N : Positive);
    procedure Bench_Hkdf_Expand_Label (N : Positive) is
       procedure My_Expand is new Tls_Core.Hkdf.Expand_Label
-        (Hash_Length => 32,
-         Hmac_Expand => Tls_Core.Hkdf_Sha256.Hmac_Expand);
+        (Hash_Length      => 32,
+         Spec_Hmac_Expand => Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand,
+         Hmac_Expand      => Tls_Core.Hkdf_Sha256.Hmac_Expand);
       Secret : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Label  : constant Tls_Core.Octet_Array (1 .. 9) :=
         (16#65#, 16#78#, 16#70#, 16#20#, 16#6D#, 16#61#, 16#73#, 16#74#,

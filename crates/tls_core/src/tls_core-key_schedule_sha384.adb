@@ -24,9 +24,10 @@ is
    --  with headroom.
    procedure Hkdf_Expand_Label_Sha384
      is new Tls_Core.Hkdf.Expand_Label
-       (Hash_Length => Tls_Core.Sha384.Hash_Length,
-        Max_Info    => 512,
-        Hmac_Expand => Tls_Core.Hkdf_Sha384.Hmac_Expand);
+       (Hash_Length      => Tls_Core.Sha384.Hash_Length,
+        Max_Info         => 512,
+        Spec_Hmac_Expand => Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand,
+        Hmac_Expand      => Tls_Core.Hkdf_Sha384.Hmac_Expand);
 
    procedure Derive_Secret
      (Secret_In  : Secret;

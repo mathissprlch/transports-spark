@@ -7,7 +7,101 @@ is
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
-   --  Expand — RFC 5869 §2.3.
+   --  Spec_HKDF_Expand_Block — single T(i) computation.
+   --
+   --  T(i) = HMAC-Hash (PRK, T_Prev || Info || octet(i))
+   --  where T_Prev is omitted if First_Block.
+   ---------------------------------------------------------------------
+
+   function Spec_HKDF_Expand_Block
+     (PRK         : Octet_Array;
+      Info        : Octet_Array;
+      T_Prev      : Tls_Core.Sha256.Digest;
+      Counter     : Octet;
+      First_Block : Boolean) return Tls_Core.Sha256.Digest
+   is
+      Buf_Len : constant Natural :=
+        (if First_Block then Info'Length + 1
+         else Hash_Length + Info'Length + 1);
+      Buf     : Octet_Array (1 .. Buf_Len) := (others => 0);
+      Off     : Natural := 0;
+      Result  : Tls_Core.Sha256.Digest;
+   begin
+      if not First_Block then
+         Buf (1 .. Hash_Length) := T_Prev;
+         Off := Hash_Length;
+      end if;
+      for K in 1 .. Info'Length loop
+         Buf (Off + K) := Info (Info'First + K - 1);
+         pragma Loop_Invariant
+           (for all J in 1 .. K =>
+              Buf (Off + J) = Info (Info'First + J - 1));
+      end loop;
+      Buf (Buf_Len) := Counter;
+      Tls_Core.Hmac_Sha256.Compute
+        (Key     => PRK,
+         Message => Buf,
+         Out_Tag => Result);
+      return Result;
+   end Spec_HKDF_Expand_Block;
+
+   ---------------------------------------------------------------------
+   --  Spec_HKDF_Expand — top-level RFC 5869 §2.3 expand.
+   --
+   --  Iteratively builds T(1), T(2), ... until it has covered L bytes,
+   --  truncating the final T(N) to fit. The structure is exactly the
+   --  HACL* `expand` recursion.
+   ---------------------------------------------------------------------
+
+   function Spec_HKDF_Expand
+     (PRK  : Octet_Array;
+      Info : Octet_Array;
+      L    : Positive) return Octet_Array
+   is
+      OKM    : Octet_Array (1 .. L) := (others => 0);
+      T_Prev : Tls_Core.Sha256.Digest := (others => 0);
+      T_Curr : Tls_Core.Sha256.Digest;
+      Cursor : Natural := 0;
+      Idx    : Natural := 0;
+      First  : Boolean := True;
+   begin
+      while Cursor < L loop
+         pragma Loop_Variant (Decreases => L - Cursor);
+         pragma Loop_Invariant (Cursor < L);
+         pragma Loop_Invariant (Idx * Hash_Length <= Cursor);
+         pragma Loop_Invariant (Idx in 0 .. 254);
+         Idx := Idx + 1;
+
+         T_Curr := Spec_HKDF_Expand_Block
+           (PRK         => PRK,
+            Info        => Info,
+            T_Prev      => T_Prev,
+            Counter     => Octet (Idx),
+            First_Block => First);
+
+         declare
+            Take : constant Natural := Natural'Min (Hash_Length, L - Cursor);
+         begin
+            for K in 1 .. Take loop
+               OKM (Cursor + K) := T_Curr (K);
+               pragma Loop_Invariant
+                 (for all J in 1 .. K =>
+                    OKM (Cursor + J) = T_Curr (J));
+            end loop;
+            Cursor := Cursor + Take;
+         end;
+
+         T_Prev := T_Curr;
+         First  := False;
+      end loop;
+      return OKM;
+   end Spec_HKDF_Expand;
+
+   ---------------------------------------------------------------------
+   --  Public Expand — by-construction match against Spec_HKDF_Expand.
+   --
+   --  Body computes the spec result and copies it into the caller's
+   --  buffer. Mirrors the Tls_Core.Sha256.Hash one-shot pattern.
    ---------------------------------------------------------------------
 
    procedure Expand
@@ -15,69 +109,15 @@ is
       Info : Octet_Array;
       OKM  : out Octet_Array)
    is
-      --  T(i) is one HashLen-byte block; the spec calls these T_i.
-      T_Prev   : Tls_Core.Sha256.Digest := (others => 0);
-      T_Curr   : Tls_Core.Sha256.Digest;
-      Cursor   : Natural := 0;
-      I        : Natural := 0;
-      First    : Boolean := True;
+      Spec_Result : constant Octet_Array :=
+        Spec_HKDF_Expand (PRK, Info, OKM'Length);
    begin
-      --  Pre-fill so the OUT array is fully initialized before any
-      --  early-return path (we don't have any but gnatprove and
-      --  callers are happier with a uniform contract).
       OKM := (others => 0);
-
-      while Cursor < OKM'Length loop
-         pragma Loop_Variant (Decreases => OKM'Length - Cursor);
-         pragma Loop_Invariant (Cursor < OKM'Length);
-         --  After k completed iterations, Cursor = k * Hash_Length
-         --  (each iteration before the last consumes a full
-         --  Hash_Length-byte block; if the last would be partial,
-         --  the loop guard fails before this point). Combined with
-         --  Cursor < OKM'Length <= 255 * Hash_Length this caps
-         --  the iteration counter I = k at 254.
-         pragma Loop_Invariant (I * Hash_Length <= Cursor);
-         pragma Loop_Invariant (I in 0 .. 254);
-         I := I + 1;
-
-         --  Build the HMAC input: T(i-1) || Info || octet(i).
-         --  Buffer is sized for the worst case (T(i-1) present);
-         --  the first iteration omits T(i-1), so we pass a
-         --  shorter slice.
-         declare
-            Input : Octet_Array
-              (1 .. Hash_Length + Info'Length + 1) := (others => 0);
-            Off   : Natural := 0;
-         begin
-            if not First then
-               Input (1 .. Hash_Length) := T_Prev;
-               Off := Hash_Length;
-            end if;
-            for K in 1 .. Info'Length loop
-               Input (Off + K) := Info (Info'First + K - 1);
-            end loop;
-            Off := Off + Info'Length;
-            Input (Off + 1) := Octet (I);
-
-            Tls_Core.Hmac_Sha256.Compute
-              (Key     => PRK,
-               Message => Input (1 .. Off + 1),
-               Out_Tag => T_Curr);
-         end;
-
-         --  Append min(HashLen, remaining) bytes of T(i) to OKM.
-         declare
-            Take : constant Natural :=
-              Natural'Min (Hash_Length, OKM'Length - Cursor);
-         begin
-            for K in 1 .. Take loop
-               OKM (OKM'First + Cursor + K - 1) := T_Curr (K);
-            end loop;
-            Cursor := Cursor + Take;
-         end;
-
-         T_Prev := T_Curr;
-         First  := False;
+      for I in 1 .. OKM'Length loop
+         OKM (OKM'First + I - 1) := Spec_Result (I);
+         pragma Loop_Invariant
+           (for all J in 1 .. I =>
+              OKM (OKM'First + J - 1) = Spec_Result (J));
       end loop;
    end Expand;
 

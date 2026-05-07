@@ -33,9 +33,10 @@ is
    --  with headroom for SHA-384 contexts later.
    procedure Hkdf_Expand_Label_Sha256
      is new Tls_Core.Hkdf.Expand_Label
-       (Hash_Length => Tls_Core.Sha256.Hash_Length,
-        Max_Info    => 512,
-        Hmac_Expand => Tls_Core.Hkdf_Sha256.Hmac_Expand);
+       (Hash_Length      => Tls_Core.Sha256.Hash_Length,
+        Max_Info         => 512,
+        Spec_Hmac_Expand => Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand,
+        Hmac_Expand      => Tls_Core.Hkdf_Sha256.Hmac_Expand);
 
    procedure Derive_Secret
      (Secret_In : Secret;

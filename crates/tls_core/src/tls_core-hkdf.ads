@@ -120,6 +120,43 @@ is
                      (3 + Tls13_Prefix'Length + Label'Length + 1 + I)
                    = Context (Context'First + I - 1));
 
+   ---------------------------------------------------------------------
+   --  Built_Info_Bytes — pure functional version of Build_Info_Bytes.
+   --
+   --  Returns the §7.1-encoded HkdfLabel as an Octet_Array (rather
+   --  than writing into an out parameter). Used by the Expand_Label
+   --  Post so the contract is a single referentially-transparent
+   --  expression. Same wire shape as Build_Info_Bytes; see the Post
+   --  there for byte-by-byte contract.
+   ---------------------------------------------------------------------
+   function Built_Info_Bytes
+     (Length  : Natural;
+      Label   : Octet_Array;
+      Context : Octet_Array) return Octet_Array
+   with
+     Pre  =>
+       Length <= 255 * 64
+       and then Label'Length in 1 .. 249
+       and then Context'Length in 0 .. 255
+       and then Label'Last < Integer'Last - 256
+       and then Context'Last < Integer'Last - 256,
+     Post =>
+       Built_Info_Bytes'Result'First = 1
+       and then Built_Info_Bytes'Result'Length =
+         Info_Size (Label'Length, Context'Length);
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — PLATINUM]  HKDF-Expand-Label (RFC 8446 §7.1)
+   --
+   --  Standard:    RFC 8446 §7.1 (HKDF-Expand-Label)
+   --  Spec mirror: HACL* specs/Spec.HKDF.fst : expand
+   --               (RFC 8446 §7.1 wraps it with a structured info
+   --                field; see Build_Info_Bytes Post for the §7.1
+   --                wire layout).
+   --  Functional:  Output equals applying Spec_Hmac_Expand to the
+   --               §7.1-encoded HkdfLabel info.
+   --  Proven at:   gnatprove --level=2 (audit-clean)
+   --
    --  HKDF-Expand-Label proper. The wrapper:
    --    1. Builds the info bytes with Build_Info_Bytes.
    --    2. Hands them to the generic `Hmac_Expand` primitive.
@@ -127,21 +164,53 @@ is
    --  Hash_Length is the hash function's output size in octets
    --  (32 for SHA-256, 48 for SHA-384). RFC 5869 caps the
    --  expanded output at 255 * HashLen.
+   --
+   --  HACL\* spec port (CLAUDE.md §0c): the Post on Expand_Label
+   --  references Spec_Hmac_Expand, the generic-formal ghost the
+   --  caller threads through. For our concrete instantiations
+   --  (Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand /
+   --   Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand) Spec_Hmac_Expand is a
+   --  real executable HACL* port (see CLAUDE.md §0d clause 4 — no
+   --  stub ghosts). Combined with the §7.1 wire-construction Post on
+   --  Build_Info_Bytes, the Expand_Label Post is the RFC 8446 §7.1
+   --  functional theorem.
+   --------------------------------------------------------------------
    generic
       Hash_Length : Positive;
       Max_Info    : Positive := 256;  --  ceiling on Info_Size,
                                       --  picked to fit common
                                       --  Label / Context shapes.
-      --  Caller is responsible for proving Hmac_Expand satisfies
-      --  RFC 5869 §2.3. Ours is the wrapper-with-lemmas pattern:
-      --  Hmac_Expand stands in for HACL\*'s `EverCrypt.HKDF.expand`,
-      --  whose F\* postcondition is `t == expand_spec prk info len`.
-      --  When we have a SPARK HMAC-SHA-256 we will instantiate
-      --  this generic against it and the axiom becomes a theorem.
+
+      --  Spec ghost the caller threads in. For SHA-256 instantiations
+      --  this is Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand (a real
+      --  executable HACL* port — see §0d clause 4).
+      with function Spec_Hmac_Expand
+        (Prk  : Tls_Core.Octet_Array;
+         Info : Tls_Core.Octet_Array;
+         L    : Positive) return Tls_Core.Octet_Array;
+
+      --  The actual Expand procedure. Its Post pins it to
+      --  Spec_Hmac_Expand pointwise; see
+      --  Tls_Core.Hkdf_Sha256.Hmac_Expand and
+      --  Tls_Core.Hkdf_Sha384.Hmac_Expand for instances whose Post
+      --  matches this signature.
       with procedure Hmac_Expand
-        (Prk     : Octet_Array;
-         Info    : Octet_Array;
-         Output  : out Octet_Array);
+        (Prk     : Tls_Core.Octet_Array;
+         Info    : Tls_Core.Octet_Array;
+         Output  : out Tls_Core.Octet_Array)
+        with Pre =>
+               Prk'Length = Hash_Length
+               and then Output'Length in 1 .. 255 * Hash_Length
+               and then Info'Length <= 1024
+               and then Prk'Last < Integer'Last - 1024
+               and then Info'Last < Integer'Last - 1024
+               and then Output'Last < Integer'Last - 1024,
+             Post =>
+               (for all I in 1 .. Output'Length =>
+                  Output (Output'First + I - 1)
+                    = Spec_Hmac_Expand (Prk, Info, Output'Length)
+                        (Spec_Hmac_Expand (Prk, Info, Output'Length)'First
+                           + I - 1));
    procedure Expand_Label
      (Secret  : Octet_Array;
       Label   : Octet_Array;
@@ -157,9 +226,22 @@ is
        and then Label'Last < Integer'Last - 256
        and then Context'Last < Integer'Last - 256
        and then Secret'Last < Integer'Last - 1024
-       and then Output'Last < Integer'Last - 1024
-       --  Hmac_Expand instantiations call Sha256.Hash transitively;
-       --  the HACL*-ported functional Post requires 1-based input.
-       and then Secret'First = 1;
+       and then Output'Last < Integer'Last - 1024,
+     Post =>
+       --  Functional contract: each output byte equals the byte of
+       --  Spec_Hmac_Expand applied to (Secret, §7.1-encoded info,
+       --  Output'Length). The Build_Info_Bytes Post pins the
+       --  §7.1-encoded info to the RFC 8446 wire shape; the
+       --  Hmac_Expand Post pins the expand to the HACL\* spec.
+       (for all I in 1 .. Output'Length =>
+          Output (Output'First + I - 1) =
+            Spec_Hmac_Expand
+              (Secret,
+               Built_Info_Bytes (Output'Length, Label, Context),
+               Output'Length)
+                (Spec_Hmac_Expand
+                   (Secret,
+                    Built_Info_Bytes (Output'Length, Label, Context),
+                    Output'Length)'First + I - 1));
 
 end Tls_Core.Hkdf;
