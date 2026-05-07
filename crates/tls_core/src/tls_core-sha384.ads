@@ -90,8 +90,7 @@ is
 
    function Pad_SHA384 (Input : Octet_Array) return Octet_Array
    with
-     Pre  => Input'First = 1
-             and then Input'Length <= Natural'Last - 17 - 128,
+     Pre  => Input'Length <= Natural'Last - 17 - 128,
      Post => Pad_SHA384'Result'First = 1
              and then Pad_SHA384'Result'Length
                        = Input'Length + Spec_Pad_Length (Input'Length)
@@ -106,8 +105,7 @@ is
    --  One-shot SHA-384.
    function Spec_SHA384 (Input : Octet_Array) return Digest
    with
-     Pre => Input'First = 1
-            and then Input'Length <= Natural'Last - 17 - 128;
+     Pre => Input'Length <= Natural'Last - 17 - 128;
 
    ---------------------------------------------------------------------
    --  Streaming API
@@ -140,9 +138,8 @@ is
      (Data       : Octet_Array;
       Out_Digest : out Digest)
    with
-     Pre  => Data'First = 1
-             and then Interfaces.Unsigned_64 (Data'Length)
-                      <= Interfaces.Unsigned_64'Last / 8
+     Pre  => Interfaces.Unsigned_64 (Data'Length)
+              <= Interfaces.Unsigned_64'Last / 8
              and then Data'Last < Integer'Last - Block_Length
              and then Data'Length <= Natural'Last - 17 - 128,
      Post => Out_Digest = Spec_SHA384 (Data);
