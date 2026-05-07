@@ -10,6 +10,51 @@ is
    use Interfaces;
 
    ---------------------------------------------------------------------
+   --  Ghost spec layer — bodies for ghost functions declared in the
+   --  spec. Computable Big_Integer arithmetic; no stub returns.
+   ---------------------------------------------------------------------
+
+   package Octet_Big is new Big.Signed_Conversions (Int => Integer);
+
+   function Byte_Big (X : Octet) return Big.Big_Integer
+   is (Octet_Big.To_Big_Integer (Integer (X)));
+
+   function Pow_2_8 (N : Natural) return Big.Big_Integer
+   is (Big.To_Big_Integer (2) ** (8 * N));
+
+   function Prime_P_Spec return Big.Big_Integer
+   is
+     (Big.To_Big_Integer (2) ** 256
+      - Big.To_Big_Integer (2) ** 224
+      + Big.To_Big_Integer (2) ** 192
+      + Big.To_Big_Integer (2) ** 96
+      - Big.To_Big_Integer (1));
+
+   function Mod_P_Spec (X : Big.Big_Integer) return Big.Big_Integer
+   is (X mod Prime_P_Spec);
+
+   --  Square-and-multiply over the canonical representative, walking
+   --  the bits of the exponent (p-2) from MSB to LSB.
+   function Spec_F_Inv (A : Big.Big_Integer) return Big.Big_Integer is
+      P     : constant Big.Big_Integer := Prime_P_Spec;
+      Two   : constant Big.Big_Integer := Big.To_Big_Integer (2);
+      Zero  : constant Big.Big_Integer := Big.To_Big_Integer (0);
+      Result : Big.Big_Integer := Big.To_Big_Integer (1);
+      Base   : Big.Big_Integer := Mod_P_Spec (A);
+      Exp    : Big.Big_Integer := P - Big.To_Big_Integer (2);
+   begin
+      while Exp > Zero loop
+         pragma Loop_Variant (Decreases => Exp);
+         if Exp mod Two = Big.To_Big_Integer (1) then
+            Result := (Result * Base) mod P;
+         end if;
+         Exp := Exp / Two;
+         Base := (Base * Base) mod P;
+      end loop;
+      return Result;
+   end Spec_F_Inv;
+
+   ---------------------------------------------------------------------
    --  Internal limb representation.
    --
    --  An element is held as eight 32-bit limbs in little-endian

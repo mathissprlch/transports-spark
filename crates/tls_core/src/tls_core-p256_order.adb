@@ -9,6 +9,62 @@ is
    use Interfaces;
 
    ---------------------------------------------------------------------
+   --  Ghost spec layer — bodies for ghost functions declared in the
+   --  spec. Computable Big_Integer arithmetic; no stub returns.
+   ---------------------------------------------------------------------
+
+   package Octet_Big is new Big.Signed_Conversions (Int => Integer);
+
+   function Byte_Big (X : Octet) return Big.Big_Integer
+   is (Octet_Big.To_Big_Integer (Integer (X)));
+
+   function Pow_2_8 (N : Natural) return Big.Big_Integer
+   is (Big.To_Big_Integer (2) ** (8 * N));
+
+   --  P-256 group order n — written in hex limbs that exactly match
+   --  the wire representation in N_Limbs below. Constructed as a
+   --  Big_Integer literal via byte-walk so the value is computable
+   --  and unfolds for the prover.
+   function Order_N_Spec return Big.Big_Integer is
+      --  n = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+      --  Build from MSB to LSB.
+      Hex_BE : constant array (1 .. 32) of Octet :=
+        (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
+         16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
+         16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
+         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#);
+      R : Big.Big_Integer := Big.To_Big_Integer (0);
+   begin
+      for I in Hex_BE'Range loop
+         R := R * Big.To_Big_Integer (256)
+              + Octet_Big.To_Big_Integer (Integer (Hex_BE (I)));
+      end loop;
+      return R;
+   end Order_N_Spec;
+
+   function Spec_Mod_N (X : Big.Big_Integer) return Big.Big_Integer
+   is (X mod Order_N_Spec);
+
+   function Spec_Q_Inv (A : Big.Big_Integer) return Big.Big_Integer is
+      N      : constant Big.Big_Integer := Order_N_Spec;
+      Two    : constant Big.Big_Integer := Big.To_Big_Integer (2);
+      Zero_B : constant Big.Big_Integer := Big.To_Big_Integer (0);
+      Result : Big.Big_Integer := Big.To_Big_Integer (1);
+      Base   : Big.Big_Integer := Spec_Mod_N (A);
+      Exp    : Big.Big_Integer := N - Big.To_Big_Integer (2);
+   begin
+      while Exp > Zero_B loop
+         pragma Loop_Variant (Decreases => Exp);
+         if Exp mod Two = Big.To_Big_Integer (1) then
+            Result := (Result * Base) mod N;
+         end if;
+         Exp := Exp / Two;
+         Base := (Base * Base) mod N;
+      end loop;
+      return Result;
+   end Spec_Q_Inv;
+
+   ---------------------------------------------------------------------
    --  Internal limb representation.
    --
    --  Same shape as P256_Field: eight 32-bit limbs in little-endian

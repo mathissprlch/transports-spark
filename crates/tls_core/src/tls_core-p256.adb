@@ -10,6 +10,238 @@ is
    use Tls_Core.P256_Field;
 
    ---------------------------------------------------------------------
+   --  Ghost spec layer — bodies for the HACL\* Spec.P256 port.
+   --  Computable Big_Integer arithmetic; no stub returns.
+   ---------------------------------------------------------------------
+
+   --  Curve parameter b as a Big_Integer (mod p). Mirrors the wire
+   --  bytes used in B_Param below.
+   function B_Coeff_Spec return Big.Big_Integer
+   with Ghost, Global => null;
+
+   function B_Coeff_Spec return Big.Big_Integer is
+      Hex_BE : constant array (1 .. 32) of Octet :=
+        (16#5A#, 16#C6#, 16#35#, 16#D8#, 16#AA#, 16#3A#, 16#93#, 16#E7#,
+         16#B3#, 16#EB#, 16#BD#, 16#55#, 16#76#, 16#98#, 16#86#, 16#BC#,
+         16#65#, 16#1D#, 16#06#, 16#B0#, 16#CC#, 16#53#, 16#B0#, 16#F6#,
+         16#3B#, 16#CE#, 16#3C#, 16#3E#, 16#27#, 16#D2#, 16#60#, 16#4B#);
+      package Octet_Big is new Big.Signed_Conversions (Int => Integer);
+      R : Big.Big_Integer := Big.To_Big_Integer (0);
+   begin
+      for I in Hex_BE'Range loop
+         R := R * Big.To_Big_Integer (256)
+              + Octet_Big.To_Big_Integer (Integer (Hex_BE (I)));
+      end loop;
+      return R;
+   end B_Coeff_Spec;
+
+   --  Convert a Field bytes (BE 32) to its represented Big_Integer
+   --  (already mod 2^256; we then reduce mod p).
+   function Field_To_Big (F : P256_Field.Field) return Big.Big_Integer
+   with Ghost, Global => null;
+
+   function Field_To_Big (F : P256_Field.Field) return Big.Big_Integer
+   is (P256_Field.Mod_P_Spec (P256_Field.To_Big_Spec (F)));
+
+   function Spec_Of (P : Point) return Spec_Point is
+     ((X => Field_To_Big (P.X),
+       Y => Field_To_Big (P.Y),
+       Z => Field_To_Big (P.Z)));
+
+   function Spec_Infinity return Spec_Point is
+     ((X => Big.To_Big_Integer (1),
+       Y => Big.To_Big_Integer (1),
+       Z => Big.To_Big_Integer (0)));
+
+   --  Module-level mod-p arithmetic helpers used by the spec point
+   --  operations. The F\* `*%` / `+%` / `-%` reduce mod p after
+   --  each step; these mirror that.
+   function FAdd_Spec (X, Y : Big.Big_Integer) return Big.Big_Integer
+   with Ghost, Global => null;
+   function FSub_Spec (X, Y : Big.Big_Integer) return Big.Big_Integer
+   with Ghost, Global => null;
+   function FMul_Spec (X, Y : Big.Big_Integer) return Big.Big_Integer
+   with Ghost, Global => null;
+
+   function FAdd_Spec (X, Y : Big.Big_Integer) return Big.Big_Integer
+   is (P256_Field.Mod_P_Spec (X + Y));
+
+   function FSub_Spec (X, Y : Big.Big_Integer) return Big.Big_Integer
+   is (P256_Field.Mod_P_Spec (X - Y));
+
+   function FMul_Spec (X, Y : Big.Big_Integer) return Big.Big_Integer
+   is (P256_Field.Mod_P_Spec (X * Y));
+
+   --  HACL\* point_double (Spec.P256.PointOps.fst), translated
+   --  from the projective formulas of Algorithm 6, eprint
+   --  2015/1060. b_coeff is the curve parameter b mod p.
+   function Spec_Point_Double (P : Spec_Point) return Spec_Point is
+
+      X  : constant Big.Big_Integer := P.X;
+      Y  : constant Big.Big_Integer := P.Y;
+      Z  : constant Big.Big_Integer := P.Z;
+
+      T0 : Big.Big_Integer := FMul_Spec (X, X);
+      T1 : Big.Big_Integer := FMul_Spec (Y, Y);
+      T2 : Big.Big_Integer := FMul_Spec (Z, Z);
+      T3 : Big.Big_Integer := FMul_Spec (X, Y);
+      T4 : Big.Big_Integer;
+      Z3 : Big.Big_Integer;
+      Y3 : Big.Big_Integer;
+      X3 : Big.Big_Integer;
+      B  : constant Big.Big_Integer := B_Coeff_Spec;
+   begin
+      T3 := FAdd_Spec (T3, T3);
+      T4 := FMul_Spec (Y, Z);
+      Z3 := FMul_Spec (X, Z);
+      Z3 := FAdd_Spec (Z3, Z3);
+      Y3 := FMul_Spec (B, T2);
+      Y3 := FSub_Spec (Y3, Z3);
+      X3 := FAdd_Spec (Y3, Y3);
+      Y3 := FAdd_Spec (X3, Y3);
+      X3 := FSub_Spec (T1, Y3);
+      Y3 := FAdd_Spec (T1, Y3);
+      Y3 := FMul_Spec (X3, Y3);
+      X3 := FMul_Spec (X3, T3);
+      T3 := FAdd_Spec (T2, T2);
+      T2 := FAdd_Spec (T2, T3);
+      Z3 := FMul_Spec (B, Z3);
+      Z3 := FSub_Spec (Z3, T2);
+      Z3 := FSub_Spec (Z3, T0);
+      T3 := FAdd_Spec (Z3, Z3);
+      Z3 := FAdd_Spec (Z3, T3);
+      T3 := FAdd_Spec (T0, T0);
+      T0 := FAdd_Spec (T3, T0);
+      T0 := FSub_Spec (T0, T2);
+      T0 := FMul_Spec (T0, Z3);
+      Y3 := FAdd_Spec (Y3, T0);
+      T0 := FAdd_Spec (T4, T4);
+      Z3 := FMul_Spec (T0, Z3);
+      X3 := FSub_Spec (X3, Z3);
+      Z3 := FMul_Spec (T0, T1);
+      Z3 := FAdd_Spec (Z3, Z3);
+      Z3 := FAdd_Spec (Z3, Z3);
+      return (X => X3, Y => Y3, Z => Z3);
+   end Spec_Point_Double;
+
+   --  HACL\* point_add (Spec.P256.PointOps.fst), Algorithm 4 of
+   --  eprint 2015/1060.
+   function Spec_Point_Add (P, Q : Spec_Point) return Spec_Point is
+
+      X1 : constant Big.Big_Integer := P.X;
+      Y1 : constant Big.Big_Integer := P.Y;
+      Z1 : constant Big.Big_Integer := P.Z;
+      X2 : constant Big.Big_Integer := Q.X;
+      Y2 : constant Big.Big_Integer := Q.Y;
+      Z2 : constant Big.Big_Integer := Q.Z;
+
+      T0, T1, T2, T3, T4, T5, X3, Y3, Z3 : Big.Big_Integer;
+      B : constant Big.Big_Integer := B_Coeff_Spec;
+   begin
+      T0 := FMul_Spec (X1, X2);
+      T1 := FMul_Spec (Y1, Y2);
+      T2 := FMul_Spec (Z1, Z2);
+      T3 := FAdd_Spec (X1, Y1);
+      T4 := FAdd_Spec (X2, Y2);
+      T3 := FMul_Spec (T3, T4);
+      T4 := FAdd_Spec (T0, T1);
+      T3 := FSub_Spec (T3, T4);
+      T4 := FAdd_Spec (Y1, Z1);
+      T5 := FAdd_Spec (Y2, Z2);
+      T4 := FMul_Spec (T4, T5);
+      T5 := FAdd_Spec (T1, T2);
+      T4 := FSub_Spec (T4, T5);
+      X3 := FAdd_Spec (X1, Z1);
+      Y3 := FAdd_Spec (X2, Z2);
+      X3 := FMul_Spec (X3, Y3);
+      Y3 := FAdd_Spec (T0, T2);
+      Y3 := FSub_Spec (X3, Y3);
+      Z3 := FMul_Spec (B, T2);
+      X3 := FSub_Spec (Y3, Z3);
+      Z3 := FAdd_Spec (X3, X3);
+      X3 := FAdd_Spec (X3, Z3);
+      Z3 := FSub_Spec (T1, X3);
+      X3 := FAdd_Spec (T1, X3);
+      Y3 := FMul_Spec (B, Y3);
+      T1 := FAdd_Spec (T2, T2);
+      T2 := FAdd_Spec (T1, T2);
+      Y3 := FSub_Spec (Y3, T2);
+      Y3 := FSub_Spec (Y3, T0);
+      T1 := FAdd_Spec (Y3, Y3);
+      Y3 := FAdd_Spec (T1, Y3);
+      T1 := FAdd_Spec (T0, T0);
+      T0 := FAdd_Spec (T1, T0);
+      T0 := FSub_Spec (T0, T2);
+      T1 := FMul_Spec (T4, Y3);
+      T2 := FMul_Spec (T0, Y3);
+      Y3 := FMul_Spec (X3, Z3);
+      Y3 := FAdd_Spec (Y3, T2);
+      X3 := FMul_Spec (T3, X3);
+      X3 := FSub_Spec (X3, T1);
+      Z3 := FMul_Spec (T4, Z3);
+      T1 := FMul_Spec (T3, T0);
+      Z3 := FAdd_Spec (Z3, T1);
+      return (X => X3, Y => Y3, Z => Z3);
+   end Spec_Point_Add;
+
+   --  Two projective points are equivalent iff they map to the
+   --  same affine point. Both-at-infinity is the Z = 0 case;
+   --  otherwise compare cross-multiplied affine coords mod p.
+   function Spec_Equiv_Point (P, Q : Spec_Point) return Boolean is
+      P_Mod : constant Big.Big_Integer := P256_Field.Prime_P_Spec;
+      Pz_Zero : constant Boolean := (P.Z mod P_Mod) = Big.To_Big_Integer (0);
+      Qz_Zero : constant Boolean := (Q.Z mod P_Mod) = Big.To_Big_Integer (0);
+      Pz2, Pz3, Qz2, Qz3 : Big.Big_Integer;
+   begin
+      if Pz_Zero or Qz_Zero then
+         return Pz_Zero = Qz_Zero;
+      end if;
+      Pz2 := (P.Z * P.Z) mod P_Mod;
+      Pz3 := (Pz2 * P.Z) mod P_Mod;
+      Qz2 := (Q.Z * Q.Z) mod P_Mod;
+      Qz3 := (Qz2 * Q.Z) mod P_Mod;
+      return ((P.X * Qz2) mod P_Mod) = ((Q.X * Pz2) mod P_Mod)
+         and then ((P.Y * Qz3) mod P_Mod) = ((Q.Y * Pz3) mod P_Mod);
+   end Spec_Equiv_Point;
+
+   --  HACL\* Spec.P256.fst :  point_mul  — port. Walks the 32-byte
+   --  scalar MSB-first; one Spec_Point_Double per bit and one
+   --  Spec_Point_Add when the bit is 1, exactly matching the
+   --  Montgomery-ladder semantics of Scalar_Mul below.
+   function Spec_Scalar_Mult
+     (Scalar : Octet_Array;
+      P      : Spec_Point) return Spec_Point
+   is
+      Acc : Spec_Point := Spec_Infinity;
+      Bit : Natural;
+   begin
+      for I in 0 .. 31 loop
+         declare
+            Byte_V : constant Natural :=
+              Natural (Scalar (Scalar'First + I));
+         begin
+            for B in reverse 0 .. 7 loop
+               declare
+                  Pow_2_B : constant Natural :=
+                    (case B is
+                       when 0 => 1, when 1 => 2, when 2 => 4, when 3 => 8,
+                       when 4 => 16, when 5 => 32, when 6 => 64, when 7 => 128,
+                       when others => 1);
+               begin
+                  Bit := (Byte_V / Pow_2_B) mod 2;
+               end;
+               Acc := Spec_Point_Double (Acc);
+               if Bit = 1 then
+                  Acc := Spec_Point_Add (Acc, P);
+               end if;
+            end loop;
+         end;
+      end loop;
+      return Acc;
+   end Spec_Scalar_Mult;
+
+
+   ---------------------------------------------------------------------
    --  Curve parameter b (NIST P-256, FIPS 186-4 §D.1.2.3).
    --
    --      b = 0x5AC635D8 AA3A93E7 B3EBBD55 769886BC
