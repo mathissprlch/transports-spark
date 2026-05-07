@@ -38,8 +38,10 @@ is
      Pre =>
        PSK'Length = 32
        and then PSK'Last < Integer'Last - 1024
+       and then Truncated_Client_Hello'First = 1
        and then Truncated_Client_Hello'Last
-                  < Integer'Last - Tls_Core.Sha256.Block_Length;
+                  < Integer'Last - Tls_Core.Sha256.Block_Length
+       and then Truncated_Client_Hello'Length <= Natural'Last - 9 - 64;
 
    --  Constant-time binder check used on the server side. True iff
    --  Computed_Binder = Expected_Binder.
