@@ -11,12 +11,34 @@ is
 
    subtype Block_16 is Tls_Core.Aes_Core.Block;
 
+   --  Spec ghost — placeholder for the day Aes256.Encrypt_Block
+   --  gains a portable HACL\* / FIPS 197 functional spec. Until then
+   --  this body computes the same value as the imperative procedure
+   --  (deterministic by signature: same inputs → same output). It is
+   --  computable, not a stub. See CLAUDE.md §0b.
+   function Spec_Aes256_Encrypt_Block
+     (RK        : Tls_Core.Aes256.Round_Keys;
+      Plaintext : Block_16) return Block_16
+   with Ghost;
+
+   function Spec_Aes256_Encrypt_Block
+     (RK        : Tls_Core.Aes256.Round_Keys;
+      Plaintext : Block_16) return Block_16
+   is
+      Out_Block : Block_16;
+   begin
+      Tls_Core.Aes256.Encrypt_Block (RK, Plaintext, Out_Block);
+      return Out_Block;
+   end Spec_Aes256_Encrypt_Block;
+
+   --  Local pass-through. No functional Post — Aes_Ctr_Pkg's Aes_Ctr
+   --  is AoRTE-only (the §0b OPEN GAP).
    procedure Aes256_Encrypt
-     (RK : Tls_Core.Aes256.Round_Keys;
+     (RK        : Tls_Core.Aes256.Round_Keys;
       Plaintext : Block_16;
       Out_Block : out Block_16);
    procedure Aes256_Encrypt
-     (RK : Tls_Core.Aes256.Round_Keys;
+     (RK        : Tls_Core.Aes256.Round_Keys;
       Plaintext : Block_16;
       Out_Block : out Block_16)
    is
@@ -24,9 +46,10 @@ is
       Tls_Core.Aes256.Encrypt_Block (RK, Plaintext, Out_Block);
    end Aes256_Encrypt;
 
-   procedure Aes_Ctr is new Tls_Core.Gcm_Core.Aes_Ctr_G
-     (Round_Keys    => Tls_Core.Aes256.Round_Keys,
-      Encrypt_Block => Aes256_Encrypt);
+   package Aes256_Ctr is new Tls_Core.Gcm_Core.Aes_Ctr_Pkg
+     (Round_Keys          => Tls_Core.Aes256.Round_Keys,
+      Spec_Encrypt_Block  => Spec_Aes256_Encrypt_Block,
+      Encrypt_Block       => Aes256_Encrypt);
 
    procedure Seal
      (Key        : Key_Array;
@@ -57,7 +80,7 @@ is
 
       J1 := J0;
       Tls_Core.Gcm_Core.Increment_Counter (J1);
-      Aes_Ctr (RK, J1, Plaintext, Ciphertext);
+      Aes256_Ctr.Aes_Ctr (RK, J1, Plaintext, Ciphertext);
 
       Tls_Core.Gcm_Core.Build_Mac_Data
         (AAD, Ciphertext, Mac_Buf, Mac_Last);
@@ -110,7 +133,7 @@ is
 
       J1 := J0;
       Tls_Core.Gcm_Core.Increment_Counter (J1);
-      Aes_Ctr (RK, J1, Ciphertext, Plaintext);
+      Aes256_Ctr.Aes_Ctr (RK, J1, Ciphertext, Plaintext);
    end Open;
 
 end Tls_Core.Aead_Aes256_Gcm;
