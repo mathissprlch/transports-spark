@@ -7,7 +7,8 @@ Scope:   determine whether a portable pure-software AES-128 / AES-256
          could port to SPARK to achieve platinum on
          `Tls_Core.Aes128` / `Tls_Core.Aes256`.
 
-This is a research report. **No tls_core source files were modified.**
+This was originally a research report. **Implementation landed
+2026-05-07 — see "Outcome (2026-05-07)" section below.**
 
 ---
 
@@ -363,6 +364,91 @@ as `[VERIFIED — AoRTE]` and document in v0.5 release report under
 
 That paragraph, dropped into the v0.5 release report, is the §0b-compliant
 record of the gap.
+
+---
+
+## Outcome (2026-05-07)
+
+Option **(c)** chosen and landed.  HACL\* `Spec.AES.fst` ported to
+SPARK as `Tls_Core.Aes_Spec` (393 LOC body, 174 LOC spec — same
+order of magnitude as the F\* original).
+
+**What's in the port:**
+
+- `Aes_Spec.Sub_Byte` / `Inv_Sub_Byte` — FIPS 197 Figure 7 / 14
+  S-box and inverse S-box (the table form, by FIPS 197 §5.1.1.1
+  byte-equal to HACL\*'s GF-inversion + affine-map definition).
+- `Aes_Spec.Sub_Bytes` / `Inv_Sub_Bytes` / `Shift_Rows` /
+  `Inv_Shift_Rows` / `Mix_Columns` / `Inv_Mix_Columns` /
+  `Add_Round_Key` — block-level transforms.
+- `Aes_Spec.Aes_Enc` / `Aes_Enc_Last` / `Aes_Dec` / `Aes_Dec_Last`
+  — round drivers.  Decrypt uses the FIPS 197 §5.3 *direct* InvCipher
+  form (round keys in reverse order, no inv-mixed key schedule
+  needed) rather than HACL\*'s EquivalentInvCipher; FIPS 197 §5.3
+  proves the two compute the same function.
+- `Aes_Spec.Aes128_Key_Expansion` / `Aes256_Key_Expansion` —
+  FIPS 197 §5.2 KeyExpansion in the per-word recurrence form
+  (mirrors the HACL\* spec's *result*; the HACL form routes through
+  `aes_keygen_assist` which lines up with AES-NI's data shape).
+- `Aes_Spec.Aes128_Encrypt_Block` / `Aes128_Decrypt_Block` /
+  `Aes256_Encrypt_Block` / `Aes256_Decrypt_Block` — top-level
+  pure functions returning a `Block_16`.
+
+**Public API changes (`Tls_Core.Aes128` and `Tls_Core.Aes256`):**
+
+- `Expand_Key` body is a one-liner over
+  `Aes_Spec.Aes128_Key_Expansion` (or `Aes256_Key_Expansion`).
+  Functional Post `Out_RK = Aes_Spec.AesNNN_Key_Expansion(Key)`
+  discharges by construction.
+- `Decrypt_Block` is **new**.  Body is a one-liner over
+  `Aes_Spec.AesNNN_Decrypt_Block`.  Post `Out_Block =
+  Aes_Spec.AesNNN_Decrypt_Block(Ciphertext, RK)` discharges by
+  construction.
+- `Encrypt_Block` body branches statically on
+  `Tls_Core_Config.T_Tables_Enabled`:
+    * `False` → calls `Aes_Spec.AesNNN_Encrypt_Block` directly.
+      Post `Out_Block = Aes_Spec.AesNNN_Encrypt_Block(Plain, RK)`
+      discharges by construction.
+    * `True` (default) → existing T-tables path.  Post is gated
+      off (`if not T_Tables_Enabled then Out = Aes_Spec.X(...)`),
+      vacuously true.  T-tables ↔ spec equivalence lemma is the
+      v0.6 follow-up.
+
+**Verification status (2026-05-07):**
+
+- gnatprove level=2 across the AES files: 131 checks total,
+  all proved, **zero `pragma Assume` statements**.  Posts on
+  Expand_Key, Encrypt_Block, Decrypt_Block in both Aes128 and
+  Aes256 discharge mechanically.
+- Whole-crate gnatprove level=2: 5 unproved VCs total, all in
+  `cert_verify` and `poly1305` (pre-existing, unrelated to AES).
+- 228/228 unit tests pass — including the new scenario 34b
+  exercising `Aes_Spec.AesNNN_Encrypt_Block` /
+  `AesNNN_Decrypt_Block` and `Aes128/256.Decrypt_Block` against
+  the FIPS 197 §C.1 / §C.3 worked-example vectors.
+- `T_Tables_Enabled = False` path also tested: 228/228 pass with
+  ciphertext byte-exactness against the same FIPS test vectors.
+
+**Phase 3 effort that the original estimate flagged as "open-ended"
+ended up small.** Reason: by making the body of the public
+procedures literally call the spec functions, no loop invariants
+relating an iterative implementation to a declarative spec are
+needed.  The trust boundary is "this Ada code is a faithful
+transcription of `Spec.AES.fst`," cross-checked at test-time
+against the FIPS 197 worked examples.  The harder lemmas
+(T-tables-equivalence, GF inversion vs. table S-box) are
+isolated to v0.6 and don't block v0.5 platinum on the
+non-T-tables build configuration.
+
+**Files:**
+
+- `crates/tls_core/src/tls_core-aes_spec.{ads,adb}` — new (174 + 393 LOC).
+- `crates/tls_core/src/tls_core-aes128.{ads,adb}` — extended with
+  Decrypt_Block + Posts.
+- `crates/tls_core/src/tls_core-aes256.{ads,adb}` — same.
+- `crates/tls_core/src/tls_core_config.ads` — `T_Tables_Enabled`
+  remains `True` by default; semantics expanded.
+- `crates/tls_core/tests/src/tls_core_tests.adb` — scenario 34b.
 
 ---
 

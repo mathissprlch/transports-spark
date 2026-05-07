@@ -6,53 +6,21 @@ is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
-   use type Tls_Core.Octet;
-
    ---------------------------------------------------------------------
-   --  Expand_Key — FIPS 197 §5.2 with Nk = 8, Nr = 14.
+   --  Expand_Key — body is a one-liner over the platinum spec.
    ---------------------------------------------------------------------
 
    procedure Expand_Key
      (Key    : Key_Array;
       Out_RK : out Round_Keys)
    is
-      Temp0, Temp1, Temp2, Temp3 : Octet;
-      Tmp_T : Octet;
    begin
-      Out_RK := (others => 0);
-      Out_RK (1 .. 32) := Key;
-      for I in 8 .. 59 loop
-         Temp0 := Out_RK (4 * (I - 1) + 1);
-         Temp1 := Out_RK (4 * (I - 1) + 2);
-         Temp2 := Out_RK (4 * (I - 1) + 3);
-         Temp3 := Out_RK (4 * (I - 1) + 4);
-         if I mod 8 = 0 then
-            Tmp_T := Temp0;
-            Temp0 := Temp1;
-            Temp1 := Temp2;
-            Temp2 := Temp3;
-            Temp3 := Tmp_T;
-            Temp0 := Tls_Core.Aes_Core.Sub_Byte (Temp0);
-            Temp1 := Tls_Core.Aes_Core.Sub_Byte (Temp1);
-            Temp2 := Tls_Core.Aes_Core.Sub_Byte (Temp2);
-            Temp3 := Tls_Core.Aes_Core.Sub_Byte (Temp3);
-            Temp0 := Temp0 xor Tls_Core.Aes_Core.Rcon (I / 8);
-         elsif I mod 8 = 4 then
-            Temp0 := Tls_Core.Aes_Core.Sub_Byte (Temp0);
-            Temp1 := Tls_Core.Aes_Core.Sub_Byte (Temp1);
-            Temp2 := Tls_Core.Aes_Core.Sub_Byte (Temp2);
-            Temp3 := Tls_Core.Aes_Core.Sub_Byte (Temp3);
-         end if;
-         Out_RK (4 * I + 1) := Out_RK (4 * (I - 8) + 1) xor Temp0;
-         Out_RK (4 * I + 2) := Out_RK (4 * (I - 8) + 2) xor Temp1;
-         Out_RK (4 * I + 3) := Out_RK (4 * (I - 8) + 3) xor Temp2;
-         Out_RK (4 * I + 4) := Out_RK (4 * (I - 8) + 4) xor Temp3;
-      end loop;
+      Out_RK := Aes_Spec.Aes256_Key_Expansion (Key);
    end Expand_Key;
 
    ---------------------------------------------------------------------
-   --  Encrypt_Block — FIPS 197 §5.1, Nr = 14. Body stays tiny by
-   --  composing Aes_Core round helpers.
+   --  Encrypt_Block — gated by Tls_Core_Config.T_Tables_Enabled,
+   --  same shape as Tls_Core.Aes128.Encrypt_Block.
    ---------------------------------------------------------------------
 
    procedure Encrypt_Block
@@ -60,15 +28,44 @@ is
       Plaintext : Block;
       Out_Block : out Block)
    is
-      State : Tls_Core.Aes_Core.Block := Plaintext;
    begin
-      Out_Block := (others => 0);
-      Tls_Core.Aes_Core.Add_Round_Key (State, RK, 0);
-      for Round in 1 .. 13 loop
-         Tls_Core.Aes_Core.Full_Round (State, RK, Round);
-      end loop;
-      Tls_Core.Aes_Core.Final_Round (State, RK, 14);
-      Out_Block := State;
+      --  T_Tables_Enabled is a static constant; one of the branches
+      --  is dead code at compile time.  The "no effect / never
+      --  reached" warnings below are expected.
+      pragma Warnings (Off, "statement has no effect");
+      pragma Warnings (Off, "this statement is never reached");
+      pragma Warnings (Off, "unused variable ""Round""");
+      if Tls_Core_Config.T_Tables_Enabled then
+         declare
+            State : Tls_Core.Aes_Core.Block := Plaintext;
+         begin
+            Tls_Core.Aes_Core.Add_Round_Key (State, RK, 0);
+            for Round in 1 .. 13 loop
+               Tls_Core.Aes_Core.Full_Round (State, RK, Round);
+            end loop;
+            Tls_Core.Aes_Core.Final_Round (State, RK, 14);
+            Out_Block := State;
+         end;
+      else
+         Out_Block := Aes_Spec.Aes256_Encrypt_Block (Plaintext, RK);
+      end if;
+      pragma Warnings (On, "unused variable ""Round""");
+      pragma Warnings (On, "this statement is never reached");
+      pragma Warnings (On, "statement has no effect");
    end Encrypt_Block;
+
+   ---------------------------------------------------------------------
+   --  Decrypt_Block — body is a one-liner over the spec; Post
+   --  discharges.
+   ---------------------------------------------------------------------
+
+   procedure Decrypt_Block
+     (RK         : Round_Keys;
+      Ciphertext : Block;
+      Out_Block  : out Block)
+   is
+   begin
+      Out_Block := Aes_Spec.Aes256_Decrypt_Block (Ciphertext, RK);
+   end Decrypt_Block;
 
 end Tls_Core.Aes256;

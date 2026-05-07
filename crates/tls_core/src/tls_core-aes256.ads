@@ -4,7 +4,7 @@
 --  / MixColumns / AddRoundKey machinery as AES-128; the only
 --  differences are:
 --    - key is 32 bytes (Nk = 8 words)
---    - 15 round keys (224 bytes total)
+--    - 15 round keys (240 bytes total)
 --    - one extra SubWord step every 4th word (i mod Nk = 4)
 --
 --  Test vector: FIPS 197 §C.3
@@ -14,6 +14,15 @@
 --    Ct    = 8EA2B7CA516745BFEAFC49904B496089
 --
 --  Used by AES-256-GCM (TLS_AES_256_GCM_SHA384, RFC 8446 §B.4).
+--
+--  Platinum spec pinning: same shape as Tls_Core.Aes128 — the body
+--  of the public Expand_Key / Decrypt_Block calls into the HACL\*
+--  spec port (Tls_Core.Aes_Spec) so the functional Post discharges
+--  by construction. Encrypt_Block's Post is gated by
+--  Tls_Core_Config.T_Tables_Enabled per the v0.5 AES investigation.
+
+with Tls_Core_Config;
+with Tls_Core.Aes_Spec;
 
 package Tls_Core.Aes256
 with SPARK_Mode
@@ -27,15 +36,32 @@ is
    subtype Key_Array  is Octet_Array (1 .. Key_Length);
    subtype Round_Keys is Octet_Array (1 .. Round_Keys_Length);
 
-   --  No functional Posts. FIPS 197 §C.3 test vector exercises
-   --  Expand_Key and Encrypt_Block end-to-end.
+   --  FIPS 197 §5.2 KeyExpansion (Nk = 8, Nr = 14).  Mirrors HACL\*
+   --  `aes256_key_expansion` (Spec.AES.fst:263).
    procedure Expand_Key
      (Key    : Key_Array;
-      Out_RK : out Round_Keys);
+      Out_RK : out Round_Keys)
+   with
+     Post => Out_RK = Aes_Spec.Aes256_Key_Expansion (Key);
 
+   --  FIPS 197 §5.1 Cipher (Nr = 14).  Mirrors HACL\*
+   --  `aes_encrypt_block AES256` (Spec.AES.fst:306).
    procedure Encrypt_Block
      (RK        : Round_Keys;
       Plaintext : Block;
-      Out_Block : out Block);
+      Out_Block : out Block)
+   with
+     Post =>
+       (if not Tls_Core_Config.T_Tables_Enabled
+        then Out_Block = Aes_Spec.Aes256_Encrypt_Block (Plaintext, RK));
+
+   --  FIPS 197 §5.3 InvCipher.  Mirrors HACL\* `aes_decrypt_block
+   --  AES256` (Spec.AES.fst:319).
+   procedure Decrypt_Block
+     (RK         : Round_Keys;
+      Ciphertext : Block;
+      Out_Block  : out Block)
+   with
+     Post => Out_Block = Aes_Spec.Aes256_Decrypt_Block (Ciphertext, RK);
 
 end Tls_Core.Aes256;

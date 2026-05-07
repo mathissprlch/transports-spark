@@ -32,6 +32,7 @@ with Tls_Core.Tcp_Transport;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Tls13_Driver;
 with Tls_Core.Aes128;
+with Tls_Core.Aes_Spec;
 with Tls_Core.Aead_Aes128_Gcm;
 with Tls_Core.Sha384;
 with Tls_Core.Hmac_Sha384;
@@ -3220,6 +3221,97 @@ procedure Tls_Core_Tests is
    end Aes256_Scenario;
 
    ---------------------------------------------------------------------
+   --  Scenario 34b — AES Spec direct (HACL\* `Spec.AES.fst` port).
+   --
+   --  Exercises Tls_Core.Aes_Spec independently of the Aes128 /
+   --  Aes256 wrappers:
+   --
+   --    * AES-128 §C.1 round-trip via Aes_Spec.Aes128_Encrypt_Block
+   --      and Aes128_Decrypt_Block.
+   --    * AES-256 §C.3 round-trip via Aes_Spec.Aes256_Encrypt_Block
+   --      and Aes256_Decrypt_Block.
+   --    * Tls_Core.Aes128.Decrypt_Block on the §C.1 ciphertext
+   --      returns the original plaintext.
+   --    * Tls_Core.Aes256.Decrypt_Block on the §C.3 ciphertext
+   --      returns the original plaintext.
+   ---------------------------------------------------------------------
+
+   procedure Aes_Spec_Scenario;
+   procedure Aes_Spec_Scenario is
+      --  AES-128 §C.1 vectors.
+      K128 : constant Tls_Core.Aes128.Key_Array :=
+        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#);
+      Pt128 : constant Tls_Core.Aes128.Block :=
+        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+      Ct128_Expected : constant Tls_Core.Aes128.Block :=
+        (16#69#, 16#C4#, 16#E0#, 16#D8#, 16#6A#, 16#7B#, 16#04#, 16#30#,
+         16#D8#, 16#CD#, 16#B7#, 16#80#, 16#70#, 16#B4#, 16#C5#, 16#5A#);
+
+      RK128       : Tls_Core.Aes128.Round_Keys;
+      Ct128_Spec  : Tls_Core.Aes_Spec.Block_16;
+      Pt128_Round : Tls_Core.Aes_Spec.Block_16;
+      Pt128_Wrap  : Tls_Core.Aes128.Block;
+
+      --  AES-256 §C.3 vectors.
+      K256 : constant Tls_Core.Aes256.Key_Array :=
+        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#,
+         16#10#, 16#11#, 16#12#, 16#13#, 16#14#, 16#15#, 16#16#, 16#17#,
+         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#);
+      Pt256 : constant Tls_Core.Aes256.Block :=
+        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+      Ct256_Expected : constant Tls_Core.Aes256.Block :=
+        (16#8E#, 16#A2#, 16#B7#, 16#CA#, 16#51#, 16#67#, 16#45#, 16#BF#,
+         16#EA#, 16#FC#, 16#49#, 16#90#, 16#4B#, 16#49#, 16#60#, 16#89#);
+
+      RK256       : Tls_Core.Aes256.Round_Keys;
+      Ct256_Spec  : Tls_Core.Aes_Spec.Block_16;
+      Pt256_Round : Tls_Core.Aes_Spec.Block_16;
+      Pt256_Wrap  : Tls_Core.Aes256.Block;
+   begin
+      Put_Line ("scenario 34b — AES Spec (HACL\\* port) FIPS 197 §C.1 / §C.3");
+
+      --  AES-128: spec-direct encrypt = expected ciphertext.
+      Tls_Core.Aes128.Expand_Key (K128, RK128);
+      Ct128_Spec :=
+        Tls_Core.Aes_Spec.Aes128_Encrypt_Block (Pt128, RK128);
+      Check ("Aes_Spec.Aes128_Encrypt_Block §C.1 byte-exact",
+             Equal (Ct128_Spec, Ct128_Expected));
+
+      --  AES-128: spec-direct decrypt round-trips.
+      Pt128_Round :=
+        Tls_Core.Aes_Spec.Aes128_Decrypt_Block (Ct128_Spec, RK128);
+      Check ("Aes_Spec.Aes128 decrypt(encrypt(x)) = x",
+             Equal (Pt128_Round, Pt128));
+
+      --  Aes128.Decrypt_Block: §C.1 ciphertext decrypts to plaintext.
+      Tls_Core.Aes128.Decrypt_Block (RK128, Ct128_Expected, Pt128_Wrap);
+      Check ("Aes128.Decrypt_Block §C.1 plaintext byte-exact",
+             Equal (Pt128_Wrap, Pt128));
+
+      --  AES-256: spec-direct encrypt = expected ciphertext.
+      Tls_Core.Aes256.Expand_Key (K256, RK256);
+      Ct256_Spec :=
+        Tls_Core.Aes_Spec.Aes256_Encrypt_Block (Pt256, RK256);
+      Check ("Aes_Spec.Aes256_Encrypt_Block §C.3 byte-exact",
+             Equal (Ct256_Spec, Ct256_Expected));
+
+      --  AES-256: spec-direct decrypt round-trips.
+      Pt256_Round :=
+        Tls_Core.Aes_Spec.Aes256_Decrypt_Block (Ct256_Spec, RK256);
+      Check ("Aes_Spec.Aes256 decrypt(encrypt(x)) = x",
+             Equal (Pt256_Round, Pt256));
+
+      --  Aes256.Decrypt_Block: §C.3 ciphertext decrypts to plaintext.
+      Tls_Core.Aes256.Decrypt_Block (RK256, Ct256_Expected, Pt256_Wrap);
+      Check ("Aes256.Decrypt_Block §C.3 plaintext byte-exact",
+             Equal (Pt256_Wrap, Pt256));
+   end Aes_Spec_Scenario;
+
+   ---------------------------------------------------------------------
    --  Scenario 35 — AES-256-GCM NIST SP 800-38D Test Case 15.
    ---------------------------------------------------------------------
 
@@ -4053,6 +4145,7 @@ begin
    Aes_Gcm_Scenario;
    Sha384_Scenario;
    Aes256_Scenario;
+   Aes_Spec_Scenario;
    Aes256_Gcm_Scenario;
    Hmac_Sha384_Scenario;
    Hkdf_Sha384_Scenario;
