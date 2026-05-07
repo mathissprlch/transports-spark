@@ -2,7 +2,7 @@ with Interfaces;
 with Tls_Core.Aead_Chacha20_Poly1305;
 
 package body Tls_Core.Channel
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -27,7 +27,14 @@ is
       AAD        : Octet_Array;
       Plaintext  : Octet_Array;
       Ciphertext : out Octet_Array;
-      Tag        : out Tag_Bytes);
+      Tag        : out Tag_Bytes)
+   with Pre =>
+     Ciphertext'Length = Plaintext'Length
+     and then AAD'Length <= 16640
+     and then Plaintext'Length <= 16640
+     and then AAD'Last < Integer'Last - 16640
+     and then Plaintext'Last < Integer'Last - 16640
+     and then Ciphertext'Last < Integer'Last - 16640;
    procedure Cha_Seal
      (Key        : Key_Type;
       Nonce      : Tls_Core.Record_Layer.IV_Array;
@@ -53,7 +60,14 @@ is
       Ciphertext : Octet_Array;
       Tag        : Tag_Bytes;
       Plaintext  : out Octet_Array;
-      OK         : out Boolean);
+      OK         : out Boolean)
+   with Pre =>
+     Plaintext'Length = Ciphertext'Length
+     and then AAD'Length <= 16640
+     and then Ciphertext'Length <= 16640
+     and then AAD'Last < Integer'Last - 16640
+     and then Ciphertext'Last < Integer'Last - 16640
+     and then Plaintext'Last < Integer'Last - 16640;
    procedure Cha_Open
      (Key        : Key_Type;
       Nonce      : Tls_Core.Record_Layer.IV_Array;

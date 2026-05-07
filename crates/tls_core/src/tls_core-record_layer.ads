@@ -186,7 +186,12 @@ is
          Tag        : out Tag_Type)
       with
         Pre  => Seq_Of (S) < Seq_Number'Last
-                and then Ciphertext'Length = Plaintext'Length,
+                and then Ciphertext'Length = Plaintext'Length
+                and then AAD'Length <= 16640
+                and then Plaintext'Length <= 16640
+                and then AAD'Last < Integer'Last - 16640
+                and then Plaintext'Last < Integer'Last - 16640
+                and then Ciphertext'Last < Integer'Last - 16640,
         Post => Seq_Of (S) = Seq_Of (S'Old) + 1
                 and then IV_Of (S) = IV_Of (S'Old);
 
@@ -200,7 +205,12 @@ is
          OK         : out Boolean)
       with
         Pre  => Seq_Of (S) < Seq_Number'Last
-                and then Plaintext'Length = Ciphertext'Length,
+                and then Plaintext'Length = Ciphertext'Length
+                and then AAD'Length <= 16640
+                and then Ciphertext'Length <= 16640
+                and then AAD'Last < Integer'Last - 16640
+                and then Ciphertext'Last < Integer'Last - 16640
+                and then Plaintext'Last < Integer'Last - 16640,
         Post => Seq_Of (S) = Seq_Of (S'Old) + 1
                 and then IV_Of (S) = IV_Of (S'Old);
 

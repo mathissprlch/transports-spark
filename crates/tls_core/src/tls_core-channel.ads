@@ -23,7 +23,7 @@ with Tls_Core.Record_Layer;
 with Tls_Core.Traffic_Keys;
 
 package Tls_Core.Channel
-with SPARK_Mode => Off
+with SPARK_Mode
 is
 
    --  Per-direction state: AEAD key+IV plus the record-layer Stream.
