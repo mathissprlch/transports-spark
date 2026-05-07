@@ -87,13 +87,21 @@ is
    procedure Init_Psk_Server
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array);
+      Psk_Identity : Octet_Array)
+   with
+     Pre =>
+       PSK'Length = 32
+       and then Psk_Identity'Length in 1 .. 64;
 
    --  Initialise as PSK_KE client.
    procedure Init_Psk_Client
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array);
+      Psk_Identity : Octet_Array)
+   with
+     Pre =>
+       PSK'Length = 32
+       and then Psk_Identity'Length in 1 .. 64;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  HRR-aware initialisation (RFC 8446 §4.1.4).
