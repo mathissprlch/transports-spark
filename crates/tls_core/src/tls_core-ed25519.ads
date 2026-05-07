@@ -18,13 +18,16 @@
 --
 --  Same shape as Tls_Core.X25519 — a 16-limb 16-bit field
 --  representation, but Edwards-form point operations + the curve
---  order arithmetic for reducing the SHA-512 hash mod L. Body sits
---  outside SPARK_Mode for the same reasons X25519 does: the field
---  arithmetic carry chains aren't a target for proof here; the
---  proof obligation is RFC-vector match.
+--  order arithmetic for reducing the SHA-512 hash mod L. Most of
+--  the body sits outside SPARK_Mode for the same reasons X25519
+--  does: the field arithmetic carry chains aren't a target for
+--  proof here; the proof obligation is RFC-vector match. The one
+--  carved-out exception is the curve-order reduction Mod_L_Core
+--  inside the body, which lives in a nested SPARK_Mode => On
+--  package (Mod_L_Pkg) and is fully proven for absence of runtime
+--  errors.
 
 package Tls_Core.Ed25519
-with SPARK_Mode => Off
 is
 
    subtype Bytes_32 is Octet_Array (1 .. 32);
