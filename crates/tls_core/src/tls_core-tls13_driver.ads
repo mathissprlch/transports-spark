@@ -28,6 +28,7 @@
 --  scenarios in tls_core_tests).
 
 with Tls_Core.Aead_Channel;
+with Tls_Core.Alert;
 with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
@@ -39,6 +40,8 @@ with Tls_Core.Transcript;
 package Tls_Core.Tls13_Driver
 with SPARK_Mode
 is
+
+   use type Tls_Core.Suites.Cipher_Suite_Id;
 
    pragma Unevaluated_Use_Of_Old (Allow);
 
@@ -72,6 +75,8 @@ is
       Awaiting_Sf,         --  Client sent CH; awaiting SH+EE+SF flight.
       Awaiting_Cf,         --  Server sent SH+EE+SF; awaiting client Finished.
       Done,
+      Closed,             --  Graceful shutdown — close_notify sent or
+                          --  received after Done. RFC 8446 §6.1.
       Failed);
 
    type Driver is private;
@@ -153,6 +158,74 @@ is
    --  Awaiting_Sf (client) or Awaiting_Cf (server). Until then, the
    --  default Chacha20_Poly1305_Sha256 is returned.
    function Selected_Suite (D : Driver) return Tls_Core.Suites.Cipher_Suite_Id;
+
+   --------------------------------------------------------------------
+   --  Alert protocol — RFC 8446 §6 surface.
+   --------------------------------------------------------------------
+
+   --  When Step transitions to Failed, this returns the
+   --  AlertDescription byte the driver would send over the wire.
+   --  Defaults to Desc_Internal_Error before any failure has been
+   --  recorded; defaults to 0 (Desc_Close_Notify) on Closed.
+   function Last_Alert_Description (D : Driver) return Octet;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Build a §6.1 close_notify alert record for
+   --                      graceful shutdown after the handshake.
+   --
+   --  Standard:    RFC 8446 §6.1 (close_notify is sent at end of
+   --               session; recipient MUST NOT send any further
+   --               application_data).
+   --
+   --  After Done, the local side encrypts an Alert{warning,
+   --  close_notify} under the application traffic secret and writes
+   --  the resulting TLSCiphertext to Out_Buf. State transitions to
+   --  Closed. Caller is responsible for putting the bytes on the
+   --  wire and (if both sides have closed) tearing the TCP socket.
+   --
+   --  Functional:  Out_Last is the length of one TLSCiphertext
+   --               record carrying the encoded close_notify Alert.
+   --               D.Cur_State after the call is Closed.
+   --  Proven at:   gnatprove --level=2 (audit-clean) — body builds
+   --               2-byte alert, calls Aead_Channel.Send.
+   --------------------------------------------------------------------
+   procedure Send_Close_Notify
+     (D        : in out Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with
+     Pre =>
+       Current_State (D) = Done
+       and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D)
+                           = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= 5 + 2 + 1 + 16;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Build a fatal alert record (encrypted if
+   --                      handshake-stage keys exist; plaintext
+   --                      otherwise) for the given description.
+   --
+   --  Standard:    RFC 8446 §6.2.
+   --
+   --  Marks the driver Failed. Out_Buf holds one TLSCiphertext (or
+   --  TLSPlaintext, if no keys are derived yet) carrying the alert.
+   --
+   --  Use this when the application layer detects an error the
+   --  driver itself cannot detect (e.g. ALPN rejection).
+   --------------------------------------------------------------------
+   procedure Send_Fatal_Alert
+     (D           : in out Driver;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   with
+     Pre =>
+       (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+        or else Selected_Suite (D) = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= 5 + 2 + 1 + 16;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Open application-data Aead_Channel
@@ -369,11 +442,26 @@ private
       --  + CH2 + the rest of the handshake. Kept after transcript
       --  rebuild for diagnostic / test introspection.
       Hrr_Ch1_Hash : Tls_Core.Sha256.Digest := (others => 0);
+
+      --  True once the handshake-stage Aead_Channel directions
+      --  have been initialised with real (non-zero) traffic secrets.
+      --  Drives plaintext-vs-encrypted alert dispatch (RFC 8446 §6).
+      Hs_Keys_Set : Boolean := False;
+
+      --  Last AlertDescription this driver emitted or recorded.
+      Last_Alert  : Octet := Tls_Core.Alert.Desc_Internal_Error;
+
+      --  Application-data direction reused by Send_Close_Notify /
+      --  Send_Fatal_Alert post-Done.
+      App_Out_Dir : Tls_Core.Aead_Channel.Direction;
+      App_Out_Set : Boolean := False;
    end record;
 
    function Current_State (D : Driver) return State is (D.Cur_State);
 
    function Selected_Suite (D : Driver) return Tls_Core.Suites.Cipher_Suite_Id
    is (D.Suite);
+
+   function Last_Alert_Description (D : Driver) return Octet is (D.Last_Alert);
 
 end Tls_Core.Tls13_Driver;

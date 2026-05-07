@@ -28,7 +28,8 @@ is
 
    procedure Init
      (D      : out Direction;
-      Secret : Tls_Core.Key_Schedule_Sha384.Secret);
+      Secret : Tls_Core.Key_Schedule_Sha384.Secret)
+   with Post => Tls_Core.Record_Layer.Seq_Of (D.Stream) = 0;
 
    --  Following miTLS' StAE pattern: every encrypt/decrypt call requires
    --  the per-stream sequence number to be below max (else nonce reuse).

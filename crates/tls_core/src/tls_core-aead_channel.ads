@@ -80,7 +80,14 @@ is
      (Suite = Chacha20_Poly1305_Sha256
       or else Suite = Aes_128_Gcm_Sha256)
      and then not D'Constrained,
-     Post => D.Suite = Suite;
+     Post =>
+       D.Suite = Suite
+       and then (case D.Suite is
+                   when Chacha20_Poly1305_Sha256 =>
+                     Tls_Core.Channel.Stream_Seq (D.Cha) = 0,
+                   when Aes_128_Gcm_Sha256 =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream) = 0,
+                   when Aes_256_Gcm_Sha384 => True);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Initialise a Direction for the SHA-384-based
@@ -99,7 +106,9 @@ is
      (D      : out Direction;
       Secret : Tls_Core.Key_Schedule_Sha384.Secret)
    with Pre  => not D'Constrained,
-        Post => D.Suite = Aes_256_Gcm_Sha384;
+        Post =>
+          D.Suite = Aes_256_Gcm_Sha384
+          and then Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream) = 0;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Encrypt one record. Dispatches to the

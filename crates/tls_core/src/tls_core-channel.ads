@@ -18,6 +18,7 @@
 --  Wrapping it over a real Transport (TCP, in-memory) is one
 --  small adapter layer.
 
+with Interfaces;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Record_Layer;
 with Tls_Core.Traffic_Keys;
@@ -26,14 +27,23 @@ package Tls_Core.Channel
 with SPARK_Mode
 is
 
+   use type Interfaces.Unsigned_64;
+
    --  Per-direction state: AEAD key+IV plus the record-layer Stream.
    type Direction is private;
+
+   function Stream_Seq (D : Direction) return Tls_Core.Record_Layer.Seq_Number
+   with Ghost;
+   --  Ghost accessor for the per-direction Stream sequence — used
+   --  by callers' Posts to assert Seq=0 after initialisation while
+   --  Direction stays private.
 
    --  Initialise a Direction from a traffic secret. Derives
    --  (write_key, write_iv) per RFC 8446 §7.3 and resets Seq=0.
    procedure Init
      (D      : out Direction;
-      Secret : Tls_Core.Key_Schedule.Secret);
+      Secret : Tls_Core.Key_Schedule.Secret)
+   with Post => Stream_Seq (D) = 0;
 
    --  TLS 1.3 inner content types per RFC 8446 §5.2 / IANA registry.
    Inner_Type_Change_Cipher_Spec : constant Octet := 16#14#;
@@ -113,5 +123,8 @@ private
       Stream : Tls_Core.Record_Layer.Stream;
       Key    : Key_Type := (others => 0);
    end record;
+
+   function Stream_Seq (D : Direction) return Tls_Core.Record_Layer.Seq_Number
+   is (Tls_Core.Record_Layer.Seq_Of (D.Stream));
 
 end Tls_Core.Channel;
