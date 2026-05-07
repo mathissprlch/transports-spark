@@ -8,6 +8,25 @@ is
 
    use Interfaces;
 
+   ---------------------------------------------------------------------
+   --  Ghost spec layer — bodies for Spec functions declared in the
+   --  spec file. Computable, no stub returns.
+   ---------------------------------------------------------------------
+
+   package Int64_Big is new Big.Signed_Conversions (Int => Integer_64);
+
+   function Limb_Big (X : Integer_64) return Big.Big_Integer
+   is (Int64_Big.To_Big_Integer (X));
+
+   function Pow_2_16 (N : Natural) return Big.Big_Integer
+   is (Big.To_Big_Integer (2) ** (16 * N));
+
+   function Prime_P_Spec return Big.Big_Integer
+   is (Big.To_Big_Integer (2) ** 255 - Big.To_Big_Integer (19));
+
+   function Mod_P_Spec (X : Big.Big_Integer) return Big.Big_Integer
+   is (X mod Prime_P_Spec);
+
    subtype Big_Index is Natural range 0 .. 30;
    type Big_Buf is array (Big_Index) of Integer_64;
 
