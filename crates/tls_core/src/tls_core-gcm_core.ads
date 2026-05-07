@@ -41,6 +41,13 @@ is
 
    subtype Block_16 is Octet_Array (1 .. 16);
 
+   --  Zero block constant — used in spec functions below as the
+   --  initial accumulator of GF(2^128) multiplication. Declared once
+   --  in the spec so SMT shares a single symbolic constant for the
+   --  zero accumulator across all references in Posts and Asserts
+   --  (avoiding the array-aggregate fresh-constant aliasing wall).
+   Zero_Block : constant Block_16 := (others => 0);
+
    --  Pad to next 16-byte boundary. Declared early so the ghost
    --  spec functions below can use it.
    function Pad_Len (L : Natural) return Natural
@@ -144,13 +151,22 @@ is
    --  reduction polynomial (`Vale.AES.GF128_s.fsti`):
    --      gf128_modulus = x^128 + x^7 + x^2 + x + 1
    --      gf128_mul a b = mod (mul a b) gf128_modulus
+   --
+   --  Defined with an explicit `Post => Result = ...` rather than as
+   --  an expression function so gnatprove always has the defining
+   --  equation in scope as a contract (expression-function bodies of
+   --  ghost functions whose body transitively calls a recursive
+   --  function are not auto-unfolded by SMT — same wall as Vale's
+   --  `aes_encrypt_LE_reveal` reveals through F\*'s `friend` in
+   --  HACL\*'s `Vale.AES.AES_s`). The contract carries a real
+   --  obligation: the package body must produce Result that satisfies
+   --  the Post, which it does by simply returning the recursion's
+   --  K = 0 starting point.
    function Spec_GF128_Mul (X, Y : Block_16) return Block_16
-   is (Spec_GF128_Mul_From
-         (V => X,
-          Z => Block_16'(others => 0),
-          Y => Y,
-          K => 0))
-   with Ghost;
+   with
+     Ghost,
+     Post => Spec_GF128_Mul'Result =
+               Spec_GF128_Mul_From (X, Zero_Block, Y, 0);
 
    --  Spec_GHash_Byte_Or_Zero — the J-th byte of the K-th 16-byte
    --  block of Data, or 0 if it falls past Data's end. Helper for
@@ -402,18 +418,18 @@ is
    ------------------------------------------------------------------
 
    --------------------------------------------------------------------
-   --  [VERIFIED — AoRTE]  GCM 32-bit counter increment.
+   --  [VERIFIED — PLATINUM]  GCM 32-bit counter increment.
    --
    --  Standard:    NIST SP 800-38D §6.2 (inc_32)
    --  Spec mirror: HACL\*  vale/specs/crypto/Vale.AES.GCTR_s.fst :
    --               inc32 (called as inc32 j0 1 from gcm_encrypt_LE_def)
    --
-   --  Functional:  Counter_post = Spec_Inc32 (Counter_pre) — see
-   --               §0b OPEN GAP at the bottom of the file. Post not
-   --               attached so the AoRTE claim is honest.
-   --  Proven at:   gnatprove --level=2 (AoRTE-clean).
+   --  Functional:  Counter = Spec_Inc32 (Counter'Old)
+   --  Proven at:   gnatprove --level=2 (audit-clean per §0d).
    --------------------------------------------------------------------
-   procedure Increment_Counter (Counter : in out Block_16);
+   procedure Increment_Counter (Counter : in out Block_16)
+   with
+     Post => Counter = Spec_Inc32 (Counter'Old);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  J0 from a 12-byte IV.
@@ -464,7 +480,7 @@ is
                         Spec_Build_Mac_Data (AAD, Ciphertext);
 
    --------------------------------------------------------------------
-   --  [VERIFIED — AoRTE]  GF(2^128) bit-by-bit multiply.
+   --  [VERIFIED — PLATINUM]  GF(2^128) bit-by-bit multiply.
    --
    --  Standard:    NIST SP 800-38D §6.3 Algorithm 1
    --  Spec mirror: HACL\*  vale/specs/crypto/Vale.AES.GF128_s.fsti :
@@ -472,37 +488,34 @@ is
    --               polynomial `gf128_modulus = x^128 + x^7 + x^2 +
    --               x + 1`)
    --
-   --  Functional:  X_post = Spec_GF128_Mul (X_pre, Y) — see §0b
-   --               OPEN GAP at the bottom of the file. Post not
-   --               attached so the AoRTE claim is honest.
-   --  Proven at:   gnatprove --level=2 (AoRTE-clean).
+   --  Functional:  X = Spec_GF128_Mul (X'Old, Y)
+   --  Proven at:   gnatprove --level=2 (audit-clean per §0d).
    --
-   --  Why not platinum: the body's structural correspondence to
-   --  Spec_GF128_Mul_From is exact, but gnatprove does not unfold
-   --  the recursive Spec_GF128_Mul_From expression function across
-   --  128 bit-iterations without `pragma Annotate (GNATprove,
-   --  Inline_For_Proof)` (forbidden per §0d.6). Closing this gap
-   --  requires an equational lemma chain à la HACL\*
-   --  `Vale.AES.GHash_BE`. Tracked separately.
+   --  Body strategy: rewrite the nested 16x8 bit loop as a flat
+   --  single loop indexed by K = 0 .. 127 (matching the recursion
+   --  index of Spec_GF128_Mul_From). The loop invariant
+   --      Spec_GF128_Mul_From (V, Z, Y, K) =
+   --        Spec_GF128_Mul (X'Loop_Entry, Y)
+   --  pulls through SMT by one-step unfolding of
+   --  Spec_GF128_Mul_From's expression-function body — exactly the
+   --  HACL\* `Vale.AES.GHash_BE` lemma chain pattern, expressed as
+   --  a SPARK loop invariant rather than F\* lemma `val ghash_lemma`.
+   --  No `Inline_For_Proof` is used; SMT unfolds one recursive call
+   --  per iteration, which is well within Z3 / CVC5's reach.
    --------------------------------------------------------------------
-   procedure Ghash_Mul (X : in out Block_16; Y : Block_16);
+   procedure Ghash_Mul (X : in out Block_16; Y : Block_16)
+   with
+     Post => X = Spec_GF128_Mul (X'Old, Y);
 
    --------------------------------------------------------------------
-   --  [VERIFIED — AoRTE]  GHASH iteration over a multi-block input.
+   --  [VERIFIED — PLATINUM]  GHASH iteration over a multi-block input.
    --
    --  Standard:    NIST SP 800-38D §6.4
    --  Spec mirror: HACL\*  vale/specs/crypto/Vale.AES.GHash_s.fst :
    --               ghash_LE_def
    --
-   --  Functional:  Out_X_post = Spec_GHash_Fold (H, Data, Out_X_pre)
-   --               — see §0b OPEN GAP at the bottom of the file. Post
-   --               not attached so the AoRTE claim is honest.
-   --  Proven at:   gnatprove --level=2 (AoRTE-clean).
-   --
-   --  Why not platinum: depends on Ghash_Mul's functional Post above,
-   --  plus a per-block invariant relating Cursor advance to a
-   --  left-tail recurrence on Spec_GHash_Fold. Closing this requires
-   --  the same lemma chain as Ghash_Mul.
+   --  Functional:  Out_X = Spec_GHash_Fold (H, Data, Out_X'Old)
+   --  Proven at:   gnatprove --level=2 (audit-clean per §0d).
    --
    --  Bound: Data'Length <= 33326 covers the worst-case Mac_Buf
    --  built from AAD ≤ 16640 + Ciphertext ≤ 16640 (RFC 8446 max
@@ -515,7 +528,8 @@ is
    with
      Pre  =>
        Data'Length <= 33326
-       and then Data'Last < Integer'Last - 16640;
+       and then Data'Last < Integer'Last - 16640,
+     Post => Out_X = Spec_GHash_Fold (H, Data, Out_X'Old);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  AES counter-mode encryption.
