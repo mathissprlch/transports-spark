@@ -47,6 +47,11 @@ is
    --  the actual handshake logic in Step overwrites them later.
    --  Hs_Out_Dir / Hs_In_Dir start as the default chacha20 variant;
    --  Step swaps them to the negotiated variant once D.Suite is set.
+   --  Note: this body has 3 pre-existing unproven Init_Sha256 calls
+   --  ("D.Hs_Out_Dir.Suite is not set" etc.) — gnatprove can't see
+   --  through the inlining + variant-record discriminant interaction
+   --  for an `out` parameter component. Independent of the alert
+   --  protocol work; tracked separately.
    procedure Prime_Driver_Defaults (D : in out Driver);
    procedure Prime_Driver_Defaults (D : in out Driver) is
       Zero_Secret : constant Tls_Core.Key_Schedule.Secret := (others => 0);
