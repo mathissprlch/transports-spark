@@ -36,7 +36,8 @@ is
       R, S       : Component;
       OK         : out Boolean)
    with
-     Pre  => Message'Last < Integer'Last - 64
+     Pre  => Message'First = 1
+             and then Message'Last < Integer'Last - 64
              and then Message'Length <= Natural'Last - 73;
 
    --  ECDSA sign (FIPS 186-4 §6.4.1) with a caller-supplied per-
@@ -51,7 +52,8 @@ is
       Out_S       : out Component;
       OK          : out Boolean)
    with
-     Pre  => Message'Last < Integer'Last - 64
+     Pre  => Message'First = 1
+             and then Message'Last < Integer'Last - 64
              and then Message'Length <= Natural'Last - 73;
 
    pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
