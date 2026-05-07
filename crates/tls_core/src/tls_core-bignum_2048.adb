@@ -1,4 +1,6 @@
+pragma Warnings (Off, "redundant with clause in body");
 with Interfaces;
+pragma Warnings (On, "redundant with clause in body");
 
 package body Tls_Core.Bignum_2048
 with SPARK_Mode
@@ -7,6 +9,105 @@ is
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
+
+   ---------------------------------------------------------------------
+   --  Ghost spec layer bodies. Real, computable Big_Integer arithmetic
+   --  (CLAUDE.md §0d clause 4: no `return False` / placeholder bodies).
+   --
+   --  `Byte_Big` and `Pow_2_8` are simple lifters. `Spec_Mod_Exp` is
+   --  the canonical recursive square-and-multiply on Big_Integer: it
+   --  IS the spec of what Mod_Exp should compute, expressed as
+   --  Big_Integer code that gnatprove can step through.
+   ---------------------------------------------------------------------
+
+   package Octet_Bigint is new Big.Signed_Conversions (Int => Integer);
+
+   function Byte_Big (X : Octet) return Big.Big_Integer is
+   begin
+      return Octet_Bigint.To_Big_Integer (Integer (X));
+   end Byte_Big;
+
+   function Pow_2_8 (N : Natural) return Big.Big_Integer is
+   begin
+      return Big.To_Big_Integer (2) ** (8 * N);
+   end Pow_2_8;
+
+   --  Square-and-multiply on Big_Integer. Mirror of HACL\*'s `pow_mod`
+   --  in `Lib.NatMod.fst`:
+   --      val pow #t : a:t -> b:nat -> Tot t (decreases b)
+   --      let rec pow #t a b =
+   --        if b = 0 then one
+   --        else mul a (pow a (b - 1))
+   --  We then take the result mod N at the top level. The recursion
+   --  on Exp is well-founded (decreasing nat), and the body is purely
+   --  a Big_Integer computation — no representation hooks.
+   function Spec_Mod_Exp
+     (Base, Exp, N : Big.Big_Integer) return Big.Big_Integer
+   is
+      One   : constant Big.Big_Integer := Big.To_Big_Integer (1);
+      Two   : constant Big.Big_Integer := Big.To_Big_Integer (2);
+      Zero_B : constant Big.Big_Integer := Big.To_Big_Integer (0);
+      Result : Big.Big_Integer := One;
+      B      : Big.Big_Integer;
+      E      : Big.Big_Integer := Exp;
+   begin
+      --  Spec degenerate cases mirror the imperative ads:
+      if N <= One then
+         return Zero_B;
+      end if;
+      if N mod Two = Zero_B then
+         return Zero_B;
+      end if;
+      B := Base mod N;
+      --  Iterative square-and-multiply, LSB-first. Equivalent to
+      --  HACL\*'s `pow` viewed through binary expansion of Exp.
+      while E > Zero_B loop
+         pragma Loop_Invariant (Result >= Zero_B and then Result < N);
+         pragma Loop_Invariant (B >= Zero_B and then B < N);
+         pragma Loop_Variant (Decreases => E);
+         if E mod Two = One then
+            Result := (Result * B) mod N;
+         end if;
+         E := E / Two;
+         B := (B * B) mod N;
+      end loop;
+      return Result;
+   end Spec_Mod_Exp;
+
+   --  HACL\*'s `nat_to_bytes_be 256`. Walks 256 bytes high-to-low,
+   --  extracting (X / 2^(8*(255-i))) mod 256 into Bigint(i+1).
+   --  Real, computable body — uses Big_Integer mod / div arithmetic.
+   function Big_To_Bigint (X : Big.Big_Integer) return Bigint is
+      --  Init suppresses an "initialization has no effect" gnat
+      --  warning; flow analysis still needs the unconditional write.
+      Result    : Bigint := (others => 0);
+      Base_256  : constant Big.Big_Integer := Big.To_Big_Integer (256);
+      Acc       : Big.Big_Integer := X;
+      package Octet_Big is new Big.Signed_Conversions (Int => Integer);
+   begin
+      --  LSB-first extraction: Bigint (256), Bigint (255), ... Bigint (1).
+      for K in reverse 1 .. Byte_Length loop
+         pragma Loop_Invariant (Acc >= Big.To_Big_Integer (0));
+         --  Byte_Big_Val (in [0, 256) by definition of mod with positive
+         --  divisor) reduced to Integer for the conversion to Octet.
+         Result (K) :=
+           Octet (Octet_Big.From_Big_Integer (Acc mod Base_256));
+         Acc := Acc / Base_256;
+      end loop;
+      return Result;
+   end Big_To_Bigint;
+
+   procedure Lemma_Bigint_Roundtrip (B : Bigint) is
+   begin
+      --  Inductive over Byte_Length steps: each iteration of
+      --  Big_To_Bigint extracts the byte that Bn_V would have weighted
+      --  by 2^(8*k) at index Byte_Length - k. The detailed lemma is
+      --  out of scope for this session (multi-day inductive proof);
+      --  the procedure body is empty so the Post is left as honest
+      --  unproven (CLAUDE.md §0d clause 1) — clause-6 clean (no
+      --  pragma Assume, no annotation).
+      null;
+   end Lemma_Bigint_Roundtrip;
 
    ---------------------------------------------------------------------
    --  Internal limb representation.
@@ -51,6 +152,11 @@ is
 
    procedure To_Bytes (L : Limbs64; B : out Bigint) is
    begin
+      --  Pre-zero the whole buffer so flow analysis sees an
+      --  unconditional initialisation; the limb-walk below overwrites
+      --  every byte but the prover otherwise can't see that the
+      --  4×I+k indices cover [1..256] exactly.
+      B := (others => 0);
       for I in Limb_Index loop
          B (Byte_Length - 4 * I - 3) :=
            Octet (Shift_Right (L (I), 24) and 16#FF#);
@@ -233,6 +339,7 @@ is
 
    procedure Widen (A : Limbs64; T : out Limbs128) is
    begin
+      T := (others => 0);
       for I in Limb_Index loop
          T (I) := A (I);
       end loop;
@@ -559,6 +666,9 @@ is
    begin
       for I in Bigint'Range loop
          Diff := Diff or (A (I) xor B (I));
+         pragma Loop_Invariant
+           (Diff = 0
+            xor (for some K in Bigint'First .. I => A (K) /= B (K)));
       end loop;
       return Diff = 0;
    end Equal_CT;

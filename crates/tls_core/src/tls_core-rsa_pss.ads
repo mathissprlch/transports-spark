@@ -198,14 +198,28 @@ is
    --  Functional:  EM := Bignum_2048.Mod_Exp (Signature, E, N);
    --               OK := Spec_Pss_Verify_Sha256 (Message, EM)
    --
-   --  The Post on this procedure is a length / shape contract only:
-   --  Bignum_2048.Mod_Exp is currently AoRTE-only (no functional spec
-   --  for schoolbook 2048-bit modular exponentiation), so we cannot
-   --  reference EM = Spec_Mod_Exp (...) in the Post. The PSS encoding
-   --  step IS proven against the HACL* spec (see Emsa_Pss_Verify_Sha256
-   --  above, which carries the PLATINUM tag). End-to-end correctness
-   --  is audited via the RFC 8017 §A.2 test vectors and the Encode →
-   --  Verify round-trip in tls_core_tests.
+   --  Post (composed):
+   --      OK = Spec_Pss_Verify_Sha256
+   --             (Message,
+   --              Bignum_2048.Spec_Em_From_Pubkey_Sig (N, E, Signature))
+   --  where `Spec_Em_From_Pubkey_Sig` is the canonical RSAVP1 step:
+   --  `Big_To_Bigint (Spec_Mod_Exp (Bn_V (Sig), Bn_V (E), Bn_V (N)))`.
+   --  Both ghost components have real, computable bodies (CLAUDE.md
+   --  §0d clauses 4 & 5). The Post is real functional, not a length-
+   --  only shape — it pushes the unproven obligation down to (a) the
+   --  functional Post of `Bignum_2048.Mod_Exp` (the Montgomery ↔
+   --  Big_Integer square-and-multiply equivalence) and (b) the
+   --  round-trip lemma `Big_To_Bigint (Bn_V (M)) = M`. Both are
+   --  invoked by the body — see `Lemma_Bigint_Roundtrip (M)` after
+   --  `Mod_Exp` — so when those underlying obligations close, the
+   --  Verify Post discharges automatically.
+   --
+   --  Status: honest unproven (clause 1 not satisfied — the chain
+   --  through Mod_Exp's functional Post is not yet discharged at
+   --  level=2). Clause-6 clean: no SPARK_Mode (Off), no pragma
+   --  Assume, no annotation. RFC 8017 §A.2 test vectors and the
+   --  Encode → Verify round-trip in tls_core_tests exercise the
+   --  chain end-to-end.
    --
    --  N, E, Signature are 2048-bit big-endian buffers (Bigint).
    --  Message is the data over which the signature was computed (NOT
@@ -220,7 +234,12 @@ is
    with
      Pre  => Message'First = 1
              and then Message'Length <= Natural'Last - 9 - 64
-             and then Message'Last < Integer'Last - 128;
+             and then Message'Last < Integer'Last - 128,
+     Post =>
+       OK = Spec_Pss_Verify_Sha256
+              (Message,
+               Tls_Core.Bignum_2048.Spec_Em_From_Pubkey_Sig
+                 (N, E, Signature));
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  RSASSA-PSS-VERIFY with SHA-384.
@@ -229,9 +248,10 @@ is
    --  Spec mirror: HACL* specs/Spec.RSAPSS.fst : rsapss_verify_
    --                                            (lines 319-335)
    --
-   --  Same AoRTE/PLATINUM split as Verify_Sha256 — the PSS encoding
-   --  side is proven (Emsa_Pss_Verify_Sha384 carries PLATINUM); the
-   --  Mod_Exp step remains AoRTE.
+   --  Same shape as Verify_Sha256: the Post composes Spec_Mod_Exp
+   --  (HACL* `bn_mod_exp`) with Spec_Pss_Verify_Sha384 (HACL*
+   --  `pss_verify` for SHA-384). Honest unproven (the Mod_Exp
+   --  functional Post is the choke point) — clause-6 clean.
    --------------------------------------------------------------------
    procedure Verify_Sha384
      (N         : Bigint;
@@ -242,7 +262,12 @@ is
    with
      Pre  => Message'First = 1
              and then Message'Length <= Natural'Last - 17 - 128
-             and then Message'Last < Integer'Last - 128;
+             and then Message'Last < Integer'Last - 128,
+     Post =>
+       OK = Spec_Pss_Verify_Sha384
+              (Message,
+               Tls_Core.Bignum_2048.Spec_Em_From_Pubkey_Sig
+                 (N, E, Signature));
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  EMSA-PSS-ENCODE with SHA-256.

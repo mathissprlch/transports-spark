@@ -529,6 +529,14 @@ is
       M : Bigint;
    begin
       Tls_Core.Bignum_2048.Mod_Exp (Signature, E, N, M);
+      --  Bring the round-trip identity Big_To_Bigint (Bn_V (M)) = M
+      --  into local scope so the chain
+      --    Spec_Em_From_Pubkey_Sig (N, E, Signature)
+      --      = Big_To_Bigint (Spec_Mod_Exp (Bn_V (Sig), Bn_V (E), Bn_V (N)))  [defn]
+      --      = Big_To_Bigint (Bn_V (M))                                        [Mod_Exp Post]
+      --      = M                                                               [round-trip lemma]
+      --  is visible to SMT when discharging the Verify_Sha256 Post.
+      Tls_Core.Bignum_2048.Lemma_Bigint_Roundtrip (M);
       Emsa_Pss_Verify_Sha256 (Message, M, OK);
    end Verify_Sha256;
 
@@ -542,6 +550,7 @@ is
       M : Bigint;
    begin
       Tls_Core.Bignum_2048.Mod_Exp (Signature, E, N, M);
+      Tls_Core.Bignum_2048.Lemma_Bigint_Roundtrip (M);
       Emsa_Pss_Verify_Sha384 (Message, M, OK);
    end Verify_Sha384;
 
