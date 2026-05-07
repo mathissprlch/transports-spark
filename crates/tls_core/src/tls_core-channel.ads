@@ -97,6 +97,14 @@ is
        and then Out_Buf'Length + 5 + 1 + 16 >= In_Buf'Length
        and then Out_Buf'First = 1;
 
+   --  Public accessor for the per-direction Stream sequence counter.
+   --  Used by Aead_Channel.Seq_Of so the variant-record dispatcher
+   --  can expose a uniform Seq across all three suites without
+   --  exposing the private Direction record. Ghost — for use in
+   --  contracts only (matches Record_Layer.Seq_Of's ghost mode).
+   function Seq_Of (D : Direction) return Tls_Core.Record_Layer.Seq_Number
+   with Ghost;
+
 private
 
    subtype Key_Type is Tls_Core.Traffic_Keys.Aead_Key;

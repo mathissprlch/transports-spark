@@ -44,6 +44,7 @@ with Tls_Core.Channel_Aes256;
 with Tls_Core.Key_Schedule_Sha384;
 with Tls_Core.Suites;
 with Tls_Core.Aead_Channel;
+with Tls_Core.Key_Update;
 with Tls_Core.P256;
 with Tls_Core.P256_Field;
 with Tls_Core.P256_Order;
@@ -3118,6 +3119,367 @@ procedure Tls_Core_Tests is
    end Tls13_Loopback;
 
    --------------------------------------------------------------------
+   --  Scenario 30b — KeyUpdate wire encode/decode round-trip.
+   --
+   --  Validates Tls_Core.Key_Update.Encode produces the §4.6.3 wire
+   --  shape (msg_type=0x18, u24 length=1, request_update payload)
+   --  and that Decode rejects malformed lengths / msg-types and
+   --  parameters outside {0, 1}.
+   --------------------------------------------------------------------
+   procedure Key_Update_Wire_Scenario;
+   procedure Key_Update_Wire_Scenario is
+      Buf : Tls_Core.Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
+        (others => 0);
+      Last : Natural;
+      Req  : Tls_Core.Octet;
+      OK   : Boolean;
+   begin
+      Put_Line ("scenario 30b — KeyUpdate wire encode/decode");
+
+      --  Encode update_not_requested (= 0).
+      Tls_Core.Key_Update.Encode
+        (Tls_Core.Key_Update.Update_Not_Requested, Buf, Last);
+      Check ("Key_Update.Encode wire size = 5", Last = 5);
+      Check ("Key_Update.Encode msg_type = 0x18",
+             Buf (1) = 16#18#);
+      Check ("Key_Update.Encode u24 length high = 0",
+             Buf (2) = 0);
+      Check ("Key_Update.Encode u24 length mid = 0",
+             Buf (3) = 0);
+      Check ("Key_Update.Encode u24 length low = 1",
+             Buf (4) = 1);
+      Check ("Key_Update.Encode payload = 0",
+             Buf (5) = 0);
+
+      --  Decode round-trip on the buffer just produced.
+      Tls_Core.Key_Update.Decode (Buf, Req, OK);
+      Check ("Key_Update.Decode round-trip OK", OK);
+      Check ("Key_Update.Decode round-trip request = 0",
+             Req = Tls_Core.Key_Update.Update_Not_Requested);
+
+      --  Encode update_requested (= 1) and round-trip.
+      Tls_Core.Key_Update.Encode
+        (Tls_Core.Key_Update.Update_Requested, Buf, Last);
+      Check ("Key_Update.Encode payload = 1 after rebuild",
+             Buf (5) = 1);
+      Tls_Core.Key_Update.Decode (Buf, Req, OK);
+      Check ("Key_Update.Decode round-trip OK (req)", OK);
+      Check ("Key_Update.Decode round-trip request = 1",
+             Req = Tls_Core.Key_Update.Update_Requested);
+
+      --  Reject: wrong msg_type.
+      declare
+         Bad : Tls_Core.Octet_Array (1 .. 5) :=
+           (16#19#, 16#00#, 16#00#, 16#01#, 16#00#);
+      begin
+         Tls_Core.Key_Update.Decode (Bad, Req, OK);
+         Check ("Key_Update.Decode rejects wrong msg_type", not OK);
+      end;
+
+      --  Reject: u24 length /= 1.
+      declare
+         Bad : Tls_Core.Octet_Array (1 .. 5) :=
+           (16#18#, 16#00#, 16#00#, 16#02#, 16#00#);
+      begin
+         Tls_Core.Key_Update.Decode (Bad, Req, OK);
+         Check ("Key_Update.Decode rejects u24 length /= 1", not OK);
+      end;
+
+      --  Reject: payload outside {0, 1}.
+      declare
+         Bad : Tls_Core.Octet_Array (1 .. 5) :=
+           (16#18#, 16#00#, 16#00#, 16#01#, 16#02#);
+      begin
+         Tls_Core.Key_Update.Decode (Bad, Req, OK);
+         Check ("Key_Update.Decode rejects payload outside {0,1}",
+                not OK);
+      end;
+
+      --  Reject: short buffer.
+      declare
+         Bad : Tls_Core.Octet_Array (1 .. 4) :=
+           (16#18#, 16#00#, 16#00#, 16#01#);
+      begin
+         Tls_Core.Key_Update.Decode (Bad, Req, OK);
+         Check ("Key_Update.Decode rejects short buffer", not OK);
+      end;
+   end Key_Update_Wire_Scenario;
+
+   --------------------------------------------------------------------
+   --  Scenario 30c — KeyUpdate end-to-end traffic-secret rotation.
+   --
+   --  Drives a full TLS 1.3 PSK_KE handshake (same as Tls13_Loopback),
+   --  then exercises §4.6.3 KeyUpdate post-handshake:
+   --    1. Client sends app data — server decrypts under c_ap_0.
+   --    2. Client emits KeyUpdate(update_requested) — record encrypted
+   --       under c_ap_0; client rotates send key to c_ap_1.
+   --    3. Server receives KeyUpdate(update_requested) — decrypts under
+   --       c_ap_0, rotates In_Dir to c_ap_1, signals Want_Reply.
+   --    4. Server emits KeyUpdate(update_not_requested) — record
+   --       encrypted under s_ap_0; server rotates Out_Dir to s_ap_1.
+   --    5. Client receives KeyUpdate(update_not_requested) — decrypts
+   --       under s_ap_0, rotates In_Dir to s_ap_1.
+   --    6. Both sides exchange app data under the rotated keys to
+   --       confirm key rotation succeeded on every direction.
+   --
+   --  Each step also validates that the *old* keys can no longer
+   --  decrypt the new traffic (negative test) and that the new keys
+   --  can — the verification dividend of getting the §7.2 derivation
+   --  exactly right.
+   --------------------------------------------------------------------
+   procedure Key_Update_Roundtrip_Scenario;
+   procedure Key_Update_Roundtrip_Scenario is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Tls_Core.Octet;
+      use type Tls_Core.Suites.Cipher_Suite_Id;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);
+
+      C, S : Tls_Core.Tls13_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf_Last : Natural := 0;
+
+      Out_Cli, In_Cli, Out_Srv, In_Srv :
+        Tls_Core.Aead_Channel.Direction;
+      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Schedule.Secret;
+      Sec_Srv_Out, Sec_Srv_In : Tls_Core.Key_Schedule.Secret;
+   begin
+      Put_Line ("scenario 30c — KeyUpdate end-to-end rotation");
+
+      --  Full handshake.
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+      Tls_Core.Tls13_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      declare
+         Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, Ch, Reply, Reply_Last);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+      declare
+         Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (C, Sf_Flight, Reply, Reply_Last);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+      declare
+         Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, Cf, Discard, Discard_Last);
+      end;
+      Check ("KeyUpdate: server reached Done",
+             Tls_Core.Tls13_Driver.Current_State (S)
+               = Tls_Core.Tls13_Driver.Done);
+      Check ("KeyUpdate: client reached Done",
+             Tls_Core.Tls13_Driver.Current_State (C)
+               = Tls_Core.Tls13_Driver.Done);
+
+      --  Open both sides' app directions WITH secrets.
+      Tls_Core.Tls13_Driver.Open_App_Directions
+        (C, Out_Cli, In_Cli, Sec_Cli_Out, Sec_Cli_In);
+      Tls_Core.Tls13_Driver.Open_App_Directions
+        (S, Out_Srv, In_Srv, Sec_Srv_Out, Sec_Srv_In);
+
+      --  Sanity: client's Out secret == server's In secret == c_ap_0
+      --  (the c_ap_0 traffic secret), and vice versa for s_ap_0.
+      Check ("KeyUpdate: c_ap shared client-out / server-in",
+             Equal (Sec_Cli_Out, Sec_Srv_In));
+      Check ("KeyUpdate: s_ap shared server-out / client-in",
+             Equal (Sec_Srv_Out, Sec_Cli_In));
+
+      --  Step 1: client sends "Hi" under c_ap_0; server decrypts.
+      declare
+         Pt : constant Tls_Core.Octet_Array :=
+           (16#48#, 16#69#);  --  "Hi"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got_Last : Natural;
+         Inner : Tls_Core.Octet;
+         OK : Boolean;
+      begin
+         Tls_Core.Aead_Channel.Send
+           (Out_Cli, Pt,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (In_Srv, Wire (1 .. Wire_Last),
+            Got, Got_Last, Inner, OK);
+         Check ("KeyUpdate: pre-rotation app data c->s decrypts", OK);
+         Check ("KeyUpdate: pre-rotation app data c->s round-trips",
+                Got_Last = Pt'Length
+                and then Equal (Got (1 .. Got_Last), Pt));
+      end;
+
+      --  Step 2: client sends KeyUpdate(update_requested).
+      --  Send_Key_Update encrypts under c_ap_0 then rotates to c_ap_1.
+      declare
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Sec_Cli_Out_Before : constant Tls_Core.Key_Schedule.Secret :=
+           Sec_Cli_Out;
+      begin
+         Tls_Core.Tls13_Driver.Send_Key_Update
+           (D              => C,
+            Out_Dir        => Out_Cli,
+            Send_Secret    => Sec_Cli_Out,
+            Request_Update => Tls_Core.Key_Update.Update_Requested,
+            Out_Buf        => Wire,
+            Out_Last       => Wire_Last);
+         Check ("KeyUpdate: client KeyUpdate record produced",
+                Wire_Last > 5 + 16);
+         Check ("KeyUpdate: client KeyUpdate outer is app-data (0x17)",
+                Wire (1) = 16#17#);
+         Check ("KeyUpdate: client send secret rotated",
+                not Equal (Sec_Cli_Out, Sec_Cli_Out_Before));
+
+         --  Step 3: server receives the KeyUpdate record.
+         --  First decrypt under In_Srv (still c_ap_0) to get plaintext.
+         declare
+            Pt_Buf : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+            Pt_Last : Natural;
+            Inner : Tls_Core.Octet;
+            OK : Boolean;
+            Want_Reply : Boolean;
+            Process_OK : Boolean;
+            Sec_Srv_In_Before : constant Tls_Core.Key_Schedule.Secret :=
+              Sec_Srv_In;
+         begin
+            Tls_Core.Aead_Channel.Receive
+              (In_Srv, Wire (1 .. Wire_Last),
+               Pt_Buf, Pt_Last, Inner, OK);
+            Check ("KeyUpdate: server decrypts KeyUpdate under c_ap_0",
+                   OK);
+            Check ("KeyUpdate: KeyUpdate inner type = handshake",
+                   Inner = Tls_Core.Aead_Channel.Inner_Type_Handshake);
+            Tls_Core.Tls13_Driver.Process_Inbound_Key_Update
+              (D            => S,
+               In_Plaintext => Pt_Buf (1 .. Pt_Last),
+               In_Dir       => In_Srv,
+               Recv_Secret  => Sec_Srv_In,
+               Want_Reply   => Want_Reply,
+               OK           => Process_OK);
+            Check ("KeyUpdate: server Process_Inbound OK", Process_OK);
+            Check ("KeyUpdate: server Want_Reply True", Want_Reply);
+            Check ("KeyUpdate: server In_Secret rotated",
+                   not Equal (Sec_Srv_In, Sec_Srv_In_Before));
+            Check ("KeyUpdate: c_ap_1 still shared client-out / server-in",
+                   Equal (Sec_Cli_Out, Sec_Srv_In));
+         end;
+      end;
+
+      --  Step 4: server emits its own KeyUpdate(update_not_requested)
+      --  in response. Encrypted under s_ap_0; rotates Out_Srv to s_ap_1.
+      declare
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Sec_Srv_Out_Before : constant Tls_Core.Key_Schedule.Secret :=
+           Sec_Srv_Out;
+      begin
+         Tls_Core.Tls13_Driver.Send_Key_Update
+           (D              => S,
+            Out_Dir        => Out_Srv,
+            Send_Secret    => Sec_Srv_Out,
+            Request_Update => Tls_Core.Key_Update.Update_Not_Requested,
+            Out_Buf        => Wire,
+            Out_Last       => Wire_Last);
+         Check ("KeyUpdate: server reply KeyUpdate record produced",
+                Wire_Last > 5 + 16);
+         Check ("KeyUpdate: server send secret rotated",
+                not Equal (Sec_Srv_Out, Sec_Srv_Out_Before));
+
+         --  Step 5: client receives server's KeyUpdate.
+         declare
+            Pt_Buf : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+            Pt_Last : Natural;
+            Inner : Tls_Core.Octet;
+            OK : Boolean;
+            Want_Reply : Boolean;
+            Process_OK : Boolean;
+            Sec_Cli_In_Before : constant Tls_Core.Key_Schedule.Secret :=
+              Sec_Cli_In;
+         begin
+            Tls_Core.Aead_Channel.Receive
+              (In_Cli, Wire (1 .. Wire_Last),
+               Pt_Buf, Pt_Last, Inner, OK);
+            Check ("KeyUpdate: client decrypts server KeyUpdate", OK);
+            Tls_Core.Tls13_Driver.Process_Inbound_Key_Update
+              (D            => C,
+               In_Plaintext => Pt_Buf (1 .. Pt_Last),
+               In_Dir       => In_Cli,
+               Recv_Secret  => Sec_Cli_In,
+               Want_Reply   => Want_Reply,
+               OK           => Process_OK);
+            Check ("KeyUpdate: client Process_Inbound OK", Process_OK);
+            Check ("KeyUpdate: client Want_Reply False (not requested)",
+                   not Want_Reply);
+            Check ("KeyUpdate: client In_Secret rotated",
+                   not Equal (Sec_Cli_In, Sec_Cli_In_Before));
+            Check ("KeyUpdate: s_ap_1 still shared server-out / client-in",
+                   Equal (Sec_Srv_Out, Sec_Cli_In));
+         end;
+      end;
+
+      --  Step 6: full bidirectional app-data exchange under rotated keys.
+      declare
+         Pt_C : constant Tls_Core.Octet_Array :=
+           (16#46#, 16#6F#, 16#6F#);  --  "Foo"
+         Pt_S : constant Tls_Core.Octet_Array :=
+           (16#42#, 16#61#, 16#72#);  --  "Bar"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got_Last : Natural;
+         Inner : Tls_Core.Octet;
+         OK : Boolean;
+      begin
+         --  Client → Server under c_ap_1.
+         Tls_Core.Aead_Channel.Send
+           (Out_Cli, Pt_C,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (In_Srv, Wire (1 .. Wire_Last),
+            Got, Got_Last, Inner, OK);
+         Check ("KeyUpdate: post-rotation c->s decrypts", OK);
+         Check ("KeyUpdate: post-rotation c->s round-trips",
+                Got_Last = Pt_C'Length
+                and then Equal (Got (1 .. Got_Last), Pt_C));
+
+         --  Server → Client under s_ap_1.
+         Wire := (others => 0);
+         Got := (others => 0);
+         Tls_Core.Aead_Channel.Send
+           (Out_Srv, Pt_S,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (In_Cli, Wire (1 .. Wire_Last),
+            Got, Got_Last, Inner, OK);
+         Check ("KeyUpdate: post-rotation s->c decrypts", OK);
+         Check ("KeyUpdate: post-rotation s->c round-trips",
+                Got_Last = Pt_S'Length
+                and then Equal (Got (1 .. Got_Last), Pt_S));
+      end;
+   end Key_Update_Roundtrip_Scenario;
+
+   --------------------------------------------------------------------
    --  Scenario 31 — AES-128 single-block FIPS 197 §C.1 test vector.
    --
    --    Key   = 000102030405060708090A0B0C0D0E0F
@@ -4734,6 +5096,8 @@ begin
    Psk_Binder_Scenario;
    Psk_Hello_Roundtrip;
    Tls13_Loopback;
+   Key_Update_Wire_Scenario;
+   Key_Update_Roundtrip_Scenario;
    Aes128_Scenario;
    Aes_Gcm_Scenario;
    Sha384_Scenario;

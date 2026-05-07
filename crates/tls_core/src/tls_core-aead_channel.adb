@@ -92,4 +92,41 @@ is
       end case;
    end Receive;
 
+   ---------------------------------------------------------------------
+   --  Rotate_Sha256 — RFC 8446 §7.2 in-place rekey.
+   --
+   --  We re-Init the active variant's Direction from the new secret;
+   --  the underlying Channel.Init / Channel_Aes128.Init both reset
+   --  Stream.Seq to 0 and re-derive (key, iv) per §7.3, so the post
+   --  on D.Suite (preserved) is the only contract we need here.
+   ---------------------------------------------------------------------
+
+   procedure Rotate_Sha256
+     (D          : in out Direction;
+      New_Secret : Tls_Core.Key_Schedule.Secret)
+   is
+   begin
+      case D.Suite is
+         when Chacha20_Poly1305_Sha256 =>
+            Tls_Core.Channel.Init (D.Cha, New_Secret);
+         when Aes_128_Gcm_Sha256 =>
+            Tls_Core.Channel_Aes128.Init (D.Aes128, New_Secret);
+         when Aes_256_Gcm_Sha384 =>
+            --  Excluded by Pre.
+            raise Program_Error;
+      end case;
+   end Rotate_Sha256;
+
+   ---------------------------------------------------------------------
+   --  Rotate_Sha384 — same shape, SHA-384 variant.
+   ---------------------------------------------------------------------
+
+   procedure Rotate_Sha384
+     (D          : in out Direction;
+      New_Secret : Tls_Core.Key_Schedule_Sha384.Secret)
+   is
+   begin
+      Tls_Core.Channel_Aes256.Init (D.Aes256, New_Secret);
+   end Rotate_Sha384;
+
 end Tls_Core.Aead_Channel;

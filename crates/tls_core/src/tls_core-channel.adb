@@ -271,4 +271,11 @@ is
       end if;
    end Receive;
 
+   ---------------------------------------------------------------------
+   --  Seq_Of — peek the per-direction Stream sequence counter (Ghost).
+   ---------------------------------------------------------------------
+
+   function Seq_Of (D : Direction) return Tls_Core.Record_Layer.Seq_Number
+   is (Tls_Core.Record_Layer.Seq_Of (D.Stream));
+
 end Tls_Core.Channel;

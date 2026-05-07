@@ -4,6 +4,7 @@ with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 with Tls_Core.Hmac_Sha256;
 with Tls_Core.Key_Schedule;
+with Tls_Core.Key_Update;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Sha256;
 with Tls_Core.Suites;
@@ -907,25 +908,134 @@ is
    end Step;
 
    procedure Open_App_Directions
-     (D       : Driver;
-      Out_Dir : out Tls_Core.Aead_Channel.Direction;
-      In_Dir  : out Tls_Core.Aead_Channel.Direction)
+     (D          : Driver;
+      Out_Dir    : out Tls_Core.Aead_Channel.Direction;
+      In_Dir     : out Tls_Core.Aead_Channel.Direction;
+      Out_Secret : out Tls_Core.Key_Schedule.Secret;
+      In_Secret  : out Tls_Core.Key_Schedule.Secret)
    is
    begin
       case D.My_Role is
          when Server =>
             --  Server: out encrypts with s_ap; in decrypts with c_ap.
+            Out_Secret := D.App_S_Ap;
+            In_Secret  := D.App_C_Ap;
             Tls_Core.Aead_Channel.Init_Sha256
-              (Out_Dir, D.Suite, D.App_S_Ap);
+              (Out_Dir, D.Suite, Out_Secret);
             Tls_Core.Aead_Channel.Init_Sha256
-              (In_Dir,  D.Suite, D.App_C_Ap);
+              (In_Dir,  D.Suite, In_Secret);
          when Client =>
             --  Client: out encrypts with c_ap; in decrypts with s_ap.
+            Out_Secret := D.App_C_Ap;
+            In_Secret  := D.App_S_Ap;
             Tls_Core.Aead_Channel.Init_Sha256
-              (Out_Dir, D.Suite, D.App_C_Ap);
+              (Out_Dir, D.Suite, Out_Secret);
             Tls_Core.Aead_Channel.Init_Sha256
-              (In_Dir,  D.Suite, D.App_S_Ap);
+              (In_Dir,  D.Suite, In_Secret);
       end case;
    end Open_App_Directions;
+
+   ---------------------------------------------------------------------
+   --  Open_App_Directions — backward-compat shim that drops the secrets.
+   ---------------------------------------------------------------------
+
+   procedure Open_App_Directions
+     (D       : Driver;
+      Out_Dir : out Tls_Core.Aead_Channel.Direction;
+      In_Dir  : out Tls_Core.Aead_Channel.Direction)
+   is
+      Discard_Out_Sec : Tls_Core.Key_Schedule.Secret;
+      Discard_In_Sec  : Tls_Core.Key_Schedule.Secret;
+   begin
+      Open_App_Directions
+        (D, Out_Dir, In_Dir, Discard_Out_Sec, Discard_In_Sec);
+      pragma Unreferenced (Discard_Out_Sec, Discard_In_Sec);
+   end Open_App_Directions;
+
+   ---------------------------------------------------------------------
+   --  Send_Key_Update — RFC 8446 §4.6.3.
+   --
+   --  Wire layout: ONE TLSCiphertext record carrying the 5-byte
+   --  KeyUpdate handshake message, encrypted under the *current*
+   --  Out_Dir traffic key (because §4.6.3 says: "after sending the
+   --  KeyUpdate, the sender SHALL send all its traffic using the
+   --  next generation of keys"). Key rotation happens AFTER Send.
+   ---------------------------------------------------------------------
+
+   procedure Send_Key_Update
+     (D              : Driver;
+      Out_Dir        : in out Tls_Core.Aead_Channel.Direction;
+      Send_Secret    : in out Tls_Core.Key_Schedule.Secret;
+      Request_Update : Octet;
+      Out_Buf        : out Octet_Array;
+      Out_Last       : out Natural)
+   is
+      pragma Unreferenced (D);
+      Ku_Msg : Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
+        (others => 0);
+      Ku_Last : Natural;
+      Next_Secret : Tls_Core.Key_Schedule.Secret;
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := 0;
+
+      --  1. Build the KeyUpdate handshake message (5 bytes total).
+      Tls_Core.Key_Update.Encode (Request_Update, Ku_Msg, Ku_Last);
+
+      --  2. Encrypt under the current send key as one record. The
+      --     inner content type is "handshake" (post-handshake
+      --     messages keep the handshake content type per §4.6).
+      Tls_Core.Aead_Channel.Send
+        (Out_Dir,
+         Ku_Msg (1 .. Ku_Last),
+         Tls_Core.Aead_Channel.Inner_Type_Handshake,
+         Out_Buf, Out_Last);
+
+      --  3. Derive the next traffic secret per §7.2 and rotate the
+      --     local send key + IV + sequence counter.
+      Tls_Core.Key_Update.Derive_Next_Sha256 (Send_Secret, Next_Secret);
+      Send_Secret := Next_Secret;
+      Tls_Core.Aead_Channel.Rotate_Sha256 (Out_Dir, Send_Secret);
+   end Send_Key_Update;
+
+   ---------------------------------------------------------------------
+   --  Process_Inbound_Key_Update — RFC 8446 §4.6.3.
+   --
+   --  In_Plaintext is the 5-byte handshake-content-type plaintext
+   --  decrypted from the peer's KeyUpdate record. We validate it,
+   --  rotate the In_Dir + Recv_Secret to the next §7.2 secret, and
+   --  surface Want_Reply so the caller can fire Send_Key_Update
+   --  (with request_update = update_not_requested) if needed.
+   ---------------------------------------------------------------------
+
+   procedure Process_Inbound_Key_Update
+     (D            : Driver;
+      In_Plaintext : Octet_Array;
+      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
+      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Want_Reply   : out Boolean;
+      OK           : out Boolean)
+   is
+      pragma Unreferenced (D);
+      Request_Update : Octet;
+      Decode_OK : Boolean;
+      Next_Secret : Tls_Core.Key_Schedule.Secret;
+   begin
+      Want_Reply := False;
+      OK := False;
+      Tls_Core.Key_Update.Decode (In_Plaintext, Request_Update, Decode_OK);
+      if not Decode_OK then
+         return;
+      end if;
+
+      --  Rotate the peer-side decrypt key per §7.2.
+      Tls_Core.Key_Update.Derive_Next_Sha256 (Recv_Secret, Next_Secret);
+      Recv_Secret := Next_Secret;
+      Tls_Core.Aead_Channel.Rotate_Sha256 (In_Dir, Recv_Secret);
+
+      Want_Reply :=
+        Request_Update = Tls_Core.Key_Update.Update_Requested;
+      OK := True;
+   end Process_Inbound_Key_Update;
 
 end Tls_Core.Tls13_Driver;

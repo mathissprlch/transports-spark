@@ -29,6 +29,8 @@
 
 with Tls_Core.Aead_Channel;
 with Tls_Core.Key_Schedule;
+with Tls_Core.Key_Update;
+with Tls_Core.Record_Layer;
 with Tls_Core.Sha256;
 with Tls_Core.Suites;
 with Tls_Core.Transcript;
@@ -38,6 +40,10 @@ with SPARK_Mode
 is
 
    pragma Unevaluated_Use_Of_Old (Allow);
+
+   use type Tls_Core.Octet;
+   use type Tls_Core.Suites.Cipher_Suite_Id;
+   use type Tls_Core.Record_Layer.Seq_Number;
 
    type Role is (Client, Server);
 
@@ -108,12 +114,120 @@ is
    --
    --  Server: encrypts outbound with server_application_traffic_secret;
    --          decrypts inbound with client_application_traffic_secret.
+   --
+   --  Out_Secret / In_Secret echo back the *current* traffic secrets
+   --  used to derive (Out_Dir, In_Dir). They start equal to the
+   --  application_traffic_secret_0 the handshake produced and are
+   --  the values the §4.6.3 KeyUpdate handler rotates with
+   --  Send_Key_Update / Process_Inbound_Key_Update.
    --------------------------------------------------------------------
+   procedure Open_App_Directions
+     (D          : Driver;
+      Out_Dir    : out Tls_Core.Aead_Channel.Direction;
+      In_Dir     : out Tls_Core.Aead_Channel.Direction;
+      Out_Secret : out Tls_Core.Key_Schedule.Secret;
+      In_Secret  : out Tls_Core.Key_Schedule.Secret)
+   with Pre => Current_State (D) = Done;
+
+   --  Backward-compat shim that drops the secrets — pre-KeyUpdate
+   --  callers don't need them. New code should use the four-out
+   --  variant so it can drive KeyUpdate later.
    procedure Open_App_Directions
      (D       : Driver;
       Out_Dir : out Tls_Core.Aead_Channel.Direction;
       In_Dir  : out Tls_Core.Aead_Channel.Direction)
    with Pre => Current_State (D) = Done;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Send a KeyUpdate post-handshake message
+   --                      and rotate the local send key.
+   --
+   --  Standard:    RFC 8446 §4.6.3 (KeyUpdate) + §7.2 (next traffic
+   --               secret derivation).
+   --  Spec mirror: miTLS src/tls/MiTLS.Handshake.Server.fst : rekey
+   --
+   --  Functional:  Out_Buf (1 .. Out_Last) is one TLSCiphertext
+   --               record (handshake content type) carrying the
+   --               5-byte KeyUpdate message, encrypted under the
+   --               *current* Send_Secret + Out_Dir state. AFTER
+   --               sending, Send_Secret is replaced with
+   --               next_traffic_secret and Out_Dir is re-keyed +
+   --               sequence reset to 0.
+   --  Proven at:   gnatprove --level=2 (audit-clean) — composition
+   --               of Key_Update.Encode + Aead_Channel.Send +
+   --               Key_Update.Derive_Next_Sha256 +
+   --               Aead_Channel.Rotate_Sha256.
+   --
+   --  Pre rules out the SHA-384 path; the driver only completes
+   --  handshakes on SHA-256-based suites today (see §package
+   --  wall-hit note on `Step`).
+   --------------------------------------------------------------------
+   procedure Send_Key_Update
+     (D              : Driver;
+      Out_Dir        : in out Tls_Core.Aead_Channel.Direction;
+      Send_Secret    : in out Tls_Core.Key_Schedule.Secret;
+      Request_Update : Octet;
+      Out_Buf        : out Octet_Array;
+      Out_Last       : out Natural)
+   with
+     Pre  =>
+       Current_State (D) = Done
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= 64
+       and then (Request_Update = Tls_Core.Key_Update.Update_Not_Requested
+                 or else Request_Update =
+                           Tls_Core.Key_Update.Update_Requested)
+       and then (Selected_Suite (D) =
+                   Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D) =
+                   Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then Out_Dir.Suite = Selected_Suite (D)
+       and then Tls_Core.Aead_Channel.Seq_Of (Out_Dir)
+                  < Tls_Core.Record_Layer.Seq_Number'Last,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last
+       and then Out_Dir.Suite = Out_Dir.Suite'Old;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Process a decrypted KeyUpdate plaintext:
+   --                      validate, rotate the local recv key, and
+   --                      flag whether we owe a reply.
+   --
+   --  Standard:    RFC 8446 §4.6.3 — the receiver always rotates
+   --               the peer's traffic secret; if request_update = 1
+   --               the receiver MUST send its own KeyUpdate (with
+   --               request_update = 0) before any further
+   --               application data on the send direction.
+   --
+   --  Functional:  When OK = True, In_Dir + Recv_Secret are
+   --               rotated to the next §7.2 secret. Want_Reply is
+   --               True iff the peer's request_update byte equals
+   --               Update_Requested. When OK = False the inputs
+   --               are unchanged and the caller MUST treat this
+   --               as fatal illegal_parameter (§4.6.3).
+   --  Proven at:   gnatprove --level=2 (audit-clean).
+   --
+   --  In_Plaintext is the decrypted handshake-content-type
+   --  TLSInnerPlaintext, i.e. exactly what Aead_Channel.Receive
+   --  returned with Inner_Type = Inner_Type_Handshake.
+   --------------------------------------------------------------------
+   procedure Process_Inbound_Key_Update
+     (D            : Driver;
+      In_Plaintext : Octet_Array;
+      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
+      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Want_Reply   : out Boolean;
+      OK           : out Boolean)
+   with
+     Pre =>
+       Current_State (D) = Done
+       and then (Selected_Suite (D) =
+                   Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D) =
+                   Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then In_Dir.Suite = Selected_Suite (D),
+     Post =>
+       In_Dir.Suite = In_Dir.Suite'Old;
 
 private
 

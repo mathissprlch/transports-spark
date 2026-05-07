@@ -166,4 +166,74 @@ is
                    Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
                      < Tls_Core.Record_Layer.Seq_Number'Last);
 
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Rotate a SHA-256-suite Direction in place
+   --                      with a freshly-derived traffic secret.
+   --
+   --  Standard:    RFC 8446 §7.2 (next traffic secret) + §5.3
+   --               (sequence number reset on key change). The
+   --               §4.6.3 KeyUpdate handler calls this after
+   --               sending / receiving a KeyUpdate message.
+   --  Spec mirror: miTLS src/tls/MiTLS.KS.fst : ks_client_13_kbu
+   --
+   --  Functional:  D.Suite is preserved; the new (key, iv) pair is
+   --               re-derived from New_Secret per RFC 8446 §7.3
+   --               (`HKDF-Expand-Label("key" / "iv", ...)`); the
+   --               record-layer Stream's Seq counter is reset to 0
+   --               so the very first record after rotation reuses
+   --               nonce_0 — which is fresh under the new IV.
+   --  Proven at:   gnatprove --level=2 (audit-clean) — body is
+   --               a Tls_Core.Channel.Init / Tls_Core.Channel_Aes128.Init
+   --               case-dispatch.
+   --
+   --  Pre rules out the SHA-384 variant: the Secret type for SHA-384
+   --  suites is 48 bytes — call Rotate_Sha384 for that.
+   --------------------------------------------------------------------
+   procedure Rotate_Sha256
+     (D          : in out Direction;
+      New_Secret : Tls_Core.Key_Schedule.Secret)
+   with
+     Pre  =>
+       (D.Suite = Chacha20_Poly1305_Sha256
+          or else D.Suite = Aes_128_Gcm_Sha256),
+     Post =>
+       D.Suite = D.Suite'Old;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Rotate a SHA-384-suite Direction in place.
+   --
+   --  Standard:    RFC 8446 §7.2 + §5.3 — see Rotate_Sha256.
+   --
+   --  Functional:  D.Suite preserved at Aes_256_Gcm_Sha384;
+   --               (key, iv) re-derived from New_Secret;
+   --               Stream.Seq reset to 0.
+   --  Proven at:   gnatprove --level=2 (audit-clean) — body is
+   --               a Tls_Core.Channel_Aes256.Init call.
+   --------------------------------------------------------------------
+   procedure Rotate_Sha384
+     (D          : in out Direction;
+      New_Secret : Tls_Core.Key_Schedule_Sha384.Secret)
+   with
+     Pre  => D.Suite = Aes_256_Gcm_Sha384,
+     Post => D.Suite = D.Suite'Old;
+
+   --------------------------------------------------------------------
+   --  Cross-suite Seq accessor — needed by Tls13_Driver.Send_Key_Update
+   --  which must gate its Send call on the underlying Stream.Seq.
+   --
+   --  Returns the Stream.Seq of the active variant. The Chacha variant
+   --  exposes the seq counter via Tls_Core.Channel.Seq_Of (added below
+   --  for parity); the AES variants expose the .Aes128 / .Aes256
+   --  Stream component publicly so Record_Layer.Seq_Of works directly.
+   --------------------------------------------------------------------
+   function Seq_Of (D : Direction) return Tls_Core.Record_Layer.Seq_Number
+   is (case D.Suite is
+         when Chacha20_Poly1305_Sha256 =>
+           Tls_Core.Channel.Seq_Of (D.Cha),
+         when Aes_128_Gcm_Sha256 =>
+           Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream),
+         when Aes_256_Gcm_Sha384 =>
+           Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream))
+   with Ghost;
+
 end Tls_Core.Aead_Channel;
