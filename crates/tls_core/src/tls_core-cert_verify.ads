@@ -55,7 +55,8 @@ is
       Out_Last  : out Natural)
    with
      Pre =>
-       Cert_Data'Length in 1 .. 16#FFFFFF#
+       Cert_Data'Length in 1 .. 16#FFFFFF# - 5
+       and then Cert_Data'Last < Integer'Last - 16#FFFFFF#
        and then Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 32
        and then Out_Buf'Length >= 1 + 3 + 3 + Cert_Data'Length + 2,
@@ -97,6 +98,7 @@ is
    with
      Pre =>
        Signature'Length in 1 .. 65535
+       and then Signature'Last < Integer'Last - 65535
        and then Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 32
        and then Out_Buf'Length >= 4 + Signature'Length,
@@ -129,6 +131,7 @@ is
    with
      Pre =>
        Transcript_Hash'Length in 1 .. 64
+       and then Transcript_Hash'Last < Integer'Last - 64
        and then Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 256
        and then Out_Buf'Length >= 64 + 33 + 1 + Transcript_Hash'Length,
