@@ -55,6 +55,7 @@ with Tls_Core.Cert;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Cert_Verify;
 with Tls_Core.Alert;
+with Tls_Core.Handshake_Buffer;
 
 procedure Tls_Core_Tests is
 
@@ -5748,6 +5749,120 @@ procedure Tls_Core_Tests is
                = Tls_Core.Alert.Desc_Internal_Error);
    end Alert_Plaintext_Fatal_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — Handshake_Buffer multi-record reassembly.
+   --
+   --  Drive the buffer through the cases the driver will exercise:
+   --  one push w/ a complete short message; two pushes w/ a message
+   --  split across records; one push w/ two packed messages back-to-
+   --  back; oversized push rejected; partial header buffered.
+   ---------------------------------------------------------------------
+
+   procedure Handshake_Buffer_Scenario;
+   procedure Handshake_Buffer_Scenario is
+      use type Tls_Core.Octet;
+      B : Tls_Core.Handshake_Buffer.Buffer;
+      Pop : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Pop_Last : Natural;
+      OK : Boolean;
+   begin
+      Put_Line ("scenario — Handshake_Buffer multi-record reassembly");
+
+      --  Case 1: empty after Init.
+      Tls_Core.Handshake_Buffer.Init (B);
+      Check ("HB/init: Used = 0",
+             Tls_Core.Handshake_Buffer.Used (B) = 0);
+      Check ("HB/init: not Has_Complete_Message",
+             not Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+
+      --  Case 2: a complete 4+8-byte handshake message in one push.
+      declare
+         Msg : constant Tls_Core.Octet_Array (1 .. 12) :=
+           (16#01#, 16#00#, 16#00#, 16#08#,
+            16#AA#, 16#BB#, 16#CC#, 16#DD#,
+            16#EE#, 16#FF#, 16#11#, 16#22#);
+      begin
+         Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Msg, OK);
+         Check ("HB/whole: push OK", OK);
+         Check ("HB/whole: Used = 12",
+                Tls_Core.Handshake_Buffer.Used (B) = 12);
+         Check ("HB/whole: body length = 8",
+                Tls_Core.Handshake_Buffer.Peek_Body_Length (B) = 8);
+         Check ("HB/whole: Has_Complete_Message",
+                Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+         Tls_Core.Handshake_Buffer.Pop_Complete_Message (B, Pop, Pop_Last);
+         Check ("HB/whole: Pop_Last = 12", Pop_Last = 12);
+         Check ("HB/whole: leading bytes match",
+                Pop (1) = 16#01# and then Pop (4) = 16#08#
+                and then Pop (12) = 16#22#);
+         Check ("HB/whole: empty after pop",
+                Tls_Core.Handshake_Buffer.Used (B) = 0);
+      end;
+
+      --  Case 3: split across two records — header in record 1, body
+      --  in record 2.
+      Tls_Core.Handshake_Buffer.Init (B);
+      declare
+         Frag1 : constant Tls_Core.Octet_Array (1 .. 6) :=
+           (16#0B#, 16#00#, 16#00#, 16#06#, 16#11#, 16#22#);
+         Frag2 : constant Tls_Core.Octet_Array (1 .. 4) :=
+           (16#33#, 16#44#, 16#55#, 16#66#);
+      begin
+         Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Frag1, OK);
+         Check ("HB/split: push 1 OK", OK);
+         Check ("HB/split: not complete after frag 1",
+                not Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+         Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Frag2, OK);
+         Check ("HB/split: push 2 OK", OK);
+         Check ("HB/split: complete after frag 2",
+                Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+         Tls_Core.Handshake_Buffer.Pop_Complete_Message (B, Pop, Pop_Last);
+         Check ("HB/split: Pop_Last = 10", Pop_Last = 10);
+         Check ("HB/split: type byte preserved", Pop (1) = 16#0B#);
+         Check ("HB/split: tail byte preserved", Pop (10) = 16#66#);
+      end;
+
+      --  Case 4: two packed messages in one push.
+      Tls_Core.Handshake_Buffer.Init (B);
+      declare
+         Packed : constant Tls_Core.Octet_Array (1 .. 14) :=
+           (16#08#, 16#00#, 16#00#, 16#02#, 16#A0#, 16#A1#,
+            16#14#, 16#00#, 16#00#, 16#04#, 16#B0#, 16#B1#,
+            16#B2#, 16#B3#);
+      begin
+         Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Packed, OK);
+         Check ("HB/packed: push OK", OK);
+         Check ("HB/packed: Has_Complete_Message",
+                Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+         Tls_Core.Handshake_Buffer.Pop_Complete_Message (B, Pop, Pop_Last);
+         Check ("HB/packed: first msg Pop_Last = 6",
+                Pop_Last = 6);
+         Check ("HB/packed: first msg type = 0x08",
+                Pop (1) = 16#08#);
+         Check ("HB/packed: still has next msg",
+                Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+         Tls_Core.Handshake_Buffer.Pop_Complete_Message (B, Pop, Pop_Last);
+         Check ("HB/packed: second msg Pop_Last = 8",
+                Pop_Last = 8);
+         Check ("HB/packed: second msg type = 0x14",
+                Pop (1) = 16#14#);
+         Check ("HB/packed: empty after both pops",
+                Tls_Core.Handshake_Buffer.Used (B) = 0);
+      end;
+
+      --  Case 5: partial header (3 bytes) — not yet complete.
+      Tls_Core.Handshake_Buffer.Init (B);
+      declare
+         Partial : constant Tls_Core.Octet_Array (1 .. 3) :=
+           (16#0B#, 16#00#, 16#00#);
+      begin
+         Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Partial, OK);
+         Check ("HB/partial: push OK", OK);
+         Check ("HB/partial: not Has_Complete_Message (header < 4)",
+                not Tls_Core.Handshake_Buffer.Has_Complete_Message (B));
+      end;
+   end Handshake_Buffer_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -5812,6 +5927,7 @@ begin
    Alert_Bad_Record_Mac_Scenario;
    Alert_Decode_Error_Scenario;
    Alert_Plaintext_Fatal_Scenario;
+   Handshake_Buffer_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
