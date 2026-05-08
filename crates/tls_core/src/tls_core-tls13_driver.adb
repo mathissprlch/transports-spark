@@ -392,6 +392,7 @@ is
                  (Client_Random,
                   D.Identity (1 .. D.Identity_Len),
                   D.My_Ecdhe_Pub,
+                  D.Sni_Hostname (1 .. D.Sni_Len),
                   Ch_Body, Ch_Body_Last, T_Last);
                --  RFC 8446 §4.2.11.2 + §4.4.1: the binder is computed
                --  over the truncated *handshake message* (handshake
@@ -1526,6 +1527,7 @@ is
                   D.Identity (1 .. D.Identity_Len),
                   D.My_Ecdhe_Pub,
                   D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len),
+                  D.Sni_Hostname (1 .. D.Sni_Len),
                   Ch_Body, Ch_Body_Last, T_Last);
                --  RFC 8446 §4.2.11.2 + §4.4.1: hash the truncated
                --  *handshake-formatted* CH (header + body), not the
@@ -2195,6 +2197,35 @@ is
       end case;
       D.App_Out_Set := True;
    end Ensure_App_Out_Dir;
+
+   ---------------------------------------------------------------------
+   --  Set_Sni_Hostname / Sni_Hostname — RFC 6066 §3.
+   ---------------------------------------------------------------------
+
+   procedure Set_Sni_Hostname
+     (D        : in out Driver;
+      Hostname : Octet_Array)
+   is
+   begin
+      D.Sni_Hostname := (others => 0);
+      D.Sni_Len := Hostname'Length;
+      if Hostname'Length > 0 then
+         D.Sni_Hostname (1 .. Hostname'Length) := Hostname;
+      end if;
+   end Set_Sni_Hostname;
+
+   procedure Sni_Hostname
+     (D        : Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   is
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := D.Sni_Len;
+      if D.Sni_Len > 0 then
+         Out_Buf (1 .. D.Sni_Len) := D.Sni_Hostname (1 .. D.Sni_Len);
+      end if;
+   end Sni_Hostname;
 
    ---------------------------------------------------------------------
    --  Send_Close_Notify — RFC 8446 §6.1 graceful shutdown.

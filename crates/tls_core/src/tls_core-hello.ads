@@ -146,31 +146,15 @@ is
    --  Key_Share carries the client's X25519 public key (32-byte
    --  u-coordinate; RFC 7748 §6.1). The named group is fixed to
    --  x25519 (0x001D) for v0.5.
+   --  Server_Name (RFC 6066 §3 / RFC 8446 §4.2.10) is included as
+   --  a server_name extension when its length is non-zero; an empty
+   --  array (length 0) means "omit the extension" (e.g. when the
+   --  caller didn't set an SNI hostname).
    procedure Encode_Client_Hello_Psk
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
       Key_Share       : Public_Key;
-      Out_Buf         : out Octet_Array;
-      Out_Last        : out Natural;
-      Truncated_Last  : out Natural)
-   with
-     Pre  =>
-       Out_Buf'First = 1
-       and then Out_Buf'Length >= 320
-       and then Identity'Length in Psk_Identity_Len,
-     Post =>
-       Out_Last in 0 .. Out_Buf'Last;
-
-   --  HRR-aware variant: emit a CH with an additional cookie
-   --  extension placed before the (mandatory-last) pre_shared_key.
-   --  Cookie may be empty (length = 0) — in that case the layout is
-   --  identical to Encode_Client_Hello_Psk. Used by the client's
-   --  CH2 emission after consuming HRR per RFC 8446 §4.1.4.
-   procedure Encode_Client_Hello_Psk_With_Cookie
-     (Random          : Random_Bytes;
-      Identity        : Octet_Array;
-      Key_Share       : Public_Key;
-      Cookie          : Octet_Array;
+      Server_Name     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -179,7 +163,34 @@ is
        Out_Buf'First = 1
        and then Out_Buf'Length >= 320
        and then Identity'Length in Psk_Identity_Len
-       and then Cookie'Length <= 64,
+       and then Server_Name'Length <= 255,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
+
+   --  HRR-aware variant: emit a CH with an additional cookie
+   --  extension placed before the (mandatory-last) pre_shared_key.
+   --  Cookie may be empty (length = 0) — in that case the layout is
+   --  identical to Encode_Client_Hello_Psk. Used by the client's
+   --  CH2 emission after consuming HRR per RFC 8446 §4.1.4.
+   --
+   --  Server_Name as in Encode_Client_Hello_Psk (RFC 6066 §3 SNI;
+   --  empty = omit).
+   procedure Encode_Client_Hello_Psk_With_Cookie
+     (Random          : Random_Bytes;
+      Identity        : Octet_Array;
+      Key_Share       : Public_Key;
+      Cookie          : Octet_Array;
+      Server_Name     : Octet_Array;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural;
+      Truncated_Last  : out Natural)
+   with
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 320
+       and then Identity'Length in Psk_Identity_Len
+       and then Cookie'Length <= 64
+       and then Server_Name'Length <= 255,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 

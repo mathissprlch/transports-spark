@@ -2920,7 +2920,9 @@ procedure Tls_Core_Tests is
 
       Tls_Core.Hello.Encode_Client_Hello_Psk
         (Random, Identity, Test_Key_Share,
-         Wire, Wire_Last, Truncated_Last);
+         Server_Name => Tls_Core.Octet_Array'(1 .. 0 => 0),
+         Out_Buf => Wire, Out_Last => Wire_Last,
+         Truncated_Last => Truncated_Last);
       Check ("PSK CH: encoder emitted bytes", Wire_Last > Truncated_Last);
       Check ("PSK CH: 32 binder bytes follow truncated CH",
              Wire_Last = Truncated_Last + 1 + 32);
@@ -6791,6 +6793,99 @@ procedure Tls_Core_Tests is
       end;
    end Session_Ticket_End_To_End_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — SNI emit (RFC 6066 §3 / RFC 8446 §4.2.10)
+   --
+   --  Validates that:
+   --    1. Set_Sni_Hostname stores the bytes on the driver
+   --    2. Sni_Hostname getter reads them back
+   --    3. After CH emit, the wire bytes contain the server_name
+   --       extension (type 0x0000) with the host_name bytes
+   --    4. With no SNI set (default), CH does NOT contain the
+   --       server_name extension
+   ---------------------------------------------------------------------
+
+   procedure Sni_Emit_Scenario;
+   procedure Sni_Emit_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Octet_Array;
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+      Hostname : constant Tls_Core.Octet_Array :=
+        (16#65#, 16#78#, 16#61#, 16#6D#, 16#70#,
+         16#6C#, 16#65#, 16#2E#, 16#63#, 16#6F#,
+         16#6D#);  --  "example.com" (11 bytes)
+
+      function Find_Ext_Type
+        (Buf      : Tls_Core.Octet_Array;
+         Hi, Lo   : Tls_Core.Octet) return Boolean
+      is
+         I : Natural := Buf'First;
+      begin
+         while I + 1 <= Buf'Last loop
+            if Buf (I) = Hi and then Buf (I + 1) = Lo then
+               return True;
+            end if;
+            I := I + 1;
+         end loop;
+         return False;
+      end Find_Ext_Type;
+
+   begin
+      Put_Line ("scenario — SNI Set/Get + emit in CH");
+
+      --  Case 1: client with SNI set emits server_name extension.
+      declare
+         C : Tls_Core.Tls13_Driver.Driver;
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf_Last : Natural;
+         Read_Out : Tls_Core.Octet_Array (1 .. 255) := (others => 0);
+         Read_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client
+           (C, Psk, Identity, Client_Priv);
+         Tls_Core.Tls13_Driver.Set_Sni_Hostname (C, Hostname);
+         Tls_Core.Tls13_Driver.Sni_Hostname (C, Read_Out, Read_Last);
+         Check ("SNI/get: hostname length round-trips",
+                Read_Last = Hostname'Length);
+         Check ("SNI/get: hostname bytes round-trip",
+                Read_Out (1 .. Read_Last) = Hostname);
+
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Buf, Out_Last => Buf_Last);
+         Check ("SNI/emit: CH contains server_name ext type 0x0000",
+                Find_Ext_Type (Buf (1 .. Buf_Last), 16#00#, 16#00#));
+         Check ("SNI/emit: CH bytes contain hostname",
+                (for some I in Buf'First .. Buf_Last - Hostname'Length + 1 =>
+                   Buf (I .. I + Hostname'Length - 1) = Hostname));
+      end;
+
+      --  Case 2: client without SNI set does NOT emit server_name ext.
+      --  We assert by checking that the hostname bytes don't appear
+      --  on the wire (a stronger end-to-end check than ext-type
+      --  scanning, since unrelated 0x00 0x00 byte pairs may appear
+      --  inside other extensions).
+      declare
+         C : Tls_Core.Tls13_Driver.Driver;
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client
+           (C, Psk, Identity, Client_Priv);
+         --  No Set_Sni_Hostname call.
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Buf, Out_Last => Buf_Last);
+         Check ("SNI/no-set: hostname bytes absent from CH",
+                not (for some I in Buf'First .. Buf_Last - Hostname'Length + 1 =>
+                       Buf (I .. I + Hostname'Length - 1) = Hostname));
+      end;
+   end Sni_Emit_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -6861,6 +6956,7 @@ begin
    Session_Ticket_Wire_Scenario;
    Session_Cache_Scenario;
    Session_Ticket_End_To_End_Scenario;
+   Sni_Emit_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

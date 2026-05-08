@@ -1,3 +1,5 @@
+with Tls_Core.Extensions;
+
 package body Tls_Core.Hello
 with SPARK_Mode
 is
@@ -20,6 +22,7 @@ is
    Ext_Key_Share             : constant := 16#0033#;
    Ext_Supported_Groups      : constant := 16#000A#;
    Ext_Signature_Algorithms  : constant := 16#000D#;
+   Ext_Server_Name           : constant := 16#0000#;  --  RFC 6066 §3
 
    ---------------------------------------------------------------------
    --  Small writer helpers: append byte / u16 / a buffer of bytes
@@ -506,6 +509,7 @@ is
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
       Key_Share       : Public_Key;
+      Server_Name     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -561,6 +565,25 @@ is
          Encode_Extension
            (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
       end;
+
+      --  server_name (RFC 6066 §3 / RFC 8446 §4.2.10) — host_name
+      --  only.  Emitted only when Server_Name is non-empty;
+      --  Tls_Core.Extensions.Encode_Server_Name builds the
+      --  ServerNameList body (5 + N bytes), we wrap it with the
+      --  extension_type + extension_data length via Encode_Extension.
+      if Server_Name'Length > 0 then
+         declare
+            Sni_Body : Octet_Array (1 .. 5 + Server_Name'Length) :=
+              (others => 0);
+            Sni_Body_Last : Natural;
+         begin
+            Tls_Core.Extensions.Encode_Server_Name
+              (Server_Name, Sni_Body, Sni_Body_Last);
+            Encode_Extension
+              (Out_Buf, Cursor, Ext_Server_Name,
+               Sni_Body (1 .. Sni_Body_Last));
+         end;
+      end if;
 
       --  key_share = [{x25519, 32-byte u-coord}]. RFC 8446 §4.2.8.
       --  CH layout: u16 client_shares_len + KeyShareEntry{
@@ -642,6 +665,7 @@ is
       Identity        : Octet_Array;
       Key_Share       : Public_Key;
       Cookie          : Octet_Array;
+      Server_Name     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -689,6 +713,21 @@ is
          Encode_Extension
            (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
       end;
+
+      --  server_name (RFC 6066 §3) — emit only when non-empty.
+      if Server_Name'Length > 0 then
+         declare
+            Sni_Body : Octet_Array (1 .. 5 + Server_Name'Length) :=
+              (others => 0);
+            Sni_Body_Last : Natural;
+         begin
+            Tls_Core.Extensions.Encode_Server_Name
+              (Server_Name, Sni_Body, Sni_Body_Last);
+            Encode_Extension
+              (Out_Buf, Cursor, Ext_Server_Name,
+               Sni_Body (1 .. Sni_Body_Last));
+         end;
+      end if;
 
       --  key_share = [{x25519, 32-byte u-coord}].
       declare

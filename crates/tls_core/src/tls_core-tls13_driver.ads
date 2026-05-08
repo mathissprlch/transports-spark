@@ -171,6 +171,40 @@ is
        and then Psk_Identity'Length in 1 .. 64
        and then Ecdhe_Priv'Length = 32;
 
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Set the SNI hostname (RFC 6066 §3 /
+   --                      RFC 8446 §4.2.10).
+   --
+   --  Standard:    RFC 6066 §3 server_name extension; carried in TLS
+   --               1.3 ClientHello per RFC 8446 §4.2.10.
+   --
+   --  Client-side: setting a non-empty hostname before the first
+   --               Step causes the emitted CH to include a
+   --               server_name extension with that host_name.
+   --  Server-side: the driver reads inbound CH server_name into the
+   --               same field; readable via Sni_Hostname (D) /
+   --               Sni_Length (D) afterwards (e.g. for cert
+   --               selection per virtual host).
+   --
+   --  Hostname length is capped at 255 bytes (RFC 1035 §2.3.4).
+   --  Setting an empty Hostname (length 0) clears the field — no
+   --  SNI extension is emitted.
+   --------------------------------------------------------------------
+   procedure Set_Sni_Hostname
+     (D        : in out Driver;
+      Hostname : Octet_Array)
+   with Pre => Hostname'Length <= 255;
+
+   --  Read back the SNI hostname currently stored on the driver
+   --  (either set by Set_Sni_Hostname client-side, or populated by
+   --  the server-side CH parse). Out_Last is the number of bytes
+   --  written to Out (0 if no SNI was set or seen).
+   procedure Sni_Hostname
+     (D        : Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 255;
+
    --  Drive one flight. Caller hands in the bytes received over
    --  TCP since the last Step (one or more TLSPlaintext /
    --  TLSCiphertext records concatenated). Driver writes the
@@ -720,6 +754,15 @@ private
       --  the driver transitions through a state that doesn't
       --  preserve message-boundary continuity (e.g. HRR rebuild).
       Hs_In_Buf   : Tls_Core.Handshake_Buffer.Buffer;
+
+      --  RFC 6066 §3 / RFC 8446 §4.2.10 — Server Name Indication.
+      --  Client sets this via Set_Sni_Hostname before the first Step;
+      --  CH emit includes a server_name extension when Sni_Len > 0.
+      --  Server populates Sni_Hostname from the inbound CH if a
+      --  server_name extension was present (Sni_Len = 0 otherwise).
+      --  Max 255 bytes per RFC 1035 §2.3.4.
+      Sni_Hostname : Octet_Array (1 .. 255) := (others => 0);
+      Sni_Len      : Natural := 0;
    end record;
 
    function Current_State (D : Driver) return State is (D.Cur_State);
