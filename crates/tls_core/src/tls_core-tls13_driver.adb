@@ -1,15 +1,9 @@
-with Tls_Core.Aead_Channel;
+with Tls_Core.Channel;
 with Tls_Core.Hello;
-with Tls_Core.Hello_Retry;
 with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 with Tls_Core.Hmac_Sha256;
-with Tls_Core.Key_Schedule;
-with Tls_Core.Key_Update;
 with Tls_Core.Psk_Binder;
-with Tls_Core.Sha256;
-with Tls_Core.Suites;
-with Tls_Core.Transcript;
 
 package body Tls_Core.Tls13_Driver
 with SPARK_Mode
@@ -24,6 +18,7 @@ is
    ---------------------------------------------------------------------
 
    Rec_Type_Handshake : constant Octet := 16#16#;
+   Rec_Type_Alert     : constant Octet := 16#15#;
    --  Rec_Type_App_Data declared in Tls_Core.Channel.
 
    Hs_Type_CH         : constant Octet := 16#01#;
@@ -164,6 +159,95 @@ is
    ---------------------------------------------------------------------
    --  Helpers
    ---------------------------------------------------------------------
+
+   --  Alert helper forward declarations (bodies near end of package).
+   --  Step error paths call Fail_Plaintext / Fail_Encrypted to record
+   --  D.Last_Alert and emit an alert record before returning.
+
+   procedure Build_Plaintext_Alert
+     (Level       : Octet;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   with
+     Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 7;
+
+   procedure Build_Encrypted_Alert
+     (Dir         : in out Tls_Core.Aead_Channel.Direction;
+      Level       : Octet;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   with
+     Pre =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 5 + 2 + 1 + 16
+       and then (case Dir.Suite is
+                   when Tls_Core.Suites.Chacha20_Poly1305_Sha256 => True,
+                   when Tls_Core.Suites.Aes_128_Gcm_Sha256 =>
+                     Tls_Core.Record_Layer.Seq_Of (Dir.Aes128.Stream)
+                       < Tls_Core.Record_Layer.Seq_Number'Last,
+                   when Tls_Core.Suites.Aes_256_Gcm_Sha384 =>
+                     Tls_Core.Record_Layer.Seq_Of (Dir.Aes256.Stream)
+                       < Tls_Core.Record_Layer.Seq_Number'Last);
+
+   --  Failure helper for paths before any handshake keys are derived
+   --  (Idle / Awaiting_CH). Emits a 7-byte plaintext alert record.
+   procedure Fail_Plaintext
+     (D           : in out Driver;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   with
+     Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 7;
+
+   --  Failure helper for paths after handshake-stage keys exist
+   --  (Awaiting_Sf / Awaiting_Cf). Emits an encrypted alert record
+   --  under D.Hs_Out_Dir.
+   procedure Fail_Encrypted
+     (D           : in out Driver;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   with
+     Pre =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 5 + 2 + 1 + 16
+       and then (case D.Hs_Out_Dir.Suite is
+                   when Tls_Core.Suites.Chacha20_Poly1305_Sha256 => True,
+                   when Tls_Core.Suites.Aes_128_Gcm_Sha256 =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Hs_Out_Dir.Aes128.Stream)
+                       < Tls_Core.Record_Layer.Seq_Number'Last,
+                   when Tls_Core.Suites.Aes_256_Gcm_Sha384 =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Hs_Out_Dir.Aes256.Stream)
+                       < Tls_Core.Record_Layer.Seq_Number'Last);
+
+   procedure Fail_Plaintext
+     (D           : in out Driver;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   is
+   begin
+      Build_Plaintext_Alert
+        (Tls_Core.Alert.Level_Fatal, Description, Out_Buf, Out_Last);
+      D.Last_Alert := Description;
+      D.Cur_State := Failed;
+   end Fail_Plaintext;
+
+   procedure Fail_Encrypted
+     (D           : in out Driver;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   is
+   begin
+      Build_Encrypted_Alert
+        (D.Hs_Out_Dir, Tls_Core.Alert.Level_Fatal, Description,
+         Out_Buf, Out_Last);
+      D.Last_Alert := Description;
+      D.Cur_State := Failed;
+   end Fail_Encrypted;
 
    procedure Build_Finished_Body
      (Base_Key       : Tls_Core.Key_Schedule.Secret;
@@ -457,13 +541,20 @@ is
                   Tls_Core.Aead_Channel.Receive
                     (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
                      Pt_Buf, Pt_Last, Inner_Type, OK);
-                  if not OK
-                    or else Inner_Type /=
-                              Tls_Core.Aead_Channel.Inner_Type_Handshake
+                  if not OK then
+                     Fail_Encrypted
+                       (D, Tls_Core.Alert.Desc_Bad_Record_Mac,
+                        Out_Buf, Out_Last);
+                     return;
+                  end if;
+                  if Inner_Type /=
+                       Tls_Core.Aead_Channel.Inner_Type_Handshake
                     or else Pt_Last < 4
                     or else Pt_Buf (1) /= Hs_Type_EE
                   then
-                     D.Cur_State := Failed;
+                     Fail_Encrypted
+                       (D, Tls_Core.Alert.Desc_Decode_Error,
+                        Out_Buf, Out_Last);
                      return;
                   end if;
                   Tls_Core.Transcript.Append
@@ -500,13 +591,20 @@ is
                   Tls_Core.Aead_Channel.Receive
                     (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
                      Pt_Buf, Pt_Last, Inner_Type, OK);
-                  if not OK
-                    or else Inner_Type /=
-                              Tls_Core.Aead_Channel.Inner_Type_Handshake
+                  if not OK then
+                     Fail_Encrypted
+                       (D, Tls_Core.Alert.Desc_Bad_Record_Mac,
+                        Out_Buf, Out_Last);
+                     return;
+                  end if;
+                  if Inner_Type /=
+                       Tls_Core.Aead_Channel.Inner_Type_Handshake
                     or else Pt_Last /= 4 + 32
                     or else Pt_Buf (1) /= Hs_Type_Finished
                   then
-                     D.Cur_State := Failed;
+                     Fail_Encrypted
+                       (D, Tls_Core.Alert.Desc_Decode_Error,
+                        Out_Buf, Out_Last);
                      return;
                   end if;
                   --  Verify server Finished verify_data: HMAC of
@@ -586,7 +684,9 @@ is
             if In_Bytes'Length < 5
               or else In_Bytes (In_Bytes'First) /= Rec_Type_Handshake
             then
-               D.Cur_State := Failed;
+               Fail_Plaintext
+                 (D, Tls_Core.Alert.Desc_Decode_Error,
+                  Out_Buf, Out_Last);
                return;
             end if;
             declare
@@ -1719,21 +1819,117 @@ is
       OK := True;
    end Process_Inbound_Key_Update;
 
-   --  C10 alert protocol stubs — full driver wiring landed in C10
-   --  worktree but the body conflicted with C9/C11/C14 driver edits;
-   --  shipping the Alert primitives in tls_core-alert.{ads,adb} but
-   --  the driver-level Send_Close_Notify / Send_Fatal_Alert bodies
-   --  remain stubs. Tracked as Tier C10 v2 (alert driver wiring).
+   ---------------------------------------------------------------------
+   --  Alert helpers (RFC 8446 §6).
+   --
+   --  Build_Plaintext_Alert wraps an Alert{level, description} pair in
+   --  a 7-byte TLSPlaintext record (0x15 || 0x0303 || 0x0002 || level
+   --  || description). Used before any handshake keys are derived
+   --  (§5.1 first record, e.g. server rejects ClientHello).
+   --
+   --  Build_Encrypted_Alert wraps the same Alert pair in a TLSCiphertext
+   --  under the supplied direction. Used post-handshake when keys
+   --  exist; the TLSInnerPlaintext content-type byte is 0x15 (Alert).
+   ---------------------------------------------------------------------
+
+   procedure Build_Plaintext_Alert
+     (Level       : Octet;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   is
+   begin
+      Out_Buf := (others => 0);
+      Out_Buf (1) := Rec_Type_Alert;
+      Out_Buf (2) := 16#03#;
+      Out_Buf (3) := 16#03#;
+      Out_Buf (4) := 16#00#;
+      Out_Buf (5) := 16#02#;
+      Out_Buf (6) := Level;
+      Out_Buf (7) := Description;
+      Out_Last := 7;
+   end Build_Plaintext_Alert;
+
+   procedure Build_Encrypted_Alert
+     (Dir         : in out Tls_Core.Aead_Channel.Direction;
+      Level       : Octet;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   is
+      Body_Bytes : Tls_Core.Alert.Alert_Bytes;
+   begin
+      Tls_Core.Alert.Encode
+        (Tls_Core.Alert.Alert'(Level => Level, Description => Description),
+         Body_Bytes);
+      Tls_Core.Aead_Channel.Send
+        (Dir,
+         Body_Bytes,
+         Tls_Core.Aead_Channel.Inner_Type_Alert,
+         Out_Buf, Out_Last);
+   end Build_Encrypted_Alert;
+
+   ---------------------------------------------------------------------
+   --  Ensure_App_Out_Dir — always-init D.App_Out_Dir to a fresh Seq=0
+   --  direction under the current application traffic secret. Resets
+   --  on every call to avoid the post-call freshness obligation a
+   --  lazy-init variant cannot discharge — a simpler contract for a
+   --  performance-irrelevant alert path.
+   ---------------------------------------------------------------------
+
+   procedure Ensure_App_Out_Dir (D : in out Driver)
+   with
+     Pre =>
+       D.App_Set
+       and then (D.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else D.Suite = Tls_Core.Suites.Aes_128_Gcm_Sha256),
+     Post =>
+       D.App_Out_Set
+       and then D.Suite = D.Suite'Old
+       and then D.App_Out_Dir.Suite = D.Suite
+       and then (case D.App_Out_Dir.Suite is
+                   when Tls_Core.Suites.Chacha20_Poly1305_Sha256 =>
+                     Tls_Core.Channel.Stream_Seq (D.App_Out_Dir.Cha) = 0,
+                   when Tls_Core.Suites.Aes_128_Gcm_Sha256 =>
+                     Tls_Core.Record_Layer.Seq_Of (D.App_Out_Dir.Aes128.Stream)
+                       = 0,
+                   when Tls_Core.Suites.Aes_256_Gcm_Sha384 => True);
+   procedure Ensure_App_Out_Dir (D : in out Driver) is
+   begin
+      case D.My_Role is
+         when Server =>
+            Tls_Core.Aead_Channel.Init_Sha256
+              (D.App_Out_Dir, D.Suite, D.App_S_Ap);
+         when Client =>
+            Tls_Core.Aead_Channel.Init_Sha256
+              (D.App_Out_Dir, D.Suite, D.App_C_Ap);
+      end case;
+      D.App_Out_Set := True;
+   end Ensure_App_Out_Dir;
+
+   ---------------------------------------------------------------------
+   --  Send_Close_Notify — RFC 8446 §6.1 graceful shutdown.
+   ---------------------------------------------------------------------
+
    procedure Send_Close_Notify
      (D        : in out Driver;
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural)
    is
-      pragma Unreferenced (D);
    begin
-      Out_Buf := (others => 0);
-      Out_Last := 0;
+      Ensure_App_Out_Dir (D);
+      Build_Encrypted_Alert
+        (D.App_Out_Dir,
+         Tls_Core.Alert.Level_Warning,
+         Tls_Core.Alert.Desc_Close_Notify,
+         Out_Buf, Out_Last);
+      D.Last_Alert := Tls_Core.Alert.Desc_Close_Notify;
+      D.Cur_State := Closed;
    end Send_Close_Notify;
+
+   ---------------------------------------------------------------------
+   --  Send_Fatal_Alert — application-level fatal alert.
+   ---------------------------------------------------------------------
 
    procedure Send_Fatal_Alert
      (D           : in out Driver;
@@ -1741,10 +1937,25 @@ is
       Out_Buf     : out Octet_Array;
       Out_Last    : out Natural)
    is
-      pragma Unreferenced (D, Description);
    begin
-      Out_Buf := (others => 0);
-      Out_Last := 0;
+      case D.Cur_State is
+         when Done =>
+            Ensure_App_Out_Dir (D);
+            Build_Encrypted_Alert
+              (D.App_Out_Dir,
+               Tls_Core.Alert.Level_Fatal,
+               Description, Out_Buf, Out_Last);
+         when Idle | Awaiting_CH =>
+            Build_Plaintext_Alert
+              (Tls_Core.Alert.Level_Fatal,
+               Description, Out_Buf, Out_Last);
+         when others =>
+            --  Excluded by Pre.
+            Out_Buf := (others => 0);
+            Out_Last := 0;
+      end case;
+      D.Last_Alert := Description;
+      D.Cur_State := Failed;
    end Send_Fatal_Alert;
 
 end Tls_Core.Tls13_Driver;
