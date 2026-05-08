@@ -89,6 +89,7 @@ is
       D.Hrr_Cookie    := (others => 0);
       D.Hrr_Cookie_Len := 0;
       D.Hrr_Ch1_Hash  := (others => 0);
+      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
    end Init_Psk_Server;
 
    procedure Init_Psk_Client
@@ -115,6 +116,7 @@ is
       D.Hrr_Cookie    := (others => 0);
       D.Hrr_Cookie_Len := 0;
       D.Hrr_Ch1_Hash  := (others => 0);
+      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
    end Init_Psk_Client;
 
    ---------------------------------------------------------------------

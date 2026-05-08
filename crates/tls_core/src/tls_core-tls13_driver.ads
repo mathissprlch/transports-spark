@@ -29,6 +29,7 @@
 
 with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
+with Tls_Core.Handshake_Buffer;
 with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
@@ -480,6 +481,19 @@ private
       --  Send_Fatal_Alert post-Done.
       App_Out_Dir : Tls_Core.Aead_Channel.Direction;
       App_Out_Set : Boolean := False;
+
+      --  Inbound handshake-message reassembly buffer (RFC 8446 §5.1).
+      --  Each Step call funnels every record's handshake-channel
+      --  content through this buffer and pops complete handshake
+      --  messages one at a time. This makes the driver tolerant to:
+      --    - cert chains and other large messages split across two
+      --      or more TLSCiphertext records
+      --    - multiple handshake messages packed into a single
+      --      record (server EE+SF in one TLSCiphertext, etc.)
+      --  The buffer is reset (Init) at construction and any time
+      --  the driver transitions through a state that doesn't
+      --  preserve message-boundary continuity (e.g. HRR rebuild).
+      Hs_In_Buf   : Tls_Core.Handshake_Buffer.Buffer;
    end record;
 
    function Current_State (D : Driver) return State is (D.Cur_State);
