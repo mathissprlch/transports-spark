@@ -3151,6 +3151,150 @@ procedure Tls_Core_Tests is
    end Tls13_Loopback;
 
    --------------------------------------------------------------------
+   --  Scenario 30-ECDHE — psk_dhe_ke ECDHE actually contributes to
+   --                      the handshake secret.
+   --
+   --  Run two complete handshakes with IDENTICAL PSK + Identity (so
+   --  the Early_Secret is identical on both runs), but DIFFERENT
+   --  ECDHE private scalars on the client. The randoms baked into
+   --  the driver are also identical between runs (the driver uses
+   --  fixed test randoms — same in both runs).
+   --
+   --  Per RFC 8446 §7.1 mode 3:
+   --      Handshake_Secret = HKDF-Extract(Derived_1, ECDHE_secret)
+   --  ECDHE_secret = X25519(client_priv, server_pub) and varies
+   --  with client_priv. Therefore the two handshakes' c_ap traffic
+   --  secrets MUST differ — that's the proof DHE is in the mix.
+   --
+   --  If we were still on mode 1 (psk_ke), the IKM would be 32
+   --  zero bytes regardless of client_priv, and the c_ap secrets
+   --  would be byte-identical between the two runs. The test would
+   --  then fail, surfacing any accidental regression to mode 1.
+   --------------------------------------------------------------------
+   procedure Tls13_Mode3_Ecdhe_Contributes;
+   procedure Tls13_Mode3_Ecdhe_Contributes is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Tls_Core.Octet;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+
+      --  Server uses the same private scalar both times — this isolates
+      --  the variation to the CLIENT's ECDHE contribution.
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+
+      --  Two distinct client private scalars.
+      Client_Priv_A : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+      Client_Priv_B : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#33#);
+
+      function Run_Handshake
+        (Cli_Priv : Tls_Core.Octet_Array)
+         return Tls_Core.Key_Schedule.Secret;
+
+      function Run_Handshake
+        (Cli_Priv : Tls_Core.Octet_Array)
+         return Tls_Core.Key_Schedule.Secret
+      is
+         C, S : Tls_Core.Tls13_Driver.Driver;
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf_Last : Natural := 0;
+         Out_Cli, In_Cli : Tls_Core.Aead_Channel.Direction;
+         Out_Sec, In_Sec : Tls_Core.Key_Schedule.Secret;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Cli_Priv);
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+         declare
+            Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+            Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+            Reply_Last : Natural;
+         begin
+            Tls_Core.Tls13_Driver.Step
+              (S, In_Bytes => Ch, Out_Buf => Reply, Out_Last => Reply_Last);
+            Buf := (others => 0);
+            Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+            Buf_Last := Reply_Last;
+         end;
+         declare
+            Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+            Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+            Reply_Last : Natural;
+         begin
+            Tls_Core.Tls13_Driver.Step
+              (C, In_Bytes => Sf_Flight,
+               Out_Buf => Reply, Out_Last => Reply_Last);
+            Buf := (others => 0);
+            Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+            Buf_Last := Reply_Last;
+         end;
+         declare
+            Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard_Last : Natural;
+         begin
+            Tls_Core.Tls13_Driver.Step
+              (S, In_Bytes => Cf,
+               Out_Buf => Discard, Out_Last => Discard_Last);
+         end;
+         pragma Assert (Tls_Core.Tls13_Driver.Current_State (C)
+                          = Tls_Core.Tls13_Driver.Done);
+         pragma Assert (Tls_Core.Tls13_Driver.Current_State (S)
+                          = Tls_Core.Tls13_Driver.Done);
+         Tls_Core.Tls13_Driver.Open_App_Directions
+           (C, Out_Cli, In_Cli, Out_Sec, In_Sec);
+         --  Client's Out_Sec is the c_ap traffic secret — derived
+         --  from Master_Secret which descends from Handshake_Secret
+         --  which descends from ECDHE_secret in mode 3. Different
+         --  client priv → different ECDHE → different c_ap.
+         return Out_Sec;
+      end Run_Handshake;
+
+      Sec_A : constant Tls_Core.Key_Schedule.Secret :=
+        Run_Handshake (Client_Priv_A);
+      Sec_B : constant Tls_Core.Key_Schedule.Secret :=
+        Run_Handshake (Client_Priv_B);
+
+      All_Equal : Boolean := True;
+   begin
+      Put_Line ("scenario 30-ECDHE — psk_dhe_ke ECDHE contributes to "
+                & "handshake secret");
+      for I in Sec_A'Range loop
+         if Sec_A (I) /= Sec_B (I) then
+            All_Equal := False;
+            exit;
+         end if;
+      end loop;
+      --  Different ECDHE privates with same PSK MUST yield different
+      --  c_ap secrets if mode 3 is genuinely threading ECDHE through
+      --  the schedule. Equality would mean the DHE input was being
+      --  ignored (i.e. mode 1 regressions).
+      Check ("Tls13/mode3: differing client ECDHE priv → differing c_ap secret",
+             not All_Equal);
+
+      --  Sanity: re-running with the same priv scalar should give the
+      --  identical secret (driver is deterministic on test inputs).
+      declare
+         Sec_A2 : constant Tls_Core.Key_Schedule.Secret :=
+           Run_Handshake (Client_Priv_A);
+         All_Match : Boolean := True;
+      begin
+         for I in Sec_A'Range loop
+            if Sec_A (I) /= Sec_A2 (I) then
+               All_Match := False;
+               exit;
+            end if;
+         end loop;
+         Check ("Tls13/mode3: same priv → identical c_ap secret (determinism)",
+                All_Match);
+      end;
+   end Tls13_Mode3_Ecdhe_Contributes;
+
+   --------------------------------------------------------------------
    --  Scenario 30b — KeyUpdate wire encode/decode round-trip.
    --
    --  Validates Tls_Core.Key_Update.Encode produces the §4.6.3 wire
@@ -6131,6 +6275,7 @@ begin
    Psk_Binder_Scenario;
    Psk_Hello_Roundtrip;
    Tls13_Loopback;
+   Tls13_Mode3_Ecdhe_Contributes;
    Key_Update_Wire_Scenario;
    Key_Update_Roundtrip_Scenario;
    Tls13_Hrr_Loopback;
