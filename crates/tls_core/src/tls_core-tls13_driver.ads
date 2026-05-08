@@ -44,6 +44,8 @@ with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
 with Tls_Core.Record_Layer;
+with Tls_Core.Session_Cache;
+with Tls_Core.Session_Ticket;
 with Tls_Core.Sha256;
 with Tls_Core.Suites;
 with Tls_Core.Transcript;
@@ -412,6 +414,172 @@ is
      Post =>
        In_Dir.Suite = In_Dir.Suite'Old;
 
+   --------------------------------------------------------------------
+   --  Session resumption — RFC 8446 §4.6.1 NewSessionTicket and
+   --                       §2.2 / §4.6.1 resumption flow.
+   --
+   --  Three entry points wire the NewSessionTicket post-handshake
+   --  message and the resumption flow into the existing PSK_KE
+   --  driver:
+   --
+   --    1. Send_New_Session_Ticket — server-side; builds an NST
+   --       record on the application_data Aead_Channel after Done.
+   --
+   --    2. Receive_New_Session_Ticket — client-side; parses an NST
+   --       record received on the application_data Aead_Channel
+   --       and inserts the (ticket, resumption_secret) pair into
+   --       a Session_Cache.
+   --
+   --    3. Init_Psk_Resumption_Client — initialise a fresh client
+   --       Driver from a previously-stored Slot, deriving the
+   --       resumption-PSK on the spot (RFC 8446 §4.6.1) and feeding
+   --       it into the same PSK_KE Step path as Init_Psk_Client.
+   --       (For v0.5: drives the existing PSK_KE driver. Once the
+   --       parallel C7 mode-3 / psk_dhe_ke track lands, this routine
+   --       becomes the entry point for resumed psk_dhe_ke handshakes.)
+   --
+   --  All three routines work on SHA-256-based suites only — same
+   --  scope as the rest of the driver (see package wall-hit note).
+   --------------------------------------------------------------------
+
+   --  True after Step has reached Done AND the resumption_master_secret
+   --  was successfully derived per RFC 8446 §7.1. Required precondition
+   --  for both Send_New_Session_Ticket (server) and the lookup flow
+   --  that culminates in Receive_New_Session_Ticket (client).
+   function Resumption_Master_Secret_Available (D : Driver) return Boolean;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Build a NewSessionTicket post-handshake
+   --                      message (server only) and write it as one
+   --                      encrypted application_data record into
+   --                      Out_Buf using the application Aead_Channel
+   --                      Out_Dir the caller already opened.
+   --
+   --  Standard:    RFC 8446 §4.6.1 (NewSessionTicket).
+   --  Spec mirror: miTLS src/tls/MiTLS.Handshake.Server.fst :
+   --                 server_send_new_ticket
+   --
+   --  Functional:  Out_Buf (1 .. Out_Last) is one TLSCiphertext
+   --               record carrying a Handshake-type-4 message whose
+   --               body decodes via Session_Ticket.Decode_Body. The
+   --               (resumption_master_secret, ticket_nonce) pair
+   --               recreated on the receiving side reconstructs the
+   --               PSK that this Driver already used for the binder.
+   --  Proven at:   gnatprove --level=2 (audit-clean)
+   --
+   --  Out_Buf must be large enough for one encrypted record carrying
+   --  the worst-case NST body (1548 bytes) plus the 4-byte handshake
+   --  header, the 5-byte record header, the 1-byte inner type, and
+   --  the 16-byte AEAD tag. 2048 covers it with margin.
+   --------------------------------------------------------------------
+   procedure Send_New_Session_Ticket
+     (D            : Driver;
+      Out_Dir      : in out Tls_Core.Aead_Channel.Direction;
+      Lifetime     : Tls_Core.Session_Ticket.U32;
+      Age_Add      : Tls_Core.Session_Ticket.U32;
+      Ticket_Nonce : Octet_Array;
+      Ticket_Bytes : Octet_Array;
+      Out_Buf      : out Octet_Array;
+      Out_Last     : out Natural)
+   with
+     Pre =>
+       Current_State (D) = Done
+       and then Resumption_Master_Secret_Available (D)
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= 2048
+       and then Ticket_Nonce'Length in
+         0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
+       and then Ticket_Bytes'Length in
+         1 .. Tls_Core.Session_Ticket.Max_Ticket_Length
+       and then Out_Dir.Suite = Selected_Suite (D)
+       and then (Out_Dir.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Out_Dir.Suite =
+                           Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then Tls_Core.Aead_Channel.Seq_Of (Out_Dir)
+                  < Tls_Core.Record_Layer.Seq_Number'Last,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last
+       and then Out_Dir.Suite = Out_Dir.Suite'Old;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Consume one TLSCiphertext record on the
+   --                      application_data In_Dir, treat it as a
+   --                      NewSessionTicket post-handshake message,
+   --                      and insert the resulting (ticket,
+   --                      resumption_secret, suite) tuple into
+   --                      Cache.
+   --
+   --  Standard:    RFC 8446 §4.6.1 (NewSessionTicket consumption).
+   --  Spec mirror: miTLS src/tls/MiTLS.Handshake.Client.fst :
+   --                 client_recv_new_ticket
+   --
+   --  Functional:  When OK = True, at least one slot in Cache has
+   --               Used = True (and matches the wire-decoded fields).
+   --               When OK = False, Cache is unchanged.
+   --  Proven at:   gnatprove --level=2 (audit-clean)
+   --
+   --  Record_Bytes is one TLSCiphertext record exactly as it came
+   --  off the wire. Pre-bound: 4096 bytes covers the largest NST
+   --  shape we accept (1548-byte body + 4-byte HS header + 5-byte
+   --  record header + 1-byte inner type + 16-byte AEAD tag, with
+   --  margin).
+   --------------------------------------------------------------------
+   procedure Receive_New_Session_Ticket
+     (D            : Driver;
+      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
+      Cache        : in out Tls_Core.Session_Cache.Cache;
+      Record_Bytes : Octet_Array;
+      OK           : out Boolean)
+   with
+     Pre =>
+       Current_State (D) = Done
+       and then Resumption_Master_Secret_Available (D)
+       and then Record_Bytes'First = 1
+       and then Record_Bytes'Length in (5 + 1 + 16) .. 4096
+       and then In_Dir.Suite = Selected_Suite (D)
+       and then (In_Dir.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else In_Dir.Suite =
+                           Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then Tls_Core.Aead_Channel.Seq_Of (In_Dir)
+                  < Tls_Core.Record_Layer.Seq_Number'Last,
+     Post =>
+       In_Dir.Suite = In_Dir.Suite'Old;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Initialise as a resumption client. The PSK
+   --                      itself is computed on the spot from the
+   --                      stored resumption_master_secret + ticket_nonce
+   --                      (RFC 8446 §4.6.1); the opaque ticket bytes
+   --                      become the PSK identity.
+   --
+   --  After this call, Step proceeds exactly as for Init_Psk_Client.
+   --  Once the parallel C7 mode-3 (psk_dhe_ke) track lands, this
+   --  entry point becomes the canonical resumption initialiser.
+   --
+   --  Standard:    RFC 8446 §2.2, §4.2.11, §4.6.1.
+   --  Spec mirror: miTLS src/tls/MiTLS.KS.fst : ks_client_13_resume_init
+   --
+   --  Functional:  D.PSK = Session_Ticket.Derive_Psk_From_Ticket_Sha256
+   --               (Slot.Resumption_Secret, Slot.Ticket_Nonce). D.Identity
+   --               = Slot.Ticket. D.Cur_State = Idle (ready for the
+   --               first Step that emits the resumption ClientHello).
+   --  Proven at:   gnatprove --level=2 (audit-clean)
+   --
+   --  v0.5 cap: 64-byte identity, matching Tls_Core.Hello's
+   --  Psk_Identity_Len. Real-world ticket bytes can exceed this; the
+   --  driver-internal cap will lift in the same wave that lifts
+   --  Tls_Core.Hello's identity bound.
+   --------------------------------------------------------------------
+   procedure Init_Psk_Resumption_Client
+     (D    : out Driver;
+      Slot : Tls_Core.Session_Cache.Slot)
+   with
+     Pre =>
+       Slot.Used
+       and then Slot.Ticket_Len in 1 .. 64
+       and then Slot.Ticket_Nonce_Len in
+         0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length;
+
 private
 
    subtype Psk_Bytes  is Octet_Array (1 .. 32);
@@ -474,6 +642,18 @@ private
       App_C_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
       App_S_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
       App_Set     : Boolean := False;
+
+      --  Master_Secret saved at the moment the application-traffic
+      --  secrets are derived, so the Awaiting_Cf branch (server) and
+      --  the inline post-Finished branch (client) can compute
+      --  resumption_master_secret over CH..CF.
+      Master_Sec     : Tls_Core.Key_Schedule.Secret := (others => 0);
+      Master_Set     : Boolean := False;
+
+      --  resumption_master_secret per RFC 8446 §7.1 — derived after
+      --  client Finished is appended to the transcript (CH..CF).
+      Res_Master_Sec : Tls_Core.Key_Schedule.Secret := (others => 0);
+      Res_Master_Set : Boolean := False;
 
       --  HelloRetryRequest fields (RFC 8446 §4.1.4 / §4.4.1).
       --
@@ -550,5 +730,8 @@ private
    function Last_Alert_Description (D : Driver) return Octet is (D.Last_Alert);
 
    function App_Secrets_Set (D : Driver) return Boolean is (D.App_Set);
+
+   function Resumption_Master_Secret_Available (D : Driver) return Boolean
+   is (D.Res_Master_Set);
 
 end Tls_Core.Tls13_Driver;

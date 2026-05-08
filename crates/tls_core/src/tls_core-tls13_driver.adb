@@ -4,6 +4,8 @@ with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 with Tls_Core.Hmac_Sha256;
 with Tls_Core.Psk_Binder;
+with Tls_Core.Session_Cache;
+with Tls_Core.Session_Ticket;
 with Tls_Core.X25519;
 
 package body Tls_Core.Tls13_Driver
@@ -60,6 +62,10 @@ is
       D.Expected_Cf := Zero_Digest;
       D.App_C_Ap := Zero_Secret;
       D.App_S_Ap := Zero_Secret;
+      D.Master_Sec := Zero_Secret;
+      D.Master_Set := False;
+      D.Res_Master_Sec := Zero_Secret;
+      D.Res_Master_Set := False;
       Tls_Core.Aead_Channel.Init_Sha256
         (D.Hs_Out_Dir, Tls_Core.Suites.Chacha20_Poly1305_Sha256, Zero_Secret);
       Tls_Core.Aead_Channel.Init_Sha256
@@ -771,6 +777,12 @@ is
                      Context => Th_After_Sf,
                      Output  => D.App_S_Ap);
                   D.App_Set := True;
+                  --  Save Master_Secret so we can derive
+                  --  resumption_master_secret (RFC 8446 §7.1) once
+                  --  the client Finished is appended to the
+                  --  transcript below.
+                  D.Master_Sec := Master_Secret;
+                  D.Master_Set := True;
                end;
 
                --  Step 6: build + send client Finished.
@@ -796,6 +808,26 @@ is
                   Out_Buf (1 .. Cf_Rec_Last) := Cf_Rec (1 .. Cf_Rec_Last);
                   Out_Last := Cf_Rec_Last;
                end;
+
+               --  Derive resumption_master_secret per RFC 8446 §7.1:
+               --    Derive-Secret(Master_Secret, "res master", CH..CF)
+               --  Client side: Master_Sec was saved above when
+               --  App_C_Ap / App_S_Ap were derived; the transcript
+               --  now spans CH..CF (we just appended CF).
+               if D.Master_Set then
+                  declare
+                     Th_After_Cf : Tls_Core.Sha256.Digest;
+                  begin
+                     Tls_Core.Transcript.Snapshot
+                       (D.Hash_Ctx, Th_After_Cf);
+                     Tls_Core.Session_Ticket
+                       .Derive_Resumption_Master_Secret_Sha256
+                         (Master_Secret     => D.Master_Sec,
+                          Transcript_Hash   => Th_After_Cf,
+                          Resumption_Secret => D.Res_Master_Sec);
+                     D.Res_Master_Set := True;
+                  end;
+               end if;
 
                D.Cur_State := Done;
             end;
@@ -1233,6 +1265,13 @@ is
                            Context => Th_After_SF,
                            Output  => D.App_S_Ap);
                         D.App_Set := True;
+                        --  Save Master_Secret so the Awaiting_Cf
+                        --  branch (below) can derive
+                        --  resumption_master_secret (RFC 8446 §7.1)
+                        --  once the client Finished is appended to
+                        --  the transcript.
+                        D.Master_Sec := Master_Secret;
+                        D.Master_Set := True;
 
                         --  Expected client Finished body — HMAC of
                         --  c_hs_finished_key over Th_After_SF.
@@ -1279,6 +1318,28 @@ is
                   end if;
                end;
                Tls_Core.Transcript.Append (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
+
+               --  Derive resumption_master_secret per RFC 8446 §7.1:
+               --    Derive-Secret(Master_Secret, "res master", CH..CF)
+               --  Server side: Master_Sec was saved in the
+               --  Awaiting_CH branch when App_C_Ap / App_S_Ap were
+               --  derived; the transcript now spans CH..CF (we just
+               --  appended CF).
+               if D.Master_Set then
+                  declare
+                     Th_After_Cf : Tls_Core.Sha256.Digest;
+                  begin
+                     Tls_Core.Transcript.Snapshot
+                       (D.Hash_Ctx, Th_After_Cf);
+                     Tls_Core.Session_Ticket
+                       .Derive_Resumption_Master_Secret_Sha256
+                         (Master_Secret     => D.Master_Sec,
+                          Transcript_Hash   => Th_After_Cf,
+                          Resumption_Secret => D.Res_Master_Sec);
+                     D.Res_Master_Set := True;
+                  end;
+               end if;
+
                D.Cur_State := Done;
             end;
 
@@ -1846,6 +1907,11 @@ is
                      Context => Th_After_SF,
                      Output  => D.App_S_Ap);
                   D.App_Set := True;
+                  --  Save Master_Secret so the Awaiting_Cf branch can
+                  --  derive resumption_master_secret (RFC 8446 §7.1)
+                  --  once the client Finished is appended.
+                  D.Master_Sec := Master_Secret;
+                  D.Master_Set := True;
                   Build_Finished_Body
                     (D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
                end;
@@ -2127,5 +2193,228 @@ is
       D.Last_Alert := Description;
       D.Cur_State := Failed;
    end Send_Fatal_Alert;
+
+   ---------------------------------------------------------------------
+   --  Send_New_Session_Ticket — RFC 8446 §4.6.1.
+   --
+   --  Wire shape per §4.6.1: the Handshake message has type 0x04, a
+   --  3-byte length, and the NST body. We then encrypt the whole
+   --  Handshake message as one TLSCiphertext of inner-content-type
+   --  Handshake (§5.4 — post-handshake messages reuse the handshake
+   --  inner type but ride on the application_data Aead_Channel).
+   ---------------------------------------------------------------------
+
+   procedure Send_New_Session_Ticket
+     (D            : Driver;
+      Out_Dir      : in out Tls_Core.Aead_Channel.Direction;
+      Lifetime     : Tls_Core.Session_Ticket.U32;
+      Age_Add      : Tls_Core.Session_Ticket.U32;
+      Ticket_Nonce : Octet_Array;
+      Ticket_Bytes : Octet_Array;
+      Out_Buf      : out Octet_Array;
+      Out_Last     : out Natural)
+   is
+      pragma Unreferenced (D);
+
+      Hs_Type_New_Session_Ticket : constant Octet := 16#04#;
+
+      --  Worst-case body length per Session_Ticket spec.
+      Body_Buf : Octet_Array
+        (1 .. Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
+          (others => 0);
+      Body_Last : Natural;
+
+      --  Handshake-message wrapper (4-byte header + body).
+      Hs_Buf : Octet_Array
+        (1 .. 4 + Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
+          (others => 0);
+      Hs_Last : Natural;
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := 0;
+
+      --  1. Build NST body.
+      Tls_Core.Session_Ticket.Encode_Body
+        (Lifetime     => Lifetime,
+         Age_Add      => Age_Add,
+         Ticket_Nonce => Ticket_Nonce,
+         Ticket       => Ticket_Bytes,
+         Out_Buf      => Body_Buf,
+         Out_Last     => Body_Last);
+
+      --  2. Wrap as Handshake message (type 4 + u24 length + body).
+      Encode_Hs_Message
+        (Hs_Type_New_Session_Ticket,
+         Body_Buf (1 .. Body_Last),
+         Hs_Buf, Hs_Last);
+
+      --  3. Encrypt the whole Handshake message as one application
+      --     traffic record. Inner type is Handshake per §5.4.
+      Tls_Core.Aead_Channel.Send
+        (Out_Dir,
+         Hs_Buf (1 .. Hs_Last),
+         Tls_Core.Aead_Channel.Inner_Type_Handshake,
+         Out_Buf, Out_Last);
+   end Send_New_Session_Ticket;
+
+   ---------------------------------------------------------------------
+   --  Receive_New_Session_Ticket — RFC 8446 §4.6.1 client side.
+   --
+   --  Decrypts one TLSCiphertext record on the application_data
+   --  In_Dir, validates that it is a Handshake-type-4 message
+   --  carrying a NewSessionTicket body, and inserts the resulting
+   --  (ticket, resumption_secret, suite) triple into Cache.
+   ---------------------------------------------------------------------
+
+   procedure Receive_New_Session_Ticket
+     (D            : Driver;
+      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
+      Cache        : in out Tls_Core.Session_Cache.Cache;
+      Record_Bytes : Octet_Array;
+      OK           : out Boolean)
+   is
+      Hs_Type_New_Session_Ticket : constant Octet := 16#04#;
+
+      Pt_Buf : Octet_Array
+        (1 .. 4 + Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
+          (others => 0);
+      Pt_Last    : Natural;
+      Inner_Type : Octet;
+      Decrypt_OK : Boolean;
+   begin
+      OK := False;
+
+      Tls_Core.Aead_Channel.Receive
+        (In_Dir, Record_Bytes,
+         Pt_Buf, Pt_Last, Inner_Type, Decrypt_OK);
+      if not Decrypt_OK
+        or else Inner_Type /=
+                  Tls_Core.Aead_Channel.Inner_Type_Handshake
+        or else Pt_Last < 4
+        or else Pt_Buf (1) /= Hs_Type_New_Session_Ticket
+      then
+         return;
+      end if;
+
+      --  Validate the u24 length matches the rest of the buffer.
+      declare
+         L : constant Natural :=
+           Natural (Pt_Buf (2)) * 65536
+           + Natural (Pt_Buf (3)) * 256
+           + Natural (Pt_Buf (4));
+      begin
+         if 4 + L /= Pt_Last then
+            return;
+         end if;
+         if L < 14
+           or else L > Tls_Core.Session_Ticket.Max_Nst_Body_Length
+         then
+            return;
+         end if;
+
+         --  Decode body. Body_Slice has 'First = 1 by construction.
+         declare
+            Body_Slice : constant Octet_Array (1 .. L) :=
+              Pt_Buf (5 .. 4 + L);
+            Lt   : Tls_Core.Session_Ticket.U32;
+            Ag   : Tls_Core.Session_Ticket.U32;
+            Nf   : Natural;
+            Tf   : Natural;
+            Nl   : Integer;
+            Tl   : Integer;
+            Decode_OK : Boolean;
+         begin
+            Tls_Core.Session_Ticket.Decode_Body
+              (In_Buf       => Body_Slice,
+               Lifetime     => Lt,
+               Age_Add      => Ag,
+               Nonce_First  => Nf,
+               Nonce_Last   => Nl,
+               Ticket_First => Tf,
+               Ticket_Last  => Tl,
+               OK           => Decode_OK);
+            if not Decode_OK then
+               return;
+            end if;
+
+            --  Insert into cache. The Decode_Body Post guarantees
+            --  the index ranges are valid sub-slices of Body_Slice,
+            --  so the slice expressions below are safe.
+            if Nl >= Nf then
+               Tls_Core.Session_Cache.Insert
+                 (C                 => Cache,
+                  Lifetime          => Lt,
+                  Age_Add           => Ag,
+                  Ticket_Nonce      => Body_Slice (Nf .. Nl),
+                  Ticket            => Body_Slice (Tf .. Tl),
+                  Resumption_Secret => D.Res_Master_Sec,
+                  Suite             => D.Suite);
+            else
+               declare
+                  Empty_Nonce : constant Octet_Array (1 .. 0) :=
+                    (others => 0);
+               begin
+                  Tls_Core.Session_Cache.Insert
+                    (C                 => Cache,
+                     Lifetime          => Lt,
+                     Age_Add           => Ag,
+                     Ticket_Nonce      => Empty_Nonce,
+                     Ticket            => Body_Slice (Tf .. Tl),
+                     Resumption_Secret => D.Res_Master_Sec,
+                     Suite             => D.Suite);
+               end;
+            end if;
+            OK := True;
+         end;
+      end;
+   end Receive_New_Session_Ticket;
+
+   ---------------------------------------------------------------------
+   --  Init_Psk_Resumption_Client — RFC 8446 §2.2 / §4.6.1.
+   --
+   --  Derive PSK from (Slot.Resumption_Secret, Slot.Ticket_Nonce);
+   --  use Slot.Ticket as the PSK identity. After this, Step proceeds
+   --  exactly as for Init_Psk_Client.
+   ---------------------------------------------------------------------
+
+   procedure Init_Psk_Resumption_Client
+     (D    : out Driver;
+      Slot : Tls_Core.Session_Cache.Slot)
+   is
+      Derived_Psk : Tls_Core.Key_Schedule.Secret;
+   begin
+      --  Compute the resumption-PSK on the spot.
+      Tls_Core.Session_Ticket.Derive_Psk_From_Ticket_Sha256
+        (Resumption_Secret => Slot.Resumption_Secret,
+         Ticket_Nonce      =>
+           Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len),
+         Psk               => Derived_Psk);
+
+      --  Initialise as a regular PSK client (the existing PSK_KE
+      --  path drives the handshake; once the parallel C7 mode-3
+      --  / psk_dhe_ke track lands, this entry point becomes the
+      --  canonical resumption initialiser).
+      D.My_Role := Client;
+      D.Cur_State := Idle;
+      Tls_Core.Transcript.Init (D.Hash_Ctx);
+      D.PSK := Derived_Psk;
+      D.Identity := (others => 0);
+      D.Identity_Len := Slot.Ticket_Len;
+      D.Identity (1 .. Slot.Ticket_Len) :=
+        Slot.Ticket (1 .. Slot.Ticket_Len);
+      D.App_Set := False;
+      Prime_Driver_Defaults (D);
+      D.Hrr_Demand    := False;
+      D.Hrr_Sent      := False;
+      D.Hrr_Aware     := False;
+      D.Hrr_Seen      := False;
+      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
+      D.Hrr_Cookie    := (others => 0);
+      D.Hrr_Cookie_Len := 0;
+      D.Hrr_Ch1_Hash  := (others => 0);
+      D.Hs_Keys_Set   := False;
+      D.Last_Alert    := Tls_Core.Alert.Desc_Internal_Error;
+      D.App_Out_Set   := False;
+   end Init_Psk_Resumption_Client;
 
 end Tls_Core.Tls13_Driver;
