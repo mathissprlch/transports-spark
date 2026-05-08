@@ -2925,15 +2925,20 @@ procedure Tls_Core_Tests is
          Out_Buf => Wire, Out_Last => Wire_Last,
          Truncated_Last => Truncated_Last);
       Check ("PSK CH: encoder emitted bytes", Wire_Last > Truncated_Last);
-      Check ("PSK CH: 32 binder bytes follow truncated CH",
-             Wire_Last = Truncated_Last + 1 + 32);
+      --  After the new (RFC 8446 §4.2.11.2-correct) truncation point,
+      --  the wire still has: u16 binders_total_len + u8 binder_len +
+      --  32 binder bytes = 35 bytes.
+      Check ("PSK CH: 35 bytes follow truncated CH (binders block)",
+             Wire_Last = Truncated_Last + 2 + 1 + 32);
 
       Tls_Core.Psk_Binder.Compute
         (Psk, Wire (1 .. Truncated_Last), Computed_Binder);
 
-      --  Splice binder in (right after the u8 binder_len, which the
-      --  encoder already wrote at position Truncated_Last + 1).
-      Wire (Truncated_Last + 2 .. Truncated_Last + 1 + 32) := Computed_Binder;
+      --  Splice the 32 binder bytes in.  Layout after Truncated_Last:
+      --     +1 +2 : binders_total_len (u16, encoder set = 33)
+      --     +3    : binder_len (u8 = 32)
+      --     +4 .. +35 : binder body
+      Wire (Truncated_Last + 4 .. Truncated_Last + 35) := Computed_Binder;
 
       Tls_Core.Hello.Decode_Client_Hello_Psk
         (Wire (1 .. Wire_Last),

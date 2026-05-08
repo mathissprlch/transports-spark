@@ -565,7 +565,7 @@ is
                  (D.PSK,
                   Ch_Hs (1 .. 4 + T_Last),
                   Binder);
-               Ch_Body (T_Last + 2 .. T_Last + 33) := Binder;
+               Ch_Body (T_Last + 4 .. T_Last + 35) := Binder;  -- offset by binders_total_len(2)+binder_len(1)+1
                --  Wrap as handshake message (type 0x01 + u24 + body).
                Encode_Hs_Message
                  (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
@@ -2702,7 +2702,7 @@ is
                  (D.PSK,
                   Ch_Hs (1 .. 4 + T_Last),
                   Binder);
-               Ch_Body (T_Last + 2 .. T_Last + 33) := Binder;
+               Ch_Body (T_Last + 4 .. T_Last + 35) := Binder;  -- offset by binders_total_len(2)+binder_len(1)+1
                Encode_Hs_Message
                  (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
                   Ch_Hs, Ch_Hs_Last);

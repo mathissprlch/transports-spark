@@ -164,10 +164,13 @@ is
       Out_Last : out Natural)
    with
      Pre =>
-       R'Length = 32
+       R'First = 1
+       and then R'Length = 32
+       and then S'First = 1
        and then S'Length = 32
        and then Out_Buf'First = 1
-       and then Out_Buf'Length >= 72,
+       and then Out_Buf'Length >= 72
+       and then Out_Buf'Last <= Integer'Last - 35,
      Post =>
        Out_Last in 8 .. 72;
 

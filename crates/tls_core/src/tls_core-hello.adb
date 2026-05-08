@@ -658,10 +658,15 @@ is
          W_U8 (Out_Buf, Cursor, 0);
          W_U8 (Out_Buf, Cursor, 0);
          W_U8 (Out_Buf, Cursor, 0);
-         --  binders length field — Truncate(ClientHello) ends here.
-         W_U16 (Out_Buf, Cursor, 1 + 32);
+         --  RFC 8446 §4.2.11.2: the binder hash covers the CH "up to
+         --  and including the PreSharedKeyExtension.identities field"
+         --  — i.e. the entire binders<> field (including its u16
+         --  length prefix) is excluded.  Truncate point is HERE,
+         --  before we write binders_total_len.
          Truncated_Last := Cursor;
-         --  binder placeholder: u8 len + 32 zero bytes for caller to overwrite.
+         --  binders<> field: u16 binders_total_len + per-binder
+         --  { u8 binder_len; binder_bytes }. We emit one binder.
+         W_U16 (Out_Buf, Cursor, 1 + 32);
          W_U8 (Out_Buf, Cursor, 32);
          Cursor := Cursor + 32;
       end;
@@ -820,8 +825,11 @@ is
          W_U8 (Out_Buf, Cursor, 0);
          W_U8 (Out_Buf, Cursor, 0);
          W_U8 (Out_Buf, Cursor, 0);
-         W_U16 (Out_Buf, Cursor, 1 + 32);
+         --  RFC 8446 §4.2.11.2: binder hash covers CH up to and
+         --  including .identities, excluding the entire .binders<>
+         --  field (length prefix + entries).
          Truncated_Last := Cursor;
+         W_U16 (Out_Buf, Cursor, 1 + 32);
          W_U8 (Out_Buf, Cursor, 32);
          Cursor := Cursor + 32;
       end;
@@ -938,14 +946,15 @@ is
          if Q + 3 > Body_L then return; end if;
          Q := Q + 4;
          pragma Unreferenced (Identities_Total);
-         --  Truncated CH ends just before the binders array — i.e.
-         --  after the binders_total_len u16 has been read, we're at
-         --  the first binder byte. The truncation point is one byte
-         --  BEFORE the first binder's len byte.
+         --  RFC 8446 §4.2.11.2 + §4.4.1: Truncate(ClientHello) is
+         --  the CH up to and INCLUDING .identities — i.e. the entire
+         --  .binders<> field (its u16 length prefix + the entries) is
+         --  excluded from the binder hash. So the truncation point is
+         --  the byte just before the binders_total_len u16 begins.
+         Truncated_Last := Q - 1;
          if Q + 1 > Body_L then return; end if;
          Binders_Total := Natural (In_Bytes (Q)) * 256 + Natural (In_Bytes (Q + 1));
          Q := Q + 2;
-         Truncated_Last := Q - 1;
          pragma Unreferenced (Binders_Total);
          if Q > Body_L then return; end if;
          Binder_Length := Natural (In_Bytes (Q));
