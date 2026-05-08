@@ -26,7 +26,8 @@ project Examples is
                  "mqtt_will_demo.adb",
                  "mqtt_session_demo.adb",
                  "tls_interop_client.adb",
-                 "tls_interop_server.adb");
+                 "tls_interop_server.adb",
+                 "tls_cli.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use

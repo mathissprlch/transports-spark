@@ -1,32 +1,205 @@
-# Top-level convenience for grpc-ada.
+# transports-spark — top-level Makefile.
 #
-# On macOS the GNAT toolchain shipped via Alire needs SDKROOT pointed at the
-# Command Line Tools SDK so the linker can find -lSystem. Set it once here.
+# This is the public test-discovery surface (CLAUDE.md §10d).
+# Every long-running operation worth running again has a target here.
+#
+# Layout (runnable, not aspirational):
+#
+#   v0.5 TLS:     tls-build  tls-test  tls-perf  tls-prove[-l3]
+#                 tls-soak[-quick]  tls-audit  tls-bare
+#   Tier D:       matrix  matrix-openssl  matrix-PEER  matrix-quick
+#   v0.1 gRPC:    grpc-build  grpc-test  grpc-codegen  grpc-bench
+#                 grpc-bench-quick
+#   v0.2 MQTT:    mqtt-build  mqtt-test
+#   HTTP/2:       http2-build  http2-test
+#   General:      all  clean  help
+#
+# Run `make help` for the inline help output.
+#
+# macOS toolchain note: GNAT shipped via Alire needs SDKROOT pointed at
+# the Command Line Tools SDK so the linker can find -lSystem. Set once.
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
   SDK := $(shell xcrun --show-sdk-path)
-  # SDKROOT alone isn't enough on recent macOS — Apple ld needs LIBRARY_PATH
-  # to include <sdk>/usr/lib so it can find -lSystem.
   ALR_ENV := SDKROOT=$(SDK) LIBRARY_PATH=$(SDK)/usr/lib
 else
   ALR_ENV :=
 endif
 
-CRATES := protobuf_ada grpc_ada protoc_gen_grpc_ada protobuf_ada_tests examples
+GNATPROVE := /Users/mathis/.alire/bin/gnatprove
+PROVE_LEVEL ?= 2
+SOAK_ITERS ?= 100
+SOAK_QUICK_ITERS := 10
+
+# Crates that participate in `make build` / `make all`.
+CRATES := tls_core protobuf_ada grpc_ada protoc_gen_grpc_ada \
+          protobuf_ada_tests mqtt_core http2_core grpc_core \
+          rflx_runtime examples
+
+# Plugin + codegen paths (gRPC track).
 PLUGIN := crates/protoc_gen_grpc_ada/bin/protoc_gen_grpc_ada
 GEN_DIR := crates/protobuf_ada_tests/generated
 EXAMPLES_GEN := crates/examples/generated
 
-.PHONY: all build test clean codegen plugin bench bench-build bench-quick
+.PHONY: all build clean help \
+        tls-build tls-test tls-perf tls-prove tls-prove-l3 \
+        tls-soak tls-soak-quick tls-audit tls-bare \
+        matrix matrix-openssl matrix-rustls matrix-go matrix-gnutls \
+        matrix-mbedtls matrix-boringssl matrix-quick \
+        grpc-build grpc-test grpc-codegen grpc-plugin \
+        grpc-bench grpc-bench-build grpc-bench-quick \
+        mqtt-build mqtt-test \
+        http2-build http2-test \
+        examples-build
 
-all: build
+# Default — build the production crate.
+all: tls-build
 
-plugin:
+help:
+	@echo 'transports-spark Makefile — common targets:'
+	@echo ''
+	@echo '  v0.5 TLS:'
+	@echo '    tls-build        Build crates/tls_core'
+	@echo '    tls-test         Run tls_core_tests (594 asserts)'
+	@echo '    tls-perf         Run tls_perf_bench'
+	@echo '    tls-prove        gnatprove --level=$(PROVE_LEVEL)'
+	@echo '    tls-prove-l3     gnatprove --level=3 (slower)'
+	@echo '    tls-soak         Run tls_core_tests SOAK_ITERS=$(SOAK_ITERS) times'
+	@echo '    tls-soak-quick   $(SOAK_QUICK_ITERS)-iter quick soak'
+	@echo '    tls-audit        Static §0d audit (no SPARK_Mode Off / pragma Assume etc.)'
+	@echo '    tls-bare         Build crates/tls_core with -XTRANSPORT=bare'
+	@echo ''
+	@echo '  Tier D interop matrix:'
+	@echo '    matrix           Run all available peer columns'
+	@echo '    matrix-openssl   openssl peer (PSK + cert when wired)'
+	@echo '    matrix-gnutls    gnutls (gnutls-cli/serv) — when wired'
+	@echo '    matrix-mbedtls   mbedTLS (ssl_client2/server2) — when wired'
+	@echo '    matrix-rustls    rustls (tlsclient/server) — when wired'
+	@echo '    matrix-go        Go crypto/tls — when wired'
+	@echo '    matrix-boringssl BoringSSL (bssl) — when wired'
+	@echo ''
+	@echo '  v0.1 gRPC:'
+	@echo '    grpc-build       Build the gRPC crate stack'
+	@echo '    grpc-test        Run protobuf_ada_tests'
+	@echo '    grpc-codegen     Regenerate Ada from .proto fixtures'
+	@echo '    grpc-bench       Full ~30 min Ada-vs-Go gRPC bench'
+	@echo '    grpc-bench-quick 30 s/workload bench (~10 min total)'
+	@echo ''
+	@echo '  v0.2 MQTT / HTTP/2:'
+	@echo '    mqtt-build       Build crates/mqtt_core'
+	@echo '    mqtt-test        Run mqtt_core_tests'
+	@echo '    http2-build      Build crates/http2_core'
+	@echo '    http2-test       Run http2_core_tests'
+	@echo ''
+	@echo '  General:'
+	@echo '    build            Build every crate in CRATES'
+	@echo '    examples-build   Build crates/examples (interop binaries)'
+	@echo '    clean            Remove obj/lib/bin from every crate'
+	@echo ''
+	@echo '  Variables:'
+	@echo '    PROVE_LEVEL=N    gnatprove level for tls-prove (default 2)'
+	@echo '    SOAK_ITERS=N     iterations for tls-soak (default 100)'
+
+build:
+	@for c in $(CRATES); do \
+	  echo "==> build $$c"; \
+	  ( cd crates/$$c && $(ALR_ENV) alr -n build ) || exit 1; \
+	done
+
+clean:
+	@for c in $(CRATES); do \
+	  rm -rf crates/$$c/obj crates/$$c/lib crates/$$c/bin; \
+	done
+	@rm -rf $(GEN_DIR)
+
+# ============================================================
+# v0.5 TLS targets
+# ============================================================
+
+tls-build:
+	@$(ALR_ENV) alr -C crates/tls_core build
+
+tls-test: tls-build
+	@$(ALR_ENV) alr -C crates/tls_core/tests build
+	@cd crates/tls_core/tests && $(ALR_ENV) ./bin/tls_core_tests | tail -3
+
+tls-perf: tls-build
+	@$(ALR_ENV) alr -C crates/tls_core/tests build
+	@cd crates/tls_core/tests && $(ALR_ENV) ./bin/tls_perf_bench
+
+tls-prove:
+	@$(ALR_ENV) $(GNATPROVE) -P crates/tls_core/tls_core.gpr \
+	  --level=$(PROVE_LEVEL) -j0 2>&1 | tail -25
+
+tls-prove-l3:
+	@$(MAKE) tls-prove PROVE_LEVEL=3
+
+tls-soak: tls-test
+	@cd crates/tls_core/tests && pass=0; fail=0; \
+	  for i in $$(seq 1 $(SOAK_ITERS)); do \
+	    out=$$($(ALR_ENV) ./bin/tls_core_tests 2>&1 | tail -1); \
+	    if [ "$$out" = "Pass: 594  Fail: 0" ]; then \
+	      pass=$$((pass+1)); \
+	    else \
+	      fail=$$((fail+1)); echo "iter $$i: $$out"; \
+	    fi; \
+	  done; \
+	  echo "tls-soak: $$pass / $(SOAK_ITERS) passed exact 594/594"
+
+tls-soak-quick:
+	@$(MAKE) tls-soak SOAK_ITERS=$(SOAK_QUICK_ITERS)
+
+tls-audit:
+	@bash scripts/tls_audit.sh
+
+tls-bare:
+	@$(ALR_ENV) alr -C crates/tls_core build -- -XTRANSPORT=bare
+	@echo "tls-bare: build clean (-XTRANSPORT=bare)"
+
+# ============================================================
+# Tier D matrix
+# ============================================================
+
+# Build the harness binary the matrix uses.  Single binary
+# (tls_cli) handles both client and server, all modes, all
+# extensions — driven by CLI flags.  Per CLAUDE.md §10a.
+matrix-build: tls-build
+	@$(ALR_ENV) alr -C crates/examples build
+
+matrix: matrix-build
+	@bash scripts/interop/run_matrix.sh
+
+matrix-openssl: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer openssl
+
+matrix-gnutls: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer gnutls
+
+matrix-mbedtls: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer mbedtls
+
+matrix-rustls: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer rustls
+
+matrix-go: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer go
+
+matrix-boringssl: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer boringssl
+
+# A fast subset for inner-loop iteration: openssl only, PSK only.
+matrix-quick: matrix-build
+	@bash scripts/interop/run_matrix.sh --peer openssl --quick
+
+# ============================================================
+# v0.1 gRPC
+# ============================================================
+
+grpc-plugin:
 	@( cd crates/protoc_gen_grpc_ada && $(ALR_ENV) alr build )
 
-# Regenerate Ada code from .proto fixtures.
-codegen: plugin
+grpc-codegen: grpc-plugin
 	@mkdir -p $(GEN_DIR) $(EXAMPLES_GEN)
 	@protoc --plugin=protoc-gen-grpc-ada=$(PLUGIN) \
 	        --grpc-ada_out=$(GEN_DIR) \
@@ -41,36 +214,65 @@ codegen: plugin
 	        -I crates/examples/proto \
 	        crates/examples/proto/routeguide.proto
 
-build:
-	@for c in $(CRATES); do \
-	  echo "==> build $$c"; \
-	  ( cd crates/$$c && $(ALR_ENV) alr build ) || exit 1; \
-	done
+grpc-build:
+	@( cd crates/grpc_ada && $(ALR_ENV) alr build )
 
-test: build
+grpc-test: grpc-build
 	@cd crates/protobuf_ada_tests && $(ALR_ENV) ./bin/test_main
 
-clean:
-	@for c in $(CRATES); do \
-	  rm -rf crates/$$c/obj crates/$$c/lib crates/$$c/bin; \
-	done
-	@rm -rf $(GEN_DIR)
-
-# ============================================================
-# Performance bench (Ada vs Go grpc).
-#
-#   make bench-build  — builds Go server + bench client
-#   make bench        — full ~30 min run
-#   make bench-quick  — 30 s/workload, ~10 min run
-# ============================================================
-
-bench-build:
+grpc-bench-build:
 	@./bench/build.sh
 
-bench: bench-build
+grpc-bench: grpc-bench-build
 	@cd crates/examples && BUILD_MODE=release $(ALR_ENV) alr build
 	@./bench/run_bench.sh
 
-bench-quick: bench-build
+grpc-bench-quick: grpc-bench-build
 	@cd crates/examples && BUILD_MODE=release $(ALR_ENV) alr build
 	@DUR_SRV=30s DUR_CLI=30 ./bench/run_bench.sh
+
+# ============================================================
+# v0.2 MQTT
+# ============================================================
+
+mqtt-build:
+	@$(ALR_ENV) alr -C crates/mqtt_core build
+
+mqtt-test: mqtt-build
+	@if [ -d crates/mqtt_core_tests ]; then \
+	  $(ALR_ENV) alr -C crates/mqtt_core_tests build && \
+	  cd crates/mqtt_core_tests && $(ALR_ENV) ./bin/mqtt_core_tests; \
+	else \
+	  echo "mqtt-test: no mqtt_core_tests crate (tests live in mqtt_core demo)"; \
+	fi
+
+# ============================================================
+# v0.3 / v0.4 HTTP/2
+# ============================================================
+
+http2-build:
+	@$(ALR_ENV) alr -C crates/http2_core build
+
+http2-test: http2-build
+	@if [ -d crates/http2_core_tests ]; then \
+	  $(ALR_ENV) alr -C crates/http2_core_tests build && \
+	  cd crates/http2_core_tests && $(ALR_ENV) ./bin/http2_core_tests; \
+	fi
+
+# ============================================================
+# Examples
+# ============================================================
+
+examples-build:
+	@$(ALR_ENV) alr -C crates/examples build
+
+# ============================================================
+# Backward-compat aliases (legacy target names)
+# ============================================================
+
+bench: grpc-bench
+bench-build: grpc-bench-build
+bench-quick: grpc-bench-quick
+codegen: grpc-codegen
+plugin: grpc-plugin
+test: tls-test
