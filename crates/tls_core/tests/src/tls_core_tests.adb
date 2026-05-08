@@ -5863,6 +5863,190 @@ procedure Tls_Core_Tests is
       end;
    end Handshake_Buffer_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — Tls13_Driver multi-record handshake reassembly.
+   --
+   --  Validates that the driver's Awaiting_Sf path now reassembles
+   --  inbound handshake messages through Handshake_Buffer rather
+   --  than assuming each record holds exactly one handshake message
+   --  (RFC 8446 §5.1 + C12 v2 wiring).
+   --
+   --  Sub-tests:
+   --    A. Full happy-path handshake: SH(plain) || EE_rec || SF_rec.
+   --       The new buffered path successfully pops EE then SF.
+   --       Equivalent to scenario 30, focused on the wire shape:
+   --       3 records, 2 handshake messages decrypted from the
+   --       2 application_data records, reassembled in order.
+   --    B. Truncated flight: SH || EE_rec only (no SF). The driver
+   --       must transition to Failed because the buffer never
+   --       reports a complete second handshake message — exercises
+   --       the `Sub /= Done_Sub` end-of-input branch in the new
+   --       Step body.
+   --    C. Truncated harder: SH only (no encrypted records). The
+   --       driver must transition to Failed in the same end-of-
+   --       input branch.
+   ---------------------------------------------------------------------
+
+   procedure Tls13_Multi_Record_Reassembly_Scenario;
+   procedure Tls13_Multi_Record_Reassembly_Scenario is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Tls_Core.Octet;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+
+      --  Helper: drive Server and Client to capture Server's
+      --  full SH+EE+SF flight bytes in Flight (1 .. Flight_Last).
+      procedure Capture_Server_Flight
+        (Flight      : out Tls_Core.Octet_Array;
+         Flight_Last : out Natural;
+         Sh_Rec_Last : out Natural;
+         Ee_Rec_Last : out Natural;
+         Sf_Rec_Last : out Natural);
+      procedure Capture_Server_Flight
+        (Flight      : out Tls_Core.Octet_Array;
+         Flight_Last : out Natural;
+         Sh_Rec_Last : out Natural;
+         Ee_Rec_Last : out Natural;
+         Sf_Rec_Last : out Natural)
+      is
+         C, S : Tls_Core.Tls13_Driver.Driver;
+         Buf     : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf_Last : Natural;
+         Reply    : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+         Sh_Len, Ee_Len, Sf_Len : Natural;
+         Cursor : Natural;
+      begin
+         Flight := (others => 0);
+         Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+
+         --  Client → CH
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Buf, Out_Last => Buf_Last);
+
+         --  Server consumes CH, emits SH+EE+SF flight.
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Buf (1 .. Buf_Last),
+            Out_Buf => Reply, Out_Last => Reply_Last);
+
+         Flight (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Flight_Last := Reply_Last;
+
+         --  Decompose Reply into 3 records by walking record headers.
+         Cursor := 1;
+         Sh_Len := Natural (Reply (Cursor + 3)) * 256
+                   + Natural (Reply (Cursor + 4));
+         Sh_Rec_Last := Cursor + 5 + Sh_Len - 1;
+         Cursor := Sh_Rec_Last + 1;
+         Ee_Len := Natural (Reply (Cursor + 3)) * 256
+                   + Natural (Reply (Cursor + 4));
+         Ee_Rec_Last := Cursor + 5 + Ee_Len - 1;
+         Cursor := Ee_Rec_Last + 1;
+         Sf_Len := Natural (Reply (Cursor + 3)) * 256
+                   + Natural (Reply (Cursor + 4));
+         Sf_Rec_Last := Cursor + 5 + Sf_Len - 1;
+      end Capture_Server_Flight;
+
+      --  Captured state, shared across sub-tests.
+      Flight      : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Flight_Last : Natural;
+      Sh_Rec_Last : Natural;
+      Ee_Rec_Last : Natural;
+      Sf_Rec_Last : Natural;
+   begin
+      Put_Line
+        ("scenario — Tls13_Driver multi-record handshake reassembly");
+
+      Capture_Server_Flight
+        (Flight, Flight_Last, Sh_Rec_Last, Ee_Rec_Last, Sf_Rec_Last);
+
+      Check ("MR/setup: server flight is 3 records",
+             Flight_Last = Sf_Rec_Last);
+      Check ("MR/setup: SH boundary < EE boundary < SF boundary",
+             Sh_Rec_Last < Ee_Rec_Last
+             and then Ee_Rec_Last < Sf_Rec_Last);
+      Check ("MR/setup: SH outer type = 0x16",
+             Flight (1) = 16#16#);
+      Check ("MR/setup: EE outer type = 0x17",
+             Flight (Sh_Rec_Last + 1) = 16#17#);
+      Check ("MR/setup: SF outer type = 0x17",
+             Flight (Ee_Rec_Last + 1) = 16#17#);
+
+      --  Sub-test A: full flight → client reaches Done.
+      declare
+         C_Ok : Tls_Core.Tls13_Driver.Driver;
+         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Ok, Psk, Identity);
+         Tls_Core.Tls13_Driver.Step
+           (C_Ok, In_Bytes => Out_Buf (1 .. 0),
+            Out_Buf => Out_Buf, Out_Last => Out_Last);
+         --  Drop the CH outbound; we only need the client to reach
+         --  Awaiting_Sf so the next Step processes the captured
+         --  server flight.
+         Tls_Core.Tls13_Driver.Step
+           (C_Ok,
+            In_Bytes => Flight (1 .. Flight_Last),
+            Out_Buf  => Out_Buf,
+            Out_Last => Out_Last);
+         Check ("MR/A: full flight → client Done",
+                Tls_Core.Tls13_Driver.Current_State (C_Ok)
+                  = Tls_Core.Tls13_Driver.Done);
+      end;
+
+      --  Sub-test B: truncate to SH+EE_rec (no SF). Buffer pops EE
+      --  but not SF; new code transitions to Failed via end-of-input
+      --  branch.
+      declare
+         C_Trunc : Tls_Core.Tls13_Driver.Driver;
+         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Trunc, Psk, Identity);
+         Tls_Core.Tls13_Driver.Step
+           (C_Trunc, In_Bytes => Out_Buf (1 .. 0),
+            Out_Buf => Out_Buf, Out_Last => Out_Last);
+         Tls_Core.Tls13_Driver.Step
+           (C_Trunc,
+            In_Bytes => Flight (1 .. Ee_Rec_Last),
+            Out_Buf  => Out_Buf,
+            Out_Last => Out_Last);
+         Check ("MR/B: SH+EE only → client Failed",
+                Tls_Core.Tls13_Driver.Current_State (C_Trunc)
+                  = Tls_Core.Tls13_Driver.Failed);
+         Check ("MR/B: SH+EE only → decode_error alert recorded",
+                Tls_Core.Tls13_Driver.Last_Alert_Description (C_Trunc)
+                  = Tls_Core.Alert.Desc_Decode_Error);
+      end;
+
+      --  Sub-test C: truncate to SH-only. Buffer never holds even
+      --  EE; new code reports Failed (with decode_error) without
+      --  attempting any AEAD decrypt.
+      declare
+         C_Sh : Tls_Core.Tls13_Driver.Driver;
+         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Sh, Psk, Identity);
+         Tls_Core.Tls13_Driver.Step
+           (C_Sh, In_Bytes => Out_Buf (1 .. 0),
+            Out_Buf => Out_Buf, Out_Last => Out_Last);
+         Tls_Core.Tls13_Driver.Step
+           (C_Sh,
+            In_Bytes => Flight (1 .. Sh_Rec_Last),
+            Out_Buf  => Out_Buf,
+            Out_Last => Out_Last);
+         Check ("MR/C: SH-only → client Failed",
+                Tls_Core.Tls13_Driver.Current_State (C_Sh)
+                  = Tls_Core.Tls13_Driver.Failed);
+      end;
+   end Tls13_Multi_Record_Reassembly_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -5928,6 +6112,7 @@ begin
    Alert_Decode_Error_Scenario;
    Alert_Plaintext_Fatal_Scenario;
    Handshake_Buffer_Scenario;
+   Tls13_Multi_Record_Reassembly_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

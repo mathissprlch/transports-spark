@@ -517,113 +517,175 @@ is
                Tls_Core.Aead_Channel.Init_Sha256
                  (D.Hs_Out_Dir, D.Suite, D.C_Hs_Sec);
 
-               --  Step 3: decrypt EE record.
+               --  Step 3+4: decrypt every subsequent record on the
+               --  handshake stream, push the inner plaintext through
+               --  Tls_Core.Handshake_Buffer, and pop complete handshake
+               --  messages in expected order. RFC 8446 §5.1 allows a
+               --  handshake message to span multiple records; §4 also
+               --  permits multiple handshake messages packed in a
+               --  single record. Both shapes are handled by the
+               --  buffer + per-message pop loop.
+               --
+               --  Substate transitions:
+               --    Expect_EE  → after EE appended to transcript and
+               --                 Th_After_Ee snapshotted (for §4.4.4
+               --                 SF verify_data binding) →  Expect_SF
+               --    Expect_SF  → after SF verify_data check passes →
+               --                 Done_Sub (loop exits)
                declare
-                  Pt_Buf : Octet_Array (1 .. 1024) := (others => 0);
+                  type Sub_State is (Expect_EE, Expect_SF, Done_Sub);
+                  Sub  : Sub_State := Expect_EE;
+                  --  Per-record scratch.
+                  Pt_Buf : Octet_Array (1 .. 16640) := (others => 0);
                   Pt_Last : Natural;
                   Inner_Type : Octet;
-                  OK : Boolean;
+                  Aead_OK : Boolean;
                   Rec_Len : Natural;
                   Rec_End : Natural;
-               begin
-                  if Cursor + 4 > In_Bytes'Last
-                    or else In_Bytes (Cursor) /=
-                              Tls_Core.Aead_Channel.Inner_Type_Application_Data
-                  then
-                     D.Cur_State := Failed;
-                     return;
-                  end if;
-                  Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
-                             + Natural (In_Bytes (Cursor + 4));
-                  Rec_End := Cursor + 5 + Rec_Len - 1;
-                  if Rec_End > In_Bytes'Last then
-                     D.Cur_State := Failed;
-                     return;
-                  end if;
-                  Tls_Core.Aead_Channel.Receive
-                    (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
-                     Pt_Buf, Pt_Last, Inner_Type, OK);
-                  if not OK then
-                     Fail_Encrypted
-                       (D, Tls_Core.Alert.Desc_Bad_Record_Mac,
-                        Out_Buf, Out_Last);
-                     return;
-                  end if;
-                  if Inner_Type /=
-                       Tls_Core.Aead_Channel.Inner_Type_Handshake
-                    or else Pt_Last < 4
-                    or else Pt_Buf (1) /= Hs_Type_EE
-                  then
-                     Fail_Encrypted
-                       (D, Tls_Core.Alert.Desc_Decode_Error,
-                        Out_Buf, Out_Last);
-                     return;
-                  end if;
-                  Tls_Core.Transcript.Append
-                    (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
-                  Cursor := Rec_End + 1;
-               end;
-
-               --  Step 4: decrypt server Finished record.
-               Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Ee);
-               declare
-                  Pt_Buf : Octet_Array (1 .. 1024) := (others => 0);
-                  Pt_Last : Natural;
-                  Inner_Type : Octet;
-                  OK : Boolean;
-                  Rec_Len : Natural;
-                  Rec_End : Natural;
+                  Push_OK : Boolean;
+                  --  Per-message scratch.
+                  Msg_Buf : Octet_Array (1 .. Tls_Core.Handshake_Buffer.Max_Buf)
+                    := (others => 0);
+                  Msg_Last : Natural;
+                  Body_Len : Natural;
                   Expected_Sf : Tls_Core.Sha256.Digest;
-                  Diff : Octet := 0;
+                  Diff : Octet;
                begin
-                  if Cursor + 4 > In_Bytes'Last
-                    or else In_Bytes (Cursor) /=
-                              Tls_Core.Aead_Channel.Inner_Type_Application_Data
-                  then
-                     D.Cur_State := Failed;
-                     return;
-                  end if;
-                  Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
-                             + Natural (In_Bytes (Cursor + 4));
-                  Rec_End := Cursor + 5 + Rec_Len - 1;
-                  if Rec_End > In_Bytes'Last then
-                     D.Cur_State := Failed;
-                     return;
-                  end if;
-                  Tls_Core.Aead_Channel.Receive
-                    (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
-                     Pt_Buf, Pt_Last, Inner_Type, OK);
-                  if not OK then
-                     Fail_Encrypted
-                       (D, Tls_Core.Alert.Desc_Bad_Record_Mac,
-                        Out_Buf, Out_Last);
-                     return;
-                  end if;
-                  if Inner_Type /=
-                       Tls_Core.Aead_Channel.Inner_Type_Handshake
-                    or else Pt_Last /= 4 + 32
-                    or else Pt_Buf (1) /= Hs_Type_Finished
-                  then
+                  Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
+
+                  --  Outer loop: walk inbound records.
+                  while Cursor <= In_Bytes'Last and then Sub /= Done_Sub loop
+                     pragma Loop_Invariant
+                       (Cursor in In_Bytes'First .. In_Bytes'Last + 1);
+                     if Cursor + 4 > In_Bytes'Last
+                       or else In_Bytes (Cursor) /=
+                                 Tls_Core.Aead_Channel.Inner_Type_Application_Data
+                     then
+                        Fail_Encrypted
+                          (D, Tls_Core.Alert.Desc_Decode_Error,
+                           Out_Buf, Out_Last);
+                        return;
+                     end if;
+                     Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
+                                + Natural (In_Bytes (Cursor + 4));
+                     Rec_End := Cursor + 5 + Rec_Len - 1;
+                     if Rec_End > In_Bytes'Last then
+                        Fail_Encrypted
+                          (D, Tls_Core.Alert.Desc_Decode_Error,
+                           Out_Buf, Out_Last);
+                        return;
+                     end if;
+                     Tls_Core.Aead_Channel.Receive
+                       (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
+                        Pt_Buf, Pt_Last, Inner_Type, Aead_OK);
+                     if not Aead_OK then
+                        Fail_Encrypted
+                          (D, Tls_Core.Alert.Desc_Bad_Record_Mac,
+                           Out_Buf, Out_Last);
+                        return;
+                     end if;
+                     if Inner_Type /=
+                          Tls_Core.Aead_Channel.Inner_Type_Handshake
+                     then
+                        Fail_Encrypted
+                          (D, Tls_Core.Alert.Desc_Unexpected_Message,
+                           Out_Buf, Out_Last);
+                        return;
+                     end if;
+                     --  Push this record's inner plaintext into the
+                     --  reassembly buffer.
+                     if Pt_Last >
+                          Tls_Core.Handshake_Buffer.Max_Buf
+                     then
+                        Fail_Encrypted
+                          (D, Tls_Core.Alert.Desc_Decode_Error,
+                           Out_Buf, Out_Last);
+                        return;
+                     end if;
+                     Tls_Core.Handshake_Buffer.Push_Record_Bytes
+                       (D.Hs_In_Buf, Pt_Buf (1 .. Pt_Last), Push_OK);
+                     if not Push_OK then
+                        Fail_Encrypted
+                          (D, Tls_Core.Alert.Desc_Internal_Error,
+                           Out_Buf, Out_Last);
+                        return;
+                     end if;
+                     Cursor := Rec_End + 1;
+
+                     --  Inner loop: drain complete handshake messages.
+                     while Tls_Core.Handshake_Buffer.Has_Complete_Message
+                             (D.Hs_In_Buf)
+                       and then Sub /= Done_Sub
+                     loop
+                        pragma Loop_Invariant (Sub in Expect_EE | Expect_SF);
+                        Body_Len :=
+                          Tls_Core.Handshake_Buffer.Peek_Body_Length
+                            (D.Hs_In_Buf);
+                        if Body_Len + 4 > Msg_Buf'Length then
+                           Fail_Encrypted
+                             (D, Tls_Core.Alert.Desc_Decode_Error,
+                              Out_Buf, Out_Last);
+                           return;
+                        end if;
+                        Tls_Core.Handshake_Buffer.Pop_Complete_Message
+                          (D.Hs_In_Buf, Msg_Buf, Msg_Last);
+
+                        case Sub is
+                           when Expect_EE =>
+                              if Msg_Last < 4
+                                or else Msg_Buf (1) /= Hs_Type_EE
+                              then
+                                 Fail_Encrypted
+                                   (D, Tls_Core.Alert.Desc_Decode_Error,
+                                    Out_Buf, Out_Last);
+                                 return;
+                              end if;
+                              Tls_Core.Transcript.Append
+                                (D.Hash_Ctx, Msg_Buf (1 .. Msg_Last));
+                              Tls_Core.Transcript.Snapshot
+                                (D.Hash_Ctx, Th_After_Ee);
+                              Sub := Expect_SF;
+
+                           when Expect_SF =>
+                              if Msg_Last /= 4 + 32
+                                or else Msg_Buf (1) /= Hs_Type_Finished
+                              then
+                                 Fail_Encrypted
+                                   (D, Tls_Core.Alert.Desc_Decode_Error,
+                                    Out_Buf, Out_Last);
+                                 return;
+                              end if;
+                              --  Verify server Finished verify_data:
+                              --  HMAC of s_hs_finished_key over Th_After_Ee.
+                              Build_Finished_Body
+                                (D.S_Hs_Sec, Th_After_Ee, Expected_Sf);
+                              Diff := 0;
+                              for I in 1 .. 32 loop
+                                 pragma Loop_Invariant (I in 1 .. 32);
+                                 Diff := Diff or
+                                   (Msg_Buf (4 + I) xor Expected_Sf (I));
+                              end loop;
+                              if Diff /= 0 then
+                                 D.Cur_State := Failed;
+                                 return;
+                              end if;
+                              Tls_Core.Transcript.Append
+                                (D.Hash_Ctx, Msg_Buf (1 .. Msg_Last));
+                              Sub := Done_Sub;
+
+                           when Done_Sub =>
+                              null;
+                        end case;
+                     end loop;
+                  end loop;
+
+                  if Sub /= Done_Sub then
+                     --  Ran out of records before SF was popped.
                      Fail_Encrypted
                        (D, Tls_Core.Alert.Desc_Decode_Error,
                         Out_Buf, Out_Last);
                      return;
                   end if;
-                  --  Verify server Finished verify_data: HMAC of
-                  --  s_hs_finished_key over Th_After_Ee.
-                  Build_Finished_Body
-                    (D.S_Hs_Sec, Th_After_Ee, Expected_Sf);
-                  for I in 1 .. 32 loop
-                     Diff := Diff or
-                       (Pt_Buf (4 + I) xor Expected_Sf (I));
-                  end loop;
-                  if Diff /= 0 then
-                     D.Cur_State := Failed;
-                     return;
-                  end if;
-                  Tls_Core.Transcript.Append
-                    (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
-                  Cursor := Rec_End + 1;
                end;
 
                --  Step 5: derive app secrets.
