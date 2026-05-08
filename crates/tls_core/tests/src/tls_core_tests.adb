@@ -8,6 +8,7 @@ with Ada.Text_IO;
 with Ada.Command_Line;
 with Interfaces;
 with Tls_Core;
+with Tls_Core.Hello_Retry;
 with Tls_Core.Hkdf;
 with Tls_Core.Record_Layer;
 with Tls_Core.Sha256;
