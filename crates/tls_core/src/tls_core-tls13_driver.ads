@@ -11,12 +11,22 @@
 --  grpcurl, browsers) — those peers reject the simplified-record
 --  shape Handshake_Driver emits.
 --
---  This slice supports the PSK_KE profile (RFC 8446 §7.1 mode 1)
---  with **runtime cipher-suite negotiation**: the client offers
---  all three v0.5 production suites in §B.4 preference order, the
---  server picks the first acceptable one, and Send / Receive go
---  through Tls_Core.Aead_Channel which dispatches the AEAD
---  primitive on the negotiated suite.
+--  This slice supports the **psk_dhe_ke** profile (RFC 8446 §7.1
+--  mode 3 — PSK + ECDHE) with **runtime cipher-suite negotiation**:
+--  the client offers all three v0.5 production suites in §B.4
+--  preference order, advertises `psk_dhe_ke` (the byte 0x01 in the
+--  psk_key_exchange_modes extension), the server picks the first
+--  acceptable suite, and both sides exchange X25519 key shares
+--  whose shared secret is threaded into the Handshake-Secret
+--  HKDF-Extract step. Send / Receive go through
+--  Tls_Core.Aead_Channel which dispatches the AEAD primitive on
+--  the negotiated suite.
+--
+--  Mode 1 (psk_ke — PSK without DHE) is **not implemented** in
+--  the driver per CLAUDE.md §0a (RFC 8446 §A.2 discourages it; no
+--  production peer accepts it by default). The wire-format
+--  scaffolding in Tls_Core.Hello.Encode_Client_Hello_Psk now
+--  always emits psk_dhe_ke with a key_share, never plain psk_ke.
 --
 --  Wall-hit (left visible): the SHA-384 key-schedule path through
 --  Tls13_Driver is not yet ported. The driver therefore restricts
@@ -82,27 +92,34 @@ is
 
    type Driver is private;
 
-   --  Initialise as PSK_KE server. The PSK is the same byte string
-   --  the peer (e.g. openssl s_client -psk) uses; Identity is the
-   --  external PSK identity it advertises.
+   --  Initialise as psk_dhe_ke (mode 3) server. The PSK is the same
+   --  byte string the peer (e.g. openssl s_client -psk) uses;
+   --  Identity is the external PSK identity it advertises.
+   --  Ecdhe_Priv is the server's X25519 private scalar for the
+   --  ephemeral key share; the public key is derived during init
+   --  via Tls_Core.X25519.Derive_Public.
    procedure Init_Psk_Server
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array)
+      Psk_Identity : Octet_Array;
+      Ecdhe_Priv   : Octet_Array)
    with
      Pre =>
        PSK'Length = 32
-       and then Psk_Identity'Length in 1 .. 64;
+       and then Psk_Identity'Length in 1 .. 64
+       and then Ecdhe_Priv'Length = 32;
 
-   --  Initialise as PSK_KE client.
+   --  Initialise as psk_dhe_ke (mode 3) client.
    procedure Init_Psk_Client
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array)
+      Psk_Identity : Octet_Array;
+      Ecdhe_Priv   : Octet_Array)
    with
      Pre =>
        PSK'Length = 32
-       and then Psk_Identity'Length in 1 .. 64;
+       and then Psk_Identity'Length in 1 .. 64
+       and then Ecdhe_Priv'Length = 32;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  HRR-aware initialisation (RFC 8446 §4.1.4).
@@ -131,15 +148,26 @@ is
      (D                 : out Driver;
       PSK               : Octet_Array;
       Psk_Identity      : Octet_Array;
+      Ecdhe_Priv        : Octet_Array;
       Demanded_Group    : Tls_Core.Suites.U16;
       Cookie            : Octet_Array)
    with
-     Pre => Cookie'Length in 0 .. Tls_Core.Hello_Retry.Max_Cookie_Length;
+     Pre =>
+       PSK'Length = 32
+       and then Psk_Identity'Length in 1 .. 64
+       and then Ecdhe_Priv'Length = 32
+       and then Cookie'Length in 0 .. Tls_Core.Hello_Retry.Max_Cookie_Length;
 
    procedure Init_Psk_Client_Hrr_Aware
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array);
+      Psk_Identity : Octet_Array;
+      Ecdhe_Priv   : Octet_Array)
+   with
+     Pre =>
+       PSK'Length = 32
+       and then Psk_Identity'Length in 1 .. 64
+       and then Ecdhe_Priv'Length = 32;
 
    --  Drive one flight. Caller hands in the bytes received over
    --  TCP since the last Step (one or more TLSPlaintext /
@@ -397,6 +425,24 @@ private
       PSK         : Psk_Bytes := (others => 0);
       Identity    : Identity_Bytes := (others => 0);
       Identity_Len : Natural := 0;
+
+      --  X25519 ECDHE state (RFC 8446 §4.2.8 + §7.1 mode 3).
+      --
+      --  My_Ecdhe_Priv  — local private scalar (set in Init from the
+      --                   caller-supplied bytes; never put on the wire).
+      --  My_Ecdhe_Pub   — local public u-coordinate, derived in Init
+      --                   via X25519.Derive_Public; written to the CH
+      --                   (client) or SH (server) key_share extension.
+      --  Peer_Ecdhe_Pub — peer's public u-coordinate, parsed from the
+      --                   counterpart Hello message.
+      --  Ecdhe_Shared   — X25519 (My_Ecdhe_Priv, Peer_Ecdhe_Pub),
+      --                   threaded into Handshake-Secret HKDF-Extract
+      --                   as the IKM (replaces the all-zeros IKM that
+      --                   psk_ke / mode 1 would have used).
+      My_Ecdhe_Priv  : Octet_Array (1 .. 32) := (others => 0);
+      My_Ecdhe_Pub   : Octet_Array (1 .. 32) := (others => 0);
+      Peer_Ecdhe_Pub : Octet_Array (1 .. 32) := (others => 0);
+      Ecdhe_Shared   : Octet_Array (1 .. 32) := (others => 0);
 
       --  Negotiated cipher suite. Default value is meaningless
       --  until Step transitions out of Idle / Awaiting_CH.

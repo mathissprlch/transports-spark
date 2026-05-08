@@ -106,42 +106,57 @@ is
       OK       : out Boolean);
 
    ------------------------------------------------------------------
-   --  RFC 8446 §4.2.11 PSK profile — separate encode/decode shape.
+   --  RFC 8446 §4.2.11 PSK profile (mode 3 — psk_dhe_ke).
    --
    --  External-PSK ClientHello extensions (in encoded order):
    --     supported_versions      = [TLS 1.3]
-   --     psk_key_exchange_modes  = [psk_ke (= 0)]
+   --     supported_groups        = [x25519]
+   --     key_share               = [{x25519, 32-byte u-coord}]
+   --     psk_key_exchange_modes  = [psk_dhe_ke (= 1)]
+   --     [cookie]                = optional, between modes and PSK ext
    --     pre_shared_key          = identity || binder    (MUST be last)
    --
    --  ServerHello extensions for PSK selection:
    --     supported_versions      = TLS 1.3
+   --     key_share               = {x25519, 32-byte server u-coord}
    --     pre_shared_key          = u16 selected_identity
    --
-   --  We model exactly one identity / one binder — sufficient for
-   --  openssl s_client -psk and the v0.5 single-PSK story.
+   --  Mode 1 (psk_ke — PSK without DHE) is NOT advertised on the wire
+   --  per CLAUDE.md §0a (production peers reject mode 1 by default;
+   --  RFC 8446 §A.2 discourages it). The driver will reject any peer
+   --  that advertises only mode 0.
+   --
+   --  We model exactly one identity / one binder, one named group
+   --  (x25519) and one key_share entry — sufficient for the v0.5
+   --  PSK + ECDHE story.
    ------------------------------------------------------------------
 
    subtype Psk_Identity_Len is Positive range 1 .. 64;
    subtype Binder is Octet_Array (1 .. 32);
 
-   --  Encode a CH with the PSK extension stack. Out_Bytes will hold
-   --  the wire CH (no Handshake-header prefix). Truncated_Last is
-   --  the index of the last byte of the truncated ClientHello —
+   --  Encode a CH with the PSK + DHE extension stack. Out_Bytes will
+   --  hold the wire CH (no Handshake-header prefix). Truncated_Last
+   --  is the index of the last byte of the truncated ClientHello —
    --  i.e. the last byte of the binders' length field, just before
    --  the binder bytes themselves. Use Out_Bytes (Out_Buf'First ..
    --  Truncated_Last) as the input to Tls_Core.Psk_Binder.Compute,
    --  then patch the resulting 32-byte binder into
    --  Out_Bytes (Truncated_Last + 1 .. Truncated_Last + 32).
+   --
+   --  Key_Share carries the client's X25519 public key (32-byte
+   --  u-coordinate; RFC 7748 §6.1). The named group is fixed to
+   --  x25519 (0x001D) for v0.5.
    procedure Encode_Client_Hello_Psk
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
+      Key_Share       : Public_Key;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
    with
      Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 256
+       and then Out_Buf'Length >= 320
        and then Identity'Length in Psk_Identity_Len,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
@@ -154,6 +169,7 @@ is
    procedure Encode_Client_Hello_Psk_With_Cookie
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
+      Key_Share       : Public_Key;
       Cookie          : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
@@ -161,18 +177,20 @@ is
    with
      Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 256
+       and then Out_Buf'Length >= 320
        and then Identity'Length in Psk_Identity_Len
        and then Cookie'Length <= 64,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 
-   --  Decode the PSK ext from a received CH. Sets OK := False if
-   --  the shape doesn't match (no PSK ext, multiple identities,
-   --  binder length /= 32, etc.). Identity_First..Identity_Last and
+   --  Decode the PSK + DHE ext stack from a received CH. Sets OK :=
+   --  False if the shape doesn't match (no PSK ext, multiple
+   --  identities, binder length /= 32, no key_share for x25519, no
+   --  psk_dhe_ke mode, etc.). Identity_First..Identity_Last and
    --  Binder_First..Binder_Last are absolute indices into In_Bytes
-   --  naming the identity and binder slices. Truncated_Last is the
-   --  last byte of the truncated CH (caller hashes
+   --  naming the identity and binder slices. Key_Share_First..
+   --  Key_Share_Last name the 32-byte X25519 public key. Truncated_Last
+   --  is the last byte of the truncated CH (caller hashes
    --  In_Bytes(In_Bytes'First..Truncated_Last) for the binder
    --  recompute). Suites_First..Suites_Last bracket the
    --  cipher_suites list bytes (RFC 8446 §4.1.2 — flat-packed u16
@@ -186,23 +204,39 @@ is
       Identity_Last   : out Natural;
       Binder_First    : out Natural;
       Binder_Last     : out Natural;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
       Truncated_Last  : out Natural;
       OK              : out Boolean);
 
    --  Encode a ServerHello echoing selected_identity = 0 and the
    --  TLS 1.3 supported_versions. Selected_Suite is the cipher
    --  suite the server picked from the client's offered list (RFC
-   --  8446 §4.1.3).
+   --  8446 §4.1.3). Key_Share carries the server's X25519 public
+   --  key (32-byte u-coordinate).
    procedure Encode_Server_Hello_Psk
      (Random         : Random_Bytes;
       Selected_Suite : Tls_Core.Suites.U16;
+      Key_Share      : Public_Key;
       Out_Buf        : out Octet_Array;
       Out_Last       : out Natural)
    with
      Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 128,
+       and then Out_Buf'Length >= 192,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
+
+   --  Decode the server's X25519 public key from a received SH.
+   --  In_Bytes is the SH body (after the 4-byte handshake header).
+   --  OK = False if no key_share extension is present, or the group
+   --  is not x25519, or the key_exchange length is not 32. Sets
+   --  Key_Share_First..Key_Share_Last to absolute indices in
+   --  In_Bytes naming the 32-byte X25519 public key bytes.
+   procedure Decode_Server_Hello_Psk_Key_Share
+     (In_Bytes        : Octet_Array;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
+      OK              : out Boolean);
 
 end Tls_Core.Hello;

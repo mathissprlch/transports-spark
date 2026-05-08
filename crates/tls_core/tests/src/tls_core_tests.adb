@@ -2904,15 +2904,21 @@ procedure Tls_Core_Tests is
       Truncated_Last : Natural;
       Computed_Binder : Tls_Core.Psk_Binder.Binder_Bytes;
 
+      --  Fixed test X25519 public key — psk_dhe_ke (mode 3) wire path.
+      Test_Key_Share : constant Tls_Core.Hello.Public_Key :=
+        (others => 16#99#);
+
       Decoded_Random : Tls_Core.Hello.Random_Bytes;
       Suites_F, Suites_L : Natural;
       Id_F, Id_L, Bf, Bl, T_Last : Natural;
+      Ks_F, Ks_L : Natural;
       Decode_OK : Boolean;
    begin
       Put_Line ("scenario 29 — PSK ClientHello wire-format + binder splice");
 
       Tls_Core.Hello.Encode_Client_Hello_Psk
-        (Random, Identity, Wire, Wire_Last, Truncated_Last);
+        (Random, Identity, Test_Key_Share,
+         Wire, Wire_Last, Truncated_Last);
       Check ("PSK CH: encoder emitted bytes", Wire_Last > Truncated_Last);
       Check ("PSK CH: 32 binder bytes follow truncated CH",
              Wire_Last = Truncated_Last + 1 + 32);
@@ -2928,8 +2934,12 @@ procedure Tls_Core_Tests is
         (Wire (1 .. Wire_Last),
          Decoded_Random,
          Suites_F, Suites_L,
-         Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+         Id_F, Id_L, Bf, Bl, Ks_F, Ks_L, T_Last, Decode_OK);
       Check ("PSK CH: decoder accepts encoded bytes", Decode_OK);
+      Check ("PSK CH: key_share slice has 32 bytes",
+             Ks_L - Ks_F + 1 = 32);
+      Check ("PSK CH: key_share matches encoded key",
+             Equal (Wire (Ks_F .. Ks_L), Test_Key_Share));
       Check ("PSK CH: random round-trips", Equal (Decoded_Random, Random));
       Check ("PSK CH: identity round-trips",
              Id_L - Id_F + 1 = Identity'Length
@@ -2966,10 +2976,15 @@ procedure Tls_Core_Tests is
       declare
          Sh_Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
          Sh_Last : Natural;
+         Sh_Ks_F, Sh_Ks_L : Natural;
+         Sh_Ks_OK : Boolean;
+         Server_Pub : constant Tls_Core.Hello.Public_Key :=
+           (others => 16#88#);
       begin
          Tls_Core.Hello.Encode_Server_Hello_Psk
            (Random,
             Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
+            Server_Pub,
             Sh_Wire, Sh_Last);
          Check ("PSK SH: encoder produced bytes", Sh_Last > 40);
          Check ("PSK SH: legacy_version 0x0303",
@@ -2977,6 +2992,13 @@ procedure Tls_Core_Tests is
          --  cipher_suite at offset 35 (2 + 32 + 1).
          Check ("PSK SH: selected suite echoes AES-128",
                 Sh_Wire (36) = 16#13# and then Sh_Wire (37) = 16#01#);
+         Tls_Core.Hello.Decode_Server_Hello_Psk_Key_Share
+           (Sh_Wire (1 .. Sh_Last), Sh_Ks_F, Sh_Ks_L, Sh_Ks_OK);
+         Check ("PSK SH: decoder finds key_share", Sh_Ks_OK);
+         Check ("PSK SH: key_share matches encoded server pubkey",
+                Sh_Ks_OK
+                and then Sh_Ks_L - Sh_Ks_F + 1 = 32
+                and then Equal (Sh_Wire (Sh_Ks_F .. Sh_Ks_L), Server_Pub));
       end;
    end Psk_Hello_Roundtrip;
 
@@ -3004,14 +3026,21 @@ procedure Tls_Core_Tests is
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
 
+      --  Distinct X25519 private scalars — psk_dhe_ke (mode 3) needs
+      --  one ephemeral keypair per peer.
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+
       C, S : Tls_Core.Tls13_Driver.Driver;
       Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
       Buf_Last : Natural := 0;
    begin
-      Put_Line ("scenario 30 — Tls13_Driver Ada-to-Ada PSK_KE");
+      Put_Line ("scenario 30 — Tls13_Driver Ada-to-Ada psk_dhe_ke (mode 3)");
 
-      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
 
       --  Flight 1: client → CH
       Tls_Core.Tls13_Driver.Step
@@ -3239,6 +3268,10 @@ procedure Tls_Core_Tests is
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
 
       C, S : Tls_Core.Tls13_Driver.Driver;
       Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
@@ -3252,8 +3285,8 @@ procedure Tls_Core_Tests is
       Put_Line ("scenario 30c — KeyUpdate end-to-end rotation");
 
       --  Full handshake.
-      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
       Tls_Core.Tls13_Driver.Step
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
@@ -3517,6 +3550,10 @@ procedure Tls_Core_Tests is
       --  test can assert byte-for-byte echo.
       Cookie : constant Tls_Core.Octet_Array (1 .. 8) :=
         (16#C0#, 16#0C#, 16#1E#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#);
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
 
       C, S : Tls_Core.Tls13_Driver.Driver;
       Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
@@ -3527,10 +3564,10 @@ procedure Tls_Core_Tests is
       --  Server demands HRR with secp256r1 + cookie; client is HRR-
       --  aware (Idle → Awaiting_Sh_Or_Hrr).
       Tls_Core.Tls13_Driver.Init_Psk_Server_With_Hrr
-        (S, Psk, Identity,
+        (S, Psk, Identity, Server_Priv,
          Tls_Core.Suites.Group_Secp256r1, Cookie);
       Tls_Core.Tls13_Driver.Init_Psk_Client_Hrr_Aware
-        (C, Psk, Identity);
+        (C, Psk, Identity, Client_Priv);
 
       --  Flight 1: client → CH1
       Tls_Core.Tls13_Driver.Step
@@ -5492,6 +5529,10 @@ procedure Tls_Core_Tests is
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
 
       C, S : Tls_Core.Tls13_Driver.Driver;
       Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
@@ -5499,8 +5540,8 @@ procedure Tls_Core_Tests is
    begin
       Put_Line ("scenario — Alert close_notify graceful shutdown");
 
-      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
 
       --  Drive the four flights to Done on both sides.
       Tls_Core.Tls13_Driver.Step
@@ -5610,6 +5651,10 @@ procedure Tls_Core_Tests is
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
 
       C, S : Tls_Core.Tls13_Driver.Driver;
       Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
@@ -5617,8 +5662,8 @@ procedure Tls_Core_Tests is
    begin
       Put_Line ("scenario — Alert bad_record_mac on tag-flip");
 
-      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
 
       --  Flight 1 + 2 — get the server flight.
       Tls_Core.Tls13_Driver.Step
@@ -5680,12 +5725,14 @@ procedure Tls_Core_Tests is
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
       S : Tls_Core.Tls13_Driver.Driver;
       Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
       Reply_Last : Natural;
    begin
       Put_Line ("scenario — Alert plaintext decode_error on bad CH");
-      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
       declare
          Garbage : constant Tls_Core.Octet_Array (1 .. 5) :=
            (16#FF#, 16#03#, 16#03#, 16#00#, 16#00#);
@@ -5721,12 +5768,14 @@ procedure Tls_Core_Tests is
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
       D : Tls_Core.Tls13_Driver.Driver;
       Out_Buf : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
       Out_Last : Natural;
    begin
       Put_Line ("scenario — Send_Fatal_Alert before keys = plaintext alert");
-      Tls_Core.Tls13_Driver.Init_Psk_Server (D, Psk, Identity);
+      Tls_Core.Tls13_Driver.Init_Psk_Server (D, Psk, Identity, Server_Priv);
       Tls_Core.Tls13_Driver.Send_Fatal_Alert
         (D, Tls_Core.Alert.Desc_Internal_Error, Out_Buf, Out_Last);
       Check ("Send_Fatal_Alert pre-keys: emits 7-byte plaintext alert",
@@ -5895,6 +5944,10 @@ procedure Tls_Core_Tests is
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
 
       --  Helper: drive Server and Client to capture Server's
       --  full SH+EE+SF flight bytes in Flight (1 .. Flight_Last).
@@ -5920,8 +5973,8 @@ procedure Tls_Core_Tests is
          Cursor : Natural;
       begin
          Flight := (others => 0);
-         Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-         Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+         Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
 
          --  Client → CH
          Tls_Core.Tls13_Driver.Step
@@ -5982,7 +6035,7 @@ procedure Tls_Core_Tests is
          Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
          Out_Last : Natural;
       begin
-         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Ok, Psk, Identity);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Ok, Psk, Identity, Client_Priv);
          Tls_Core.Tls13_Driver.Step
            (C_Ok, In_Bytes => Out_Buf (1 .. 0),
             Out_Buf => Out_Buf, Out_Last => Out_Last);
@@ -6007,7 +6060,7 @@ procedure Tls_Core_Tests is
          Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
          Out_Last : Natural;
       begin
-         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Trunc, Psk, Identity);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Trunc, Psk, Identity, Client_Priv);
          Tls_Core.Tls13_Driver.Step
            (C_Trunc, In_Bytes => Out_Buf (1 .. 0),
             Out_Buf => Out_Buf, Out_Last => Out_Last);
@@ -6032,7 +6085,7 @@ procedure Tls_Core_Tests is
          Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
          Out_Last : Natural;
       begin
-         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Sh, Psk, Identity);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C_Sh, Psk, Identity, Client_Priv);
          Tls_Core.Tls13_Driver.Step
            (C_Sh, In_Bytes => Out_Buf (1 .. 0),
             Out_Buf => Out_Buf, Out_Last => Out_Last);

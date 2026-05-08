@@ -186,13 +186,17 @@ procedure Tls_Perf_Bench is
       Report ("HKDF-Expand-Label SHA-256 32→32", N, 32, T0);
    end Bench_Hkdf_Expand_Label;
 
-   --  ---- 5) Full PSK_KE handshake (in-memory) ----
+   --  ---- 5) Full psk_dhe_ke (mode 3) handshake (in-memory) ----
    procedure Bench_Tls13_Handshake (N : Positive);
    procedure Bench_Tls13_Handshake (N : Positive) is
       use type Tls_Core.Tls13_Driver.State;
       Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
       Identity : constant Tls_Core.Octet_Array :=
         (16#54#, 16#65#, 16#73#, 16#74#);
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
       C, S : Tls_Core.Tls13_Driver.Driver;
       Buf : Tls_Core.Octet_Array (1 .. 4096);
       Buf_Last : Natural;
@@ -200,8 +204,8 @@ procedure Tls_Perf_Bench is
    begin
       T0 := Clock;
       for Iter in 1 .. N loop
-         Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity);
-         Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity);
+         Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+         Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
          --  flight 1: client → CH
          Buf := (others => 0);
          Tls_Core.Tls13_Driver.Step

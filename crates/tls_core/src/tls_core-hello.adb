@@ -4,6 +4,8 @@ is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
+   use type Tls_Core.Octet;
+
    --  Constants for the cipher suite + named group we negotiate.
    Cipher_Suite_Hi : constant Octet := 16#13#;
    Cipher_Suite_Lo : constant Octet := 16#03#;  --  TLS_CHACHA20_POLY1305_SHA256
@@ -503,6 +505,7 @@ is
    procedure Encode_Client_Hello_Psk
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
+      Key_Share       : Public_Key;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -549,10 +552,39 @@ is
            (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
       end;
 
-      --  psk_key_exchange_modes = [psk_ke (0)].
+      --  supported_groups = [x25519]. RFC 8446 §4.2.7.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 4) :=
+           (1 => 16#00#, 2 => 16#02#,
+            3 => Named_Group_Hi, 4 => Named_Group_Lo);
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
+      end;
+
+      --  key_share = [{x25519, 32-byte u-coord}]. RFC 8446 §4.2.8.
+      --  CH layout: u16 client_shares_len + KeyShareEntry{
+      --      u16 group, u16 key_exch_len, key_exch (32 bytes for x25519)
+      --  }.
+      declare
+         Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
+      begin
+         Body_Bytes (1) := 16#00#;
+         Body_Bytes (2) := 16#26#;        --  client_shares total = 38
+         Body_Bytes (3) := Named_Group_Hi;
+         Body_Bytes (4) := Named_Group_Lo;
+         Body_Bytes (5) := 16#00#;
+         Body_Bytes (6) := 16#20#;        --  key_exchange length = 32
+         Body_Bytes (7 .. 38) := Key_Share;
+         Encode_Extension (Out_Buf, Cursor, Ext_Key_Share, Body_Bytes);
+      end;
+
+      --  psk_key_exchange_modes = [psk_dhe_ke (1)]. RFC 8446 §4.2.9.
+      --  Mode 0 (psk_ke) is RFC-discouraged + production-rejected;
+      --  v0.5 advertises mode 1 only (CLAUDE.md §0a).
       declare
          Body_Bytes : constant Octet_Array (1 .. 2) :=
-           (1 => 16#01#, 2 => 16#00#);  --  modes_len = 1, mode = 0 (psk_ke)
+           (1 => 16#01#, 2 => 16#01#);  --  modes_len = 1, mode = 1 (psk_dhe_ke)
       begin
          Encode_Extension
            (Out_Buf, Cursor, Ext_Psk_Key_Exchange_Modes, Body_Bytes);
@@ -608,6 +640,7 @@ is
    procedure Encode_Client_Hello_Psk_With_Cookie
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
+      Key_Share       : Public_Key;
       Cookie          : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
@@ -647,9 +680,34 @@ is
            (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
       end;
 
+      --  supported_groups = [x25519].
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 4) :=
+           (1 => 16#00#, 2 => 16#02#,
+            3 => Named_Group_Hi, 4 => Named_Group_Lo);
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
+      end;
+
+      --  key_share = [{x25519, 32-byte u-coord}].
+      declare
+         Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
+      begin
+         Body_Bytes (1) := 16#00#;
+         Body_Bytes (2) := 16#26#;
+         Body_Bytes (3) := Named_Group_Hi;
+         Body_Bytes (4) := Named_Group_Lo;
+         Body_Bytes (5) := 16#00#;
+         Body_Bytes (6) := 16#20#;
+         Body_Bytes (7 .. 38) := Key_Share;
+         Encode_Extension (Out_Buf, Cursor, Ext_Key_Share, Body_Bytes);
+      end;
+
+      --  psk_key_exchange_modes = [psk_dhe_ke (1)].
       declare
          Body_Bytes : constant Octet_Array (1 .. 2) :=
-           (1 => 16#01#, 2 => 16#00#);
+           (1 => 16#01#, 2 => 16#01#);
       begin
          Encode_Extension
            (Out_Buf, Cursor, Ext_Psk_Key_Exchange_Modes, Body_Bytes);
@@ -706,6 +764,8 @@ is
       Identity_Last   : out Natural;
       Binder_First    : out Natural;
       Binder_Last     : out Natural;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
       Truncated_Last  : out Natural;
       OK              : out Boolean)
    is
@@ -725,6 +785,8 @@ is
       Identity_Last := 0;
       Binder_First := 0;
       Binder_Last := 0;
+      Key_Share_First := 0;
+      Key_Share_Last := 0;
       Truncated_Last := 0;
       OK := False;
 
@@ -819,12 +881,98 @@ is
          Binder_Last := Q + 31;
       end;
 
+      --  Locate key_share extension. RFC 8446 §4.2.8 — CH layout:
+      --    u16 client_shares_len
+      --    KeyShareEntry { u16 group, u16 key_exch_len, key_exch }*
+      --  We accept the first entry whose group matches x25519
+      --  (0x001D) and key_exch_len = 32.
+      declare
+         Ks_Body_F, Ks_Body_L : Natural;
+         Ks_Find_OK : Boolean;
+         Q : Natural;
+         Group_Code : Natural;
+         Key_Exch_Len : Natural;
+         End_Body : Natural;
+         Found : Boolean := False;
+      begin
+         Find_Extension
+           (In_Bytes   => In_Bytes,
+            Pos        => Ext_Block_Start,
+            End_Pos    => Ext_Block_Start + Ext_Total_Len,
+            Ext_Type   => Ext_Key_Share,
+            Body_First => Ks_Body_F,
+            Body_Last  => Ks_Body_L,
+            OK         => Ks_Find_OK);
+         if not Ks_Find_OK then return; end if;
+         --  Skip the u16 client_shares_len.
+         if Ks_Body_F + 1 > Ks_Body_L then return; end if;
+         Q := Ks_Body_F + 2;
+         End_Body := Ks_Body_L;
+         while Q + 3 <= End_Body loop
+            pragma Loop_Invariant (Q in Ks_Body_F .. End_Body + 1);
+            Group_Code := Natural (In_Bytes (Q)) * 256
+                          + Natural (In_Bytes (Q + 1));
+            Key_Exch_Len := Natural (In_Bytes (Q + 2)) * 256
+                            + Natural (In_Bytes (Q + 3));
+            if Q + 3 + Key_Exch_Len > End_Body then return; end if;
+            if Group_Code = 16#001D# and then Key_Exch_Len = 32 then
+               Key_Share_First := Q + 4;
+               Key_Share_Last  := Q + 4 + 31;
+               Found := True;
+               exit;
+            end if;
+            Q := Q + 4 + Key_Exch_Len;
+         end loop;
+         if not Found then return; end if;
+      end;
+
+      --  Validate psk_key_exchange_modes contains psk_dhe_ke (= 1).
+      --  Mode 0 (psk_ke) is not accepted; if the client only offers
+      --  mode 0 the server returns OK = False (caller fails the
+      --  handshake — illegal_parameter equivalent).
+      declare
+         Modes_Body_F, Modes_Body_L : Natural;
+         Modes_Find_OK : Boolean;
+         Modes_Len : Natural;
+         I : Natural;
+         Has_Dhe : Boolean := False;
+      begin
+         Find_Extension
+           (In_Bytes   => In_Bytes,
+            Pos        => Ext_Block_Start,
+            End_Pos    => Ext_Block_Start + Ext_Total_Len,
+            Ext_Type   => Ext_Psk_Key_Exchange_Modes,
+            Body_First => Modes_Body_F,
+            Body_Last  => Modes_Body_L,
+            OK         => Modes_Find_OK);
+         if not Modes_Find_OK then return; end if;
+         if Modes_Body_F > Modes_Body_L then return; end if;
+         Modes_Len := Natural (In_Bytes (Modes_Body_F));
+         if Modes_Len = 0
+           or else Modes_Body_F + Modes_Len > Modes_Body_L
+         then
+            return;
+         end if;
+         I := Modes_Body_F + 1;
+         while I <= Modes_Body_F + Modes_Len loop
+            pragma Loop_Invariant
+              (I in Modes_Body_F + 1 .. Modes_Body_F + Modes_Len + 1);
+            if In_Bytes (I) = 16#01# then
+               Has_Dhe := True;
+               exit;
+            end if;
+            I := I + 1;
+         end loop;
+         if not Has_Dhe then return; end if;
+      end;
+
       OK := True;
    end Decode_Client_Hello_Psk;
 
    procedure Encode_Server_Hello_Psk
      (Random         : Random_Bytes;
       Selected_Suite : Tls_Core.Suites.U16;
+      Key_Share      : Public_Key;
       Out_Buf        : out Octet_Array;
       Out_Last       : out Natural)
    is
@@ -859,6 +1007,20 @@ is
            (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
       end;
 
+      --  key_share — RFC 8446 §4.2.8 SH layout (no list_len prefix —
+      --  exactly one KeyShareEntry):
+      --      u16 group, u16 key_exch_len, key_exch
+      declare
+         Body_Bytes : Octet_Array (1 .. 2 + 2 + 32) := (others => 0);
+      begin
+         Body_Bytes (1) := Named_Group_Hi;
+         Body_Bytes (2) := Named_Group_Lo;
+         Body_Bytes (3) := 16#00#;
+         Body_Bytes (4) := 16#20#;
+         Body_Bytes (5 .. 36) := Key_Share;
+         Encode_Extension (Out_Buf, Cursor, Ext_Key_Share, Body_Bytes);
+      end;
+
       --  pre_shared_key = u16 selected_identity = 0.
       declare
          Body_Bytes : constant Octet_Array (1 .. 2) :=
@@ -871,5 +1033,75 @@ is
       Patch_U16 (Out_Buf, Ext_Len_Pos, Cursor - Ext_Body_Start + 1);
       Out_Last := Cursor;
    end Encode_Server_Hello_Psk;
+
+   ---------------------------------------------------------------------
+   --  Decode_Server_Hello_Psk_Key_Share
+   ---------------------------------------------------------------------
+
+   procedure Decode_Server_Hello_Psk_Key_Share
+     (In_Bytes        : Octet_Array;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
+      OK              : out Boolean)
+   is
+      P : Natural := In_Bytes'First;
+      Read_OK : Boolean := True;
+      U8_Val : Octet;
+      Ext_Total_Len : Natural;
+      Ext_Block_Start : Natural;
+      Body_F, Body_L : Natural;
+      Find_OK : Boolean;
+   begin
+      Key_Share_First := 0;
+      Key_Share_Last := 0;
+      OK := False;
+
+      --  legacy_version (2)
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      if not Read_OK then return; end if;
+      --  random (32)
+      if P + 31 > In_Bytes'Last then return; end if;
+      P := P + 32;
+      --  legacy_session_id (u8 len + N)
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      if not Read_OK then return; end if;
+      if P + Natural (U8_Val) - 1 > In_Bytes'Last then return; end if;
+      P := P + Natural (U8_Val);
+      --  cipher_suite (u16)
+      if P + 1 > In_Bytes'Last then return; end if;
+      P := P + 2;
+      --  legacy_compression_method (u8)
+      R_U8 (In_Bytes, P, U8_Val, Read_OK);
+      if not Read_OK then return; end if;
+      --  Extensions
+      R_U16 (In_Bytes, P, Ext_Total_Len, Read_OK);
+      if not Read_OK then return; end if;
+      Ext_Block_Start := P;
+      if Ext_Block_Start + Ext_Total_Len - 1 > In_Bytes'Last then return; end if;
+
+      Find_Extension
+        (In_Bytes => In_Bytes,
+         Pos => Ext_Block_Start,
+         End_Pos => Ext_Block_Start + Ext_Total_Len,
+         Ext_Type => Ext_Key_Share,
+         Body_First => Body_F,
+         Body_Last => Body_L,
+         OK => Find_OK);
+      if not Find_OK then return; end if;
+      --  SH key_share body: u16 group, u16 key_exch_len, key_exch
+      if Body_L - Body_F + 1 < 4 + 32 then return; end if;
+      --  Validate group = x25519 (0x001D) and length = 32.
+      if In_Bytes (Body_F) /= Named_Group_Hi
+        or else In_Bytes (Body_F + 1) /= Named_Group_Lo
+        or else In_Bytes (Body_F + 2) /= 16#00#
+        or else In_Bytes (Body_F + 3) /= 16#20#
+      then
+         return;
+      end if;
+      Key_Share_First := Body_F + 4;
+      Key_Share_Last := Body_F + 4 + 31;
+      OK := True;
+   end Decode_Server_Hello_Psk_Key_Share;
 
 end Tls_Core.Hello;

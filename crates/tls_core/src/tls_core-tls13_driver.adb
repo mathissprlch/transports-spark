@@ -4,6 +4,7 @@ with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 with Tls_Core.Hmac_Sha256;
 with Tls_Core.Psk_Binder;
+with Tls_Core.X25519;
 
 package body Tls_Core.Tls13_Driver
 with SPARK_Mode
@@ -68,8 +69,11 @@ is
    procedure Init_Psk_Server
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array)
+      Psk_Identity : Octet_Array;
+      Ecdhe_Priv   : Octet_Array)
    is
+      Priv_32 : Tls_Core.X25519.Bytes_32;
+      Pub_32  : Tls_Core.X25519.Bytes_32;
    begin
       D.My_Role := Server;
       D.Cur_State := Awaiting_CH;
@@ -90,13 +94,25 @@ is
       D.Hrr_Cookie_Len := 0;
       D.Hrr_Ch1_Hash  := (others => 0);
       Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
+
+      --  Derive ephemeral X25519 public key from caller-supplied
+      --  private scalar. RFC 7748 §6.1: pub = X25519(priv, base_u=9).
+      Priv_32 := Ecdhe_Priv;
+      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
+      D.My_Ecdhe_Priv := Priv_32;
+      D.My_Ecdhe_Pub  := Pub_32;
+      D.Peer_Ecdhe_Pub := (others => 0);
+      D.Ecdhe_Shared := (others => 0);
    end Init_Psk_Server;
 
    procedure Init_Psk_Client
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array)
+      Psk_Identity : Octet_Array;
+      Ecdhe_Priv   : Octet_Array)
    is
+      Priv_32 : Tls_Core.X25519.Bytes_32;
+      Pub_32  : Tls_Core.X25519.Bytes_32;
    begin
       D.My_Role := Client;
       D.Cur_State := Idle;
@@ -117,6 +133,13 @@ is
       D.Hrr_Cookie_Len := 0;
       D.Hrr_Ch1_Hash  := (others => 0);
       Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
+
+      Priv_32 := Ecdhe_Priv;
+      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
+      D.My_Ecdhe_Priv := Priv_32;
+      D.My_Ecdhe_Pub  := Pub_32;
+      D.Peer_Ecdhe_Pub := (others => 0);
+      D.Ecdhe_Shared := (others => 0);
    end Init_Psk_Client;
 
    ---------------------------------------------------------------------
@@ -128,11 +151,12 @@ is
      (D                 : out Driver;
       PSK               : Octet_Array;
       Psk_Identity      : Octet_Array;
+      Ecdhe_Priv        : Octet_Array;
       Demanded_Group    : Tls_Core.Suites.U16;
       Cookie            : Octet_Array)
    is
    begin
-      Init_Psk_Server (D, PSK, Psk_Identity);
+      Init_Psk_Server (D, PSK, Psk_Identity, Ecdhe_Priv);
       D.Hrr_Demand := True;
       D.Hrr_Sent   := False;
       D.Hrr_Group  := Demanded_Group;
@@ -151,10 +175,11 @@ is
    procedure Init_Psk_Client_Hrr_Aware
      (D            : out Driver;
       PSK          : Octet_Array;
-      Psk_Identity : Octet_Array)
+      Psk_Identity : Octet_Array;
+      Ecdhe_Priv   : Octet_Array)
    is
    begin
-      Init_Psk_Client (D, PSK, Psk_Identity);
+      Init_Psk_Client (D, PSK, Psk_Identity, Ecdhe_Priv);
       D.Hrr_Aware := True;
    end Init_Psk_Client_Hrr_Aware;
 
@@ -360,6 +385,7 @@ is
                Tls_Core.Hello.Encode_Client_Hello_Psk
                  (Client_Random,
                   D.Identity (1 .. D.Identity_Len),
+                  D.My_Ecdhe_Pub,
                   Ch_Body, Ch_Body_Last, T_Last);
                --  Compute binder over Ch_Body (1 .. T_Last).
                Tls_Core.Psk_Binder.Compute
@@ -481,13 +507,44 @@ is
                      end if;
                      D.Suite := Tls_Core.Suites.Suite_Of_Code (Code);
                   end;
+                  --  RFC 8446 §4.2.8 / §7.1 mode 3 — extract the
+                  --  server's X25519 public key from the SH key_share
+                  --  extension and compute the ECDHE shared secret.
+                  --  Decode_Server_Hello_Psk_Key_Share takes the SH
+                  --  body (bytes after the 4-byte handshake header).
+                  declare
+                     Sh_Body_F : constant Natural := Sh_Rec_F + 4;
+                     Sh_Body_L : constant Natural := Sh_Rec_L;
+                     Ks_F, Ks_L : Natural;
+                     Ks_OK : Boolean;
+                     Peer_Pub : Tls_Core.X25519.Bytes_32;
+                     Shared   : Tls_Core.X25519.Bytes_32;
+                  begin
+                     Tls_Core.Hello.Decode_Server_Hello_Psk_Key_Share
+                       (In_Bytes (Sh_Body_F .. Sh_Body_L),
+                        Ks_F, Ks_L, Ks_OK);
+                     if not Ks_OK then
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
+                     for I in 1 .. 32 loop
+                        pragma Loop_Invariant (I in 1 .. 32);
+                        Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
+                     end loop;
+                     D.Peer_Ecdhe_Pub := Peer_Pub;
+                     Tls_Core.X25519.Scalar_Mult
+                       (D.My_Ecdhe_Priv, Peer_Pub, Shared);
+                     D.Ecdhe_Shared := Shared;
+                  end;
                   --  Append SH handshake message to transcript.
                   Tls_Core.Transcript.Append
                     (D.Hash_Ctx, In_Bytes (Sh_Rec_F .. Sh_Rec_L));
                   Cursor := Sh_Rec_L + 1;
                end;
 
-               --  Step 2: derive handshake secrets.
+               --  Step 2: derive handshake secrets. RFC 8446 §7.1 mode 3:
+               --    Handshake_Secret = HKDF-Extract(Derived_1, ECDHE_secret)
+               --  where ECDHE_secret is the X25519 shared we just computed.
                Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Sh);
                Tls_Core.Key_Schedule.Extract
                  (Salt => Zero_Secret, IKM => D.PSK,
@@ -498,7 +555,7 @@ is
                   Messages  => Empty_In,
                   Out_Secret => Derived_1);
                Tls_Core.Key_Schedule.Extract
-                 (Salt => Derived_1, IKM => Zero_Secret,
+                 (Salt => Derived_1, IKM => D.Ecdhe_Shared,
                   Out_PRK => D.Hs_Secret);
                Hkdf_Expand_Label_Sha256
                  (Secret  => D.Hs_Secret,
@@ -778,22 +835,42 @@ is
                   Random : Tls_Core.Hello.Random_Bytes;
                   Suites_F, Suites_L : Natural;
                   Id_F, Id_L, Bf, Bl, T_Last : Natural;
+                  Ks_F, Ks_L : Natural;
                   Decode_OK : Boolean;
                begin
                   if Hs_Body_L > Rec_L then
                      D.Cur_State := Failed;
                      return;
                   end if;
-                  --  Decode the CH body
+                  --  Decode the CH body — also validates the client
+                  --  advertises psk_dhe_ke (mode 1) and includes a
+                  --  valid x25519 key_share. Returns absolute indices.
                   Tls_Core.Hello.Decode_Client_Hello_Psk
                     (In_Bytes (Hs_Body_F .. Hs_Body_L),
                      Random,
                      Suites_F, Suites_L,
-                     Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+                     Id_F, Id_L, Bf, Bl,
+                     Ks_F, Ks_L, T_Last, Decode_OK);
                   if not Decode_OK then
                      D.Cur_State := Failed;
                      return;
                   end if;
+                  --  RFC 8446 §4.2.8 + §7.1 mode 3 — extract the
+                  --  client's X25519 public key and compute ECDHE
+                  --  shared secret on the server side.
+                  declare
+                     Peer_Pub : Tls_Core.X25519.Bytes_32;
+                     Shared   : Tls_Core.X25519.Bytes_32;
+                  begin
+                     for I in 1 .. 32 loop
+                        pragma Loop_Invariant (I in 1 .. 32);
+                        Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
+                     end loop;
+                     D.Peer_Ecdhe_Pub := Peer_Pub;
+                     Tls_Core.X25519.Scalar_Mult
+                       (D.My_Ecdhe_Priv, Peer_Pub, Shared);
+                     D.Ecdhe_Shared := Shared;
+                  end;
                   --  Server cipher-suite selection (RFC 8446 §4.1.3):
                   --  walk client's offered list in order and pick
                   --  the first that we actually accept. v0.5 driver
@@ -990,9 +1067,12 @@ is
 
                --  SH body = canonical PSK SH (echoes selected_identity = 0
                --  and the server's chosen cipher suite per RFC 8446 §4.1.3).
+               --  The key_share carries the server's X25519 public key,
+               --  echoing the named-group the client offered (x25519).
                Tls_Core.Hello.Encode_Server_Hello_Psk
                  (Server_Random,
                   Tls_Core.Suites.Code_Of_Suite (D.Suite),
+                  D.My_Ecdhe_Pub,
                   Sh_Body, Sh_Body_Last);
                --  Wrap body into Handshake message (type + u24 + body).
                Encode_Hs_Message
@@ -1006,7 +1086,9 @@ is
                Wrap_Tls_Plaintext
                  (Sh_Hs_Msg (1 .. Sh_Hs_Last), Sh_Record, Sh_Record_Last);
 
-               --  Derive Early/Handshake secrets.
+               --  Derive Early/Handshake secrets. RFC 8446 §7.1 mode 3:
+               --    Handshake_Secret = HKDF-Extract(Derived_1, ECDHE_secret)
+               --  D.Ecdhe_Shared was computed at CH parse time.
                Tls_Core.Key_Schedule.Extract
                  (Salt => Zero32, IKM => D.PSK, Out_PRK => Early_Secret);
                Tls_Core.Key_Schedule.Derive_Secret
@@ -1015,7 +1097,8 @@ is
                   Messages   => Empty,
                   Out_Secret => Derived_1);
                Tls_Core.Key_Schedule.Extract
-                 (Salt => Derived_1, IKM => Zero32, Out_PRK => Hs_Secret);
+                 (Salt => Derived_1, IKM => D.Ecdhe_Shared,
+                  Out_PRK => Hs_Secret);
                --  Snapshot current transcript hash (CH || SH).
                Tls_Core.Transcript.Snapshot
                  (D.Hash_Ctx, Transcript_Hash_After_SH);
@@ -1352,6 +1435,7 @@ is
                Tls_Core.Hello.Encode_Client_Hello_Psk_With_Cookie
                  (Client_Random,
                   D.Identity (1 .. D.Identity_Len),
+                  D.My_Ecdhe_Pub,
                   D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len),
                   Ch_Body, Ch_Body_Last, T_Last);
                Tls_Core.Psk_Binder.Compute
@@ -1411,6 +1495,7 @@ is
                   Random : Tls_Core.Hello.Random_Bytes;
                   Suites_F, Suites_L : Natural;
                   Id_F, Id_L, Bf, Bl, T_Last : Natural;
+                  Ks_F, Ks_L : Natural;
                   Decode_OK : Boolean;
                begin
                   if Hs_Body_L > Rec_L then
@@ -1420,11 +1505,29 @@ is
                   Tls_Core.Hello.Decode_Client_Hello_Psk
                     (In_Bytes (Hs_Body_F .. Hs_Body_L),
                      Random, Suites_F, Suites_L,
-                     Id_F, Id_L, Bf, Bl, T_Last, Decode_OK);
+                     Id_F, Id_L, Bf, Bl,
+                     Ks_F, Ks_L, T_Last, Decode_OK);
                   if not Decode_OK then
                      D.Cur_State := Failed;
                      return;
                   end if;
+                  --  Update peer pubkey + ECDHE shared from CH2's
+                  --  fresh key_share. RFC 8446 §4.1.4: HRR rerun uses
+                  --  the named-group the server demanded, which is
+                  --  still x25519 in v0.5 (only group we accept).
+                  declare
+                     Peer_Pub : Tls_Core.X25519.Bytes_32;
+                     Shared   : Tls_Core.X25519.Bytes_32;
+                  begin
+                     for I in 1 .. 32 loop
+                        pragma Loop_Invariant (I in 1 .. 32);
+                        Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
+                     end loop;
+                     D.Peer_Ecdhe_Pub := Peer_Pub;
+                     Tls_Core.X25519.Scalar_Mult
+                       (D.My_Ecdhe_Priv, Peer_Pub, Shared);
+                     D.Ecdhe_Shared := Shared;
+                  end;
                   --  Verify PSK identity (same constant-time pattern
                   --  as Awaiting_CH).
                   declare
@@ -1616,6 +1719,7 @@ is
                Tls_Core.Hello.Encode_Server_Hello_Psk
                  (Server_Random,
                   Tls_Core.Suites.Code_Of_Suite (D.Suite),
+                  D.My_Ecdhe_Pub,
                   Sh_Body, Sh_Body_Last);
                Encode_Hs_Message
                  (Hs_Type_SH, Sh_Body (1 .. Sh_Body_Last),
@@ -1631,8 +1735,10 @@ is
                   Label      => Derived_Label,
                   Messages   => Empty,
                   Out_Secret => Derived_1);
+               --  Mode 3: Handshake_Secret extract uses ECDHE_secret as IKM.
                Tls_Core.Key_Schedule.Extract
-                 (Salt => Derived_1, IKM => Zero32, Out_PRK => Hs_Secret);
+                 (Salt => Derived_1, IKM => D.Ecdhe_Shared,
+                  Out_PRK => Hs_Secret);
                Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_SH);
                Hkdf_Expand_Label_Sha256
                  (Secret  => Hs_Secret,
