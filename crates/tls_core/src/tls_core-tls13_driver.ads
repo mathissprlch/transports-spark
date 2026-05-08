@@ -39,6 +39,7 @@
 
 with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
+with Tls_Core.Cert_Chain;
 with Tls_Core.Handshake_Buffer;
 with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Schedule;
@@ -60,6 +61,7 @@ is
 
    use type Tls_Core.Octet;
    use type Tls_Core.Suites.Cipher_Suite_Id;
+   use type Tls_Core.Suites.U16;
    use type Tls_Core.Record_Layer.Seq_Number;
 
    type Role is (Client, Server);
@@ -91,6 +93,14 @@ is
       Closed,             --  Graceful shutdown — close_notify sent or
                           --  received after Done. RFC 8446 §6.1.
       Failed);
+
+   --  RFC 8446 §2.2 handshake mode.  The state machine is the same
+   --  shape for both modes; only the message flow inside the
+   --  encrypted handshake differs:
+   --    Psk_Mode   — server flight is SH + EE + SF
+   --    Cert_Mode  — server flight is SH + EE + Cert + CertVerify + SF
+   --                 (RFC 8446 §4.4.2 + §4.4.3).
+   type Driver_Mode is (Psk_Mode, Cert_Mode);
 
    type Driver is private;
 
@@ -170,6 +180,93 @@ is
        PSK'Length = 32
        and then Psk_Identity'Length in 1 .. 64
        and then Ecdhe_Priv'Length = 32;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Initialise as a cert-mode server.
+   --
+   --  Standard:    RFC 8446 §4.4.2 Certificate, §4.4.3 CertificateVerify.
+   --  Spec mirror: miTLS src/tls/MiTLS.Handshake.Server.fst
+   --
+   --  Cert_Chain_Bytes: concatenated DER bytes of the server's
+   --    certificate chain (leaf first, then optional intermediates,
+   --    optional root anchor hint).  Each cert entry is described
+   --    by Chain_Spec which has the same shape as
+   --    Tls_Core.Cert_Chain.Chain (count + per-entry First/Last
+   --    indices into Cert_Chain_Bytes).  The driver re-encodes
+   --    these into the §4.4.2 certificate_list on emit.
+   --
+   --  Sign_Priv_Key: 32 bytes.  ECDSA-P256 only in v0.5; RSA-PSS
+   --    sign primitive is missing (verify-only) and is a tier-3
+   --    deferred gap per the wiring audit.
+   --
+   --  Sig_Alg: codepoint per RFC 8446 §4.2.3.  Must equal
+   --    Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256 (0x0403) in
+   --    v0.5 — other schemes fail Pre.
+   --
+   --  Ecdhe_Priv: server-side X25519 private scalar — same role
+   --    as in Init_Psk_Server.
+   --------------------------------------------------------------------
+   procedure Init_Cert_Server
+     (D                : out Driver;
+      Cert_Chain_Bytes : Octet_Array;
+      Chain_Spec       : Tls_Core.Cert_Chain.Chain;
+      Sign_Priv_Key    : Octet_Array;
+      Sig_Alg          : Tls_Core.Suites.U16;
+      Ecdhe_Priv       : Octet_Array)
+   with
+     Pre =>
+       Cert_Chain_Bytes'First = 1
+       and then Cert_Chain_Bytes'Length in 1 .. 4096
+       and then Chain_Spec.Count in 1 .. Tls_Core.Cert_Chain.Max_Chain_Depth
+       and then (for all I in 1 .. Chain_Spec.Count =>
+                    Chain_Spec.Entries (I).First in Cert_Chain_Bytes'Range
+                    and then Chain_Spec.Entries (I).Last
+                             in Cert_Chain_Bytes'Range
+                    and then Chain_Spec.Entries (I).First
+                             <= Chain_Spec.Entries (I).Last)
+       and then Sign_Priv_Key'Length = 32
+       and then Sig_Alg = Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256
+       and then Ecdhe_Priv'Length = 32;
+
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Initialise as a cert-mode client.
+   --
+   --  Standard:    RFC 8446 §4.4.2 + §4.4.3 (client side).
+   --
+   --  Trust_Anchor_Bytes + Trust_Spec: caller-supplied trust roots
+   --    (e.g. system CA bundle, or a self-signed test root for
+   --    interop fixtures).  Validation is via
+   --    Tls_Core.Cert_Chain.Authenticate_Server.
+   --
+   --  Hostname: server name to match against the leaf cert's
+   --    SubjectAltName dNSName (RFC 6125 §6.4 exact match).
+   --    Empty array means "skip hostname check" — only valid when
+   --    using a self-signed pinned trust anchor.
+   --
+   --  Ecdhe_Priv: 32-byte client X25519 private scalar.
+   --------------------------------------------------------------------
+   procedure Init_Cert_Client
+     (D                  : out Driver;
+      Trust_Anchor_Bytes : Octet_Array;
+      Trust_Spec         : Tls_Core.Cert_Chain.Trust_Store;
+      Hostname           : Octet_Array;
+      Ecdhe_Priv         : Octet_Array)
+   with
+     Pre =>
+       Trust_Anchor_Bytes'First = 1
+       and then Trust_Anchor_Bytes'Length in 16 .. 4096
+       and then Trust_Spec.Count in 1 .. Tls_Core.Cert_Chain.Max_Trust_Roots
+       and then (for all I in 1 .. Trust_Spec.Count =>
+                    Trust_Spec.Entries (I).First in Trust_Anchor_Bytes'Range
+                    and then Trust_Spec.Entries (I).Last
+                             in Trust_Anchor_Bytes'Range
+                    and then Trust_Spec.Entries (I).First
+                             <= Trust_Spec.Entries (I).Last)
+       and then Hostname'Length <= 255
+       and then Ecdhe_Priv'Length = 32;
+
+   --  Read the driver's mode (set by Init).
+   function Mode (D : Driver) return Driver_Mode;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Set the SNI hostname (RFC 6066 §3 /
@@ -877,6 +974,34 @@ private
       Alpn_Offers_Len : Natural := 0;
       Selected_Alpn     : Octet_Array (1 .. 64) := (others => 0);
       Selected_Alpn_Len : Natural := 0;
+
+      --  RFC 8446 §4.4.2 / §4.4.3 cert-mode state.  Default is
+      --  Psk_Mode; Init_Cert_{Server,Client} flips this to Cert_Mode
+      --  and pre-populates the corresponding fields.
+      Mode : Driver_Mode := Psk_Mode;
+
+      --  Server-side cert-mode state.
+      --  Cert_Chain_Bytes holds the concatenated DER bytes of the
+      --  server's chain; Cert_Chain_Spec.Entries (1..Count) point
+      --  into it (leaf at index 1, intermediates at 2.., optional
+      --  root anchor hint at the end).  Server emits these in the
+      --  §4.4.2 certificate_list.
+      Cert_Chain_Bytes : Octet_Array (1 .. 4096) := (others => 0);
+      Cert_Chain_Len   : Natural := 0;
+      Cert_Chain_Spec  : Tls_Core.Cert_Chain.Chain;
+      --  ECDSA-P256 private scalar — used for the §4.4.3 signature
+      --  on the post-Cert transcript hash.  Sig_Alg encodes which
+      --  signature scheme to advertise / use; v0.5 = 0x0403 only.
+      Server_Sign_Priv : Octet_Array (1 .. 32) := (others => 0);
+      Sig_Alg          : Tls_Core.Suites.U16 :=
+        Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256;
+
+      --  Client-side cert-mode state — trust anchors used for chain
+      --  validation (Cert_Chain.Authenticate_Server).  Hostname re-
+      --  uses Sni_Hostname / Sni_Len above.
+      Trust_Anchor_Bytes : Octet_Array (1 .. 4096) := (others => 0);
+      Trust_Anchor_Len   : Natural := 0;
+      Trust_Anchor_Spec  : Tls_Core.Cert_Chain.Trust_Store;
    end record;
 
    function Current_State (D : Driver) return State is (D.Cur_State);
@@ -890,5 +1015,7 @@ private
 
    function Resumption_Master_Secret_Available (D : Driver) return Boolean
    is (D.Res_Master_Set);
+
+   function Mode (D : Driver) return Driver_Mode is (D.Mode);
 
 end Tls_Core.Tls13_Driver;
