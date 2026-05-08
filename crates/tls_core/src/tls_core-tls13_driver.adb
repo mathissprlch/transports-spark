@@ -393,10 +393,22 @@ is
                   D.Identity (1 .. D.Identity_Len),
                   D.My_Ecdhe_Pub,
                   Ch_Body, Ch_Body_Last, T_Last);
-               --  Compute binder over Ch_Body (1 .. T_Last).
+               --  RFC 8446 §4.2.11.2 + §4.4.1: the binder is computed
+               --  over the truncated *handshake message* (handshake
+               --  type 0x01 + uint24 length + body, truncated up to
+               --  but not including the binders), NOT the body alone.
+               --  Build the truncated handshake-formatted bytes in
+               --  Ch_Hs (scratch — overwritten by Encode_Hs_Message
+               --  below), then hash that.
+               Ch_Hs := (others => 0);
+               Ch_Hs (1) := Hs_Type_CH;
+               Ch_Hs (2) := Octet ((Ch_Body_Last / 65536) mod 256);
+               Ch_Hs (3) := Octet ((Ch_Body_Last / 256) mod 256);
+               Ch_Hs (4) := Octet (Ch_Body_Last mod 256);
+               Ch_Hs (5 .. 4 + T_Last) := Ch_Body (1 .. T_Last);
                Tls_Core.Psk_Binder.Compute
                  (D.PSK,
-                  Ch_Body (1 .. T_Last),
+                  Ch_Hs (1 .. 4 + T_Last),
                   Binder);
                Ch_Body (T_Last + 2 .. T_Last + 33) := Binder;
                --  Wrap as handshake message (type 0x01 + u24 + body).
@@ -969,14 +981,30 @@ is
                         D.Cur_State := Failed;
                         return;
                      end if;
-                     --  Verify PSK binder.
+                     --  Verify PSK binder.  RFC 8446 §4.2.11.2 + §4.4.1:
+                     --  the binder is computed over the truncated
+                     --  *handshake message* (Rec_F .. Abs_T_Last
+                     --  spans CH type byte through last pre-binders
+                     --  body byte), NOT the body alone (Hs_Body_F ..
+                     --  Abs_T_Last).  Copy into a local 'First=1
+                     --  buffer so Compute's 'First=1 Pre is satisfied.
                      declare
                         Computed : Tls_Core.Psk_Binder.Binder_Bytes;
                         Received : Tls_Core.Psk_Binder.Binder_Bytes;
+                        Trunc_Len : constant Natural :=
+                          Abs_T_Last - Rec_F + 1;
+                        Hs_Trunc : Octet_Array (1 .. 1024) :=
+                          (others => 0);
                      begin
+                        if Trunc_Len > Hs_Trunc'Length then
+                           D.Cur_State := Failed;
+                           return;
+                        end if;
+                        Hs_Trunc (1 .. Trunc_Len) :=
+                          In_Bytes (Rec_F .. Abs_T_Last);
                         Tls_Core.Psk_Binder.Compute
                           (D.PSK,
-                           In_Bytes (Hs_Body_F .. Abs_T_Last),
+                           Hs_Trunc (1 .. Trunc_Len),
                            Computed);
                         for I in 1 .. 32 loop
                            Received (I) := In_Bytes (Abs_Bf + I - 1);
@@ -1499,9 +1527,19 @@ is
                   D.My_Ecdhe_Pub,
                   D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len),
                   Ch_Body, Ch_Body_Last, T_Last);
+               --  RFC 8446 §4.2.11.2 + §4.4.1: hash the truncated
+               --  *handshake-formatted* CH (header + body), not the
+               --  body alone.  See sister site at line ~397 for
+               --  rationale.
+               Ch_Hs := (others => 0);
+               Ch_Hs (1) := Hs_Type_CH;
+               Ch_Hs (2) := Octet ((Ch_Body_Last / 65536) mod 256);
+               Ch_Hs (3) := Octet ((Ch_Body_Last / 256) mod 256);
+               Ch_Hs (4) := Octet (Ch_Body_Last mod 256);
+               Ch_Hs (5 .. 4 + T_Last) := Ch_Body (1 .. T_Last);
                Tls_Core.Psk_Binder.Compute
                  (D.PSK,
-                  Ch_Body (1 .. T_Last),
+                  Ch_Hs (1 .. 4 + T_Last),
                   Binder);
                Ch_Body (T_Last + 2 .. T_Last + 33) := Binder;
                Encode_Hs_Message
@@ -1610,13 +1648,28 @@ is
                      end if;
                   end;
                   --  Verify PSK binder over CH2's truncated bytes.
+                  --  RFC 8446 §4.2.11.2 + §4.4.1: hash the truncated
+                  --  *handshake message* (Rec_F .. T_Last spans CH
+                  --  type byte through last pre-binders body byte),
+                  --  not the body alone.  Copy into a 'First=1
+                  --  buffer for Compute's Pre.
                   declare
                      Computed : Tls_Core.Psk_Binder.Binder_Bytes;
                      Received : Tls_Core.Psk_Binder.Binder_Bytes;
+                     Trunc_Len : constant Natural :=
+                       T_Last - Rec_F + 1;
+                     Hs_Trunc : Octet_Array (1 .. 1024) :=
+                       (others => 0);
                   begin
+                     if Trunc_Len > Hs_Trunc'Length then
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
+                     Hs_Trunc (1 .. Trunc_Len) :=
+                       In_Bytes (Rec_F .. T_Last);
                      Tls_Core.Psk_Binder.Compute
                        (D.PSK,
-                        In_Bytes (Hs_Body_F .. T_Last),
+                        Hs_Trunc (1 .. Trunc_Len),
                         Computed);
                      for I in 1 .. 32 loop
                         pragma Loop_Invariant (I in 1 .. 32);
