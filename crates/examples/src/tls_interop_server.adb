@@ -244,6 +244,11 @@ begin
                   Put_Line ("  state = "
                             & Tls_Core.Tls13_Driver.State'Image
                                 (Tls_Core.Tls13_Driver.Current_State (D)));
+                  Put_Line ("  alert = "
+                            & Natural'Image
+                                (Natural
+                                  (Tls_Core.Tls13_Driver
+                                    .Last_Alert_Description (D))));
                   Fail ("server did not advance to Awaiting_Cf");
                else
                   Tls_Core.Tcp_Transport.Send_All

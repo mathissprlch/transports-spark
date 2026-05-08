@@ -2152,7 +2152,7 @@ is
                         Received : Tls_Core.Psk_Binder.Binder_Bytes;
                         Trunc_Len : constant Natural :=
                           Abs_T_Last - Rec_F + 1;
-                        Hs_Trunc : Octet_Array (1 .. 1024) :=
+                        Hs_Trunc : Octet_Array (1 .. 16640) :=
                           (others => 0);
                      begin
                         if Trunc_Len > Hs_Trunc'Length then
@@ -2819,7 +2819,7 @@ is
                      Received : Tls_Core.Psk_Binder.Binder_Bytes;
                      Trunc_Len : constant Natural :=
                        T_Last - Rec_F + 1;
-                     Hs_Trunc : Octet_Array (1 .. 1024) :=
+                     Hs_Trunc : Octet_Array (1 .. 16640) :=
                        (others => 0);
                   begin
                      if Trunc_Len > Hs_Trunc'Length then
