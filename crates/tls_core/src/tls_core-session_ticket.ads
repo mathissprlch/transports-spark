@@ -217,6 +217,8 @@ is
       Ticket_Nonce      : Octet_Array;
       Psk               : out Tls_Core.Key_Schedule.Secret)
    with
-     Pre => Ticket_Nonce'Length in 0 .. Max_Ticket_Nonce_Length;
+     Pre =>
+       Ticket_Nonce'Length in 0 .. Max_Ticket_Nonce_Length
+       and then Ticket_Nonce'Last < Integer'Last - 256;
 
 end Tls_Core.Session_Ticket;

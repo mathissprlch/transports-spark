@@ -2412,9 +2412,6 @@ is
       D.Hrr_Cookie    := (others => 0);
       D.Hrr_Cookie_Len := 0;
       D.Hrr_Ch1_Hash  := (others => 0);
-      D.Hs_Keys_Set   := False;
-      D.Last_Alert    := Tls_Core.Alert.Desc_Internal_Error;
-      D.App_Out_Set   := False;
    end Init_Psk_Resumption_Client;
 
 end Tls_Core.Tls13_Driver;

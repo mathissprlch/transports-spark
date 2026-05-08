@@ -56,6 +56,8 @@ with Tls_Core.Cert_Chain;
 with Tls_Core.Cert_Verify;
 with Tls_Core.Alert;
 with Tls_Core.Handshake_Buffer;
+with Tls_Core.Session_Cache;
+with Tls_Core.Session_Ticket;
 
 procedure Tls_Core_Tests is
 
@@ -6244,6 +6246,551 @@ procedure Tls_Core_Tests is
       end;
    end Tls13_Multi_Record_Reassembly_Scenario;
 
+   --------------------------------------------------------------------
+   --  Scenario 35 — Session_Ticket wire encode/decode + cache.
+   --
+   --  Validates Tls_Core.Session_Ticket.Encode_Body / Decode_Body
+   --  round-trip the §4.6.1 wire shape and that Tls_Core.Session_Cache
+   --  Insert / Lookup_Most_Recent / Invalidate behave per spec.
+   --------------------------------------------------------------------
+   procedure Session_Ticket_Wire_Scenario;
+   procedure Session_Ticket_Wire_Scenario is
+      use type Interfaces.Unsigned_32;
+
+      --  Sample fields per RFC 8446 §4.6.1.
+      Lifetime : constant Tls_Core.Session_Ticket.U32 := 16#00010203#;
+      Age_Add  : constant Tls_Core.Session_Ticket.U32 := 16#04050607#;
+      Nonce    : constant Tls_Core.Octet_Array (1 .. 8) :=
+        (16#11#, 16#22#, 16#33#, 16#44#,
+         16#55#, 16#66#, 16#77#, 16#88#);
+      Ticket   : constant Tls_Core.Octet_Array (1 .. 16) :=
+        (16#A0#, 16#A1#, 16#A2#, 16#A3#,
+         16#A4#, 16#A5#, 16#A6#, 16#A7#,
+         16#A8#, 16#A9#, 16#AA#, 16#AB#,
+         16#AC#, 16#AD#, 16#AE#, 16#AF#);
+
+      Buf  : Tls_Core.Octet_Array (1 .. 1600) := (others => 0);
+      Last : Natural;
+   begin
+      Put_Line ("scenario 35a — Session_Ticket Encode/Decode wire round-trip");
+
+      Tls_Core.Session_Ticket.Encode_Body
+        (Lifetime     => Lifetime,
+         Age_Add      => Age_Add,
+         Ticket_Nonce => Nonce,
+         Ticket       => Ticket,
+         Out_Buf      => Buf,
+         Out_Last     => Last);
+
+      Check ("Session_Ticket: Encode_Body length =" &
+             Integer'Image (4 + 4 + 1 + 8 + 2 + 16 + 2),
+             Last = 4 + 4 + 1 + Nonce'Length
+                    + 2 + Ticket'Length + 2);
+      --  uint32 BE lifetime.
+      Check ("Session_Ticket: lifetime byte 0",
+             Buf (1) = 16#00#);
+      Check ("Session_Ticket: lifetime byte 1",
+             Buf (2) = 16#01#);
+      Check ("Session_Ticket: lifetime byte 2",
+             Buf (3) = 16#02#);
+      Check ("Session_Ticket: lifetime byte 3",
+             Buf (4) = 16#03#);
+      --  uint32 BE age_add.
+      Check ("Session_Ticket: age_add byte 0",
+             Buf (5) = 16#04#);
+      Check ("Session_Ticket: age_add byte 3",
+             Buf (8) = 16#07#);
+      --  Nonce length octet.
+      Check ("Session_Ticket: nonce length octet =" &
+             Natural'Image (Nonce'Length),
+             Buf (9) = Tls_Core.Octet (Nonce'Length));
+      --  Nonce bytes.
+      Check ("Session_Ticket: nonce byte 0", Buf (10) = 16#11#);
+      Check ("Session_Ticket: nonce byte 7", Buf (17) = 16#88#);
+      --  u16 BE ticket length, ticket bytes, then empty extensions.
+      Check ("Session_Ticket: ticket length high",
+             Buf (18) = 16#00#);
+      Check ("Session_Ticket: ticket length low =" &
+             Natural'Image (Ticket'Length),
+             Buf (19) = Tls_Core.Octet (Ticket'Length));
+      Check ("Session_Ticket: ticket byte 0", Buf (20) = 16#A0#);
+      Check ("Session_Ticket: ticket byte last", Buf (35) = 16#AF#);
+      Check ("Session_Ticket: extensions length high = 0",
+             Buf (36) = 0);
+      Check ("Session_Ticket: extensions length low = 0",
+             Buf (37) = 0);
+
+      --  Decode round-trip.
+      declare
+         D_Lifetime : Tls_Core.Session_Ticket.U32;
+         D_Age      : Tls_Core.Session_Ticket.U32;
+         Nf         : Natural;
+         Nl         : Integer;
+         Tf         : Natural;
+         Tl         : Integer;
+         OK         : Boolean;
+      begin
+         Tls_Core.Session_Ticket.Decode_Body
+           (In_Buf       => Buf (1 .. Last),
+            Lifetime     => D_Lifetime,
+            Age_Add      => D_Age,
+            Nonce_First  => Nf,
+            Nonce_Last   => Nl,
+            Ticket_First => Tf,
+            Ticket_Last  => Tl,
+            OK           => OK);
+         Check ("Session_Ticket: Decode round-trip OK", OK);
+         Check ("Session_Ticket: lifetime round-trips",
+                D_Lifetime = Lifetime);
+         Check ("Session_Ticket: age_add round-trips",
+                D_Age = Age_Add);
+         Check ("Session_Ticket: nonce slice length matches",
+                Nl - Nf + 1 = Nonce'Length);
+         Check ("Session_Ticket: nonce bytes round-trip",
+                Equal (Buf (Nf .. Nl), Nonce));
+         Check ("Session_Ticket: ticket slice length matches",
+                Tl - Tf + 1 = Ticket'Length);
+         Check ("Session_Ticket: ticket bytes round-trip",
+                Equal (Buf (Tf .. Tl), Ticket));
+      end;
+
+      --  Decode malformed: short buffer.
+      declare
+         Bad : Tls_Core.Octet_Array (1 .. 13) := (others => 0);
+         D_Lifetime : Tls_Core.Session_Ticket.U32;
+         D_Age      : Tls_Core.Session_Ticket.U32;
+         Nf         : Natural;
+         Nl         : Integer;
+         Tf         : Natural;
+         Tl         : Integer;
+         OK         : Boolean;
+      begin
+         Tls_Core.Session_Ticket.Decode_Body
+           (Bad, D_Lifetime, D_Age, Nf, Nl, Tf, Tl, OK);
+         Check ("Session_Ticket: Decode rejects short buffer",
+                not OK);
+      end;
+
+      --  Decode malformed: ticket length zero (RFC: ticket<1..2^16-1>).
+      declare
+         Mb : Tls_Core.Octet_Array (1 .. 14) :=
+           (16#00#, 16#00#, 16#00#, 16#0A#,    --  lifetime
+            16#00#, 16#00#, 16#00#, 16#00#,    --  age_add
+            16#00#,                              --  nonce_len = 0
+            16#00#, 16#00#,                      --  ticket_len = 0
+            16#00#, 16#00#,                      --  ext_len = 0
+            16#00#);                             --  pad
+         D_Lifetime : Tls_Core.Session_Ticket.U32;
+         D_Age      : Tls_Core.Session_Ticket.U32;
+         Nf         : Natural;
+         Nl         : Integer;
+         Tf         : Natural;
+         Tl         : Integer;
+         OK         : Boolean;
+      begin
+         Tls_Core.Session_Ticket.Decode_Body
+           (Mb (1 .. 13), D_Lifetime, D_Age, Nf, Nl, Tf, Tl, OK);
+         Check ("Session_Ticket: Decode rejects ticket_len = 0",
+                not OK);
+      end;
+
+      --  Empty nonce + 1-byte ticket round-trip.
+      declare
+         Empty_Nonce : constant Tls_Core.Octet_Array (1 .. 0) :=
+           (others => 0);
+         Tiny_Ticket : constant Tls_Core.Octet_Array (1 .. 1) :=
+           (1 => 16#5A#);
+         Tb : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+         Tl_E : Natural;
+         D_Lifetime : Tls_Core.Session_Ticket.U32;
+         D_Age      : Tls_Core.Session_Ticket.U32;
+         Nf         : Natural;
+         Nl         : Integer;
+         Tf         : Natural;
+         Tl_D       : Integer;
+         OK         : Boolean;
+      begin
+         Tls_Core.Session_Ticket.Encode_Body
+           (Lifetime     => 16#0000_FFFF#,
+            Age_Add      => 16#1234_5678#,
+            Ticket_Nonce => Empty_Nonce,
+            Ticket       => Tiny_Ticket,
+            Out_Buf      => Tb,
+            Out_Last     => Tl_E);
+         Check ("Session_Ticket: empty-nonce encoded length = 14",
+                Tl_E = 4 + 4 + 1 + 0 + 2 + 1 + 2);
+         Tls_Core.Session_Ticket.Decode_Body
+           (Tb (1 .. Tl_E),
+            D_Lifetime, D_Age, Nf, Nl, Tf, Tl_D, OK);
+         Check ("Session_Ticket: empty-nonce decode OK", OK);
+         Check ("Session_Ticket: empty-nonce roundtrip lifetime",
+                D_Lifetime = 16#0000_FFFF#);
+         Check ("Session_Ticket: empty-nonce roundtrip age_add",
+                D_Age = 16#1234_5678#);
+         Check ("Session_Ticket: empty-nonce slice empty",
+                Nl < Nf);
+         Check ("Session_Ticket: empty-nonce ticket slice 1 byte",
+                Tl_D - Tf + 1 = 1
+                and then Tb (Tf) = 16#5A#);
+      end;
+   end Session_Ticket_Wire_Scenario;
+
+   --------------------------------------------------------------------
+   --  Scenario 36 — Session_Cache Insert / Lookup / Invalidate.
+   --------------------------------------------------------------------
+   procedure Session_Cache_Scenario;
+   procedure Session_Cache_Scenario is
+      use type Interfaces.Unsigned_32;
+      use type Tls_Core.Session_Cache.Slot_Index;
+      use type Tls_Core.Suites.Cipher_Suite_Id;
+
+      Cache : Tls_Core.Session_Cache.Cache;
+
+      Nonce_A : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#01#, 16#02#, 16#03#, 16#04#);
+      Ticket_A : constant Tls_Core.Octet_Array (1 .. 6) :=
+        (16#A0#, 16#A1#, 16#A2#, 16#A3#, 16#A4#, 16#A5#);
+      Nonce_B : constant Tls_Core.Octet_Array (1 .. 4) :=
+        (16#B0#, 16#B1#, 16#B2#, 16#B3#);
+      Ticket_B : constant Tls_Core.Octet_Array (1 .. 8) :=
+        (16#B0#, 16#B1#, 16#B2#, 16#B3#,
+         16#B4#, 16#B5#, 16#B6#, 16#B7#);
+      Secret_A : constant Tls_Core.Key_Schedule.Secret :=
+        (others => 16#5A#);
+      Secret_B : constant Tls_Core.Key_Schedule.Secret :=
+        (others => 16#A5#);
+   begin
+      Put_Line ("scenario 35b — Session_Cache Insert / Lookup / Invalidate");
+
+      Tls_Core.Session_Cache.Init (Cache);
+
+      --  Empty cache: lookup should report Found = False.
+      declare
+         Idx : Tls_Core.Session_Cache.Slot_Index;
+         Found : Boolean;
+      begin
+         Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+         Check ("Session_Cache: empty cache => Found = False",
+                not Found);
+      end;
+
+      --  Insert one.
+      Tls_Core.Session_Cache.Insert
+        (C                 => Cache,
+         Lifetime          => 7200,
+         Age_Add           => 16#1111_2222#,
+         Ticket_Nonce      => Nonce_A,
+         Ticket            => Ticket_A,
+         Resumption_Secret => Secret_A,
+         Suite             => Tls_Core.Suites.Aes_128_Gcm_Sha256);
+
+      declare
+         Idx : Tls_Core.Session_Cache.Slot_Index;
+         Found : Boolean;
+      begin
+         Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+         Check ("Session_Cache: 1-slot lookup Found = True", Found);
+         Check ("Session_Cache: lookup returns A's lifetime",
+                Cache.Slots (Idx).Lifetime = 7200);
+         Check ("Session_Cache: lookup returns A's nonce length",
+                Cache.Slots (Idx).Ticket_Nonce_Len = Nonce_A'Length);
+         Check ("Session_Cache: lookup returns A's nonce bytes",
+                Equal
+                  (Cache.Slots (Idx).Ticket_Nonce
+                     (1 .. Cache.Slots (Idx).Ticket_Nonce_Len),
+                   Nonce_A));
+         Check ("Session_Cache: lookup returns A's ticket length",
+                Cache.Slots (Idx).Ticket_Len = Ticket_A'Length);
+         Check ("Session_Cache: lookup returns A's ticket bytes",
+                Equal
+                  (Cache.Slots (Idx).Ticket
+                     (1 .. Cache.Slots (Idx).Ticket_Len),
+                   Ticket_A));
+         Check ("Session_Cache: lookup returns A's resumption secret",
+                Equal
+                  (Tls_Core.Octet_Array (Cache.Slots (Idx).Resumption_Secret),
+                   Tls_Core.Octet_Array (Secret_A)));
+         Check ("Session_Cache: lookup returns A's suite",
+                Cache.Slots (Idx).Suite =
+                  Tls_Core.Suites.Aes_128_Gcm_Sha256);
+      end;
+
+      --  Insert second; lookup should return the second (most recent).
+      Tls_Core.Session_Cache.Insert
+        (C                 => Cache,
+         Lifetime          => 3600,
+         Age_Add           => 16#3333_4444#,
+         Ticket_Nonce      => Nonce_B,
+         Ticket            => Ticket_B,
+         Resumption_Secret => Secret_B,
+         Suite             => Tls_Core.Suites.Chacha20_Poly1305_Sha256);
+
+      declare
+         Idx : Tls_Core.Session_Cache.Slot_Index;
+         Found : Boolean;
+      begin
+         Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+         Check ("Session_Cache: 2-slot lookup picks B (most recent)",
+                Found
+                and then Cache.Slots (Idx).Lifetime = 3600
+                and then Cache.Slots (Idx).Suite =
+                           Tls_Core.Suites.Chacha20_Poly1305_Sha256);
+      end;
+
+      --  Invalidate B; lookup should now return A.
+      declare
+         Idx : Tls_Core.Session_Cache.Slot_Index;
+         Found : Boolean;
+      begin
+         Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+         Check ("Session_Cache: pre-invalidate found", Found);
+         Tls_Core.Session_Cache.Invalidate (Cache, Idx);
+         Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+         Check ("Session_Cache: after invalidate B, lookup picks A",
+                Found
+                and then Cache.Slots (Idx).Lifetime = 7200);
+      end;
+
+      --  Fill the cache and one over to exercise FIFO eviction.
+      --  Slot_Count = 4. We have one Used (A); add 4 more, each a
+      --  unique tag in the lifetime so we can detect which got
+      --  evicted.
+      Tls_Core.Session_Cache.Insert
+        (C => Cache, Lifetime => 1, Age_Add => 0,
+         Ticket_Nonce => Nonce_A, Ticket => Ticket_A,
+         Resumption_Secret => Secret_A,
+         Suite => Tls_Core.Suites.Aes_128_Gcm_Sha256);
+      Tls_Core.Session_Cache.Insert
+        (C => Cache, Lifetime => 2, Age_Add => 0,
+         Ticket_Nonce => Nonce_A, Ticket => Ticket_A,
+         Resumption_Secret => Secret_A,
+         Suite => Tls_Core.Suites.Aes_128_Gcm_Sha256);
+      Tls_Core.Session_Cache.Insert
+        (C => Cache, Lifetime => 3, Age_Add => 0,
+         Ticket_Nonce => Nonce_A, Ticket => Ticket_A,
+         Resumption_Secret => Secret_A,
+         Suite => Tls_Core.Suites.Aes_128_Gcm_Sha256);
+      --  Now all 4 slots occupied. The next insert must evict the
+      --  oldest. The first insert (the original A with lifetime
+      --  7200) was first chronologically, so it is the oldest.
+      Tls_Core.Session_Cache.Insert
+        (C => Cache, Lifetime => 4, Age_Add => 0,
+         Ticket_Nonce => Nonce_A, Ticket => Ticket_A,
+         Resumption_Secret => Secret_A,
+         Suite => Tls_Core.Suites.Aes_128_Gcm_Sha256);
+
+      declare
+         Found_7200 : Boolean := False;
+         Found_4    : Boolean := False;
+      begin
+         for I in Tls_Core.Session_Cache.Slot_Index loop
+            if Cache.Slots (I).Used then
+               if Cache.Slots (I).Lifetime = 7200 then
+                  Found_7200 := True;
+               elsif Cache.Slots (I).Lifetime = 4 then
+                  Found_4 := True;
+               end if;
+            end if;
+         end loop;
+         Check ("Session_Cache: FIFO eviction removed oldest (lifetime=7200)",
+                not Found_7200);
+         Check ("Session_Cache: FIFO eviction kept newest (lifetime=4)",
+                Found_4);
+      end;
+   end Session_Cache_Scenario;
+
+   --------------------------------------------------------------------
+   --  Scenario 37 — End-to-end NewSessionTicket flow.
+   --
+   --  Drive a full PSK_KE handshake to Done; have the server emit a
+   --  NewSessionTicket on the application Aead_Channel; client
+   --  decrypts and stores it in the Session_Cache; verify cached
+   --  state matches the bytes the server sent.
+   --
+   --  This exercises the production path RFC 8446 §4.6.1 calls out:
+   --  NST is a post-handshake message ridden over the application
+   --  AEAD channel and consumed by the client without the driver
+   --  changing state.
+   --------------------------------------------------------------------
+   procedure Session_Ticket_End_To_End_Scenario;
+   procedure Session_Ticket_End_To_End_Scenario is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Interfaces.Unsigned_32;
+
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);
+
+      C, S : Tls_Core.Tls13_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf_Last : Natural := 0;
+
+      Out_Cli, In_Cli, Out_Srv, In_Srv :
+        Tls_Core.Aead_Channel.Direction;
+      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Schedule.Secret;
+      Sec_Srv_Out, Sec_Srv_In : Tls_Core.Key_Schedule.Secret;
+
+      Cache : Tls_Core.Session_Cache.Cache;
+
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+   begin
+      Put_Line ("scenario 35c — NewSessionTicket end-to-end emit/receive/cache");
+
+      --  Drive the handshake to Done.
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
+
+      Tls_Core.Tls13_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0),
+         Out_Buf => Buf, Out_Last => Buf_Last);
+      declare
+         Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step (S, Ch, Reply, Reply_Last);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+      declare
+         Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step (C, Sf, Reply, Reply_Last);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+      declare
+         Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step (S, Cf, Discard, Discard_Last);
+      end;
+
+      Check ("NST e2e: server reached Done",
+             Tls_Core.Tls13_Driver.Current_State (S)
+               = Tls_Core.Tls13_Driver.Done);
+      Check ("NST e2e: client reached Done",
+             Tls_Core.Tls13_Driver.Current_State (C)
+               = Tls_Core.Tls13_Driver.Done);
+      Check ("NST e2e: server has resumption secret",
+             Tls_Core.Tls13_Driver.Resumption_Master_Secret_Available (S));
+      Check ("NST e2e: client has resumption secret",
+             Tls_Core.Tls13_Driver.Resumption_Master_Secret_Available (C));
+
+      --  Open application directions on both sides.
+      Tls_Core.Tls13_Driver.Open_App_Directions
+        (C, Out_Cli, In_Cli, Sec_Cli_Out, Sec_Cli_In);
+      Tls_Core.Tls13_Driver.Open_App_Directions
+        (S, Out_Srv, In_Srv, Sec_Srv_Out, Sec_Srv_In);
+
+      --  Server emits one NST.
+      declare
+         Nonce : constant Tls_Core.Octet_Array (1 .. 4) :=
+           (16#DE#, 16#AD#, 16#BE#, 16#EF#);
+         Tkt : constant Tls_Core.Octet_Array (1 .. 24) :=
+           (16#01#, 16#02#, 16#03#, 16#04#,
+            16#05#, 16#06#, 16#07#, 16#08#,
+            16#09#, 16#0A#, 16#0B#, 16#0C#,
+            16#0D#, 16#0E#, 16#0F#, 16#10#,
+            16#11#, 16#12#, 16#13#, 16#14#,
+            16#15#, 16#16#, 16#17#, 16#18#);
+         Wire : Tls_Core.Octet_Array (1 .. 2048) := (others => 0);
+         Wire_Last : Natural;
+         Got_OK : Boolean;
+      begin
+         Tls_Core.Tls13_Driver.Send_New_Session_Ticket
+           (D            => S,
+            Out_Dir      => Out_Srv,
+            Lifetime     => 7200,
+            Age_Add      => 16#1234_5678#,
+            Ticket_Nonce => Nonce,
+            Ticket_Bytes => Tkt,
+            Out_Buf      => Wire,
+            Out_Last     => Wire_Last);
+
+         Check ("NST e2e: server emitted record",
+                Wire_Last > 5 + 1 + 16);
+         --  TLSCiphertext outer content type = application_data.
+         Check ("NST e2e: outer content type = 0x17 (app_data)",
+                Wire (1) = 16#17#);
+
+         --  Client receives + stores into cache.
+         Tls_Core.Session_Cache.Init (Cache);
+         Tls_Core.Tls13_Driver.Receive_New_Session_Ticket
+           (D            => C,
+            In_Dir       => In_Cli,
+            Cache        => Cache,
+            Record_Bytes => Wire (1 .. Wire_Last),
+            OK           => Got_OK);
+
+         Check ("NST e2e: client decoded NST", Got_OK);
+
+         --  Inspect cache.
+         declare
+            Idx : Tls_Core.Session_Cache.Slot_Index;
+            Found : Boolean;
+         begin
+            Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+            Check ("NST e2e: cache populated", Found);
+            Check ("NST e2e: cache lifetime = 7200",
+                   Cache.Slots (Idx).Lifetime = 7200);
+            Check ("NST e2e: cache age_add = 0x12345678",
+                   Cache.Slots (Idx).Age_Add = 16#1234_5678#);
+            Check ("NST e2e: cache nonce length",
+                   Cache.Slots (Idx).Ticket_Nonce_Len = Nonce'Length);
+            Check ("NST e2e: cache nonce bytes",
+                   Equal
+                     (Cache.Slots (Idx).Ticket_Nonce
+                        (1 .. Cache.Slots (Idx).Ticket_Nonce_Len),
+                      Nonce));
+            Check ("NST e2e: cache ticket length",
+                   Cache.Slots (Idx).Ticket_Len = Tkt'Length);
+            Check ("NST e2e: cache ticket bytes",
+                   Equal
+                     (Cache.Slots (Idx).Ticket
+                        (1 .. Cache.Slots (Idx).Ticket_Len),
+                      Tkt));
+            --  The cached resumption_master_secret is what the
+            --  client derived from CH..CF. Both endpoints ran the
+            --  same key schedule so the client- and server-side
+            --  values agree (the server's is internal; we sanity-
+            --  check that the cached secret is nontrivial — i.e.
+            --  it was actually derived rather than left at the
+            --  default zero of an uninitialised slot).
+            Check ("NST e2e: cached resumption secret nonzero",
+                   Cache.Slots (Idx).Resumption_Secret (1) /= 0
+                   or else Cache.Slots (Idx).Resumption_Secret (16) /= 0
+                   or else Cache.Slots (Idx).Resumption_Secret (32) /= 0);
+         end;
+      end;
+
+      --  Init_Psk_Resumption_Client smoke check: derives a PSK from
+      --  the cached slot and reaches a fresh Idle state.
+      declare
+         Idx : Tls_Core.Session_Cache.Slot_Index;
+         Found : Boolean;
+         Resume_Cli : Tls_Core.Tls13_Driver.Driver;
+      begin
+         Tls_Core.Session_Cache.Lookup_Most_Recent (Cache, Idx, Found);
+         if Found and then Cache.Slots (Idx).Ticket_Len in 1 .. 64 then
+            Tls_Core.Tls13_Driver.Init_Psk_Resumption_Client
+              (Resume_Cli, Cache.Slots (Idx));
+            Check
+              ("NST e2e: resumption client initialised at Idle",
+               Tls_Core.Tls13_Driver.Current_State (Resume_Cli)
+                 = Tls_Core.Tls13_Driver.Idle);
+         end if;
+      end;
+   end Session_Ticket_End_To_End_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -6311,6 +6858,9 @@ begin
    Alert_Plaintext_Fatal_Scenario;
    Handshake_Buffer_Scenario;
    Tls13_Multi_Record_Reassembly_Scenario;
+   Session_Ticket_Wire_Scenario;
+   Session_Cache_Scenario;
+   Session_Ticket_End_To_End_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

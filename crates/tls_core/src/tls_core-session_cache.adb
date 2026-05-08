@@ -9,23 +9,19 @@ is
    ---------------------------------------------------------------------
 
    procedure Init (C : out Cache) is
+      Empty_Slot : constant Slot :=
+        (Used              => False,
+         Insertion_Seq     => 0,
+         Lifetime          => 0,
+         Age_Add           => 0,
+         Ticket_Nonce_Len  => 0,
+         Ticket_Nonce      => (others => 0),
+         Ticket_Len        => 0,
+         Ticket            => (others => 0),
+         Resumption_Secret => (others => 0),
+         Suite             => Tls_Core.Suites.Aes_128_Gcm_Sha256);
    begin
-      for I in Slot_Index loop
-         C.Slots (I) :=
-           (Used              => False,
-            Insertion_Seq     => 0,
-            Lifetime          => 0,
-            Age_Add           => 0,
-            Ticket_Nonce_Len  => 0,
-            Ticket_Nonce      => (others => 0),
-            Ticket_Len        => 0,
-            Ticket            => (others => 0),
-            Resumption_Secret => (others => 0),
-            Suite             => Tls_Core.Suites.Aes_128_Gcm_Sha256);
-         pragma Loop_Invariant
-           (for all J in Slot_Index'First .. I =>
-              not C.Slots (J).Used);
-      end loop;
+      C.Slots := (others => Empty_Slot);
       C.Next_Seq := 1;
    end Init;
 
