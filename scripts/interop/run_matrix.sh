@@ -105,8 +105,8 @@ peer_available() {
                    && command -v gnutls-serv >/dev/null ;;
         mbedtls)   command -v ssl_client2 >/dev/null \
                    && command -v ssl_server2 >/dev/null ;;
-        rustls)    command -v tlsclient >/dev/null \
-                   && command -v tlsserver >/dev/null ;;
+        rustls)    command -v tlsclient-mio >/dev/null \
+                   && command -v tlsserver-mio >/dev/null ;;
         go)        command -v go >/dev/null ;;
         boringssl) command -v bssl >/dev/null ;;
         *) return 1 ;;
@@ -127,6 +127,20 @@ ada_cli_vs_peer_srv() {
         > "$srv_log" 2>&1 &
     local srv_pid=$!
     sleep 0.7
+    # If the peer's driver said the mode isn't supported (exit 127),
+    # the server process is already gone — mark N/A and skip the
+    # client launch.  Distinguishes "peer doesn't speak this mode"
+    # from "peer rejected our handshake."
+    if ! kill -0 "$srv_pid" 2>/dev/null; then
+        wait "$srv_pid" 2>/dev/null
+        local rc=$?
+        cleanup_port "$port"
+        if [[ $rc -eq 127 ]]; then
+            print_row "$peer" "$cell-c2s" "N/A" \
+                "peer does not implement this mode"
+            return
+        fi
+    fi
 
     case "$mode" in
         psk)
@@ -201,7 +215,10 @@ peer_cli_vs_ada_srv() {
     wait "$srv_pid" 2>/dev/null || true
     cleanup_port "$port"
 
-    if [[ $cli_rc -eq 0 ]] && grep -q "tls_cli: OK" "$srv_log"; then
+    if [[ $cli_rc -eq 127 ]]; then
+        print_row "$peer" "$cell-s2c" "N/A" \
+            "peer does not implement this mode"
+    elif [[ $cli_rc -eq 0 ]] && grep -q "tls_cli: OK" "$srv_log"; then
         print_row "$peer" "$cell-s2c" "PASS" "$cli_log"
     else
         local why
