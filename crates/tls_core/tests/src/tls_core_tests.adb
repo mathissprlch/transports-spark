@@ -7221,6 +7221,117 @@ procedure Tls_Core_Tests is
       end;
    end Ecdsa_Sig_Der_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — cert-mode ServerHello encoder (RFC 8446 §4.1.3)
+   --
+   --  Validates Tls_Core.Hello.Encode_Server_Hello_Cert against the
+   --  PSK ServerHello it mirrors, asserting:
+   --    1. Encoded length is positive and within the buffer.
+   --    2. Body shape matches the §4.1.3 layout (legacy_version
+   --       0x0303, server random, empty session_id, selected suite,
+   --       0x00 compression_methods, extensions block).
+   --    3. The selected cipher suite is echoed correctly.
+   --    4. The 32-byte server X25519 key_share is present in the
+   --       wire bytes.
+   --    5. **The pre_shared_key extension type (0x0029) is NOT
+   --       emitted**, distinguishing this from Encode_Server_Hello_Psk.
+   ---------------------------------------------------------------------
+   procedure Cert_Server_Hello_Scenario;
+   procedure Cert_Server_Hello_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Octet_Array;
+      use type Tls_Core.Suites.U16;
+
+      Server_Random : constant Tls_Core.Hello.Random_Bytes :=
+        (others => 16#5A#);
+      Server_Pub : constant Tls_Core.Hello.Public_Key :=
+        (1 .. 32 => 16#7B#);
+
+      function Find_Pair
+        (Buf : Tls_Core.Octet_Array;
+         Hi, Lo : Tls_Core.Octet) return Boolean
+      is
+         I : Natural := Buf'First;
+      begin
+         while I + 1 <= Buf'Last loop
+            if Buf (I) = Hi and then Buf (I + 1) = Lo then
+               return True;
+            end if;
+            I := I + 1;
+         end loop;
+         return False;
+      end Find_Pair;
+
+      function Find_Run
+        (Buf : Tls_Core.Octet_Array;
+         Pat : Tls_Core.Octet_Array) return Boolean
+      is
+         I : Natural := Buf'First;
+      begin
+         while I + Pat'Length - 1 <= Buf'Last loop
+            if Buf (I .. I + Pat'Length - 1) = Pat then
+               return True;
+            end if;
+            I := I + 1;
+         end loop;
+         return False;
+      end Find_Run;
+
+   begin
+      Put_Line ("scenario — Encode_Server_Hello_Cert (RFC 8446 §4.1.3)");
+
+      declare
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 192) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Hello.Encode_Server_Hello_Cert
+           (Random         => Server_Random,
+            Selected_Suite => Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
+            Key_Share      => Server_Pub,
+            Out_Buf        => Out_Buf,
+            Out_Last       => Out_Last);
+
+         Check ("Cert SH: encoded length in 1 .. Out_Buf'Last",
+                Out_Last in 1 .. Out_Buf'Last);
+         --  legacy_version 0x0303
+         Check ("Cert SH: legacy_version = 0x0303",
+                Out_Buf (1) = 16#03# and then Out_Buf (2) = 16#03#);
+         --  Random at bytes 3..34 — first two bytes match Server_Random.
+         Check ("Cert SH: random_bytes copied",
+                Out_Buf (3) = 16#5A# and then Out_Buf (34) = 16#5A#);
+         --  session_id_len = 0 at byte 35
+         Check ("Cert SH: session_id_len = 0",
+                Out_Buf (35) = 0);
+         --  Selected suite at bytes 36..37 = TLS_AES_128_GCM_SHA256
+         --  (0x1301)
+         Check ("Cert SH: selected suite hi = 0x13",
+                Out_Buf (36) = 16#13#);
+         Check ("Cert SH: selected suite lo = 0x01",
+                Out_Buf (37) = 16#01#);
+         --  compression_method = 0
+         Check ("Cert SH: compression_method = 0",
+                Out_Buf (38) = 0);
+         --  Server key_share (32 bytes 0x7B) appears verbatim somewhere
+         --  in the extension block.
+         declare
+             Pat : constant Tls_Core.Octet_Array (1 .. 32) :=
+               (others => 16#7B#);
+         begin
+             Check ("Cert SH: 32-byte X25519 key share present",
+                    Find_Run (Out_Buf (1 .. Out_Last), Pat));
+         end;
+         --  pre_shared_key extension (type 0x0029) MUST NOT be present.
+         Check ("Cert SH: pre_shared_key (0x0029) ABSENT",
+                not Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#29#));
+         --  supported_versions extension (type 0x002B) MUST be present.
+         Check ("Cert SH: supported_versions (0x002B) present",
+                Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#2B#));
+         --  key_share extension (type 0x0033) MUST be present.
+         Check ("Cert SH: key_share (0x0033) present",
+                Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#33#));
+      end;
+   end Cert_Server_Hello_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -7295,6 +7406,7 @@ begin
    Alpn_Emit_Scenario;
    Post_Handshake_Demux_Scenario;
    Ecdsa_Sig_Der_Scenario;
+   Cert_Server_Hello_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

@@ -259,4 +259,30 @@ is
       Key_Share_Last  : out Natural;
       OK              : out Boolean);
 
+   ------------------------------------------------------------------
+   --  RFC 8446 §4.1.3 cert-mode ServerHello.
+   --
+   --  Identical to the PSK ServerHello except the pre_shared_key
+   --  extension is absent. Extension list emitted (in order):
+   --     supported_versions      = TLS 1.3
+   --     key_share               = {x25519, 32-byte server u-coord}
+   --
+   --  Cert-mode SH carries no signal that a particular cert was
+   --  selected — the certificate itself is communicated in the
+   --  encrypted Certificate handshake message that follows
+   --  EncryptedExtensions in the server flight (RFC 8446 §4.4.2).
+   ------------------------------------------------------------------
+   procedure Encode_Server_Hello_Cert
+     (Random         : Random_Bytes;
+      Selected_Suite : Tls_Core.Suites.U16;
+      Key_Share      : Public_Key;
+      Out_Buf        : out Octet_Array;
+      Out_Last       : out Natural)
+   with
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 192,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
+
 end Tls_Core.Hello;

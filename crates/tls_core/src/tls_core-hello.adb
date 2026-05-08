@@ -1110,6 +1110,66 @@ is
    end Encode_Server_Hello_Psk;
 
    ---------------------------------------------------------------------
+   --  Encode_Server_Hello_Cert (RFC 8446 §4.1.3 cert-mode SH —
+   --  identical to the PSK SH minus the pre_shared_key extension).
+   ---------------------------------------------------------------------
+
+   procedure Encode_Server_Hello_Cert
+     (Random         : Random_Bytes;
+      Selected_Suite : Tls_Core.Suites.U16;
+      Key_Share      : Public_Key;
+      Out_Buf        : out Octet_Array;
+      Out_Last       : out Natural)
+   is
+      use type Tls_Core.Suites.U16;
+      Cursor          : Natural := 0;
+      Ext_Len_Pos     : Natural;
+      Ext_Body_Start  : Natural;
+      Suite_Hi        : constant Octet :=
+        Octet (Selected_Suite / 16#0100#);
+      Suite_Lo        : constant Octet :=
+        Octet (Selected_Suite mod 16#0100#);
+   begin
+      Out_Buf := (others => 0);
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_U8 (Out_Buf, Cursor, 16#03#);
+      W_Bytes (Out_Buf, Cursor, Random);
+      W_U8 (Out_Buf, Cursor, 0);              -- session_id_len
+      W_U8 (Out_Buf, Cursor, Suite_Hi);       -- selected cipher suite
+      W_U8 (Out_Buf, Cursor, Suite_Lo);
+      W_U8 (Out_Buf, Cursor, 0);              -- compression_method
+      Cursor := Cursor + 1;
+      Ext_Len_Pos := Cursor;
+      Cursor := Cursor + 1;
+      Ext_Body_Start := Cursor + 1;
+
+      --  supported_versions = TLS 1.3.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 2) :=
+           (1 => 16#03#, 2 => 16#04#);
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
+      end;
+
+      --  key_share — same SH layout as the PSK case (one
+      --  KeyShareEntry, no list_len prefix).
+      declare
+         Body_Bytes : Octet_Array (1 .. 2 + 2 + 32) := (others => 0);
+      begin
+         Body_Bytes (1) := Named_Group_Hi;
+         Body_Bytes (2) := Named_Group_Lo;
+         Body_Bytes (3) := 16#00#;
+         Body_Bytes (4) := 16#20#;
+         Body_Bytes (5 .. 36) := Key_Share;
+         Encode_Extension (Out_Buf, Cursor, Ext_Key_Share, Body_Bytes);
+      end;
+
+      Patch_U16 (Out_Buf, Ext_Len_Pos, Cursor - Ext_Body_Start + 1);
+      Out_Last := Cursor;
+   end Encode_Server_Hello_Cert;
+
+   ---------------------------------------------------------------------
    --  Decode_Server_Hello_Psk_Key_Share
    ---------------------------------------------------------------------
 
