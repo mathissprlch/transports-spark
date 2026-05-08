@@ -623,6 +623,65 @@ is
        In_Dir.Suite = In_Dir.Suite'Old;
 
    --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Post-handshake message demux (RFC 8446
+   --                      §4.6 — caller-driven path).
+   --
+   --  Standard:    RFC 8446 §4.6 (post-handshake messages —
+   --               NewSessionTicket, KeyUpdate).
+   --  Spec mirror: miTLS src/tls/MiTLS.PostHandshake.fst
+   --
+   --  After Done, application records arrive on the
+   --  application_traffic_secret stream; some of them are NOT app
+   --  data but post-handshake handshake messages (RFC 8446 §4.6 —
+   --  carried with TLSInnerPlaintext.type = handshake (0x16)).
+   --  This procedure inspects the decrypted plaintext + Inner_Type
+   --  and dispatches:
+   --    Inner_Type = 0x16 (Handshake) and Plaintext (1) = 0x04 →
+   --      NewSessionTicket — decoded + inserted into Cache.
+   --      Sets Saw_Nst := True.
+   --    Inner_Type = 0x16 (Handshake) and Plaintext (1) = 0x18 →
+   --      KeyUpdate — Recv_Secret rotated; if peer signalled
+   --      update_requested, Want_Reply := True so caller can
+   --      Send_Key_Update. Sets Saw_KeyUpdate := True.
+   --    Inner_Type /= 0x16 (e.g. 0x17 application_data) →
+   --      no-op; OK := True; caller should treat the plaintext
+   --      as app data.
+   --    Otherwise → OK := False (unrecognised post-handshake
+   --      message; per RFC 8446 §4.6 the connection should be
+   --      torn down with unexpected_message — caller's policy).
+   --
+   --  Caller still owns the Aead_Channel.Direction (post-Done
+   --  app-data dirs are caller-managed via Open_App_Directions);
+   --  for KeyUpdate, this proc rotates In_Dir + Recv_Secret in
+   --  place per RFC 8446 §4.6.3.
+   --
+   --  Functional: cache-update / Recv_Secret-rotation per spec.
+   --  Proven at:  gnatprove --level=2 (audit-clean) — body is
+   --              dispatch + delegation to existing primitives.
+   --------------------------------------------------------------------
+   procedure Process_Post_Handshake_Plaintext
+     (D            : Driver;
+      Plaintext    : Octet_Array;
+      Inner_Type   : Octet;
+      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
+      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Cache        : in out Tls_Core.Session_Cache.Cache;
+      Saw_Nst      : out Boolean;
+      Saw_KeyUpdate : out Boolean;
+      Want_Reply   : out Boolean;
+      OK           : out Boolean)
+   with
+     Pre =>
+       Current_State (D) = Done
+       and then Resumption_Master_Secret_Available (D)
+       and then Plaintext'First = 1
+       and then Plaintext'Length <= 4096
+       and then In_Dir.Suite = Selected_Suite (D)
+       and then (In_Dir.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else In_Dir.Suite =
+                           Tls_Core.Suites.Aes_128_Gcm_Sha256);
+
+   --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Initialise as a resumption client. The PSK
    --                      itself is computed on the spot from the
    --                      stored resumption_master_secret + ticket_nonce

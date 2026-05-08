@@ -6983,6 +6983,141 @@ procedure Tls_Core_Tests is
       end;
    end Alpn_Emit_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — Process_Post_Handshake_Plaintext demux
+   --             (RFC 8446 §4.6 / §4.6.1 / §4.6.3).
+   --
+   --  Drives a PSK Ada-vs-Ada handshake to Done so D has the
+   --  resumption_master_secret available, then exercises the demux
+   --  dispatch:
+   --    1. Inner_Type=app data passes through untouched
+   --    2. Inner_Type=Handshake, first byte=0x18 → KeyUpdate path
+   --    3. Inner_Type=Handshake, unknown type → OK=False
+   ---------------------------------------------------------------------
+
+   procedure Post_Handshake_Demux_Scenario;
+   procedure Post_Handshake_Demux_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Tls13_Driver.State;
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);
+      Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+
+      C, S : Tls_Core.Tls13_Driver.Driver;
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf_Last : Natural;
+      Out_Cli, In_Cli : Tls_Core.Aead_Channel.Direction;
+      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Schedule.Secret;
+      Cache : Tls_Core.Session_Cache.Cache;
+   begin
+      Put_Line ("scenario — Process_Post_Handshake_Plaintext demux");
+
+      Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
+      Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
+
+      --  Drive handshake: CH → SH+EE+SF → CF.
+      Tls_Core.Tls13_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
+      declare
+         Ch_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step (S, Ch_Bytes, Reply, Reply_Last);
+         Tls_Core.Tls13_Driver.Step
+           (C, Reply (1 .. Reply_Last), Buf, Buf_Last);
+      end;
+      declare
+         Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step (S, Cf, Reply, Reply_Last);
+      end;
+      Check ("Demux: client reached Done",
+             Tls_Core.Tls13_Driver.Current_State (C)
+               = Tls_Core.Tls13_Driver.Done);
+      Check ("Demux: server reached Done",
+             Tls_Core.Tls13_Driver.Current_State (S)
+               = Tls_Core.Tls13_Driver.Done);
+
+      Tls_Core.Tls13_Driver.Open_App_Directions
+        (C, Out_Cli, In_Cli, Sec_Cli_Out, Sec_Cli_In);
+
+      --  Case 1: Inner_Type=Application_Data passes through.
+      declare
+         App_Pt : constant Tls_Core.Octet_Array :=
+           (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "Hello"
+         Saw_Nst, Saw_Ku, Want_Reply, OK : Boolean;
+      begin
+         Tls_Core.Tls13_Driver.Process_Post_Handshake_Plaintext
+           (D            => C,
+            Plaintext    => App_Pt,
+            Inner_Type   => Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            In_Dir       => In_Cli,
+            Recv_Secret  => Sec_Cli_In,
+            Cache        => Cache,
+            Saw_Nst      => Saw_Nst,
+            Saw_KeyUpdate => Saw_Ku,
+            Want_Reply   => Want_Reply,
+            OK           => OK);
+         Check ("Demux/app: OK = True", OK);
+         Check ("Demux/app: Saw_Nst = False", not Saw_Nst);
+         Check ("Demux/app: Saw_KeyUpdate = False", not Saw_Ku);
+         Check ("Demux/app: Want_Reply = False", not Want_Reply);
+      end;
+
+      --  Case 2: Inner_Type=Handshake, KeyUpdate (type 0x18, body
+      --  length 1 = 0x000001, request_update 0x00).
+      declare
+         Ku_Pt : constant Tls_Core.Octet_Array :=
+           (16#18#, 16#00#, 16#00#, 16#01#, 16#00#);
+         Saw_Nst, Saw_Ku, Want_Reply, OK : Boolean;
+      begin
+         Tls_Core.Tls13_Driver.Process_Post_Handshake_Plaintext
+           (D            => C,
+            Plaintext    => Ku_Pt,
+            Inner_Type   => Tls_Core.Aead_Channel.Inner_Type_Handshake,
+            In_Dir       => In_Cli,
+            Recv_Secret  => Sec_Cli_In,
+            Cache        => Cache,
+            Saw_Nst      => Saw_Nst,
+            Saw_KeyUpdate => Saw_Ku,
+            Want_Reply   => Want_Reply,
+            OK           => OK);
+         Check ("Demux/keyupd: OK = True", OK);
+         Check ("Demux/keyupd: Saw_KeyUpdate = True", Saw_Ku);
+         Check ("Demux/keyupd: Saw_Nst = False", not Saw_Nst);
+         Check ("Demux/keyupd: Want_Reply = False (req=0)", not Want_Reply);
+      end;
+
+      --  Case 3: Inner_Type=Handshake, unknown type byte (0xAA) →
+      --  RFC 8446 §6.2 unexpected_message → OK=False (caller's
+      --  policy whether to alert).
+      declare
+         Bad_Pt : constant Tls_Core.Octet_Array :=
+           (16#AA#, 16#00#, 16#00#, 16#00#);
+         Saw_Nst, Saw_Ku, Want_Reply, OK : Boolean;
+      begin
+         Tls_Core.Tls13_Driver.Process_Post_Handshake_Plaintext
+           (D            => C,
+            Plaintext    => Bad_Pt,
+            Inner_Type   => Tls_Core.Aead_Channel.Inner_Type_Handshake,
+            In_Dir       => In_Cli,
+            Recv_Secret  => Sec_Cli_In,
+            Cache        => Cache,
+            Saw_Nst      => Saw_Nst,
+            Saw_KeyUpdate => Saw_Ku,
+            Want_Reply   => Want_Reply,
+            OK           => OK);
+         Check ("Demux/unknown: OK = False (per §6.2)", not OK);
+      end;
+   end Post_Handshake_Demux_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -7055,6 +7190,7 @@ begin
    Session_Ticket_End_To_End_Scenario;
    Sni_Emit_Scenario;
    Alpn_Emit_Scenario;
+   Post_Handshake_Demux_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
