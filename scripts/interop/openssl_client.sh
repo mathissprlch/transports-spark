@@ -51,10 +51,14 @@ fi
 
 case "$MODE" in
     psk)
+        # GROUPS / SIGALG omitted in PSK mode for the same reason
+        # as openssl_server.sh: openssl 3.x rejects -groups when
+        # combined with -psk in some configurations.  x25519 is
+        # the default; that's what Tls13_Driver speaks.
         exec openssl s_client -tls1_3 -connect "$HOST:$PORT" \
             -psk "$PSK_HEX" -psk_identity "$PSK_IDENT" \
             -servername localhost \
-            "${CIPHER_ARG[@]}" "${GROUPS_ARG[@]}" \
+            "${CIPHER_ARG[@]}" \
             -quiet
         ;;
     cert-ec)

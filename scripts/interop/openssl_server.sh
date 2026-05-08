@@ -50,10 +50,18 @@ case "$MODE" in
         # PSK-only.  -nocert suppresses the cert chain so openssl
         # negotiates psk_dhe_ke (mode 3) — what our Tls13_Driver
         # speaks.  No -allow_no_dhe_kex (mode 1 is out of scope).
+        # GROUPS / SIGALG omitted in PSK mode: openssl 3.x with
+        # -nocert + -psk rejects -groups configuration; x25519 is
+        # the default and matches what Tls13_Driver sends in CH.
+        # -naccept 1 stops after the first connection.  The reply
+        # byte stream is fed via stdin (so openssl writes "echo-from-
+        # openssl-psk" + EOF after the handshake completes).  -quiet
+        # silences the SSL banner so stdout = peer-decrypted data.
         exec openssl s_server -tls1_3 -accept "$PORT" \
             -psk "$PSK_HEX" -psk_identity "$PSK_IDENT" \
-            -nocert -www \
-            "${CIPHER_ARG[@]}" "${GROUPS_ARG[@]}"
+            -nocert -naccept 1 -quiet \
+            "${CIPHER_ARG[@]}" \
+            < <(printf 'echo-from-openssl-psk')
         ;;
     cert-ec)
         exec openssl s_server -tls1_3 -accept "$PORT" \
