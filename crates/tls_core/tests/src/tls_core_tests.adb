@@ -7487,6 +7487,153 @@ procedure Tls_Core_Tests is
       end;
    end Cert_Client_Hello_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — cert-mode ClientHello round-trip (encoder + decoder).
+   --
+   --  Encode → Decode and assert Random / Suites slice / Sig_Algs
+   --  slice / Key_Share slice round-trip correctly.  Also assert that
+   --  the decoder rejects:
+   --    - a CH with the signature_algorithms extension stripped
+   --    - a CH with the key_share extension stripped
+   --  These are the two REQUIRED extensions for cert mode.
+   ---------------------------------------------------------------------
+   procedure Cert_Client_Hello_Roundtrip_Scenario;
+   procedure Cert_Client_Hello_Roundtrip_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Octet_Array;
+
+      Client_Random : constant Tls_Core.Hello.Random_Bytes :=
+        (others => 16#A1#);
+      Client_Pub : constant Tls_Core.Hello.Public_Key :=
+        (1 .. 32 => 16#3F#);
+      Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+
+      Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := (others => 0);
+      Out_Last : Natural;
+   begin
+      Put_Line ("scenario — cert-mode CH encode/decode round-trip");
+
+      Tls_Core.Hello.Encode_Client_Hello_Cert
+        (Random      => Client_Random,
+         Key_Share   => Client_Pub,
+         Server_Name => Empty,
+         Alpn_Offers => Empty,
+         Out_Buf     => Out_Buf,
+         Out_Last    => Out_Last);
+
+      declare
+         Decoded_Random : Tls_Core.Hello.Random_Bytes;
+         S_F, S_L, A_F, A_L, K_F, K_L : Natural;
+         OK : Boolean;
+      begin
+         Tls_Core.Hello.Decode_Client_Hello_Cert
+           (In_Bytes        => Out_Buf (1 .. Out_Last),
+            Random          => Decoded_Random,
+            Suites_First    => S_F,
+            Suites_Last     => S_L,
+            Sig_Algs_First  => A_F,
+            Sig_Algs_Last   => A_L,
+            Key_Share_First => K_F,
+            Key_Share_Last  => K_L,
+            OK              => OK);
+
+         Check ("Cert CH round-trip: OK = True", OK);
+         Check ("Cert CH round-trip: random matches",
+                Decoded_Random = Client_Random);
+         Check ("Cert CH round-trip: suites slice = 6 bytes",
+                S_L - S_F + 1 = 6);
+         Check ("Cert CH round-trip: first suite = 0x1303",
+                Out_Buf (S_F) = 16#13#
+                and then Out_Buf (S_F + 1) = 16#03#);
+         Check ("Cert CH round-trip: sig_algs slice = 4 bytes",
+                A_L - A_F + 1 = 4);
+         Check ("Cert CH round-trip: ecdsa_secp256r1_sha256 first",
+                Out_Buf (A_F) = 16#04#
+                and then Out_Buf (A_F + 1) = 16#03#);
+         Check ("Cert CH round-trip: rsa_pss_rsae_sha256 second",
+                Out_Buf (A_F + 2) = 16#08#
+                and then Out_Buf (A_F + 3) = 16#04#);
+         Check ("Cert CH round-trip: key_share = 32 bytes",
+                K_L - K_F + 1 = 32);
+         Check ("Cert CH round-trip: key_share bytes match",
+                Out_Buf (K_F .. K_L)
+                = Tls_Core.Octet_Array'(1 .. 32 => 16#3F#));
+      end;
+
+      --  Negative case 1: corrupt the signature_algorithms extension
+      --  type (0x000D → 0x00FE) so the decoder can't find it.
+      declare
+         Mutated  : Tls_Core.Octet_Array (1 .. Out_Last);
+         Decoded_Random : Tls_Core.Hello.Random_Bytes;
+         S_F, S_L, A_F, A_L, K_F, K_L : Natural;
+         OK : Boolean;
+         Found : Boolean := False;
+      begin
+         Mutated := Out_Buf (1 .. Out_Last);
+         --  Locate the 0x00 0x0D extension type pair and zero its low
+         --  byte to 0xFE so the extension type lookup misses.
+         for I in Mutated'First .. Mutated'Last - 1 loop
+            if Mutated (I) = 16#00#
+              and then Mutated (I + 1) = 16#0D#
+              and then not Found
+            then
+               Mutated (I + 1) := 16#FE#;
+               Found := True;
+            end if;
+         end loop;
+
+         Check ("Cert CH negative: setup found 0x000D ext type",
+                Found);
+         Tls_Core.Hello.Decode_Client_Hello_Cert
+           (In_Bytes        => Mutated,
+            Random          => Decoded_Random,
+            Suites_First    => S_F,
+            Suites_Last     => S_L,
+            Sig_Algs_First  => A_F,
+            Sig_Algs_Last   => A_L,
+            Key_Share_First => K_F,
+            Key_Share_Last  => K_L,
+            OK              => OK);
+         Check ("Cert CH negative: missing sig_algs → OK = False",
+                not OK);
+      end;
+
+      --  Negative case 2: corrupt the key_share extension type
+      --  (0x0033 → 0x00FE) so the decoder can't find x25519.
+      declare
+         Mutated  : Tls_Core.Octet_Array (1 .. Out_Last);
+         Decoded_Random : Tls_Core.Hello.Random_Bytes;
+         S_F, S_L, A_F, A_L, K_F, K_L : Natural;
+         OK : Boolean;
+         Found : Boolean := False;
+      begin
+         Mutated := Out_Buf (1 .. Out_Last);
+         for I in Mutated'First .. Mutated'Last - 1 loop
+            if Mutated (I) = 16#00#
+              and then Mutated (I + 1) = 16#33#
+              and then not Found
+            then
+               Mutated (I + 1) := 16#FE#;
+               Found := True;
+            end if;
+         end loop;
+         Check ("Cert CH negative: setup found 0x0033 ext type",
+                Found);
+         Tls_Core.Hello.Decode_Client_Hello_Cert
+           (In_Bytes        => Mutated,
+            Random          => Decoded_Random,
+            Suites_First    => S_F,
+            Suites_Last     => S_L,
+            Sig_Algs_First  => A_F,
+            Sig_Algs_Last   => A_L,
+            Key_Share_First => K_F,
+            Key_Share_Last  => K_L,
+            OK              => OK);
+         Check ("Cert CH negative: missing key_share → OK = False",
+                not OK);
+      end;
+   end Cert_Client_Hello_Roundtrip_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -7563,6 +7710,7 @@ begin
    Ecdsa_Sig_Der_Scenario;
    Cert_Server_Hello_Scenario;
    Cert_Client_Hello_Scenario;
+   Cert_Client_Hello_Roundtrip_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

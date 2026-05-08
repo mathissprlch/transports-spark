@@ -292,6 +292,29 @@ is
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 
+   --  Decode a received cert-mode ClientHello (after the 4-byte
+   --  Handshake header has been stripped).  Sets OK = False if:
+   --    * basic shape is malformed
+   --    * no key_share for x25519
+   --    * no signature_algorithms extension
+   --
+   --  Suites_First..Suites_Last bracket the cipher_suites list so
+   --  the server can run its own selection policy. Sig_Algs_First..
+   --  Sig_Algs_Last bracket the signature_algorithms list (u16 list
+   --  body — the leading 2-byte length field is excluded). Key_Share_
+   --  First..Key_Share_Last point at the 32-byte X25519 client public
+   --  key.
+   procedure Decode_Client_Hello_Cert
+     (In_Bytes        : Octet_Array;
+      Random          : out Random_Bytes;
+      Suites_First    : out Natural;
+      Suites_Last     : out Natural;
+      Sig_Algs_First  : out Natural;
+      Sig_Algs_Last   : out Natural;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
+      OK              : out Boolean);
+
    ------------------------------------------------------------------
    --  RFC 8446 §4.1.3 cert-mode ServerHello.
    --
