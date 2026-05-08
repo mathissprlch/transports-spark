@@ -1719,4 +1719,32 @@ is
       OK := True;
    end Process_Inbound_Key_Update;
 
+   --  C10 alert protocol stubs — full driver wiring landed in C10
+   --  worktree but the body conflicted with C9/C11/C14 driver edits;
+   --  shipping the Alert primitives in tls_core-alert.{ads,adb} but
+   --  the driver-level Send_Close_Notify / Send_Fatal_Alert bodies
+   --  remain stubs. Tracked as Tier C10 v2 (alert driver wiring).
+   procedure Send_Close_Notify
+     (D        : in out Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   is
+      pragma Unreferenced (D);
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := 0;
+   end Send_Close_Notify;
+
+   procedure Send_Fatal_Alert
+     (D           : in out Driver;
+      Description : Octet;
+      Out_Buf     : out Octet_Array;
+      Out_Last    : out Natural)
+   is
+      pragma Unreferenced (D, Description);
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := 0;
+   end Send_Fatal_Alert;
+
 end Tls_Core.Tls13_Driver;
