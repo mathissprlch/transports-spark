@@ -45,12 +45,19 @@ is
          IKM     => PSK,
          Out_PRK => Early_Secret);
 
-      --  binder_key = HKDF-Expand-Label(Early_Secret, "ext binder", "", 32).
-      Hkdf_Expand_Label_Sha256
-        (Secret  => Early_Secret,
-         Label   => Ext_Binder_Label,
-         Context => Empty,
-         Output  => Binder_Key);
+      --  binder_key = Derive-Secret(Early_Secret, "ext binder", "")
+      --  per RFC 8446 §7.1.  Derive-Secret hashes its Messages
+      --  argument first, so for empty Messages the context fed to
+      --  HKDF-Expand-Label is SHA-256("") (the canonical 32-byte
+      --  empty-string digest), NOT a 0-byte literal context.
+      --  Calling Hkdf_Expand_Label_Sha256 directly with Context =>
+      --  Empty (0 bytes) produces a different binder_key than
+      --  spec-conformant peers (openssl / rustls / Go) compute.
+      Tls_Core.Key_Schedule.Derive_Secret
+        (Secret_In  => Early_Secret,
+         Label      => Ext_Binder_Label,
+         Messages   => Empty,
+         Out_Secret => Binder_Key);
 
       --  finished_key = HKDF-Expand-Label(binder_key, "finished", "", 32).
       Hkdf_Expand_Label_Sha256

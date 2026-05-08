@@ -183,7 +183,7 @@ is
          Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
       begin
          Body_Bytes (1) := 16#00#;
-         Body_Bytes (2) := 16#26#;  --  client_shares total length = 38
+         Body_Bytes (2) := 16#24#;  --  client_shares total length = 38
          Body_Bytes (3) := Named_Group_Hi;
          Body_Bytes (4) := Named_Group_Lo;
          Body_Bytes (5) := 16#00#;
@@ -613,7 +613,7 @@ is
          Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
       begin
          Body_Bytes (1) := 16#00#;
-         Body_Bytes (2) := 16#26#;        --  client_shares total = 38
+         Body_Bytes (2) := 16#24#;        --  client_shares total = 38
          Body_Bytes (3) := Named_Group_Hi;
          Body_Bytes (4) := Named_Group_Lo;
          Body_Bytes (5) := 16#00#;
@@ -775,7 +775,7 @@ is
          Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
       begin
          Body_Bytes (1) := 16#00#;
-         Body_Bytes (2) := 16#26#;
+         Body_Bytes (2) := 16#24#;
          Body_Bytes (3) := Named_Group_Hi;
          Body_Bytes (4) := Named_Group_Lo;
          Body_Bytes (5) := 16#00#;
@@ -1214,7 +1214,7 @@ is
          Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
       begin
          Body_Bytes (1) := 16#00#;
-         Body_Bytes (2) := 16#26#;        --  client_shares total = 38
+         Body_Bytes (2) := 16#24#;        --  client_shares total = 38
          Body_Bytes (3) := Named_Group_Hi;
          Body_Bytes (4) := Named_Group_Lo;
          Body_Bytes (5) := 16#00#;
