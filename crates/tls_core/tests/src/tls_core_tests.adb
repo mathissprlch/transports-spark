@@ -7118,6 +7118,109 @@ procedure Tls_Core_Tests is
       end;
    end Post_Handshake_Demux_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — DER encode ECDSA Sig-Value SEQUENCE (RFC 5480 §2.2 /
+   --              SEC 1 §C.5)
+   --
+   --  Validates Tls_Core.Cert_Verify.Encode_Ecdsa_Sig_Der against:
+   --    1. The known DER signature already used by Cert_Chain_Pki_
+   --       Scenario above — extract its r/s, re-encode, expect the
+   --       byte stream to round-trip identically.
+   --    2. A synthetic (r, s) where r's first byte has its high bit
+   --       set, forcing a 0x00 pad to keep the INTEGER positive.
+   --    3. A synthetic (r, s) with leading zero bytes that must be
+   --       stripped, so the encoded INTEGER is shorter than 32 bytes.
+   ---------------------------------------------------------------------
+   procedure Ecdsa_Sig_Der_Scenario;
+   procedure Ecdsa_Sig_Der_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Octet_Array;
+
+      --  r/s extracted from Leaf_Sig in Cert_Chain_Pki_Scenario.
+      --  Layout of Leaf_Sig: 0x30 0x44 0x02 0x20 <32B r> 0x02 0x20 <32B s>
+      R_From_Fixture : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#03#, 16#BA#, 16#EE#, 16#B7#, 16#9D#, 16#81#, 16#B7#, 16#0C#,
+         16#81#, 16#C0#, 16#4C#, 16#53#, 16#EB#, 16#03#, 16#CF#, 16#A6#,
+         16#E2#, 16#9A#, 16#78#, 16#E0#, 16#B9#, 16#00#, 16#32#, 16#DB#,
+         16#7B#, 16#4D#, 16#5E#, 16#9D#, 16#02#, 16#B3#, 16#9B#, 16#E2#);
+      S_From_Fixture : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#13#, 16#61#, 16#15#, 16#13#, 16#79#, 16#5D#, 16#16#, 16#20#,
+         16#6C#, 16#38#, 16#BC#, 16#C4#, 16#EE#, 16#C5#, 16#34#, 16#EE#,
+         16#2C#, 16#AB#, 16#08#, 16#82#, 16#B7#, 16#4F#, 16#43#, 16#05#,
+         16#F0#, 16#2E#, 16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#);
+      Expected_Sig : constant Tls_Core.Octet_Array (1 .. 70) :=
+        (16#30#, 16#44#, 16#02#, 16#20#, 16#03#, 16#BA#, 16#EE#, 16#B7#,
+         16#9D#, 16#81#, 16#B7#, 16#0C#, 16#81#, 16#C0#, 16#4C#, 16#53#,
+         16#EB#, 16#03#, 16#CF#, 16#A6#, 16#E2#, 16#9A#, 16#78#, 16#E0#,
+         16#B9#, 16#00#, 16#32#, 16#DB#, 16#7B#, 16#4D#, 16#5E#, 16#9D#,
+         16#02#, 16#B3#, 16#9B#, 16#E2#, 16#02#, 16#20#, 16#13#, 16#61#,
+         16#15#, 16#13#, 16#79#, 16#5D#, 16#16#, 16#20#, 16#6C#, 16#38#,
+         16#BC#, 16#C4#, 16#EE#, 16#C5#, 16#34#, 16#EE#, 16#2C#, 16#AB#,
+         16#08#, 16#82#, 16#B7#, 16#4F#, 16#43#, 16#05#, 16#F0#, 16#2E#,
+         16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#);
+   begin
+      Put_Line ("scenario — Encode_Ecdsa_Sig_Der");
+
+      --  Case 1: round-trip a real PKI ECDSA-SHA256 signature.
+      declare
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Cert_Verify.Encode_Ecdsa_Sig_Der
+           (R_From_Fixture, S_From_Fixture, Out_Buf, Out_Last);
+         Check ("ECDSA Sig-Value: length round-trip = 70",
+                Out_Last = 70);
+         Check ("ECDSA Sig-Value: bytes match real-PKI fixture",
+                Out_Buf (1 .. Out_Last) = Expected_Sig);
+      end;
+
+      --  Case 2: r with high-bit-set first byte forces 0x00 pad,
+      --  pushing total length from 70 → 71.
+      declare
+         R_Hb : constant Tls_Core.Octet_Array (1 .. 32) :=
+           (16#80#, others => 16#11#);
+         S_Hb : constant Tls_Core.Octet_Array (1 .. 32) :=
+           (16#22#, others => 16#22#);
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Cert_Verify.Encode_Ecdsa_Sig_Der
+           (R_Hb, S_Hb, Out_Buf, Out_Last);
+         Check ("ECDSA Sig-Value: high-bit r adds 0x00 pad → len 71",
+                Out_Last = 71);
+         Check ("ECDSA Sig-Value: high-bit r → SEQUENCE body 69",
+                Out_Buf (2) = 69);
+         Check ("ECDSA Sig-Value: high-bit r → r INTEGER body 33",
+                Out_Buf (4) = 33);
+         Check ("ECDSA Sig-Value: high-bit r → 0x00 pad byte",
+                Out_Buf (5) = 16#00#);
+         Check ("ECDSA Sig-Value: high-bit r → first non-pad byte",
+                Out_Buf (6) = 16#80#);
+      end;
+
+      --  Case 3: leading zero bytes in r get stripped. r = 0x00 0x00 ..
+      --  0x00 0x42 (only one nonzero byte at position 32) → r INTEGER
+      --  body length 1.
+      declare
+         R_Zero : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+         S_Zero : constant Tls_Core.Octet_Array (1 .. 32) :=
+           (others => 16#33#);
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := (others => 0);
+         Out_Last : Natural;
+      begin
+         R_Zero (32) := 16#42#;
+         Tls_Core.Cert_Verify.Encode_Ecdsa_Sig_Der
+           (R_Zero, S_Zero, Out_Buf, Out_Last);
+         --  Expected: 0x30 len 0x02 0x01 0x42 0x02 0x20 <32B s> = 39
+         Check ("ECDSA Sig-Value: stripped-zeros r → len 39",
+                Out_Last = 39);
+         Check ("ECDSA Sig-Value: stripped-zeros r → r INTEGER body 1",
+                Out_Buf (4) = 1);
+         Check ("ECDSA Sig-Value: stripped-zeros r → only nonzero byte",
+                Out_Buf (5) = 16#42#);
+      end;
+   end Ecdsa_Sig_Der_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -7191,6 +7294,7 @@ begin
    Sni_Emit_Scenario;
    Alpn_Emit_Scenario;
    Post_Handshake_Demux_Scenario;
+   Ecdsa_Sig_Der_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

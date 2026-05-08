@@ -138,4 +138,37 @@ is
      Post =>
        Out_Last = 64 + 33 + 1 + Transcript_Hash'Length;
 
+   ---------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  DER-encode an ECDSA Sig-Value SEQUENCE.
+   --
+   --  Standard:    RFC 5480 §2.2 / SEC 1 §C.5 (Ecdsa-Sig-Value).
+   --  Wire layout:
+   --      SEQUENCE {
+   --          r  INTEGER,                  -- 32-byte big-endian, with
+   --          s  INTEGER                   -- a leading 0x00 prepended
+   --      }                                -- when the high bit is set,
+   --                                       -- and any leading zero bytes
+   --                                       -- of the input stripped.
+   --
+   --  Inputs R and S are the ECDSA-P256 32-byte big-endian scalar
+   --  components produced by Tls_Core.Ecdsa_P256.Sign. Worst-case
+   --  output is 72 bytes:
+   --      0x30 len  0x02 0x21 (0x00 || 32B) 0x02 0x21 (0x00 || 32B)
+   --
+   --  Out_Last is the number of bytes written. Out_Buf must be at
+   --  least 72 bytes long.
+   ---------------------------------------------------------------------
+   procedure Encode_Ecdsa_Sig_Der
+     (R, S     : Octet_Array;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with
+     Pre =>
+       R'Length = 32
+       and then S'Length = 32
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= 72,
+     Post =>
+       Out_Last in 8 .. 72;
+
 end Tls_Core.Cert_Verify;
