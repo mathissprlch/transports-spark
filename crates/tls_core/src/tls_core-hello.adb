@@ -23,6 +23,7 @@ is
    Ext_Supported_Groups      : constant := 16#000A#;
    Ext_Signature_Algorithms  : constant := 16#000D#;
    Ext_Server_Name           : constant := 16#0000#;  --  RFC 6066 §3
+   Ext_Alpn                  : constant := 16#0010#;  --  RFC 7301
 
    ---------------------------------------------------------------------
    --  Small writer helpers: append byte / u16 / a buffer of bytes
@@ -510,6 +511,7 @@ is
       Identity        : Octet_Array;
       Key_Share       : Public_Key;
       Server_Name     : Octet_Array;
+      Alpn_Offers     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -582,6 +584,24 @@ is
             Encode_Extension
               (Out_Buf, Cursor, Ext_Server_Name,
                Sni_Body (1 .. Sni_Body_Last));
+         end;
+      end if;
+
+      --  application_layer_protocol_negotiation (RFC 7301 / RFC 8446
+      --  §4.2).  Encode_Alpn wraps the caller-flattened Names_Buf
+      --  with the u16 list_length; we wrap that with the
+      --  extension_type + extension_data length.
+      if Alpn_Offers'Length > 0 then
+         declare
+            Alpn_Body : Octet_Array (1 .. 2 + Alpn_Offers'Length) :=
+              (others => 0);
+            Alpn_Body_Last : Natural;
+         begin
+            Tls_Core.Extensions.Encode_Alpn
+              (Alpn_Offers, Alpn_Body, Alpn_Body_Last);
+            Encode_Extension
+              (Out_Buf, Cursor, Ext_Alpn,
+               Alpn_Body (1 .. Alpn_Body_Last));
          end;
       end if;
 
@@ -666,6 +686,7 @@ is
       Key_Share       : Public_Key;
       Cookie          : Octet_Array;
       Server_Name     : Octet_Array;
+      Alpn_Offers     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -726,6 +747,21 @@ is
             Encode_Extension
               (Out_Buf, Cursor, Ext_Server_Name,
                Sni_Body (1 .. Sni_Body_Last));
+         end;
+      end if;
+
+      --  ALPN (RFC 7301 / RFC 8446 §4.2).
+      if Alpn_Offers'Length > 0 then
+         declare
+            Alpn_Body : Octet_Array (1 .. 2 + Alpn_Offers'Length) :=
+              (others => 0);
+            Alpn_Body_Last : Natural;
+         begin
+            Tls_Core.Extensions.Encode_Alpn
+              (Alpn_Offers, Alpn_Body, Alpn_Body_Last);
+            Encode_Extension
+              (Out_Buf, Cursor, Ext_Alpn,
+               Alpn_Body (1 .. Alpn_Body_Last));
          end;
       end if;
 

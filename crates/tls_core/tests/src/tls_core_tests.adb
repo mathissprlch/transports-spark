@@ -2921,6 +2921,7 @@ procedure Tls_Core_Tests is
       Tls_Core.Hello.Encode_Client_Hello_Psk
         (Random, Identity, Test_Key_Share,
          Server_Name => Tls_Core.Octet_Array'(1 .. 0 => 0),
+         Alpn_Offers => Tls_Core.Octet_Array'(1 .. 0 => 0),
          Out_Buf => Wire, Out_Last => Wire_Last,
          Truncated_Last => Truncated_Last);
       Check ("PSK CH: encoder emitted bytes", Wire_Last > Truncated_Last);
@@ -6886,6 +6887,102 @@ procedure Tls_Core_Tests is
       end;
    end Sni_Emit_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — ALPN emit (RFC 7301 + RFC 8446 §4.2 / §4.3.1)
+   --
+   --  Validates that:
+   --    1. Set_Alpn_Offers stores the flattened ProtocolName list
+   --    2. Alpn_Offers getter reads it back
+   --    3. After CH emit, the wire bytes contain the ALPN extension
+   --       (type 0x0010) and the protocol name "h2"
+   --    4. With no Set_Alpn_Offers call, CH does NOT contain ALPN
+   ---------------------------------------------------------------------
+
+   procedure Alpn_Emit_Scenario;
+   procedure Alpn_Emit_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Octet_Array;
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Identity : constant Tls_Core.Octet_Array :=
+        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+      Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+
+      --  Pre-flattened "u8 N || N name bytes" for "h2"
+      --  (gRPC over TLS uses h2; per RFC 7301 + IANA registry).
+      H2_Offer : constant Tls_Core.Octet_Array :=
+        (16#02#, 16#68#, 16#32#);  --  len=2 || 'h' '2'
+
+      function Find_Bytes
+        (Buf    : Tls_Core.Octet_Array;
+         Needle : Tls_Core.Octet_Array) return Boolean
+      is
+      begin
+         if Needle'Length = 0 or else Buf'Length < Needle'Length then
+            return False;
+         end if;
+         for I in Buf'First .. Buf'Last - Needle'Length + 1 loop
+            if Buf (I .. I + Needle'Length - 1) = Needle then
+               return True;
+            end if;
+         end loop;
+         return False;
+      end Find_Bytes;
+
+   begin
+      Put_Line ("scenario — ALPN Set/Get + emit in CH");
+
+      --  Case 1: client with ALPN set emits the extension.
+      declare
+         C : Tls_Core.Tls13_Driver.Driver;
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf_Last : Natural;
+         Read_Out : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Read_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client
+           (C, Psk, Identity, Client_Priv);
+         Tls_Core.Tls13_Driver.Set_Alpn_Offers (C, H2_Offer);
+         Tls_Core.Tls13_Driver.Alpn_Offers (C, Read_Out, Read_Last);
+         Check ("ALPN/get: offers length round-trips",
+                Read_Last = H2_Offer'Length);
+         Check ("ALPN/get: offers bytes round-trip",
+                Read_Out (1 .. Read_Last) = H2_Offer);
+
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Buf, Out_Last => Buf_Last);
+         --  Find the 0x00 0x10 ext-type marker AND the "h2" body
+         --  on the wire. We require both because 0x00 0x10 alone
+         --  could occur as length bytes inside other extensions.
+         Check ("ALPN/emit: CH contains ext type 0x0010",
+                Find_Bytes
+                  (Buf (1 .. Buf_Last),
+                   Tls_Core.Octet_Array'(16#00#, 16#10#)));
+         Check ("ALPN/emit: CH contains the 'h2' protocol name",
+                Find_Bytes
+                  (Buf (1 .. Buf_Last),
+                   Tls_Core.Octet_Array'(16#02#, 16#68#, 16#32#)));
+      end;
+
+      --  Case 2: no Set_Alpn_Offers call — extension absent.
+      declare
+         C : Tls_Core.Tls13_Driver.Driver;
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Init_Psk_Client
+           (C, Psk, Identity, Client_Priv);
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Buf (1 .. 0),
+            Out_Buf => Buf, Out_Last => Buf_Last);
+         Check ("ALPN/no-set: 'h2' protocol-name bytes absent from CH",
+                not Find_Bytes
+                      (Buf (1 .. Buf_Last),
+                       Tls_Core.Octet_Array'(16#02#, 16#68#, 16#32#)));
+      end;
+   end Alpn_Emit_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -6957,6 +7054,7 @@ begin
    Session_Cache_Scenario;
    Session_Ticket_End_To_End_Scenario;
    Sni_Emit_Scenario;
+   Alpn_Emit_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

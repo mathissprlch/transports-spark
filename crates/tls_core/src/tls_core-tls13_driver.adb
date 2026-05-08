@@ -393,6 +393,7 @@ is
                   D.Identity (1 .. D.Identity_Len),
                   D.My_Ecdhe_Pub,
                   D.Sni_Hostname (1 .. D.Sni_Len),
+                  D.Alpn_Offers (1 .. D.Alpn_Offers_Len),
                   Ch_Body, Ch_Body_Last, T_Last);
                --  RFC 8446 §4.2.11.2 + §4.4.1: the binder is computed
                --  over the truncated *handshake message* (handshake
@@ -1528,6 +1529,7 @@ is
                   D.My_Ecdhe_Pub,
                   D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len),
                   D.Sni_Hostname (1 .. D.Sni_Len),
+                  D.Alpn_Offers (1 .. D.Alpn_Offers_Len),
                   Ch_Body, Ch_Body_Last, T_Last);
                --  RFC 8446 §4.2.11.2 + §4.4.1: hash the truncated
                --  *handshake-formatted* CH (header + body), not the
@@ -2226,6 +2228,63 @@ is
          Out_Buf (1 .. D.Sni_Len) := D.Sni_Hostname (1 .. D.Sni_Len);
       end if;
    end Sni_Hostname;
+
+   ---------------------------------------------------------------------
+   --  Set_Alpn_Offers / Alpn_Offers / Set_Selected_Alpn /
+   --  Selected_Alpn — RFC 7301 + RFC 8446 §4.2.
+   ---------------------------------------------------------------------
+
+   procedure Set_Alpn_Offers
+     (D     : in out Driver;
+      Names : Octet_Array)
+   is
+   begin
+      D.Alpn_Offers := (others => 0);
+      D.Alpn_Offers_Len := Names'Length;
+      if Names'Length > 0 then
+         D.Alpn_Offers (1 .. Names'Length) := Names;
+      end if;
+   end Set_Alpn_Offers;
+
+   procedure Alpn_Offers
+     (D        : Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   is
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := D.Alpn_Offers_Len;
+      if D.Alpn_Offers_Len > 0 then
+         Out_Buf (1 .. D.Alpn_Offers_Len) :=
+           D.Alpn_Offers (1 .. D.Alpn_Offers_Len);
+      end if;
+   end Alpn_Offers;
+
+   procedure Set_Selected_Alpn
+     (D    : in out Driver;
+      Name : Octet_Array)
+   is
+   begin
+      D.Selected_Alpn := (others => 0);
+      D.Selected_Alpn_Len := Name'Length;
+      if Name'Length > 0 then
+         D.Selected_Alpn (1 .. Name'Length) := Name;
+      end if;
+   end Set_Selected_Alpn;
+
+   procedure Selected_Alpn
+     (D        : Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   is
+   begin
+      Out_Buf := (others => 0);
+      Out_Last := D.Selected_Alpn_Len;
+      if D.Selected_Alpn_Len > 0 then
+         Out_Buf (1 .. D.Selected_Alpn_Len) :=
+           D.Selected_Alpn (1 .. D.Selected_Alpn_Len);
+      end if;
+   end Selected_Alpn;
 
    ---------------------------------------------------------------------
    --  Send_Close_Notify — RFC 8446 §6.1 graceful shutdown.

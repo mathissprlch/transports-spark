@@ -150,11 +150,18 @@ is
    --  a server_name extension when its length is non-zero; an empty
    --  array (length 0) means "omit the extension" (e.g. when the
    --  caller didn't set an SNI hostname).
+   --
+   --  Alpn_Offers (RFC 7301) is a pre-flattened ProtocolName list
+   --  in the "u8 name_length || N name bytes" repeating layout.
+   --  Caller is responsible for the flattening (see
+   --  Tls_Core.Extensions.Append_Alpn_Name). Empty = omit ALPN
+   --  extension.
    procedure Encode_Client_Hello_Psk
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
       Key_Share       : Public_Key;
       Server_Name     : Octet_Array;
+      Alpn_Offers     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -163,7 +170,8 @@ is
        Out_Buf'First = 1
        and then Out_Buf'Length >= 320
        and then Identity'Length in Psk_Identity_Len
-       and then Server_Name'Length <= 255,
+       and then Server_Name'Length <= 255
+       and then Alpn_Offers'Length in 0 | 2 .. 255,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 
@@ -173,14 +181,14 @@ is
    --  identical to Encode_Client_Hello_Psk. Used by the client's
    --  CH2 emission after consuming HRR per RFC 8446 §4.1.4.
    --
-   --  Server_Name as in Encode_Client_Hello_Psk (RFC 6066 §3 SNI;
-   --  empty = omit).
+   --  Server_Name and Alpn_Offers as in Encode_Client_Hello_Psk.
    procedure Encode_Client_Hello_Psk_With_Cookie
      (Random          : Random_Bytes;
       Identity        : Octet_Array;
       Key_Share       : Public_Key;
       Cookie          : Octet_Array;
       Server_Name     : Octet_Array;
+      Alpn_Offers     : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural;
       Truncated_Last  : out Natural)
@@ -190,7 +198,8 @@ is
        and then Out_Buf'Length >= 320
        and then Identity'Length in Psk_Identity_Len
        and then Cookie'Length <= 64
-       and then Server_Name'Length <= 255,
+       and then Server_Name'Length <= 255
+       and then Alpn_Offers'Length in 0 | 2 .. 255,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 

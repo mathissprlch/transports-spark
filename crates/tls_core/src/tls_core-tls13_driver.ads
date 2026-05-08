@@ -205,6 +205,49 @@ is
       Out_Last : out Natural)
    with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 255;
 
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  ALPN — RFC 7301 + RFC 8446 §4.2.
+   --
+   --  Set_Alpn_Offers takes a pre-flattened ProtocolName list
+   --  ("u8 N || N name bytes" repeating) — caller is responsible
+   --  for the flattening (Tls_Core.Extensions.Append_Alpn_Name is
+   --  a public helper). Empty list = clear / omit ALPN extension.
+   --  CH emit then carries application_layer_protocol_negotiation
+   --  (extension_type 0x0010).
+   --
+   --  Selected_Alpn returns the protocol the server chose for this
+   --  connection (set on the server side via Set_Selected_Alpn,
+   --  carried in EE per RFC 8446 §4.3.1 — server-side EE emit is
+   --  a v0.5 follow-up; for now Selected_Alpn returns whatever
+   --  the local side decided / saw most recently).
+   --------------------------------------------------------------------
+   procedure Set_Alpn_Offers
+     (D     : in out Driver;
+      Names : Octet_Array)
+   with Pre => Names'Length in 0 | 2 .. 255;
+
+   --  Read back the offers (client side: what was sent;
+   --  server side: what was received in CH).
+   procedure Alpn_Offers
+     (D        : Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 256;
+
+   --  Server side: pick a single ProtocolName from the offered list
+   --  to advertise back in EE. Client side: read what the server
+   --  picked (filled in by the EE-handling Step branch).
+   procedure Set_Selected_Alpn
+     (D    : in out Driver;
+      Name : Octet_Array)
+   with Pre => Name'Length <= 64;
+
+   procedure Selected_Alpn
+     (D        : Driver;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 64;
+
    --  Drive one flight. Caller hands in the bytes received over
    --  TCP since the last Step (one or more TLSPlaintext /
    --  TLSCiphertext records concatenated). Driver writes the
@@ -763,6 +806,18 @@ private
       --  Max 255 bytes per RFC 1035 §2.3.4.
       Sni_Hostname : Octet_Array (1 .. 255) := (others => 0);
       Sni_Len      : Natural := 0;
+
+      --  RFC 7301 + RFC 8446 §4.2 — ALPN.  Pre-flattened
+      --  ProtocolName list ("u8 N || N name bytes" repeating).
+      --  Client: set via Set_Alpn_Offers before first Step.
+      --  Server: populated from inbound CH (offered list).
+      --  Selected_Alpn (server's pick from this list, emitted in
+      --  EE) is a separate field — Selected_Alpn_Len = 0 until
+      --  the server side picks one.
+      Alpn_Offers     : Octet_Array (1 .. 256) := (others => 0);
+      Alpn_Offers_Len : Natural := 0;
+      Selected_Alpn     : Octet_Array (1 .. 64) := (others => 0);
+      Selected_Alpn_Len : Natural := 0;
    end record;
 
    function Current_State (D : Driver) return State is (D.Cur_State);
