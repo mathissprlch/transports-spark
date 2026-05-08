@@ -159,8 +159,12 @@ is
                end if;
                Cursor := Cursor + 2;
             end;
-            --  Must consume exactly the list_len.
-            if 1 + 3 + Cursor - 4 /= List_Len then
+            --  Must consume exactly the list_len.  Cursor counts
+            --  the 1-byte request_context_len plus the 3-byte
+            --  list_len_u24 field plus the list body itself; the
+            --  list body alone is List_Len bytes, so Cursor - 4
+            --  must equal List_Len.
+            if Cursor - 4 /= List_Len then
                return;
             end if;
          end;

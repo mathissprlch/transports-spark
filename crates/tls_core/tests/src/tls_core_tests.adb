@@ -7634,6 +7634,330 @@ procedure Tls_Core_Tests is
       end;
    end Cert_Client_Hello_Roundtrip_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — TLS 1.3 cert-mode handshake, Ada-vs-Ada loopback.
+   --
+   --  Drives Tls13_Driver in Cert_Mode end-to-end against the existing
+   --  PKI fixtures (Leaf_Der + Root_Der + leaf private key).  The
+   --  flow:
+   --
+   --    Idle (client) → CH                         [TLSPlaintext]
+   --    Awaiting_CH (server) → SH+EE+Cert+CV+SF    [SH plaintext;
+   --                                                EE/Cert/CV/SF
+   --                                                encrypted under
+   --                                                handshake AEAD]
+   --    Awaiting_Sf (client) → CF                  [encrypted]
+   --    Awaiting_Cf (server) → Done
+   --    Client → Done (after sending CF)
+   --
+   --  Asserts that both sides reach Done and the application traffic
+   --  secrets agree (round-trip an app message through the AEAD
+   --  channels both ways).
+   ---------------------------------------------------------------------
+   procedure Tls13_Cert_Mode_Loopback_Scenario;
+   procedure Tls13_Cert_Mode_Loopback_Scenario is
+      use type Tls_Core.Tls13_Driver.State;
+      use type Tls_Core.Tls13_Driver.Driver_Mode;
+      use type Tls_Core.Octet;
+
+      --  ===== embedded fixtures (paste from fixtures/fixtures.ada) =====
+
+      Root_Der : constant Tls_Core.Octet_Array (1 .. 392) :=
+        (16#30#, 16#82#, 16#01#, 16#84#, 16#30#, 16#82#, 16#01#, 16#29#,
+         16#A0#, 16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#4C#,
+         16#38#, 16#ED#, 16#66#, 16#47#, 16#3E#, 16#2B#, 16#B0#, 16#25#,
+         16#DA#, 16#0E#, 16#29#, 16#CA#, 16#0C#, 16#F7#, 16#CE#, 16#F0#,
+         16#B4#, 16#19#, 16#C8#, 16#30#, 16#0A#, 16#06#, 16#08#, 16#2A#,
+         16#86#, 16#48#, 16#CE#, 16#3D#, 16#04#, 16#03#, 16#02#, 16#30#,
+         16#17#, 16#31#, 16#15#, 16#30#, 16#13#, 16#06#, 16#03#, 16#55#,
+         16#04#, 16#03#, 16#0C#, 16#0C#, 16#54#, 16#65#, 16#73#, 16#74#,
+         16#20#, 16#52#, 16#6F#, 16#6F#, 16#74#, 16#20#, 16#43#, 16#41#,
+         16#30#, 16#1E#, 16#17#, 16#0D#, 16#32#, 16#36#, 16#30#, 16#35#,
+         16#30#, 16#37#, 16#31#, 16#32#, 16#33#, 16#39#, 16#30#, 16#34#,
+         16#5A#, 16#17#, 16#0D#, 16#33#, 16#36#, 16#30#, 16#35#, 16#30#,
+         16#34#, 16#31#, 16#32#, 16#33#, 16#39#, 16#30#, 16#34#, 16#5A#,
+         16#30#, 16#17#, 16#31#, 16#15#, 16#30#, 16#13#, 16#06#, 16#03#,
+         16#55#, 16#04#, 16#03#, 16#0C#, 16#0C#, 16#54#, 16#65#, 16#73#,
+         16#74#, 16#20#, 16#52#, 16#6F#, 16#6F#, 16#74#, 16#20#, 16#43#,
+         16#41#, 16#30#, 16#59#, 16#30#, 16#13#, 16#06#, 16#07#, 16#2A#,
+         16#86#, 16#48#, 16#CE#, 16#3D#, 16#02#, 16#01#, 16#06#, 16#08#,
+         16#2A#, 16#86#, 16#48#, 16#CE#, 16#3D#, 16#03#, 16#01#, 16#07#,
+         16#03#, 16#42#, 16#00#, 16#04#, 16#52#, 16#71#, 16#0D#, 16#A4#,
+         16#14#, 16#06#, 16#9B#, 16#F7#, 16#CE#, 16#69#, 16#F7#, 16#3F#,
+         16#D9#, 16#77#, 16#99#, 16#86#, 16#EA#, 16#2C#, 16#FA#, 16#35#,
+         16#6B#, 16#F8#, 16#DA#, 16#75#, 16#47#, 16#12#, 16#21#, 16#C6#,
+         16#1A#, 16#2C#, 16#BD#, 16#3C#, 16#9B#, 16#80#, 16#CA#, 16#A9#,
+         16#77#, 16#2E#, 16#C0#, 16#E2#, 16#E0#, 16#F2#, 16#49#, 16#67#,
+         16#5B#, 16#AD#, 16#42#, 16#74#, 16#BE#, 16#00#, 16#0B#, 16#95#,
+         16#19#, 16#AF#, 16#31#, 16#72#, 16#F0#, 16#E9#, 16#38#, 16#1F#,
+         16#30#, 16#CC#, 16#20#, 16#2C#, 16#A3#, 16#53#, 16#30#, 16#51#,
+         16#30#, 16#1D#, 16#06#, 16#03#, 16#55#, 16#1D#, 16#0E#, 16#04#,
+         16#16#, 16#04#, 16#14#, 16#89#, 16#BF#, 16#DB#, 16#9A#, 16#FB#,
+         16#DD#, 16#CA#, 16#FE#, 16#9A#, 16#2B#, 16#BB#, 16#56#, 16#2B#,
+         16#E3#, 16#2F#, 16#E6#, 16#46#, 16#3E#, 16#06#, 16#4C#, 16#30#,
+         16#1F#, 16#06#, 16#03#, 16#55#, 16#1D#, 16#23#, 16#04#, 16#18#,
+         16#30#, 16#16#, 16#80#, 16#14#, 16#89#, 16#BF#, 16#DB#, 16#9A#,
+         16#FB#, 16#DD#, 16#CA#, 16#FE#, 16#9A#, 16#2B#, 16#BB#, 16#56#,
+         16#2B#, 16#E3#, 16#2F#, 16#E6#, 16#46#, 16#3E#, 16#06#, 16#4C#,
+         16#30#, 16#0F#, 16#06#, 16#03#, 16#55#, 16#1D#, 16#13#, 16#01#,
+         16#01#, 16#FF#, 16#04#, 16#05#, 16#30#, 16#03#, 16#01#, 16#01#,
+         16#FF#, 16#30#, 16#0A#, 16#06#, 16#08#, 16#2A#, 16#86#, 16#48#,
+         16#CE#, 16#3D#, 16#04#, 16#03#, 16#02#, 16#03#, 16#49#, 16#00#,
+         16#30#, 16#46#, 16#02#, 16#21#, 16#00#, 16#91#, 16#25#, 16#31#,
+         16#9E#, 16#6B#, 16#7B#, 16#86#, 16#BB#, 16#10#, 16#5D#, 16#1A#,
+         16#0A#, 16#09#, 16#3B#, 16#32#, 16#27#, 16#B8#, 16#D6#, 16#8B#,
+         16#73#, 16#B6#, 16#B3#, 16#BA#, 16#36#, 16#5B#, 16#7B#, 16#7B#,
+         16#F2#, 16#A0#, 16#27#, 16#18#, 16#D3#, 16#02#, 16#21#, 16#00#,
+         16#AB#, 16#4B#, 16#78#, 16#70#, 16#82#, 16#4C#, 16#78#, 16#50#,
+         16#37#, 16#23#, 16#AA#, 16#A5#, 16#61#, 16#6A#, 16#5D#, 16#C4#,
+         16#CA#, 16#88#, 16#F6#, 16#07#, 16#C5#, 16#17#, 16#6E#, 16#E7#,
+         16#13#, 16#A0#, 16#97#, 16#1E#, 16#A7#, 16#FF#, 16#12#, 16#31#);
+
+      Leaf_Der : constant Tls_Core.Octet_Array (1 .. 417) :=
+        (16#30#, 16#82#, 16#01#, 16#9D#, 16#30#, 16#82#, 16#01#, 16#43#,
+         16#A0#, 16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#1B#,
+         16#3B#, 16#A5#, 16#4E#, 16#36#, 16#F6#, 16#C5#, 16#E1#, 16#D7#,
+         16#60#, 16#80#, 16#63#, 16#45#, 16#B9#, 16#5B#, 16#51#, 16#2A#,
+         16#F9#, 16#A2#, 16#A4#, 16#30#, 16#0A#, 16#06#, 16#08#, 16#2A#,
+         16#86#, 16#48#, 16#CE#, 16#3D#, 16#04#, 16#03#, 16#02#, 16#30#,
+         16#17#, 16#31#, 16#15#, 16#30#, 16#13#, 16#06#, 16#03#, 16#55#,
+         16#04#, 16#03#, 16#0C#, 16#0C#, 16#54#, 16#65#, 16#73#, 16#74#,
+         16#20#, 16#52#, 16#6F#, 16#6F#, 16#74#, 16#20#, 16#43#, 16#41#,
+         16#30#, 16#1E#, 16#17#, 16#0D#, 16#32#, 16#36#, 16#30#, 16#35#,
+         16#30#, 16#37#, 16#31#, 16#32#, 16#33#, 16#39#, 16#30#, 16#34#,
+         16#5A#, 16#17#, 16#0D#, 16#32#, 16#37#, 16#30#, 16#35#, 16#30#,
+         16#37#, 16#31#, 16#32#, 16#33#, 16#39#, 16#30#, 16#34#, 16#5A#,
+         16#30#, 16#14#, 16#31#, 16#12#, 16#30#, 16#10#, 16#06#, 16#03#,
+         16#55#, 16#04#, 16#03#, 16#0C#, 16#09#, 16#6C#, 16#6F#, 16#63#,
+         16#61#, 16#6C#, 16#68#, 16#6F#, 16#73#, 16#74#, 16#30#, 16#59#,
+         16#30#, 16#13#, 16#06#, 16#07#, 16#2A#, 16#86#, 16#48#, 16#CE#,
+         16#3D#, 16#02#, 16#01#, 16#06#, 16#08#, 16#2A#, 16#86#, 16#48#,
+         16#CE#, 16#3D#, 16#03#, 16#01#, 16#07#, 16#03#, 16#42#, 16#00#,
+         16#04#, 16#E4#, 16#26#, 16#E3#, 16#7E#, 16#97#, 16#8E#, 16#1A#,
+         16#4E#, 16#F2#, 16#31#, 16#6C#, 16#E8#, 16#DF#, 16#17#, 16#FF#,
+         16#42#, 16#EC#, 16#FA#, 16#C6#, 16#7E#, 16#93#, 16#19#, 16#95#,
+         16#36#, 16#37#, 16#F2#, 16#33#, 16#A0#, 16#22#, 16#C7#, 16#23#,
+         16#A4#, 16#0F#, 16#44#, 16#DD#, 16#E0#, 16#CE#, 16#DC#, 16#CD#,
+         16#20#, 16#F2#, 16#37#, 16#AB#, 16#FE#, 16#EE#, 16#A2#, 16#59#,
+         16#65#, 16#2B#, 16#03#, 16#E6#, 16#73#, 16#97#, 16#5C#, 16#6F#,
+         16#11#, 16#D3#, 16#83#, 16#84#, 16#5C#, 16#D6#, 16#C8#, 16#65#,
+         16#CB#, 16#A3#, 16#70#, 16#30#, 16#6E#, 16#30#, 16#2C#, 16#06#,
+         16#03#, 16#55#, 16#1D#, 16#11#, 16#04#, 16#25#, 16#30#, 16#23#,
+         16#82#, 16#09#, 16#6C#, 16#6F#, 16#63#, 16#61#, 16#6C#, 16#68#,
+         16#6F#, 16#73#, 16#74#, 16#82#, 16#10#, 16#74#, 16#65#, 16#73#,
+         16#74#, 16#2E#, 16#65#, 16#78#, 16#61#, 16#6D#, 16#70#, 16#6C#,
+         16#65#, 16#2E#, 16#63#, 16#6F#, 16#6D#, 16#87#, 16#04#, 16#7F#,
+         16#00#, 16#00#, 16#01#, 16#30#, 16#1D#, 16#06#, 16#03#, 16#55#,
+         16#1D#, 16#0E#, 16#04#, 16#16#, 16#04#, 16#14#, 16#25#, 16#3B#,
+         16#7A#, 16#E3#, 16#D2#, 16#46#, 16#CC#, 16#97#, 16#6F#, 16#EB#,
+         16#7F#, 16#33#, 16#A3#, 16#18#, 16#61#, 16#05#, 16#7D#, 16#85#,
+         16#66#, 16#82#, 16#30#, 16#1F#, 16#06#, 16#03#, 16#55#, 16#1D#,
+         16#23#, 16#04#, 16#18#, 16#30#, 16#16#, 16#80#, 16#14#, 16#89#,
+         16#BF#, 16#DB#, 16#9A#, 16#FB#, 16#DD#, 16#CA#, 16#FE#, 16#9A#,
+         16#2B#, 16#BB#, 16#56#, 16#2B#, 16#E3#, 16#2F#, 16#E6#, 16#46#,
+         16#3E#, 16#06#, 16#4C#, 16#30#, 16#0A#, 16#06#, 16#08#, 16#2A#,
+         16#86#, 16#48#, 16#CE#, 16#3D#, 16#04#, 16#03#, 16#02#, 16#03#,
+         16#48#, 16#00#, 16#30#, 16#45#, 16#02#, 16#21#, 16#00#, 16#DA#,
+         16#00#, 16#66#, 16#38#, 16#5C#, 16#15#, 16#4B#, 16#9E#, 16#CE#,
+         16#93#, 16#32#, 16#65#, 16#17#, 16#71#, 16#6B#, 16#A2#, 16#9C#,
+         16#A4#, 16#AF#, 16#20#, 16#3C#, 16#61#, 16#E9#, 16#19#, 16#00#,
+         16#92#, 16#0D#, 16#C2#, 16#FF#, 16#F7#, 16#20#, 16#D4#, 16#02#,
+         16#20#, 16#21#, 16#CF#, 16#A6#, 16#36#, 16#DC#, 16#60#, 16#D9#,
+         16#78#, 16#90#, 16#E4#, 16#02#, 16#DD#, 16#CC#, 16#8F#, 16#FB#,
+         16#80#, 16#FD#, 16#10#, 16#41#, 16#92#, 16#C2#, 16#0F#, 16#B5#,
+         16#49#, 16#72#, 16#6A#, 16#E1#, 16#F9#, 16#65#, 16#7D#, 16#25#,
+         16#64#);
+
+      --  Leaf private scalar (32 bytes big-endian) — extracted from
+      --  fixtures/leaf.key.
+      Leaf_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#55#, 16#E6#, 16#A4#, 16#5A#, 16#EA#, 16#B1#, 16#EC#, 16#54#,
+         16#19#, 16#0C#, 16#E2#, 16#14#, 16#B3#, 16#78#, 16#25#, 16#6F#,
+         16#B2#, 16#2C#, 16#72#, 16#3C#, 16#5E#, 16#70#, 16#56#, 16#84#,
+         16#14#, 16#6C#, 16#EB#, 16#CB#, 16#EF#, 16#82#, 16#A8#, 16#88#);
+
+      Hostname_Localhost : constant Tls_Core.Octet_Array (1 .. 9) :=
+        (16#6C#, 16#6F#, 16#63#, 16#61#, 16#6C#, 16#68#, 16#6F#, 16#73#,
+         16#74#);
+
+      --  X25519 private scalars for client + server ECDHE.
+      Client_Ecdhe_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#11#);
+      Server_Ecdhe_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (others => 16#22#);
+
+      C, S : Tls_Core.Tls13_Driver.Driver;
+      Buf  : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf_Last : Natural := 0;
+
+      Chain_Spec : Tls_Core.Cert_Chain.Chain;
+      Trust_Spec : Tls_Core.Cert_Chain.Trust_Store;
+      All_Chain  : Tls_Core.Octet_Array (1 .. Leaf_Der'Length);
+      Trust_Buf  : Tls_Core.Octet_Array (1 .. Root_Der'Length);
+   begin
+      Put_Line ("scenario — TLS 1.3 cert-mode handshake (Ada-vs-Ada)");
+
+      --  Server-side chain spec: single leaf cert.
+      All_Chain := Leaf_Der;
+      Chain_Spec.Count := 1;
+      Chain_Spec.Entries (1) :=
+        (First => 1, Last => Leaf_Der'Length);
+
+      --  Client-side trust store: one root anchor.
+      Trust_Buf := Root_Der;
+      Trust_Spec.Count := 1;
+      Trust_Spec.Entries (1) :=
+        (First => 1, Last => Root_Der'Length);
+
+      Tls_Core.Tls13_Driver.Init_Cert_Server
+        (D                => S,
+         Cert_Chain_Bytes => All_Chain,
+         Chain_Spec       => Chain_Spec,
+         Sign_Priv_Key    => Leaf_Priv,
+         Sig_Alg          =>
+           Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256,
+         Ecdhe_Priv       => Server_Ecdhe_Priv);
+
+      Tls_Core.Tls13_Driver.Init_Cert_Client
+        (D                  => C,
+         Trust_Anchor_Bytes => Trust_Buf,
+         Trust_Spec         => Trust_Spec,
+         Hostname           => Hostname_Localhost,
+         Ecdhe_Priv         => Client_Ecdhe_Priv);
+
+      Check ("Cert mode: server initialised in Cert_Mode",
+             Tls_Core.Tls13_Driver.Mode (S)
+               = Tls_Core.Tls13_Driver.Cert_Mode);
+      Check ("Cert mode: client initialised in Cert_Mode",
+             Tls_Core.Tls13_Driver.Mode (C)
+               = Tls_Core.Tls13_Driver.Cert_Mode);
+
+      --  Step 1: client emits CH.
+      Tls_Core.Tls13_Driver.Step
+        (C, In_Bytes => Buf (1 .. 0),
+         Out_Buf => Buf, Out_Last => Buf_Last);
+      Check ("Cert mode: client → Awaiting_Sf after CH",
+             Tls_Core.Tls13_Driver.Current_State (C)
+               = Tls_Core.Tls13_Driver.Awaiting_Sf);
+      Check ("Cert mode: CH non-empty", Buf_Last > 0);
+
+      --  Step 2: server processes CH and emits SH+EE+Cert+CV+SF.
+      declare
+         Ch_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Ch_Bytes,
+            Out_Buf => Reply, Out_Last => Reply_Last);
+         Check ("Cert mode: server → Awaiting_Cf after flight",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Awaiting_Cf);
+         Check ("Cert mode: server flight non-empty",
+                Reply_Last > 0);
+         --  Reply has 5 records: 1 plaintext SH + 4 encrypted records
+         --  (EE/Cert/CV/SF). Each encrypted record begins with the
+         --  application_data inner type (0x17). Plaintext SH begins
+         --  with handshake content type (0x16).
+         Check ("Cert mode: flight starts with 0x16 (SH plaintext)",
+                Reply (1) = 16#16#);
+         Buf := (others => 0);
+         Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
+         Buf_Last := Reply_Last;
+      end;
+
+      --  Step 3: client processes server flight, validates cert +
+      --  signature + Finished, emits CF.
+      declare
+         Server_Flight : constant Tls_Core.Octet_Array :=
+           Buf (1 .. Buf_Last);
+         Cf_Reply : Tls_Core.Octet_Array (1 .. 1024) :=
+           (others => 0);
+         Cf_Last  : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (C, In_Bytes => Server_Flight,
+            Out_Buf => Cf_Reply, Out_Last => Cf_Last);
+         Check ("Cert mode: client → Done after CF",
+                Tls_Core.Tls13_Driver.Current_State (C)
+                  = Tls_Core.Tls13_Driver.Done);
+         Check ("Cert mode: CF non-empty", Cf_Last > 0);
+         Check ("Cert mode: CF starts with 0x17 (encrypted)",
+                Cf_Reply (1) = 16#17#);
+         Buf := (others => 0);
+         Buf (1 .. Cf_Last) := Cf_Reply (1 .. Cf_Last);
+         Buf_Last := Cf_Last;
+      end;
+
+      --  Step 4: server processes CF, transitions to Done.
+      declare
+         Cf_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard_Last : Natural;
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (S, In_Bytes => Cf_Bytes,
+            Out_Buf => Discard, Out_Last => Discard_Last);
+         Check ("Cert mode: server → Done",
+                Tls_Core.Tls13_Driver.Current_State (S)
+                  = Tls_Core.Tls13_Driver.Done);
+      end;
+
+      --  Both sides at Done with App_Set = True.
+      Check ("Cert mode: client App_Secrets_Set",
+             Tls_Core.Tls13_Driver.App_Secrets_Set (C));
+      Check ("Cert mode: server App_Secrets_Set",
+             Tls_Core.Tls13_Driver.App_Secrets_Set (S));
+
+      --  Round-trip an application message both ways using the
+      --  application traffic secrets.
+      declare
+         use type Tls_Core.Suites.Cipher_Suite_Id;
+         C_Out, C_In, S_Out, S_In : Tls_Core.Aead_Channel.Direction;
+         App_Msg : constant Tls_Core.Octet_Array :=
+           (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "Hello"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire_Last : Natural;
+         Pt_Buf : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Pt_Last : Natural;
+         Inner_Type : Tls_Core.Octet;
+         OK : Boolean;
+      begin
+         --  v0.5 driver completes only on SHA-256 suites; the cert
+         --  mode test will end up on either chacha20 or aes-128.
+         Tls_Core.Tls13_Driver.Open_App_Directions (C, C_Out, C_In);
+         Tls_Core.Tls13_Driver.Open_App_Directions (S, S_Out, S_In);
+
+         --  Client → server.
+         Tls_Core.Aead_Channel.Send
+           (C_Out, App_Msg,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (S_In, Wire (1 .. Wire_Last),
+            Pt_Buf, Pt_Last, Inner_Type, OK);
+         Check ("Cert mode: server decrypts client app msg", OK);
+         Check ("Cert mode: msg round-trips C→S",
+                OK and then Pt_Last = App_Msg'Length
+                and then Equal (Pt_Buf (1 .. Pt_Last), App_Msg));
+
+         --  Server → client.
+         Wire := (others => 0);
+         Pt_Buf := (others => 0);
+         Tls_Core.Aead_Channel.Send
+           (S_Out, App_Msg,
+            Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+            Wire, Wire_Last);
+         Tls_Core.Aead_Channel.Receive
+           (C_In, Wire (1 .. Wire_Last),
+            Pt_Buf, Pt_Last, Inner_Type, OK);
+         Check ("Cert mode: client decrypts server app msg", OK);
+         Check ("Cert mode: msg round-trips S→C",
+                OK and then Pt_Last = App_Msg'Length
+                and then Equal (Pt_Buf (1 .. Pt_Last), App_Msg));
+      end;
+   end Tls13_Cert_Mode_Loopback_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -7711,6 +8035,7 @@ begin
    Cert_Server_Hello_Scenario;
    Cert_Client_Hello_Scenario;
    Cert_Client_Hello_Roundtrip_Scenario;
+   Tls13_Cert_Mode_Loopback_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then
