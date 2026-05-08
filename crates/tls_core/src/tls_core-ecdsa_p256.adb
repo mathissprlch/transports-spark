@@ -1,3 +1,4 @@
+with Tls_Core.Hmac_Sha256;
 with Tls_Core.Sha256;
 with Tls_Core.P256;
 with Tls_Core.P256_Field;
@@ -171,5 +172,129 @@ is
       OK    := True;
 
    end Sign;
+
+   ---------------------------------------------------------------------
+   --  Derive_K_Rfc6979 — RFC 6979 §3.2 deterministic K for P-256/SHA-256.
+   ---------------------------------------------------------------------
+
+   procedure Derive_K_Rfc6979
+     (Private_Key : Component;
+      Message     : Octet_Array;
+      Out_K       : out Component;
+      OK          : out Boolean)
+   is
+      --  P-256 group order n in big-endian (FIPS 186-4 §D.1.2.3).
+      N_BE : constant Component :=
+        (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
+         16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
+         16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
+         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#);
+
+      function Less_Than (A, B : Component) return Boolean
+      is
+      begin
+         for I in 1 .. 32 loop
+            if A (I) < B (I) then
+               return True;
+            elsif A (I) > B (I) then
+               return False;
+            end if;
+         end loop;
+         return False;
+      end Less_Than;
+
+      function Is_Zero (A : Component) return Boolean
+      is
+      begin
+         for I in 1 .. 32 loop
+            if A (I) /= 0 then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Is_Zero;
+
+      --  In-place reduction A := A mod n. Used for bits2octets(h1):
+      --  since |h1| = 256 bits and n > 2^255, at most one subtraction
+      --  is required.
+      procedure Reduce_Mod_N (A : in out Component)
+      is
+         Borrow : Integer := 0;
+         Diff   : Integer;
+      begin
+         if not Less_Than (A, N_BE) then
+            for I in reverse 1 .. 32 loop
+               pragma Loop_Invariant (Borrow in 0 .. 1);
+               Diff := Integer (A (I)) - Integer (N_BE (I)) - Borrow;
+               if Diff < 0 then
+                  Diff := Diff + 256;
+                  Borrow := 1;
+               else
+                  Borrow := 0;
+               end if;
+               A (I) := Octet (Diff);
+            end loop;
+         end if;
+      end Reduce_Mod_N;
+
+      H1       : Tls_Core.Sha256.Digest;
+      H1_Modq  : Component;
+      X_Bytes  : constant Component := Private_Key;
+
+      V        : Component := (others => 16#01#);
+      K        : Component := (others => 16#00#);
+      Big_Buf  : Octet_Array (1 .. 1 + 32 + 32 + 32) := (others => 0);
+      New_V    : Tls_Core.Hmac_Sha256.Tag;
+      New_K    : Tls_Core.Hmac_Sha256.Tag;
+
+      Iter : Natural := 0;
+   begin
+      Out_K := (others => 0);
+      OK    := False;
+
+      --  Step 1: h1 = SHA-256 (m); reduce mod n.
+      Tls_Core.Sha256.Hash (Message, H1);
+      H1_Modq := H1;
+      Reduce_Mod_N (H1_Modq);
+
+      --  Steps 4–7: initial K/V update.
+      Big_Buf (1 .. 32)  := V;
+      Big_Buf (33)       := 16#00#;
+      Big_Buf (34 .. 65) := X_Bytes;
+      Big_Buf (66 .. 97) := H1_Modq;
+      Tls_Core.Hmac_Sha256.Compute (K, Big_Buf, New_K);
+      K := New_K;
+      Tls_Core.Hmac_Sha256.Compute (K, V, New_V);
+      V := New_V;
+      Big_Buf (1 .. 32)  := V;
+      Big_Buf (33)       := 16#01#;
+      Big_Buf (34 .. 65) := X_Bytes;
+      Big_Buf (66 .. 97) := H1_Modq;
+      Tls_Core.Hmac_Sha256.Compute (K, Big_Buf, New_K);
+      K := New_K;
+      Tls_Core.Hmac_Sha256.Compute (K, V, New_V);
+      V := New_V;
+
+      --  Step 8: rejection-sample loop. For SHA-256/P-256 the inner
+      --  T-build loop runs once because holen = 32 and qlen/8 = 32.
+      while Iter < 256 loop
+         pragma Loop_Invariant (Iter in 0 .. 255);
+         Tls_Core.Hmac_Sha256.Compute (K, V, New_V);
+         V := New_V;
+         if not Is_Zero (V) and then Less_Than (V, N_BE) then
+            Out_K := V;
+            OK := True;
+            return;
+         end if;
+         --  Reject: K := HMAC_K (V || 0x00); V := HMAC_K (V).
+         Big_Buf (1 .. 32) := V;
+         Big_Buf (33)      := 16#00#;
+         Tls_Core.Hmac_Sha256.Compute (K, Big_Buf (1 .. 33), New_K);
+         K := New_K;
+         Tls_Core.Hmac_Sha256.Compute (K, V, New_V);
+         V := New_V;
+         Iter := Iter + 1;
+      end loop;
+   end Derive_K_Rfc6979;
 
 end Tls_Core.Ecdsa_P256;

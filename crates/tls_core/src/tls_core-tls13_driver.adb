@@ -1861,9 +1861,8 @@ is
                      Signed_Buf : Octet_Array (1 .. 64 + 33 + 1 + 32) :=
                        (others => 0);
                      Signed_Last : Natural;
-                     K_Hash : Tls_Core.Sha256.Digest;
-                     K_Input : Octet_Array (1 .. 32 + 32) :=
-                       (others => 0);
+                     K_Bytes : Tls_Core.Ecdsa_P256.Component;
+                     K_OK    : Boolean;
                      R, S   : Tls_Core.Ecdsa_P256.Component;
                      Sign_OK : Boolean;
                      Der_Sig : Octet_Array (1 .. 72) := (others => 0);
@@ -1881,17 +1880,23 @@ is
                         Transcript_Hash => Th_After_Cert,
                         Out_Buf         => Signed_Buf,
                         Out_Last        => Signed_Last);
-                     --  Deterministic K = SHA-256 (private || transcript)
-                     --  — varies per signature, sufficient for v0.5
-                     --  internal Ada-vs-Ada interop. Tier-D external
-                     --  matrix replaces this with RFC 6979 derivation.
-                     K_Input (1 .. 32) := D.Server_Sign_Priv;
-                     K_Input (33 .. 64) := Th_After_Cert;
-                     Tls_Core.Sha256.Hash (K_Input, K_Hash);
+                     --  RFC 6979 §3.2 deterministic K — same K
+                     --  openssl / Go / rustls / BoringSSL would
+                     --  derive for the same (priv, message) pair, so
+                     --  Tier-D external matrix can compare bit-for-bit.
+                     Tls_Core.Ecdsa_P256.Derive_K_Rfc6979
+                       (Private_Key => D.Server_Sign_Priv,
+                        Message     => Signed_Buf (1 .. Signed_Last),
+                        Out_K       => K_Bytes,
+                        OK          => K_OK);
+                     if not K_OK then
+                        D.Cur_State := Failed;
+                        return;
+                     end if;
                      Tls_Core.Ecdsa_P256.Sign
                        (Private_Key => D.Server_Sign_Priv,
                         Message     => Signed_Buf (1 .. Signed_Last),
-                        K           => K_Hash,
+                        K           => K_Bytes,
                         Out_R       => R,
                         Out_S       => S,
                         OK          => Sign_OK);

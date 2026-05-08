@@ -7958,6 +7958,104 @@ procedure Tls_Core_Tests is
       end;
    end Tls13_Cert_Mode_Loopback_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — RFC 6979 §A.2.5 deterministic-K KAT for P-256/SHA-256
+   --
+   --  Vector: curve = P-256, x = C9AFA9D845BA75166B5C215767B1D6934E50
+   --                              C3DB36E89B127B8A622B120F6721,
+   --          message = "sample" (ASCII), H = SHA-256.
+   --  Expected k = A6E3C57DD01ABE90086538398355DD4C3B17AA873382B0F2
+   --                4D6129493D8AAD60.
+   --
+   --  Verifies our HMAC-SHA-256 K-derivation matches the RFC verbatim,
+   --  which means our cert-mode signatures will match openssl /
+   --  rustls / Go bit-for-bit on the same (priv, transcript_hash).
+   ---------------------------------------------------------------------
+   procedure Rfc6979_K_Kat_Scenario;
+   procedure Rfc6979_K_Kat_Scenario is
+      use type Tls_Core.Octet_Array;
+
+      Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#C9#, 16#AF#, 16#A9#, 16#D8#, 16#45#, 16#BA#, 16#75#, 16#16#,
+         16#6B#, 16#5C#, 16#21#, 16#57#, 16#67#, 16#B1#, 16#D6#, 16#93#,
+         16#4E#, 16#50#, 16#C3#, 16#DB#, 16#36#, 16#E8#, 16#9B#, 16#12#,
+         16#7B#, 16#8A#, 16#62#, 16#2B#, 16#12#, 16#0F#, 16#67#, 16#21#);
+
+      Msg_Sample : constant Tls_Core.Octet_Array :=
+        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);  --  "sample"
+
+      Expected_K_Sample : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#A6#, 16#E3#, 16#C5#, 16#7D#, 16#D0#, 16#1A#, 16#BE#, 16#90#,
+         16#08#, 16#65#, 16#38#, 16#39#, 16#83#, 16#55#, 16#DD#, 16#4C#,
+         16#3B#, 16#17#, 16#AA#, 16#87#, 16#33#, 16#82#, 16#B0#, 16#F2#,
+         16#4D#, 16#61#, 16#29#, 16#49#, 16#3D#, 16#8A#, 16#AD#, 16#60#);
+
+      --  RFC 6979 §A.2.5 — message = "test", same private key.
+      Msg_Test : constant Tls_Core.Octet_Array :=
+        (16#74#, 16#65#, 16#73#, 16#74#);
+
+      --  RFC 6979 §A.2.5 — full sample/SHA-256 signature outputs.
+      Expected_R_Sample : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+         16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
+         16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+      Expected_S_Sample : constant Tls_Core.Octet_Array (1 .. 32) :=
+        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+         16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
+         16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+
+      Out_K : Tls_Core.Ecdsa_P256.Component;
+      OK    : Boolean;
+   begin
+      Put_Line ("scenario — RFC 6979 §A.2.5 K-derivation KAT (P-256)");
+
+      --  K-only KAT for the canonical sample vector.
+      Tls_Core.Ecdsa_P256.Derive_K_Rfc6979
+        (Private_Key => Priv,
+         Message     => Msg_Sample,
+         Out_K       => Out_K,
+         OK          => OK);
+      Check ("RFC 6979 sample/SHA-256: OK = True", OK);
+      Check ("RFC 6979 sample/SHA-256: K matches §A.2.5 expected",
+             Out_K = Expected_K_Sample);
+
+      --  End-to-end Derive_K + Sign produces the §A.2.5 (r, s).
+      --  This is the property that actually matters for external
+      --  interop: openssl/Go/rustls also use RFC 6979 by default,
+      --  so for the same (priv, message) they all emit this same
+      --  signature.
+      declare
+         R, S : Tls_Core.Ecdsa_P256.Component;
+         Sign_OK : Boolean;
+      begin
+         Tls_Core.Ecdsa_P256.Sign
+           (Private_Key => Priv,
+            Message     => Msg_Sample,
+            K           => Out_K,
+            Out_R       => R,
+            Out_S       => S,
+            OK          => Sign_OK);
+         Check ("RFC 6979 sample/SHA-256: Sign OK", Sign_OK);
+         Check ("RFC 6979 sample/SHA-256: r matches §A.2.5",
+                R = Expected_R_Sample);
+         Check ("RFC 6979 sample/SHA-256: s matches §A.2.5",
+                S = Expected_S_Sample);
+      end;
+
+      --  "test" message K-derivation: just confirm OK = True (the
+      --  exact bytes for this vector aren't asserted; the sample
+      --  vector + the e2e signature check above already pin
+      --  RFC 6979 conformance).
+      Tls_Core.Ecdsa_P256.Derive_K_Rfc6979
+        (Private_Key => Priv,
+         Message     => Msg_Test,
+         Out_K       => Out_K,
+         OK          => OK);
+      Check ("RFC 6979 test/SHA-256: OK = True", OK);
+   end Rfc6979_K_Kat_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -8036,6 +8134,7 @@ begin
    Cert_Client_Hello_Scenario;
    Cert_Client_Hello_Roundtrip_Scenario;
    Tls13_Cert_Mode_Loopback_Scenario;
+   Rfc6979_K_Kat_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

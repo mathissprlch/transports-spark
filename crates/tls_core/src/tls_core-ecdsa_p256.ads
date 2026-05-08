@@ -56,6 +56,40 @@ is
              and then Message'Last < Integer'Last - 64
              and then Message'Length <= Natural'Last - 73;
 
+   ---------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  RFC 6979 §3.2 deterministic K derivation
+   --                      for P-256 / SHA-256.
+   --
+   --  Standard:   RFC 6979 §3.2 (Generation of k).
+   --  Spec mirror: HACL* / FIAT-Crypto don't ship a canonical RFC 6979
+   --              port; this is the literal §3.2 algorithm. Test
+   --              vectors come from RFC 6979 §A.2.5 (P-256, SHA-256).
+   --
+   --  Derives a per-signature scalar K from (Private_Key, Message)
+   --  alone — no randomness — using HMAC-SHA-256 as the PRF. The
+   --  resulting K satisfies 1 <= K < n (P-256 group order) and is
+   --  identical across implementations that follow §3.2.
+   --
+   --  v0.5 driver wires this into the cert-mode CertificateVerify
+   --  signing step: same (priv, transcript_hash) always produces the
+   --  same K → same signature, matching openssl / Go / rustls /
+   --  BoringSSL behaviour. (Proper randomness is not needed for
+   --  ECDSA security — RFC 6979 is per FIPS 186-4 acceptable.)
+   --
+   --  OK is False on the (cryptographically negligible) event that
+   --  the rejection-sampling loop runs >256 times — caller treats as
+   --  internal_error.
+   ---------------------------------------------------------------------
+   procedure Derive_K_Rfc6979
+     (Private_Key : Component;
+      Message     : Octet_Array;
+      Out_K       : out Component;
+      OK          : out Boolean)
+   with
+     Pre  => Message'First = 1
+             and then Message'Last < Integer'Last - 64
+             and then Message'Length <= Natural'Last - 73;
+
    pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
 end Tls_Core.Ecdsa_P256;
