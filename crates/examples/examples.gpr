@@ -3,6 +3,7 @@ with "mqtt_core.gpr";
 with "http2_core.gpr";
 with "http1_core.gpr";
 with "grpc_core.gpr";
+with "tls_core.gpr";
 
 project Examples is
 
@@ -23,7 +24,9 @@ project Examples is
                  "mqtt_demo.adb",
                  "mqtt_retained_demo.adb",
                  "mqtt_will_demo.adb",
-                 "mqtt_session_demo.adb");
+                 "mqtt_session_demo.adb",
+                 "tls_interop_client.adb",
+                 "tls_interop_server.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use

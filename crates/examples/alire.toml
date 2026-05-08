@@ -35,6 +35,9 @@ http1_core = "*"
 [[depends-on]]
 grpc_core = "*"
 
+[[depends-on]]
+tls_core = "*"
+
 [[pins]]
 grpc_ada = { path = "../grpc_ada" }
 
@@ -49,3 +52,6 @@ path = "../http1_core"
 
 [pins.grpc_core]
 path = "../grpc_core"
+
+[pins.tls_core]
+path = "../tls_core"
