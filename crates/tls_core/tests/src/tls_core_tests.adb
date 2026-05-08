@@ -7332,6 +7332,161 @@ procedure Tls_Core_Tests is
       end;
    end Cert_Server_Hello_Scenario;
 
+   ---------------------------------------------------------------------
+   --  Scenario — cert-mode ClientHello encoder (RFC 8446 §4.1.2)
+   --
+   --  Validates Tls_Core.Hello.Encode_Client_Hello_Cert against the
+   --  PSK CH encoder it parallels. Asserts:
+   --    1. Encoded length is positive and within the buffer.
+   --    2. Body shape matches §4.1.2 (legacy_version, random,
+   --       empty session_id, three v0.5 cipher suites, compression
+   --       method 0).
+   --    3. signature_algorithms (0x000D) extension is present and
+   --       advertises both ecdsa_secp256r1_sha256 (0x0403) and
+   --       rsa_pss_rsae_sha256 (0x0804).
+   --    4. The 32-byte X25519 client key share is present.
+   --    5. **Neither pre_shared_key (0x0029) nor
+   --       psk_key_exchange_modes (0x002D) appears**, distinguishing
+   --       cert-mode CH from PSK-mode CH on the wire.
+   --    6. Optional SNI / ALPN extensions are emitted when
+   --       Server_Name / Alpn_Offers are non-empty, omitted otherwise.
+   ---------------------------------------------------------------------
+   procedure Cert_Client_Hello_Scenario;
+   procedure Cert_Client_Hello_Scenario is
+      use type Tls_Core.Octet;
+      use type Tls_Core.Octet_Array;
+
+      Client_Random : constant Tls_Core.Hello.Random_Bytes :=
+        (others => 16#3C#);
+      Client_Pub : constant Tls_Core.Hello.Public_Key :=
+        (1 .. 32 => 16#6D#);
+
+      Hostname : constant Tls_Core.Octet_Array :=
+        (16#65#, 16#78#, 16#61#, 16#6D#, 16#70#,
+         16#6C#, 16#65#, 16#2E#, 16#63#, 16#6F#,
+         16#6D#);  --  "example.com"
+
+      H2_Alpn : constant Tls_Core.Octet_Array :=
+        (16#02#, 16#68#, 16#32#);  --  "u8 2; 'h', '2'"
+
+      function Find_Pair
+        (Buf : Tls_Core.Octet_Array;
+         Hi, Lo : Tls_Core.Octet) return Boolean
+      is
+         I : Natural := Buf'First;
+      begin
+         while I + 1 <= Buf'Last loop
+            if Buf (I) = Hi and then Buf (I + 1) = Lo then
+               return True;
+            end if;
+            I := I + 1;
+         end loop;
+         return False;
+      end Find_Pair;
+
+      function Find_Run
+        (Buf : Tls_Core.Octet_Array;
+         Pat : Tls_Core.Octet_Array) return Boolean
+      is
+         I : Natural := Buf'First;
+      begin
+         while I + Pat'Length - 1 <= Buf'Last loop
+            if Buf (I .. I + Pat'Length - 1) = Pat then
+               return True;
+            end if;
+            I := I + 1;
+         end loop;
+         return False;
+      end Find_Run;
+
+   begin
+      Put_Line ("scenario — Encode_Client_Hello_Cert (RFC 8446 §4.1.2)");
+
+      --  Case 1: bare cert CH — no SNI, no ALPN.
+      declare
+         Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Hello.Encode_Client_Hello_Cert
+           (Random      => Client_Random,
+            Key_Share   => Client_Pub,
+            Server_Name => Empty,
+            Alpn_Offers => Empty,
+            Out_Buf     => Out_Buf,
+            Out_Last    => Out_Last);
+
+         Check ("Cert CH: encoded length in 1 .. Out_Buf'Last",
+                Out_Last in 1 .. Out_Buf'Last);
+         --  legacy_version 0x0303
+         Check ("Cert CH: legacy_version = 0x0303",
+                Out_Buf (1) = 16#03# and then Out_Buf (2) = 16#03#);
+         --  Random copied
+         Check ("Cert CH: random_bytes copied",
+                Out_Buf (3) = 16#3C# and then Out_Buf (34) = 16#3C#);
+         Check ("Cert CH: session_id_len = 0",
+                Out_Buf (35) = 0);
+         --  cipher_suites: 6 bytes (3 suites). Bytes 36..37 = list_len.
+         Check ("Cert CH: cipher_suites list_len = 6",
+                Out_Buf (36) = 16#00# and then Out_Buf (37) = 16#06#);
+         --  First suite = TLS_CHACHA20_POLY1305_SHA256 (0x1303)
+         Check ("Cert CH: first suite = chacha20-poly1305-sha256",
+                Out_Buf (38) = 16#13# and then Out_Buf (39) = 16#03#);
+         --  signature_algorithms (0x000D) MUST appear
+         Check ("Cert CH: signature_algorithms (0x000D) present",
+                Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#0D#));
+         --  Verify the v0.5 sig schemes appear: 0x0403 + 0x0804
+         declare
+            Sig_Pat : constant Tls_Core.Octet_Array (1 .. 6) :=
+              (16#00#, 16#04#, 16#04#, 16#03#, 16#08#, 16#04#);
+         begin
+            Check ("Cert CH: sig_alg list (ecdsa+rsa-pss) present",
+                   Find_Run (Out_Buf (1 .. Out_Last), Sig_Pat));
+         end;
+         --  pre_shared_key (0x0029) MUST NOT be present
+         Check ("Cert CH: pre_shared_key (0x0029) ABSENT",
+                not Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#29#));
+         --  psk_key_exchange_modes (0x002D) MUST NOT be present
+         Check ("Cert CH: psk_key_exchange_modes (0x002D) ABSENT",
+                not Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#2D#));
+         --  X25519 client key (32 bytes 0x6D) appears
+         declare
+            Pat : constant Tls_Core.Octet_Array (1 .. 32) :=
+              (others => 16#6D#);
+         begin
+            Check ("Cert CH: 32-byte X25519 key share present",
+                   Find_Run (Out_Buf (1 .. Out_Last), Pat));
+         end;
+         --  No SNI/ALPN advertised
+         Check ("Cert CH (no SNI): hostname bytes ABSENT",
+                not Find_Run (Out_Buf (1 .. Out_Last), Hostname));
+         Check ("Cert CH (no ALPN): h2 alpn bytes ABSENT",
+                not Find_Run (Out_Buf (1 .. Out_Last), H2_Alpn));
+      end;
+
+      --  Case 2: cert CH WITH SNI + ALPN.
+      declare
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Tls_Core.Hello.Encode_Client_Hello_Cert
+           (Random      => Client_Random,
+            Key_Share   => Client_Pub,
+            Server_Name => Hostname,
+            Alpn_Offers => H2_Alpn,
+            Out_Buf     => Out_Buf,
+            Out_Last    => Out_Last);
+         Check ("Cert CH (SNI): hostname bytes present",
+                Find_Run (Out_Buf (1 .. Out_Last), Hostname));
+         Check ("Cert CH (ALPN): h2 alpn bytes present",
+                Find_Run (Out_Buf (1 .. Out_Last), H2_Alpn));
+         Check ("Cert CH (SNI): server_name (0x0000) present",
+                Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#00#));
+         Check ("Cert CH (ALPN): alpn (0x0010) present",
+                Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#10#));
+      end;
+   end Cert_Client_Hello_Scenario;
+
 begin
    Put_Line ("=== Tls_Core HKDF-Expand-Label info-encoding tests ===");
    Scenario_1;
@@ -7407,6 +7562,7 @@ begin
    Post_Handshake_Demux_Scenario;
    Ecdsa_Sig_Der_Scenario;
    Cert_Server_Hello_Scenario;
+   Cert_Client_Hello_Scenario;
    New_Line;
    Put_Line ("Pass:" & Pass'Image & "  Fail:" & Fail'Image);
    if Fail > 0 then

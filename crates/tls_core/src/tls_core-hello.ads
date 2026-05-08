@@ -260,6 +260,39 @@ is
       OK              : out Boolean);
 
    ------------------------------------------------------------------
+   --  RFC 8446 §4.1.2 cert-mode ClientHello.
+   --
+   --  Extension stack emitted (in order):
+   --     supported_versions      = [TLS 1.3]
+   --     supported_groups        = [x25519]
+   --     [server_name]           = optional, when Server_Name nonempty
+   --     [ALPN]                  = optional, when Alpn_Offers nonempty
+   --     key_share               = [{x25519, 32-byte u-coord}]
+   --     signature_algorithms    = [ecdsa_secp256r1_sha256,
+   --                                rsa_pss_rsae_sha256] (RFC 8446 §4.2.3)
+   --
+   --  No pre_shared_key, no psk_key_exchange_modes — distinguishes
+   --  cert mode from PSK mode on the wire. Three v0.5 cipher suites
+   --  are offered in §B.4 preference order, same as the PSK CH
+   --  encoder; runtime selection happens server-side.
+   ------------------------------------------------------------------
+   procedure Encode_Client_Hello_Cert
+     (Random          : Random_Bytes;
+      Key_Share       : Public_Key;
+      Server_Name     : Octet_Array;
+      Alpn_Offers     : Octet_Array;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural)
+   with
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 320
+       and then Server_Name'Length <= 255
+       and then Alpn_Offers'Length in 0 | 2 .. 255,
+     Post =>
+       Out_Last in 0 .. Out_Buf'Last;
+
+   ------------------------------------------------------------------
    --  RFC 8446 §4.1.3 cert-mode ServerHello.
    --
    --  Identical to the PSK ServerHello except the pre_shared_key
