@@ -111,7 +111,7 @@ is
                   Peer_Pub : Tls_Core.X25519.Bytes_32;
                   Shared   : Tls_Core.X25519.Bytes_32;
                begin
-                  for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
+                  for I in 1 .. 32 loop
                      pragma Loop_Invariant (I in 1 .. 32);
                      Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
                   end loop;
@@ -532,7 +532,7 @@ is
                Peer_Pub : Tls_Core.X25519.Bytes_32;
                Shared   : Tls_Core.X25519.Bytes_32;
             begin
-               for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
+               for I in 1 .. 32 loop
                   pragma Loop_Invariant (I in 1 .. 32);
                   Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
                end loop;
@@ -638,7 +638,7 @@ is
                     (D.PSK,
                      Hs_Trunc (1 .. Trunc_Len),
                      Computed);
-                  for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
+                  for I in 1 .. 32 loop
                      Received (I) := In_Bytes (Abs_Bf + I - 1);
                   end loop;
                   if not Tls_Core.Psk_Binder.Verify
