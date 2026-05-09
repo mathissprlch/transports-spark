@@ -274,29 +274,39 @@ is
                      List_Len : constant Natural :=
                        Natural (In_Bytes (Ext_Data_F)) * 256
                        + Natural (In_Bytes (Ext_Data_F + 1));
+                     Ks_Cur : Natural := Ext_Data_F + 2;
+                     Ks_End : constant Natural :=
+                       Ext_Data_F + 2 + List_Len - 1;
                   begin
-                     if List_Len >= 4
-                       and then Ext_Data_F + 2 + List_Len - 1
-                                  <= El
-                     then
-                        declare
-                           Ks_Grp_F : constant Natural :=
-                             Ext_Data_F + 2;
-                           Ks_Kx_Len : constant Natural :=
-                             Natural (In_Bytes (Ks_Grp_F + 2))
-                               * 256
-                             + Natural
-                                 (In_Bytes (Ks_Grp_F + 3));
-                           Ks_Kx_F : constant Natural :=
-                             Ks_Grp_F + 4;
-                        begin
-                           if Ks_Kx_Len = 32 and then
-                              Ks_Kx_F + 31 <= El
-                           then
-                              Key_Share_First := Ks_Kx_F;
-                              Key_Share_Last  := Ks_Kx_F + 31;
-                           end if;
-                        end;
+                     if List_Len >= 4 and then Ks_End <= El then
+                        while Ks_Cur + 3 <= Ks_End loop
+                           declare
+                              Grp : constant Natural :=
+                                Natural (In_Bytes (Ks_Cur))
+                                  * 256
+                                + Natural
+                                    (In_Bytes (Ks_Cur + 1));
+                              Kx_Len : constant Natural :=
+                                Natural (In_Bytes (Ks_Cur + 2))
+                                  * 256
+                                + Natural
+                                    (In_Bytes (Ks_Cur + 3));
+                              Kx_F : constant Natural :=
+                                Ks_Cur + 4;
+                           begin
+                              if Kx_F + Kx_Len - 1 > Ks_End then
+                                 exit;
+                              end if;
+                              if Grp = 16#001D#
+                                and then Kx_Len = 32
+                              then
+                                 Key_Share_First := Kx_F;
+                                 Key_Share_Last  := Kx_F + 31;
+                                 exit;
+                              end if;
+                              Ks_Cur := Kx_F + Kx_Len;
+                           end;
+                        end loop;
                      end if;
                   end;
                end if;
@@ -433,29 +443,39 @@ is
                      List_Len : constant Natural :=
                        Natural (In_Bytes (Ext_Data_F)) * 256
                        + Natural (In_Bytes (Ext_Data_F + 1));
+                     Ks_Cur : Natural := Ext_Data_F + 2;
+                     Ks_End : constant Natural :=
+                       Ext_Data_F + 2 + List_Len - 1;
                   begin
-                     if List_Len >= 4
-                       and then Ext_Data_F + 2 + List_Len - 1
-                                  <= El
-                     then
-                        declare
-                           Ks_Grp_F : constant Natural :=
-                             Ext_Data_F + 2;
-                           Ks_Kx_Len : constant Natural :=
-                             Natural (In_Bytes (Ks_Grp_F + 2))
-                               * 256
-                             + Natural
-                                 (In_Bytes (Ks_Grp_F + 3));
-                           Ks_Kx_F : constant Natural :=
-                             Ks_Grp_F + 4;
-                        begin
-                           if Ks_Kx_Len = 32 and then
-                              Ks_Kx_F + 31 <= El
-                           then
-                              Key_Share_First := Ks_Kx_F;
-                              Key_Share_Last  := Ks_Kx_F + 31;
-                           end if;
-                        end;
+                     if List_Len >= 4 and then Ks_End <= El then
+                        while Ks_Cur + 3 <= Ks_End loop
+                           declare
+                              Grp : constant Natural :=
+                                Natural (In_Bytes (Ks_Cur))
+                                  * 256
+                                + Natural
+                                    (In_Bytes (Ks_Cur + 1));
+                              Kx_Len : constant Natural :=
+                                Natural (In_Bytes (Ks_Cur + 2))
+                                  * 256
+                                + Natural
+                                    (In_Bytes (Ks_Cur + 3));
+                              Kx_F : constant Natural :=
+                                Ks_Cur + 4;
+                           begin
+                              if Kx_F + Kx_Len - 1 > Ks_End then
+                                 exit;
+                              end if;
+                              if Grp = 16#001D#
+                                and then Kx_Len = 32
+                              then
+                                 Key_Share_First := Kx_F;
+                                 Key_Share_Last  := Kx_F + 31;
+                                 exit;
+                              end if;
+                              Ks_Cur := Kx_F + Kx_Len;
+                           end;
+                        end loop;
                      end if;
                   end;
                end if;

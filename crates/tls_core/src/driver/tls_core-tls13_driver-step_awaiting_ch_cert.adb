@@ -71,12 +71,37 @@ is
                D.Cur_State := Failed;
                return;
             end if;
-            Tls_Core.Hello.Decode_Client_Hello_Cert
-              (In_Bytes (Hs_Body_F .. Hs_Body_L),
-               Random, Sid_F, Sid_L,
-               Suites_F, Suites_L,
-               Sig_Algs_F, Sig_Algs_L,
-               Ks_F, Ks_L, Decode_OK);
+            declare
+               CH_Len : constant Natural :=
+                 Hs_Body_L - Hs_Body_F + 1;
+               CH_Buf : Octet_Array (1 .. CH_Len);
+            begin
+               CH_Buf := In_Bytes (Hs_Body_F .. Hs_Body_L);
+               Tls_Core.Client_Hello_Rflx
+                 .Decode_Client_Hello_Cert
+                 (CH_Buf,
+                  Random, Sid_F, Sid_L,
+                  Suites_F, Suites_L,
+                  Sig_Algs_F, Sig_Algs_L,
+                  Ks_F, Ks_L, Decode_OK);
+               if Decode_OK then
+                  declare
+                     Off : constant Natural :=
+                       Hs_Body_F - 1;
+                  begin
+                     if Sid_F > 0 then
+                        Sid_F := Sid_F + Off;
+                        Sid_L := Sid_L + Off;
+                     end if;
+                     Suites_F     := Suites_F + Off;
+                     Suites_L     := Suites_L + Off;
+                     Sig_Algs_F   := Sig_Algs_F + Off;
+                     Sig_Algs_L   := Sig_Algs_L + Off;
+                     Ks_F         := Ks_F + Off;
+                     Ks_L         := Ks_L + Off;
+                  end;
+               end if;
+            end;
             if not Decode_OK then
                D.Cur_State := Failed;
                return;

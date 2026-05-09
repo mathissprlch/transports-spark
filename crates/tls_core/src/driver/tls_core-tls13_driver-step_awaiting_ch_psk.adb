@@ -66,13 +66,40 @@ is
                D.Cur_State := Failed;
                return;
             end if;
-            Tls_Core.Hello.Decode_Client_Hello_Psk
-              (In_Bytes (Hs_Body_F .. Hs_Body_L),
-               Random,
-               Sid_F, Sid_L,
-               Suites_F, Suites_L,
-               Id_F, Id_L, Bf, Bl,
-               Ks_F, Ks_L, T_Last, Decode_OK);
+            declare
+               CH_Len : constant Natural :=
+                 Hs_Body_L - Hs_Body_F + 1;
+               CH_Buf : Octet_Array (1 .. CH_Len);
+            begin
+               CH_Buf := In_Bytes (Hs_Body_F .. Hs_Body_L);
+               Tls_Core.Client_Hello_Rflx
+                 .Decode_Client_Hello_Psk
+                 (CH_Buf,
+                  Random,
+                  Sid_F, Sid_L,
+                  Suites_F, Suites_L,
+                  Id_F, Id_L, Bf, Bl,
+                  Ks_F, Ks_L, T_Last, Decode_OK);
+               if Decode_OK then
+                  declare
+                     Off : constant Natural := Hs_Body_F - 1;
+                  begin
+                     if Sid_F > 0 then
+                        Sid_F := Sid_F + Off;
+                        Sid_L := Sid_L + Off;
+                     end if;
+                     Suites_F := Suites_F + Off;
+                     Suites_L := Suites_L + Off;
+                     Id_F   := Id_F + Off;
+                     Id_L   := Id_L + Off;
+                     Bf     := Bf + Off;
+                     Bl     := Bl + Off;
+                     Ks_F   := Ks_F + Off;
+                     Ks_L   := Ks_L + Off;
+                     T_Last := T_Last + Off;
+                  end;
+               end if;
+            end;
             if not Decode_OK then
                D.Cur_State := Failed;
                return;
