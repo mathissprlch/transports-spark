@@ -1,10 +1,10 @@
---  Tls_Core.Hello_Rflx — RFLX-backed ServerHello parser with
---  miTLS-style functional Posts.
+--  Tls_Core.Hello_Rflx — RFLX-backed ClientHello / ServerHello
+--  parsers with miTLS-style functional Posts.
 --
---  Spec mirror: miTLS src/tls/MiTLS.Parsers.ServerHello
---  The ghost functions define what each parsed field SHOULD be
---  as a direct function of the input bytes (RFC 8446 §4.1.3).
---  The Posts bind the procedure outputs to those specs.
+--  Spec mirror: miTLS src/tls/MiTLS.Parsers.{ClientHello,ServerHello}
+--  Ghost functions define what each parsed field SHOULD be as a
+--  direct function of the input bytes. Posts bind procedure
+--  outputs to those specs.
 
 with Tls_Core.Suites;
 
