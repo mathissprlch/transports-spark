@@ -144,6 +144,74 @@ is
       end;
    end Decode_Client_Hello_Fields;
 
+   procedure Encode_Client_Hello_Core
+     (Random     : Random_Bytes;
+      Suites     : Octet_Array;
+      Out_Buf    : out Octet_Array;
+      Out_Last   : out Natural)
+   is
+      S_Len : constant Natural := Suites'Length;
+      S_Hi  : constant Octet := Octet (S_Len / 256);
+      S_Lo  : constant Octet := Octet (S_Len mod 256);
+      S_Off : constant Natural := 36;
+      J     : Natural;
+   begin
+      Out_Buf := (others => 0);
+      Out_Buf (1) := 16#03#;
+      Out_Buf (2) := 16#03#;
+      Out_Buf (3 .. 34) := Random;
+      Out_Buf (35) := 0;
+      Out_Buf (S_Off) := S_Hi;
+      Out_Buf (S_Off + 1) := S_Lo;
+      J := S_Off + 2;
+      for I in Suites'Range loop
+         Out_Buf (J) := Suites (I);
+         J := J + 1;
+      end loop;
+      Out_Buf (J) := 1;
+      Out_Buf (J + 1) := 0;
+
+      pragma Assert (Out_Buf (35) = 0);
+      pragma Assert (CH_Sid_Len (Out_Buf) = 0);
+      pragma Assert (CH_Suites_Len_Off (Out_Buf) = 36);
+      pragma Assert
+        (Natural (Out_Buf (36)) * 256
+         + Natural (Out_Buf (37)) = S_Len);
+      pragma Assert (CH_Suites_Len (Out_Buf) = S_Len);
+      pragma Assert (CH_Suites_First (Out_Buf) = 38);
+      pragma Assert (CH_Random (Out_Buf) = Random);
+      pragma Assert (CH_Valid (Out_Buf));
+
+      Out_Last := 37 + S_Len;
+   end Encode_Client_Hello_Core;
+
+   procedure Lemma_CH_Round_Trip
+     (Random : Random_Bytes;
+      Suites : Octet_Array)
+   is
+      Buf      : Octet_Array (1 .. 256) := (others => 0);
+      Enc_Last : Natural;
+   begin
+      Encode_Client_Hello_Core (Random, Suites, Buf, Enc_Last);
+
+      pragma Assert (CH_Valid (Buf));
+      pragma Assert (CH_Random (Buf) = Random);
+      pragma Assert (CH_Suites_Len (Buf) = Suites'Length);
+      pragma Assert (CH_Suites_First (Buf) = 38);
+
+      declare
+         Dec_Rnd : constant Random_Bytes := Buf (3 .. 34);
+         Dec_S_F : constant Natural := 38;
+         Dec_S_L : constant Natural := 37 + Suites'Length;
+      begin
+         pragma Assert (Dec_Rnd = Random);
+         pragma Assert (Dec_S_F = CH_Suites_First (Buf));
+         pragma Assert
+           (Dec_S_L = CH_Suites_First (Buf)
+                      + CH_Suites_Len (Buf) - 1);
+      end;
+   end Lemma_CH_Round_Trip;
+
    procedure Decode_Client_Hello_Psk
      (In_Bytes          : Octet_Array;
       Random            : out Random_Bytes;

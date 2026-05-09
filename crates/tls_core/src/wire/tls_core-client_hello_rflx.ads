@@ -81,6 +81,33 @@ is
             CH_Suites_First (In_Bytes)
               + CH_Suites_Len (In_Bytes) - 1);
 
+   procedure Encode_Client_Hello_Core
+     (Random     : Random_Bytes;
+      Suites     : Octet_Array;
+      Out_Buf    : out Octet_Array;
+      Out_Last   : out Natural)
+   with
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 256
+       and then Suites'Length in 2 .. 200
+       and then Suites'Length mod 2 = 0,
+     Post =>
+       Out_Last = 37 + Suites'Length
+       and then Out_Buf (35) = 0
+       and then CH_Valid (Out_Buf)
+       and then CH_Random (Out_Buf) = Random
+       and then CH_Suites_Len (Out_Buf) = Suites'Length
+       and then CH_Suites_First (Out_Buf) = 38;
+
+   procedure Lemma_CH_Round_Trip
+     (Random : Random_Bytes;
+      Suites : Octet_Array)
+   with Ghost,
+        Pre =>
+          Suites'Length in 2 .. 200
+          and then Suites'Length mod 2 = 0;
+
    procedure Decode_Client_Hello_Psk
      (In_Bytes          : Octet_Array;
       Random            : out Random_Bytes;
