@@ -19,6 +19,17 @@ is
       Data_Len   : out Natural;
       Buf_Ref    : out RFLX.RFLX_Types.Bytes_Ptr;
       Found      : out Boolean)
+   with
+     Pre  => Ext_Bytes'First = 1
+             and then Ext_Bytes'Length >= 4
+             and then Ext_Bytes'Last < Natural'Last / 2,
+     Post =>
+       Buf_Ref /= null
+       and then (if Found then
+                   Data_First >= 1
+                   and then Data_Len >= 0
+                   and then Data_First + Data_Len - 1
+                              <= Ext_Bytes'Length)
    is
       package EL renames RFLX.TLS_Extensions.Extension_List;
       package Ext renames RFLX.TLS_Extensions.Extension;
@@ -34,6 +45,9 @@ is
       Buf_Ref    := null;
       Found      := False;
       for I in Ext_Bytes'Range loop
+         pragma Loop_Invariant
+           (J = RFLX.RFLX_Types.Index (I));
+         pragma Loop_Invariant (J in Buf'Range);
          Buf (J) := RFLX.RFLX_Types.Byte (Ext_Bytes (I));
          J := J + 1;
       end loop;
@@ -73,10 +87,18 @@ is
       Key_Share_Last  := 0;
       Found           := False;
       Walk_Find (Ext_Bytes, 51, Df, Dl, Buf, Ext_Found);
-      if not Ext_Found or else Dl < 6 or else Buf = null then
+      if not Ext_Found or else Dl < 6 or else Buf = null
+        or else Df < 1
+        or else Df + Dl - 1 > Ext_Bytes'Length
+        or else Df + 1 > Natural'Last / 2
+      then
          if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
          return;
       end if;
+      pragma Assert (Df >= 1);
+      pragma Assert (Df + Dl - 1 <= Ext_Bytes'Length);
+      pragma Assert (Dl >= 6);
+      pragma Assert (Df + 1 <= Ext_Bytes'Length);
       declare
          Ks_Len : constant Natural :=
            Natural (Buf (RFLX.RFLX_Types.Index (Df))) * 256
@@ -129,7 +151,11 @@ is
       Found          := False;
       Walk_Find (Ext_Bytes, 13, Df, Dl, Buf, Ext_Found);
       if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
-      if not Ext_Found or else Dl < 4 then return; end if;
+      if not Ext_Found or else Dl < 4
+        or else Df < 1
+        or else Df + Dl - 1 > Ext_Bytes'Length
+        or else Df + 1 > Natural'Last / 2
+      then return; end if;
       declare
          Sa_Len : constant Natural :=
            Natural (Ext_Bytes (Df)) * 256
@@ -163,7 +189,11 @@ is
       Truncated_Last := 0; Found := False;
       Walk_Find (Ext_Bytes, 41, Df, Dl, Buf, Ext_Found);
       if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
-      if not Ext_Found or else Dl < 9 then return; end if;
+      if not Ext_Found or else Dl < 9
+        or else Df < 1
+        or else Df + Dl - 1 > Ext_Bytes'Length
+        or else Df + 1 > Natural'Last / 2
+      then return; end if;
       declare
          Ids_Len : constant Natural :=
            Natural (Ext_Bytes (Df)) * 256
