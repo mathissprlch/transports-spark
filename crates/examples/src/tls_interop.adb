@@ -748,6 +748,7 @@ procedure Tls_Interop is
                      L  : String (1 .. 256);
                      Last : Natural;
                      Found_Pass : Boolean := False;
+                     Found_Skip : Boolean := False;
                   begin
                      Ada.Text_IO.Open
                        (F, Ada.Text_IO.In_File, Log_File);
@@ -760,11 +761,20 @@ procedure Tls_Interop is
                         then
                            Found_Pass := True;
                         end if;
+                        if Last >= 5
+                          and then L (1 .. 5) = "SKIP:"
+                        then
+                           Found_Skip := True;
+                        end if;
                      end loop;
                      Ada.Text_IO.Close (F);
                      if Found_Pass then
                         C2S_Result := Pass;
                         C2S_Note := To_Unbounded_String (Log_File);
+                     elsif Found_Skip then
+                        C2S_Result := Not_Impl_3P;
+                        C2S_Note := To_Unbounded_String
+                          ("peer-CLI gap (resumption c2s)");
                      else
                         C2S_Result := Fail;
                         C2S_Note := To_Unbounded_String
