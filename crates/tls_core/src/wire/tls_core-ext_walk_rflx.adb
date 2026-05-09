@@ -61,10 +61,18 @@ is
             exit;
          end if;
          if Natural (Ext.Get_Ext_Type (Ext_Ctx)) = Want_Type then
-            Data_First := Natural
-              (Ext.Field_First (Ext_Ctx, Ext.F_Data)) / 8 + 1;
-            Data_Len := Natural (Ext.Get_Length (Ext_Ctx));
-            Found := True;
+            declare
+               FF : constant RFLX.RFLX_Types.Bit_Index :=
+                 Ext.Field_First (Ext_Ctx, Ext.F_Data);
+               DL_Val : constant Natural :=
+                 Natural (Ext.Get_Length (Ext_Ctx));
+            begin
+               pragma Assert (FF >= 1);
+               Data_First := Natural (FF) / 8 + 1;
+               pragma Assert (Data_First >= 1);
+               Data_Len := DL_Val;
+               Found := True;
+            end;
          end if;
          EL.Update (Seq_Ctx, Ext_Ctx);
          if Found then exit; end if;
@@ -106,8 +114,17 @@ is
          Ks_Cur : Natural := Df + 2;
          Ks_End : constant Natural := Df + 2 + Ks_Len - 1;
       begin
-         if Ks_Len >= 4 and then Ks_End <= Df + Dl - 1 then
+         if Ks_Len >= 4
+           and then Ks_End <= Df + Dl - 1
+           and then Ks_End <= Ext_Bytes'Length
+           and then Ks_End < Natural'Last - 4
+         then
             while Ks_Cur + 3 <= Ks_End loop
+               pragma Loop_Invariant
+                 (Ks_Cur >= Df + 2
+                  and then Ks_Cur <= Ks_End
+                  and then Ks_End <= Ext_Bytes'Length
+                  and then Ks_Cur + 3 <= Ext_Bytes'Length);
                declare
                   Grp : constant Natural :=
                     Natural (Buf (RFLX.RFLX_Types.Index (Ks_Cur)))
