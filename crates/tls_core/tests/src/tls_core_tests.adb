@@ -28,6 +28,7 @@ with Tls_Core.Sha512;
 with Tls_Core.Ed25519;
 with Tls_Core.X509;
 with Tls_Core.Hello;
+with Tls_Core.Hello_Rflx;
 with Tls_Core.Transport;
 with Tls_Core.Tcp_Transport;
 with Tls_Core.Psk_Binder;
@@ -3016,6 +3017,34 @@ procedure Tls_Core_Tests is
                 Sh_Ks_OK
                 and then Sh_Ks_L - Sh_Ks_F + 1 = 32
                 and then Equal (Sh_Wire (Sh_Ks_F .. Sh_Ks_L), Server_Pub));
+
+         declare
+            Rflx_Rnd   : Tls_Core.Hello_Rflx.Random_Bytes;
+            Rflx_Suite : Tls_Core.Suites.U16;
+            Rflx_Sf, Rflx_Sl : Natural;
+            Rflx_Ef, Rflx_El : Natural;
+            Rflx_OK    : Boolean;
+         begin
+            Tls_Core.Hello_Rflx.Decode_Server_Hello_Fields
+              (Sh_Wire (1 .. Sh_Last),
+               Rflx_Rnd, Rflx_Suite,
+               Rflx_Sf, Rflx_Sl,
+               Rflx_Ef, Rflx_El,
+               Rflx_OK);
+            Check ("RFLX SH: decode OK", Rflx_OK);
+            Check ("RFLX SH: random matches",
+                   Equal (Rflx_Rnd, Random));
+            declare
+               use type Interfaces.Unsigned_16;
+            begin
+               Check ("RFLX SH: suite matches AES-128",
+                      Interfaces.Unsigned_16 (Rflx_Suite) =
+                        Interfaces.Unsigned_16
+                          (Tls_Core.Suites.TLS_AES_128_GCM_SHA256));
+            end;
+            Check ("RFLX SH: extensions found",
+                   Rflx_Ef > 0 and then Rflx_El >= Rflx_Ef);
+         end;
       end;
    end Psk_Hello_Roundtrip;
 
