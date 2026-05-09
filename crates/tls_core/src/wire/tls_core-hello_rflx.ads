@@ -70,6 +70,28 @@ is
           and then Random = Spec_Random (In_Bytes)
           and then Suite_Code = Spec_Suite_Code (In_Bytes));
 
+   procedure Encode_Server_Hello_Core
+     (Random     : Random_Bytes;
+      Suite_Code : Tls_Core.Suites.U16;
+      Out_Buf    : out Octet_Array;
+      Out_Last   : out Natural)
+   with
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Length >= 44,
+     Post =>
+       Out_Last = 43
+       and then Out_Buf (35) = 0
+       and then Spec_Valid (Out_Buf)
+       and then Spec_Random (Out_Buf) = Random
+       and then Spec_Suite_Code (Out_Buf) = Suite_Code;
+
+   procedure Lemma_Round_Trip
+     (Random     : Random_Bytes;
+      Suite_Code : Tls_Core.Suites.U16)
+   with Ghost,
+        Pre => True;
+
    procedure Decode_Server_Hello_Key_Share
      (In_Bytes        : Octet_Array;
       Key_Share_First : out Natural;
