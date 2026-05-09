@@ -16,6 +16,8 @@ package Key_Share is
          Key_Exchange     : Opaque with Size => Key_Exchange_Len * 8;
       end message;
 
+   type Key_Share_Entry_List is sequence of Key_Share_Entry;
+
    type Client_Hello_Payload is
       message
          Client_Shares_Len : Client_Shares_Length;

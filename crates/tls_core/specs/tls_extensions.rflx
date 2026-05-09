@@ -42,4 +42,6 @@ package TLS_Extensions is
        Psk_Dhe_Ke => 1)
       with Size => 8;
 
+   type Extension_List is sequence of Extension;
+
 end TLS_Extensions;
