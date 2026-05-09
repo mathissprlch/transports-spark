@@ -12,6 +12,7 @@ pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types;
+with RFLX.TLS_Extensions.Extension_List;
 
 package RFLX.Client_Hello.Message
 with
@@ -472,16 +473,6 @@ is
      Post =>
        Get_Compression_Methods'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Compression_Methods));
 
-   function Get_Extensions (Ctx : Context) return RFLX_Types.Bytes
-   with
-     Ghost,
-     Pre =>
-       RFLX.Client_Hello.Message.Has_Buffer (Ctx)
-       and then RFLX.Client_Hello.Message.Well_Formed (Ctx, RFLX.Client_Hello.Message.F_Extensions)
-       and then RFLX.Client_Hello.Message.Valid_Next (Ctx, RFLX.Client_Hello.Message.F_Extensions),
-     Post =>
-       Get_Extensions'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Extensions));
-
    procedure Get_Random (Ctx : Context; Data : out RFLX_Types.Bytes)
    with
      Pre =>
@@ -522,16 +513,6 @@ is
      Post =>
        Equal (Ctx, F_Compression_Methods, Data);
 
-   procedure Get_Extensions (Ctx : Context; Data : out RFLX_Types.Bytes)
-   with
-     Pre =>
-       RFLX.Client_Hello.Message.Has_Buffer (Ctx)
-       and then RFLX.Client_Hello.Message.Well_Formed (Ctx, RFLX.Client_Hello.Message.F_Extensions)
-       and then RFLX.Client_Hello.Message.Valid_Next (Ctx, RFLX.Client_Hello.Message.F_Extensions)
-       and then Data'Length = RFLX_Types.To_Length (RFLX.Client_Hello.Message.Field_Size (Ctx, RFLX.Client_Hello.Message.F_Extensions)),
-     Post =>
-       Equal (Ctx, F_Extensions, Data);
-
    generic
       with procedure Process_Random (Random : RFLX_Types.Bytes);
    procedure Generic_Get_Random (Ctx : Context)
@@ -563,14 +544,6 @@ is
      Pre =>
        RFLX.Client_Hello.Message.Has_Buffer (Ctx)
        and RFLX.Client_Hello.Message.Present (Ctx, RFLX.Client_Hello.Message.F_Compression_Methods);
-
-   generic
-      with procedure Process_Extensions (Extensions : RFLX_Types.Bytes);
-   procedure Generic_Get_Extensions (Ctx : Context)
-   with
-     Pre =>
-       RFLX.Client_Hello.Message.Has_Buffer (Ctx)
-       and RFLX.Client_Hello.Message.Present (Ctx, RFLX.Client_Hello.Message.F_Extensions);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -761,6 +734,33 @@ is
        and Valid_Next (Ctx, F_Session_Id) = Valid_Next (Ctx, F_Session_Id)'Old
        and Get_Session_Id_Len (Ctx) = Get_Session_Id_Len (Ctx)'Old
        and Field_First (Ctx, F_Session_Id) = Field_First (Ctx, F_Session_Id)'Old;
+
+   procedure Set_Extensions (Ctx : in out Context; Seq_Ctx : RFLX.TLS_Extensions.Extension_List.Context)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Client_Hello.Message.Has_Buffer (Ctx)
+       and then RFLX.Client_Hello.Message.Valid_Next (Ctx, RFLX.Client_Hello.Message.F_Extensions)
+       and then RFLX.Client_Hello.Message.Available_Space (Ctx, RFLX.Client_Hello.Message.F_Extensions) >= RFLX.Client_Hello.Message.Field_Size (Ctx, RFLX.Client_Hello.Message.F_Extensions)
+       and then RFLX.Client_Hello.Message.Field_Condition (Ctx, RFLX.Client_Hello.Message.F_Extensions)
+       and then RFLX.Client_Hello.Message.Valid_Length (Ctx, RFLX.Client_Hello.Message.F_Extensions, RFLX.TLS_Extensions.Extension_List.Byte_Size (Seq_Ctx))
+       and then RFLX.TLS_Extensions.Extension_List.Has_Buffer (Seq_Ctx)
+       and then RFLX.TLS_Extensions.Extension_List.Valid (Seq_Ctx),
+     Post =>
+       Has_Buffer (Ctx)
+       and Well_Formed (Ctx, F_Extensions)
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
+       and Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and Ctx.First = Ctx.First'Old
+       and Ctx.Last = Ctx.Last'Old
+       and Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
+       and Get_Session_Id_Len (Ctx) = Get_Session_Id_Len (Ctx)'Old
+       and Get_Suites_Len (Ctx) = Get_Suites_Len (Ctx)'Old
+       and Get_Compression_Len (Ctx) = Get_Compression_Len (Ctx)'Old
+       and Get_Extensions_Len (Ctx) = Get_Extensions_Len (Ctx)'Old
+       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old
+       and (if Field_Size (Ctx, F_Extensions) > 0 then Present (Ctx, F_Extensions));
 
    procedure Initialize_Random (Ctx : in out Context)
    with
@@ -996,32 +996,6 @@ is
        and Field_First (Ctx, F_Compression_Methods) = Field_First (Ctx, F_Compression_Methods)'Old
        and Equal (Ctx, F_Compression_Methods, Data);
 
-   procedure Set_Extensions (Ctx : in out Context; Data : RFLX_Types.Bytes)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Client_Hello.Message.Has_Buffer (Ctx)
-       and then RFLX.Client_Hello.Message.Valid_Next (Ctx, RFLX.Client_Hello.Message.F_Extensions)
-       and then RFLX.Client_Hello.Message.Available_Space (Ctx, RFLX.Client_Hello.Message.F_Extensions) >= RFLX.Client_Hello.Message.Field_Size (Ctx, RFLX.Client_Hello.Message.F_Extensions)
-       and then RFLX.Client_Hello.Message.Valid_Length (Ctx, RFLX.Client_Hello.Message.F_Extensions, Data'Length)
-       and then RFLX.Client_Hello.Message.Available_Space (Ctx, RFLX.Client_Hello.Message.F_Extensions) >= Data'Length * RFLX_Types.Byte'Size
-       and then RFLX.Client_Hello.Message.Field_Condition (Ctx, RFLX.Client_Hello.Message.F_Extensions),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Extensions)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
-       and Get_Session_Id_Len (Ctx) = Get_Session_Id_Len (Ctx)'Old
-       and Get_Suites_Len (Ctx) = Get_Suites_Len (Ctx)'Old
-       and Get_Compression_Len (Ctx) = Get_Compression_Len (Ctx)'Old
-       and Get_Extensions_Len (Ctx) = Get_Extensions_Len (Ctx)'Old
-       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old
-       and Equal (Ctx, F_Extensions, Data);
-
    generic
       with procedure Process_Random (Random : out RFLX_Types.Bytes);
       with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
@@ -1144,33 +1118,85 @@ is
        and Get_Compression_Len (Ctx) = Get_Compression_Len (Ctx)'Old
        and Field_First (Ctx, F_Compression_Methods) = Field_First (Ctx, F_Compression_Methods)'Old;
 
-   generic
-      with procedure Process_Extensions (Extensions : out RFLX_Types.Bytes);
-      with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
-   procedure Generic_Set_Extensions (Ctx : in out Context; Length : RFLX_Types.Length)
+   procedure Switch_To_Extensions (Ctx : in out Context; Seq_Ctx : out RFLX.TLS_Extensions.Extension_List.Context)
    with
      Pre =>
        not Ctx'Constrained
+       and then not Seq_Ctx'Constrained
        and then RFLX.Client_Hello.Message.Has_Buffer (Ctx)
        and then RFLX.Client_Hello.Message.Valid_Next (Ctx, RFLX.Client_Hello.Message.F_Extensions)
+       and then RFLX.Client_Hello.Message.Field_Size (Ctx, RFLX.Client_Hello.Message.F_Extensions) > 0
+       and then RFLX.Client_Hello.Message.Field_First (Ctx, RFLX.Client_Hello.Message.F_Extensions) rem RFLX_Types.Byte'Size = 1
        and then RFLX.Client_Hello.Message.Available_Space (Ctx, RFLX.Client_Hello.Message.F_Extensions) >= RFLX.Client_Hello.Message.Field_Size (Ctx, RFLX.Client_Hello.Message.F_Extensions)
-       and then RFLX.Client_Hello.Message.Valid_Length (Ctx, RFLX.Client_Hello.Message.F_Extensions, Length)
-       and then RFLX_Types.To_Length (RFLX.Client_Hello.Message.Available_Space (Ctx, RFLX.Client_Hello.Message.F_Extensions)) >= Length
-       and then Process_Data_Pre (Length),
+       and then RFLX.Client_Hello.Message.Field_Condition (Ctx, RFLX.Client_Hello.Message.F_Extensions),
      Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Extensions)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
+       not RFLX.Client_Hello.Message.Has_Buffer (Ctx)
+       and RFLX.TLS_Extensions.Extension_List.Has_Buffer (Seq_Ctx)
+       and Ctx.Buffer_First = Seq_Ctx.Buffer_First
+       and Ctx.Buffer_Last = Seq_Ctx.Buffer_Last
+       and Seq_Ctx.First = Field_First (Ctx, F_Extensions)
+       and Seq_Ctx.Last = Field_Last (Ctx, F_Extensions)
+       and RFLX.TLS_Extensions.Extension_List.Valid (Seq_Ctx)
+       and RFLX.TLS_Extensions.Extension_List.Sequence_Last (Seq_Ctx) = Seq_Ctx.First - 1
+       and Present (Ctx, F_Extensions)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
-       and Get_Session_Id_Len (Ctx) = Get_Session_Id_Len (Ctx)'Old
-       and Get_Suites_Len (Ctx) = Get_Suites_Len (Ctx)'Old
-       and Get_Compression_Len (Ctx) = Get_Compression_Len (Ctx)'Old
-       and Get_Extensions_Len (Ctx) = Get_Extensions_Len (Ctx)'Old
-       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old;
+       and Field_Last (Ctx, F_Extensions) = Field_Last (Ctx, F_Extensions)'Old
+       and (for all F in Field range F_Legacy_Version_Field .. F_Extensions_Len =>
+               Context_Cursors_Index (Context_Cursors (Ctx), F) = Context_Cursors_Index (Context_Cursors (Ctx)'Old, F)),
+     Contract_Cases =>
+       (Well_Formed (Ctx, F_Extensions) =>
+           True,
+        others =>
+           True);
+
+   function Complete_Extensions (Ctx : Context; Seq_Ctx : RFLX.TLS_Extensions.Extension_List.Context) return Boolean
+   with
+     Pre =>
+       RFLX.Client_Hello.Message.Valid_Next (Ctx, RFLX.Client_Hello.Message.F_Extensions);
+
+   procedure Update_Extensions (Ctx : in out Context; Seq_Ctx : in out RFLX.TLS_Extensions.Extension_List.Context)
+   with
+     Pre =>
+       RFLX.Client_Hello.Message.Present (Ctx, RFLX.Client_Hello.Message.F_Extensions)
+       and then not RFLX.Client_Hello.Message.Has_Buffer (Ctx)
+       and then RFLX.TLS_Extensions.Extension_List.Has_Buffer (Seq_Ctx)
+       and then Ctx.Buffer_First = Seq_Ctx.Buffer_First
+       and then Ctx.Buffer_Last = Seq_Ctx.Buffer_Last
+       and then Seq_Ctx.First = Field_First (Ctx, F_Extensions)
+       and then Seq_Ctx.Last = Field_Last (Ctx, F_Extensions),
+     Post =>
+       (if
+           RFLX.Client_Hello.Message.Complete_Extensions (Ctx, Seq_Ctx)
+        then
+           Present (Ctx, F_Extensions)
+        else
+           Invalid (Ctx, F_Extensions))
+       and Has_Buffer (Ctx)
+       and not RFLX.TLS_Extensions.Extension_List.Has_Buffer (Seq_Ctx)
+       and Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and Ctx.First = Ctx.First'Old
+       and Ctx.Last = Ctx.Last'Old
+       and Seq_Ctx.First = Seq_Ctx.First'Old
+       and Seq_Ctx.Last = Seq_Ctx.Last'Old
+       and RFLX.TLS_Extensions.Extension_List.Valid (Seq_Ctx) = RFLX.TLS_Extensions.Extension_List.Valid (Seq_Ctx)'Old
+       and RFLX.TLS_Extensions.Extension_List.Size (Seq_Ctx) = RFLX.TLS_Extensions.Extension_List.Size (Seq_Ctx)'Old
+       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old
+       and Field_Size (Ctx, F_Extensions) = Field_Size (Ctx, F_Extensions)'Old
+       and Context_Cursor (Ctx, F_Legacy_Version_Field) = Context_Cursor (Ctx, F_Legacy_Version_Field)'Old
+       and Context_Cursor (Ctx, F_Random) = Context_Cursor (Ctx, F_Random)'Old
+       and Context_Cursor (Ctx, F_Session_Id_Len) = Context_Cursor (Ctx, F_Session_Id_Len)'Old
+       and Context_Cursor (Ctx, F_Session_Id) = Context_Cursor (Ctx, F_Session_Id)'Old
+       and Context_Cursor (Ctx, F_Suites_Len) = Context_Cursor (Ctx, F_Suites_Len)'Old
+       and Context_Cursor (Ctx, F_Cipher_Suites) = Context_Cursor (Ctx, F_Cipher_Suites)'Old
+       and Context_Cursor (Ctx, F_Compression_Len) = Context_Cursor (Ctx, F_Compression_Len)'Old
+       and Context_Cursor (Ctx, F_Compression_Methods) = Context_Cursor (Ctx, F_Compression_Methods)'Old
+       and Context_Cursor (Ctx, F_Extensions_Len) = Context_Cursor (Ctx, F_Extensions_Len)'Old,
+     Depends =>
+       (Ctx => (Ctx, Seq_Ctx), Seq_Ctx => Seq_Ctx);
 
    function Context_Cursor (Ctx : Context; Fld : Field) return Field_Cursor
    with
@@ -1189,95 +1215,6 @@ is
      Annotate =>
        (GNATprove, Inline_For_Proof),
      Ghost;
-
-   type Structure is
-      record
-         Legacy_Version_Field : RFLX.Client_Hello.Legacy_Version;
-         Random : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 31);
-         Session_Id_Len : RFLX.Client_Hello.Session_Id_Length;
-         Session_Id : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 31);
-         Suites_Len : RFLX.Client_Hello.Suites_Length;
-         Cipher_Suites : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 65533);
-         Compression_Len : RFLX.Client_Hello.Compression_Length;
-         Compression_Methods : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 254);
-         Extensions_Len : RFLX.Client_Hello.Extensions_Length;
-         Extensions : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 65534);
-      end record;
-
-   function Valid_Structure (Unused_Struct : Structure) return Boolean;
-
-   procedure To_Structure (Ctx : Context; Struct : out Structure)
-   with
-     Pre =>
-       RFLX.Client_Hello.Message.Has_Buffer (Ctx)
-       and then RFLX.Client_Hello.Message.Well_Formed_Message (Ctx),
-     Post =>
-       Valid_Structure (Struct);
-
-   function Sufficient_Buffer_Length (Ctx : Context; Struct : Structure) return Boolean;
-
-   procedure To_Context (Struct : Structure; Ctx : in out Context)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Client_Hello.Message.Has_Buffer (Ctx)
-       and then RFLX.Client_Hello.Message.Valid_Structure (Struct)
-       and then RFLX.Client_Hello.Message.Sufficient_Buffer_Length (Ctx, Struct),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed_Message (Ctx)
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old;
-
-   function Field_Size_Legacy_Version_Field (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Random (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Session_Id_Len (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Session_Id (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Suites_Len (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Cipher_Suites (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Compression_Len (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Compression_Methods (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Extensions_Len (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Extensions (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
 
 private
 
@@ -1782,6 +1719,10 @@ private
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean is
      (Valid_Size (Ctx, Fld, RFLX_Types.To_Bit_Length (Length)));
 
+   function Complete_Extensions (Ctx : Context; Seq_Ctx : RFLX.TLS_Extensions.Extension_List.Context) return Boolean is
+     (RFLX.TLS_Extensions.Extension_List.Valid (Seq_Ctx)
+      and RFLX.TLS_Extensions.Extension_List.Size (Seq_Ctx) = Field_Size (Ctx, F_Extensions));
+
    function Context_Cursor (Ctx : Context; Fld : Field) return Field_Cursor is
      (Ctx.Cursors (Fld));
 
@@ -1790,41 +1731,5 @@ private
 
    function Context_Cursors_Index (Cursors : Field_Cursors; Fld : Field) return Field_Cursor is
      (Cursors (Fld));
-
-   function Valid_Structure (Unused_Struct : Structure) return Boolean is
-     (True);
-
-   function Sufficient_Buffer_Length (Ctx : Context; Struct : Structure) return Boolean is
-     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= RFLX_Types.Base_Integer (Struct.Compression_Len) * 8 + RFLX_Types.Base_Integer (Struct.Extensions_Len) * 8 + RFLX_Types.Base_Integer (Struct.Session_Id_Len) * 8 + RFLX_Types.Base_Integer (Struct.Suites_Len) * 8 + 320);
-
-   function Field_Size_Legacy_Version_Field (Struct : Structure) return RFLX_Types.Bit_Length is
-     (16);
-
-   function Field_Size_Random (Struct : Structure) return RFLX_Types.Bit_Length is
-     (256);
-
-   function Field_Size_Session_Id_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (8);
-
-   function Field_Size_Session_Id (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Session_Id_Len) * 8);
-
-   function Field_Size_Suites_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (16);
-
-   function Field_Size_Cipher_Suites (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Suites_Len) * 8);
-
-   function Field_Size_Compression_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (8);
-
-   function Field_Size_Compression_Methods (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Compression_Len) * 8);
-
-   function Field_Size_Extensions_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (16);
-
-   function Field_Size_Extensions (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Extensions_Len) * 8);
 
 end RFLX.Client_Hello.Message;

@@ -2,6 +2,8 @@
 --
 --  Source: RFC 8446 §4.1.2.
 
+with TLS_Extensions;
+
 package Client_Hello is
 
    type Legacy_Version is range 16#0303# .. 16#0303# with Size => 16;
@@ -21,7 +23,8 @@ package Client_Hello is
          Compression_Len      : Compression_Length;
          Compression_Methods  : Opaque with Size => Compression_Len * 8;
          Extensions_Len       : Extensions_Length;
-         Extensions           : Opaque with Size => Extensions_Len * 8;
+         Extensions           : TLS_Extensions::Extension_List
+            with Size => Extensions_Len * 8;
       end message;
 
 end Client_Hello;

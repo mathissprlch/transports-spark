@@ -1,3 +1,4 @@
+with Ada.Text_IO;
 with RFLX.RFLX_Types;
 with RFLX.TLS_Extensions;
 with RFLX.TLS_Extensions.Extension;
@@ -41,14 +42,42 @@ is
 
       EL.Initialize (Seq_Ctx, Buf);
 
+      Ada.Text_IO.Put_Line
+        ("EXT-WALK: len=" & Ext_Bytes'Length'Image
+         & " has_elem=" & EL.Has_Element (Seq_Ctx)'Image);
+
+      if Ext_Bytes'Length >= 4 then
+         Ada.Text_IO.Put
+           ("EXT-WALK: first 8 bytes:");
+         for K in 1 .. Natural'Min (8, Ext_Bytes'Length) loop
+            declare
+               V : constant Natural :=
+                 Natural (Ext_Bytes (K));
+               H : constant String := V'Image;
+            begin
+               Ada.Text_IO.Put (" " & H);
+            end;
+         end loop;
+         Ada.Text_IO.New_Line;
+      end if;
+
       while EL.Has_Element (Seq_Ctx) loop
          pragma Loop_Invariant (EL.Has_Buffer (Seq_Ctx));
 
          EL.Switch (Seq_Ctx, Ext_Ctx);
+
+         Ada.Text_IO.Put_Line
+           ("EXT-WALK: switched, wf="
+            & Ext.Well_Formed_Message (Ext_Ctx)'Image);
+
          if not Ext.Well_Formed_Message (Ext_Ctx) then
             EL.Update (Seq_Ctx, Ext_Ctx);
             exit;
          end if;
+
+         Ada.Text_IO.Put_Line
+           ("EXT-WALK: type="
+            & Ext.Get_Ext_Type (Ext_Ctx)'Image);
 
          if Ext.Get_Ext_Type (Ext_Ctx) =
               51

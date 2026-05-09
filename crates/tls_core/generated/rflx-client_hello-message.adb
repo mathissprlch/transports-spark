@@ -251,13 +251,6 @@ is
       return Ctx.Buffer.all (First .. Last);
    end Get_Compression_Methods;
 
-   function Get_Extensions (Ctx : Context) return RFLX_Types.Bytes is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).Last);
-   begin
-      return Ctx.Buffer.all (First .. Last);
-   end Get_Extensions;
-
    procedure Get_Random (Ctx : Context; Data : out RFLX_Types.Bytes) is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Random).First);
       Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Random).Last);
@@ -290,14 +283,6 @@ is
       Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
    end Get_Compression_Methods;
 
-   procedure Get_Extensions (Ctx : Context; Data : out RFLX_Types.Bytes) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).Last);
-   begin
-      Data := (others => RFLX_Types.Byte'First);
-      Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
-   end Get_Extensions;
-
    procedure Generic_Get_Random (Ctx : Context) is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Random).First);
       Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Random).Last);
@@ -325,13 +310,6 @@ is
    begin
       Process_Compression_Methods (Ctx.Buffer.all (First .. Last));
    end Generic_Get_Compression_Methods;
-
-   procedure Generic_Get_Extensions (Ctx : Context) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).Last);
-   begin
-      Process_Extensions (Ctx.Buffer.all (First .. Last));
-   end Generic_Get_Extensions;
 
    procedure Set (Ctx : in out Context; Fld : Field; Val : RFLX_Types.Base_Integer; Size : RFLX_Types.Bit_Length; State_Valid : Boolean; Buffer_First : out RFLX_Types.Index; Buffer_Last : out RFLX_Types.Index; Offset : out RFLX_Types.Offset)
    with
@@ -466,6 +444,16 @@ is
    begin
       Set (Ctx, F_Session_Id, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
    end Set_Session_Id_Empty;
+
+   procedure Set_Extensions (Ctx : in out Context; Seq_Ctx : RFLX.TLS_Extensions.Extension_List.Context) is
+      Size : constant RFLX_Types.Bit_Length := RFLX_Types.To_Bit_Length (RFLX.TLS_Extensions.Extension_List.Byte_Size (Seq_Ctx));
+      Unused_First, Unused_Last : RFLX_Types.Bit_Index;
+      Buffer_First, Buffer_Last : RFLX_Types.Index;
+      Unused_Offset : RFLX_Types.Offset;
+   begin
+      Set (Ctx, F_Extensions, 0, Size, True, Buffer_First, Buffer_Last, Unused_Offset);
+      RFLX.TLS_Extensions.Extension_List.Copy (Seq_Ctx, Ctx.Buffer.all (Buffer_First .. Buffer_Last));
+   end Set_Extensions;
 
    procedure Initialize_Random_Private (Ctx : in out Context; Length : RFLX_Types.Length)
    with
@@ -721,16 +709,6 @@ is
       pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Compression_Methods)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Compression_Methods))) = Data);
    end Set_Compression_Methods;
 
-   procedure Set_Extensions (Ctx : in out Context; Data : RFLX_Types.Bytes) is
-      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Extensions));
-      Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
-   begin
-      Initialize_Extensions_Private (Ctx, Data'Length);
-      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Extensions)));
-      Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
-      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Extensions)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Extensions))) = Data);
-   end Set_Extensions;
-
    procedure Generic_Set_Random (Ctx : in out Context; Length : RFLX_Types.Length) is
       First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Random));
    begin
@@ -771,48 +749,36 @@ is
       Initialize_Compression_Methods_Private (Ctx, Length);
    end Generic_Set_Compression_Methods;
 
-   procedure Generic_Set_Extensions (Ctx : in out Context; Length : RFLX_Types.Length) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Extensions));
+   procedure Switch_To_Extensions (Ctx : in out Context; Seq_Ctx : out RFLX.TLS_Extensions.Extension_List.Context) is
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Extensions);
+      Last : constant RFLX_Types.Bit_Index := Field_Last (Ctx, F_Extensions);
+      Buffer : RFLX_Types.Bytes_Ptr;
    begin
-      if Length > 0 then
-         Process_Extensions (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
+      if Invalid (Ctx, F_Extensions) then
+         Reset_Dependent_Fields (Ctx, F_Extensions);
+         pragma Warnings (Off, "attribute Update is an obsolescent feature");
+         Ctx := Ctx'Update (Verified_Last => Last, Written_Last => RFLX_Types.Bit_Length'Max (Ctx.Written_Last, Last));
+         pragma Warnings (On, "attribute Update is an obsolescent feature");
+         Ctx.Cursors (F_Extensions) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
       end if;
-      pragma Assert (RFLX.Client_Hello.Message.Valid_Length (Ctx, RFLX.Client_Hello.Message.F_Extensions, Length));
-      Initialize_Extensions_Private (Ctx, Length);
-   end Generic_Set_Extensions;
+      Take_Buffer (Ctx, Buffer);
+      pragma Warnings (Off, "unused assignment to ""Buffer""");
+      RFLX.TLS_Extensions.Extension_List.Initialize (Seq_Ctx, Buffer, First, Last);
+      pragma Warnings (On, "unused assignment to ""Buffer""");
+   end Switch_To_Extensions;
 
-   procedure To_Structure (Ctx : Context; Struct : out Structure) is
+   procedure Update_Extensions (Ctx : in out Context; Seq_Ctx : in out RFLX.TLS_Extensions.Extension_List.Context) is
+      Valid_Sequence : constant Boolean := RFLX.Client_Hello.Message.Complete_Extensions (Ctx, Seq_Ctx);
+      Buffer : RFLX_Types.Bytes_Ptr;
    begin
-      Struct.Legacy_Version_Field := Get_Legacy_Version_Field (Ctx);
-      Struct.Random := (others => 0);
-      Get_Random (Ctx, Struct.Random (Struct.Random'First .. Struct.Random'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Random)) + 1) - 2));
-      Struct.Session_Id_Len := Get_Session_Id_Len (Ctx);
-      Struct.Session_Id := (others => 0);
-      Get_Session_Id (Ctx, Struct.Session_Id (Struct.Session_Id'First .. Struct.Session_Id'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Session_Id)) + 1) - 2));
-      Struct.Suites_Len := Get_Suites_Len (Ctx);
-      Struct.Cipher_Suites := (others => 0);
-      Get_Cipher_Suites (Ctx, Struct.Cipher_Suites (Struct.Cipher_Suites'First .. Struct.Cipher_Suites'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Cipher_Suites)) + 1) - 2));
-      Struct.Compression_Len := Get_Compression_Len (Ctx);
-      Struct.Compression_Methods := (others => 0);
-      Get_Compression_Methods (Ctx, Struct.Compression_Methods (Struct.Compression_Methods'First .. Struct.Compression_Methods'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Compression_Methods)) + 1) - 2));
-      Struct.Extensions_Len := Get_Extensions_Len (Ctx);
-      Struct.Extensions := (others => 0);
-      Get_Extensions (Ctx, Struct.Extensions (Struct.Extensions'First .. Struct.Extensions'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Extensions)) + 1) - 2));
-   end To_Structure;
-
-   procedure To_Context (Struct : Structure; Ctx : in out Context) is
-   begin
-      Reset (Ctx);
-      Set_Legacy_Version_Field (Ctx, Struct.Legacy_Version_Field);
-      Set_Random (Ctx, Struct.Random);
-      Set_Session_Id_Len (Ctx, Struct.Session_Id_Len);
-      Set_Session_Id (Ctx, Struct.Session_Id (Struct.Session_Id'First .. Struct.Session_Id'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Session_Id_Len) * 8) + 1) - 2));
-      Set_Suites_Len (Ctx, Struct.Suites_Len);
-      Set_Cipher_Suites (Ctx, Struct.Cipher_Suites (Struct.Cipher_Suites'First .. Struct.Cipher_Suites'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Suites_Len) * 8) + 1) - 2));
-      Set_Compression_Len (Ctx, Struct.Compression_Len);
-      Set_Compression_Methods (Ctx, Struct.Compression_Methods (Struct.Compression_Methods'First .. Struct.Compression_Methods'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Compression_Len) * 8) + 1) - 2));
-      Set_Extensions_Len (Ctx, Struct.Extensions_Len);
-      Set_Extensions (Ctx, Struct.Extensions (Struct.Extensions'First .. Struct.Extensions'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Extensions_Len) * 8) + 1) - 2));
-   end To_Context;
+      RFLX.TLS_Extensions.Extension_List.Take_Buffer (Seq_Ctx, Buffer);
+      Ctx.Buffer := Buffer;
+      if Valid_Sequence then
+         Ctx.Cursors (F_Extensions) := (State => S_Valid, First => Ctx.Cursors (F_Extensions).First, Last => Ctx.Cursors (F_Extensions).Last, Value => Ctx.Cursors (F_Extensions).Value);
+      else
+         Reset_Dependent_Fields (Ctx, F_Extensions);
+         Ctx.Cursors (F_Extensions) := (others => <>);
+      end if;
+   end Update_Extensions;
 
 end RFLX.Client_Hello.Message;
