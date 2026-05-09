@@ -72,11 +72,6 @@ is
    with
      Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 5 + 2 + 1 + 16;
 
-   procedure Build_Finished_Body
-     (Base_Key        : Tls_Core.Key_Schedule.Secret;
-      Transcript_Hash : Tls_Core.Sha256.Digest;
-      Out_Verify      : out Tls_Core.Sha256.Digest);
-
    procedure Encode_Hs_Message
      (Msg_Type   : Octet;
       Body_Bytes : Octet_Array;

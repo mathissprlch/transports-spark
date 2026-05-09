@@ -135,10 +135,10 @@ is
             Synthetic : Tls_Core.Octet_Array (1 .. 36) :=
               (others => 0);
          begin
-            Tls_Core.Transcript.Snapshot
-              (D.Hash_Ctx, D.Hrr_Ch1_Hash);
+            Tls_Core.Key_Sched.Transcript_Snapshot
+              (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, D.Hrr_Ch1_Hash);
             Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256
-              (D.Hrr_Ch1_Hash, Synthetic);
+              (D.Hrr_Ch1_Hash (1 .. 32), Synthetic);
             Tls_Core.Transcript.Init (D.Hash_Ctx);
             Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Synthetic);
             --  Append the HRR handshake message (NOT the wire
@@ -305,7 +305,7 @@ is
                Peer_Pub : Tls_Core.X25519.Bytes_32;
                Shared   : Tls_Core.X25519.Bytes_32;
             begin
-               for I in 1 .. 32 loop
+               for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
                   pragma Loop_Invariant (I in 1 .. 32);
                   Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
                end loop;
@@ -358,7 +358,7 @@ is
                  (D.PSK,
                   Hs_Trunc (1 .. Trunc_Len),
                   Computed);
-               for I in 1 .. 32 loop
+               for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
                   pragma Loop_Invariant (I in 1 .. 32);
                   Received (I) := In_Bytes (Bf + I - 1);
                end loop;
@@ -509,12 +509,12 @@ is
          S_Hs_Label : constant Octet_Array (1 .. 12) :=
            (16#73#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
             16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
-         Early_Secret : Tls_Core.Key_Schedule.Secret;
-         Derived_1    : Tls_Core.Key_Schedule.Secret;
-         Hs_Secret    : Tls_Core.Key_Schedule.Secret;
-         C_Hs_Sec     : Tls_Core.Key_Schedule.Secret;
-         S_Hs_Sec     : Tls_Core.Key_Schedule.Secret;
-         Th_After_SH  : Tls_Core.Sha256.Digest;
+         Early_Secret : Tls_Core.Key_Sched.Max_Secret;
+         Derived_1    : Tls_Core.Key_Sched.Max_Secret;
+         Hs_Secret    : Tls_Core.Key_Sched.Max_Secret;
+         C_Hs_Sec     : Tls_Core.Key_Sched.Max_Secret;
+         S_Hs_Sec     : Tls_Core.Key_Sched.Max_Secret;
+         Th_After_SH  : Tls_Core.Key_Sched.Max_Digest;
       begin
          Tls_Core.Hello.Encode_Server_Hello_Psk
            (Server_Random,
@@ -551,19 +551,19 @@ is
             Ee_Hs_Last : Natural;
             Ee_Rec  : Octet_Array (1 .. 256) := (others => 0);
             Ee_Rec_Last : Natural;
-            Th_After_EE : Tls_Core.Sha256.Digest;
-            Verify_Data : Tls_Core.Sha256.Digest;
+            Th_After_EE : Tls_Core.Key_Sched.Max_Digest;
+            Verify_Data : Tls_Core.Key_Sched.Max_Digest;
             Fin_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
             Fin_Hs_Last : Natural;
             Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
             Fin_Rec_Last : Natural;
-            Th_After_SF : Tls_Core.Sha256.Digest;
-            Empty_Hash  : Tls_Core.Sha256.Digest;
+            Th_After_SF : Tls_Core.Key_Sched.Max_Digest;
+            Empty_Hash  : Tls_Core.Key_Sched.Max_Digest;
             Empty_In    : constant Octet_Array (1 .. 0) :=
               (others => 0);
-            Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
-            Master_Secret : Tls_Core.Key_Schedule.Secret;
-            Zero_Secret   : constant Tls_Core.Key_Schedule.Secret :=
+            Derived_2_Sec : Tls_Core.Key_Sched.Max_Secret;
+            Master_Secret : Tls_Core.Key_Sched.Max_Secret;
+            Zero_Secret   : constant Tls_Core.Key_Sched.Max_Secret :=
               (others => 0);
             Derived_Lab : constant Octet_Array (1 .. 7) :=
               (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
@@ -586,7 +586,7 @@ is
             Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_EE);
             Tls_Core.Key_Sched.Build_Finished (D.Suite, S_Hs_Sec, Th_After_EE, Verify_Data);
             Encode_Hs_Message
-              (Hs_Type_Finished, Verify_Data,
+              (Hs_Type_Finished, Verify_Data (1 .. 32),
                Fin_Hs, Fin_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
             Tls_Core.Aead_Channel.Send

@@ -1,12 +1,13 @@
 with Tls_Core.Hmac_Sha256;
+with Tls_Core.Key_Sched;
 
 package body Tls_Core.Tls13_Driver.Helpers
 with SPARK_Mode
 is
 
    procedure Prime_Driver_Defaults (D : in out Driver) is
-      Zero_Secret : constant Tls_Core.Key_Schedule.Secret := (others => 0);
-      Zero_Digest : constant Tls_Core.Sha256.Digest := (others => 0);
+      Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      Zero_Digest : constant Tls_Core.Key_Sched.Max_Digest := (others => 0);
    begin
       D.Suite := Tls_Core.Suites.Chacha20_Poly1305_Sha256;
       D.C_Hs_Sec  := Zero_Secret;
@@ -19,10 +20,10 @@ is
       D.Master_Set := False;
       D.Res_Master_Sec := Zero_Secret;
       D.Res_Master_Set := False;
-      Tls_Core.Aead_Channel.Init_Sha256
-        (D.Hs_Out_Dir, Tls_Core.Suites.Chacha20_Poly1305_Sha256, Zero_Secret);
-      Tls_Core.Aead_Channel.Init_Sha256
-        (D.Hs_In_Dir,  Tls_Core.Suites.Chacha20_Poly1305_Sha256, Zero_Secret);
+      Tls_Core.Key_Sched.Init_Hs_Channel
+        (Tls_Core.Suites.Chacha20_Poly1305_Sha256, D.Hs_Out_Dir, Zero_Secret);
+      Tls_Core.Key_Sched.Init_Hs_Channel
+        (Tls_Core.Suites.Chacha20_Poly1305_Sha256, D.Hs_In_Dir,  Zero_Secret);
    end Prime_Driver_Defaults;
 
    procedure Build_Plaintext_Alert
@@ -89,26 +90,6 @@ is
       D.Cur_State := Failed;
    end Fail_Encrypted;
 
-   procedure Build_Finished_Body
-     (Base_Key        : Tls_Core.Key_Schedule.Secret;
-      Transcript_Hash : Tls_Core.Sha256.Digest;
-      Out_Verify      : out Tls_Core.Sha256.Digest)
-   is
-      Empty_Ctx : constant Octet_Array (1 .. 0) := (others => 0);
-      Label : constant Octet_Array (1 .. 8) :=
-        (16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#);
-      Finished_Key : Tls_Core.Sha256.Digest;
-   begin
-      Hkdf_Expand_Label_Sha256
-        (Secret  => Base_Key,
-         Label   => Label,
-         Context => Empty_Ctx,
-         Output  => Finished_Key);
-      Tls_Core.Hmac_Sha256.Compute
-        (Key     => Finished_Key,
-         Message => Transcript_Hash,
-         Out_Tag => Out_Verify);
-   end Build_Finished_Body;
 
    procedure Encode_Hs_Message
      (Msg_Type   : Octet;
@@ -150,11 +131,11 @@ is
    begin
       case D.My_Role is
          when Server =>
-            Tls_Core.Aead_Channel.Init_Sha256
-              (D.App_Out_Dir, D.Suite, D.App_S_Ap);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, D.App_Out_Dir, D.App_S_Ap);
          when Client =>
-            Tls_Core.Aead_Channel.Init_Sha256
-              (D.App_Out_Dir, D.Suite, D.App_C_Ap);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, D.App_Out_Dir, D.App_C_Ap);
       end case;
       D.App_Out_Set := True;
    end Ensure_App_Out_Dir;

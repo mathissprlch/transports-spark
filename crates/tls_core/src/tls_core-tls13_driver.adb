@@ -306,8 +306,8 @@ is
      (D          : Driver;
       Out_Dir    : out Tls_Core.Aead_Channel.Direction;
       In_Dir     : out Tls_Core.Aead_Channel.Direction;
-      Out_Secret : out Tls_Core.Key_Schedule.Secret;
-      In_Secret  : out Tls_Core.Key_Schedule.Secret)
+      Out_Secret : out Tls_Core.Key_Sched.Max_Secret;
+      In_Secret  : out Tls_Core.Key_Sched.Max_Secret)
    is
    begin
       case D.My_Role is
@@ -315,18 +315,18 @@ is
             --  Server: out encrypts with s_ap; in decrypts with c_ap.
             Out_Secret := D.App_S_Ap;
             In_Secret  := D.App_C_Ap;
-            Tls_Core.Aead_Channel.Init_Sha256
-              (Out_Dir, D.Suite, Out_Secret);
-            Tls_Core.Aead_Channel.Init_Sha256
-              (In_Dir,  D.Suite, In_Secret);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, Out_Dir, Out_Secret);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, In_Dir,  In_Secret);
          when Client =>
             --  Client: out encrypts with c_ap; in decrypts with s_ap.
             Out_Secret := D.App_C_Ap;
             In_Secret  := D.App_S_Ap;
-            Tls_Core.Aead_Channel.Init_Sha256
-              (Out_Dir, D.Suite, Out_Secret);
-            Tls_Core.Aead_Channel.Init_Sha256
-              (In_Dir,  D.Suite, In_Secret);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, Out_Dir, Out_Secret);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, In_Dir,  In_Secret);
       end case;
    end Open_App_Directions;
 
@@ -339,8 +339,8 @@ is
       Out_Dir : out Tls_Core.Aead_Channel.Direction;
       In_Dir  : out Tls_Core.Aead_Channel.Direction)
    is
-      Discard_Out_Sec : Tls_Core.Key_Schedule.Secret;
-      Discard_In_Sec  : Tls_Core.Key_Schedule.Secret;
+      Discard_Out_Sec : Tls_Core.Key_Sched.Max_Secret;
+      Discard_In_Sec  : Tls_Core.Key_Sched.Max_Secret;
    begin
       Open_App_Directions
         (D, Out_Dir, In_Dir, Discard_Out_Sec, Discard_In_Sec);
@@ -360,7 +360,7 @@ is
    procedure Send_Key_Update
      (D              : Driver;
       Out_Dir        : in out Tls_Core.Aead_Channel.Direction;
-      Send_Secret    : in out Tls_Core.Key_Schedule.Secret;
+      Send_Secret    : in out Tls_Core.Key_Sched.Max_Secret;
       Request_Update : Octet;
       Out_Buf        : out Octet_Array;
       Out_Last       : out Natural)
@@ -369,7 +369,7 @@ is
       Ku_Msg : Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
         (others => 0);
       Ku_Last : Natural;
-      Next_Secret : Tls_Core.Key_Schedule.Secret;
+      Next_Secret : Tls_Core.Key_Sched.Max_Secret;
    begin
       Out_Buf := (others => 0);
       Out_Last := 0;
@@ -388,9 +388,9 @@ is
 
       --  3. Derive the next traffic secret per §7.2 and rotate the
       --     local send key + IV + sequence counter.
-      Tls_Core.Key_Update.Derive_Next_Sha256 (Send_Secret, Next_Secret);
+      Tls_Core.Key_Update.Derive_Next_Sha256 (Send_Secret (1 .. 32), Next_Secret (1 .. 32));
       Send_Secret := Next_Secret;
-      Tls_Core.Aead_Channel.Rotate_Sha256 (Out_Dir, Send_Secret);
+      Tls_Core.Aead_Channel.Rotate_Sha256 (Out_Dir, Send_Secret (1 .. 32));
    end Send_Key_Update;
 
    ---------------------------------------------------------------------
@@ -407,14 +407,14 @@ is
      (D            : Driver;
       In_Plaintext : Octet_Array;
       In_Dir       : in out Tls_Core.Aead_Channel.Direction;
-      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
       Want_Reply   : out Boolean;
       OK           : out Boolean)
    is
       pragma Unreferenced (D);
       Request_Update : Octet;
       Decode_OK : Boolean;
-      Next_Secret : Tls_Core.Key_Schedule.Secret;
+      Next_Secret : Tls_Core.Key_Sched.Max_Secret;
    begin
       Want_Reply := False;
       OK := False;
@@ -424,9 +424,9 @@ is
       end if;
 
       --  Rotate the peer-side decrypt key per §7.2.
-      Tls_Core.Key_Update.Derive_Next_Sha256 (Recv_Secret, Next_Secret);
+      Tls_Core.Key_Update.Derive_Next_Sha256 (Recv_Secret (1 .. 32), Next_Secret (1 .. 32));
       Recv_Secret := Next_Secret;
-      Tls_Core.Aead_Channel.Rotate_Sha256 (In_Dir, Recv_Secret);
+      Tls_Core.Aead_Channel.Rotate_Sha256 (In_Dir, Recv_Secret (1 .. 32));
 
       Want_Reply :=
         Request_Update = Tls_Core.Key_Update.Update_Requested;
@@ -729,7 +729,7 @@ is
                   Age_Add           => Ag,
                   Ticket_Nonce      => Body_Slice (Nf .. Nl),
                   Ticket            => Body_Slice (Tf .. Tl),
-                  Resumption_Secret => D.Res_Master_Sec,
+                  Resumption_Secret => D.Res_Master_Sec (1 .. 32),
                   Suite             => D.Suite);
             else
                declare
@@ -742,7 +742,7 @@ is
                      Age_Add           => Ag,
                      Ticket_Nonce      => Empty_Nonce,
                      Ticket            => Body_Slice (Tf .. Tl),
-                     Resumption_Secret => D.Res_Master_Sec,
+                     Resumption_Secret => D.Res_Master_Sec (1 .. 32),
                      Suite             => D.Suite);
                end;
             end if;
@@ -765,7 +765,7 @@ is
       Plaintext    : Octet_Array;
       Inner_Type   : Octet;
       In_Dir       : in out Tls_Core.Aead_Channel.Direction;
-      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
       Cache        : in out Tls_Core.Session_Cache.Cache;
       Saw_Nst      : out Boolean;
       Saw_KeyUpdate : out Boolean;
@@ -845,7 +845,7 @@ is
                      Age_Add           => Ag,
                      Ticket_Nonce      => Body_Slice (Nf .. Nl),
                      Ticket            => Body_Slice (Tf .. Tl),
-                     Resumption_Secret => D.Res_Master_Sec,
+                     Resumption_Secret => D.Res_Master_Sec (1 .. 32),
                      Suite             => D.Suite);
                else
                   declare
@@ -858,7 +858,7 @@ is
                         Age_Add           => Ag,
                         Ticket_Nonce      => Empty_Nonce,
                         Ticket            => Body_Slice (Tf .. Tl),
-                        Resumption_Secret => D.Res_Master_Sec,
+                        Resumption_Secret => D.Res_Master_Sec (1 .. 32),
                         Suite             => D.Suite);
                   end;
                end if;
@@ -909,7 +909,7 @@ is
      (D    : out Driver;
       Slot : Tls_Core.Session_Cache.Slot)
    is
-      Derived_Psk : Tls_Core.Key_Schedule.Secret;
+      Derived_Psk : Tls_Core.Key_Sched.Max_Secret;
       Priv_32     : Tls_Core.X25519.Bytes_32;
       Pub_32      : Tls_Core.X25519.Bytes_32;
    begin
@@ -918,14 +918,14 @@ is
         (Resumption_Secret => Slot.Resumption_Secret,
          Ticket_Nonce      =>
            Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len),
-         Psk               => Derived_Psk);
+         Psk               => Derived_Psk (1 .. 32));
 
       --  Initialise as a regular PSK client (the existing PSK_KE
       --  path drives the handshake).
       D.My_Role := Client;
       D.Cur_State := Idle;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
-      D.PSK := Derived_Psk;
+      D.PSK := Derived_Psk (1 .. 32);
       D.Identity := (others => 0);
       D.Identity_Len := Slot.Ticket_Len;
       D.Identity (1 .. Slot.Ticket_Len) :=

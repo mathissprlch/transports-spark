@@ -50,11 +50,11 @@ is
 
             Empty_In    : constant Octet_Array (1 .. 0) :=
               (others => 0);
-            Zero_Secret : constant Tls_Core.Key_Schedule.Secret :=
+            Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret :=
               (others => 0);
             Zero32      : constant Octet_Array (1 .. 32) :=
               (others => 0);
-            Empty_Hash  : Tls_Core.Sha256.Digest;
+            Empty_Hash  : Tls_Core.Key_Sched.Max_Digest;
 
             Derived_Lab : constant Octet_Array (1 .. 7) :=
               (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#,
@@ -72,12 +72,12 @@ is
               (16#73#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
                16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
 
-            Early_Secret : Tls_Core.Key_Schedule.Secret;
-            Derived_1    : Tls_Core.Key_Schedule.Secret;
-            Th_After_Sh   : Tls_Core.Sha256.Digest;
-            Th_After_Cert : Tls_Core.Sha256.Digest;
-            Th_After_CV   : Tls_Core.Sha256.Digest;
-            Th_After_Sf   : Tls_Core.Sha256.Digest;
+            Early_Secret : Tls_Core.Key_Sched.Max_Secret;
+            Derived_1    : Tls_Core.Key_Sched.Max_Secret;
+            Th_After_Sh   : Tls_Core.Key_Sched.Max_Digest;
+            Th_After_Cert : Tls_Core.Key_Sched.Max_Digest;
+            Th_After_CV   : Tls_Core.Key_Sched.Max_Digest;
+            Th_After_Sf   : Tls_Core.Key_Sched.Max_Digest;
 
             --  Leaf-cert scratch — the raw DER bytes recovered
             --  from the §4.4.2 Certificate message body.
@@ -145,7 +145,7 @@ is
                      D.Cur_State := Failed;
                      return;
                   end if;
-                  for I in 1 .. 32 loop
+                  for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
                      pragma Loop_Invariant (I in 1 .. 32);
                      Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
                   end loop;
@@ -192,7 +192,7 @@ is
                    (others => 0);
                Msg_Last : Natural;
                Body_Len : Natural;
-               Expected_Sf : Tls_Core.Sha256.Digest;
+               Expected_Sf : Tls_Core.Key_Sched.Max_Digest;
                Diff : Octet;
             begin
                Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
@@ -438,7 +438,7 @@ is
                                         Body_Bytes
                                           (Sig_F .. Sig_L),
                                       Transcript_Hash =>
-                                        Th_After_Cert,
+                                        Th_After_Cert (1 .. 32),
                                       Result          => Result);
                                  if not Tls_Core.Cert_Chain
                                           ."=" (Result, Tls_Core
@@ -472,7 +472,7 @@ is
                            Tls_Core.Key_Sched.Build_Finished
                              (D.Suite, D.S_Hs_Sec, Th_After_CV, Expected_Sf);
                            Diff := 0;
-                           for I in 1 .. 32 loop
+                           for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
                               pragma Loop_Invariant
                                 (I in 1 .. 32);
                               Diff := Diff or
@@ -503,7 +503,7 @@ is
             --  Step 4: app traffic secrets.
             Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sf);
             declare
-               Master_Secret : Tls_Core.Key_Schedule.Secret;
+               Master_Secret : Tls_Core.Key_Sched.Max_Secret;
             begin
                Tls_Core.Key_Sched.Derive_App_Secrets
                  (Suite       => D.Suite,
@@ -519,7 +519,7 @@ is
 
             --  Step 5: build + send client Finished.
             declare
-               Cf_Verify : Tls_Core.Sha256.Digest;
+               Cf_Verify : Tls_Core.Key_Sched.Max_Digest;
                Cf_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
                Cf_Hs_Last : Natural;
                Cf_Rec : Octet_Array (1 .. 256) := (others => 0);
@@ -528,7 +528,7 @@ is
                Tls_Core.Key_Sched.Build_Finished
                  (D.Suite, D.C_Hs_Sec, Th_After_Sf, Cf_Verify);
                Encode_Hs_Message
-                 (Hs_Type_Finished, Cf_Verify,
+                 (Hs_Type_Finished, Cf_Verify (1 .. 32),
                   Cf_Hs, Cf_Hs_Last);
                Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Cf_Hs (1 .. Cf_Hs_Last));
                Tls_Core.Aead_Channel.Send
@@ -544,7 +544,7 @@ is
             --  resumption_master_secret per §7.1 (CH..CF).
             if D.Master_Set then
                declare
-                  Th_After_Cf : Tls_Core.Sha256.Digest;
+                  Th_After_Cf : Tls_Core.Key_Sched.Max_Digest;
                begin
                   Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Cf);
                   Tls_Core.Key_Sched.Derive_Resumption_Master_Secret
@@ -565,10 +565,10 @@ is
          Cursor : Natural := In_Bytes'First;
 
          --  Used to derive c_hs / s_hs after parsing SH.
-         Empty_Hash    : Tls_Core.Sha256.Digest;
+         Empty_Hash    : Tls_Core.Key_Sched.Max_Digest;
          Empty_In      : constant Octet_Array (1 .. 0) :=
            (others => 0);
-         Zero_Secret   : constant Tls_Core.Key_Schedule.Secret :=
+         Zero_Secret   : constant Tls_Core.Key_Sched.Max_Secret :=
            (others => 0);
          Derived_Lab   : constant Octet_Array (1 .. 7) :=
            (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
@@ -585,11 +585,11 @@ is
            (16#73#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
             16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
 
-         Early_Secret  : Tls_Core.Key_Schedule.Secret;
-         Derived_1     : Tls_Core.Key_Schedule.Secret;
-         Th_After_Sh   : Tls_Core.Sha256.Digest;
-         Th_After_Ee   : Tls_Core.Sha256.Digest;
-         Th_After_Sf   : Tls_Core.Sha256.Digest;
+         Early_Secret  : Tls_Core.Key_Sched.Max_Secret;
+         Derived_1     : Tls_Core.Key_Sched.Max_Secret;
+         Th_After_Sh   : Tls_Core.Key_Sched.Max_Digest;
+         Th_After_Ee   : Tls_Core.Key_Sched.Max_Digest;
+         Th_After_Sf   : Tls_Core.Key_Sched.Max_Digest;
       begin
          --  Step 1: parse SH TLSPlaintext.
          if Cursor + 4 > In_Bytes'Last
@@ -663,7 +663,7 @@ is
                   D.Cur_State := Failed;
                   return;
                end if;
-               for I in 1 .. 32 loop
+               for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
                   pragma Loop_Invariant (I in 1 .. 32);
                   Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
                end loop;
@@ -727,7 +727,7 @@ is
               := (others => 0);
             Msg_Last : Natural;
             Body_Len : Natural;
-            Expected_Sf : Tls_Core.Sha256.Digest;
+            Expected_Sf : Tls_Core.Key_Sched.Max_Digest;
             Diff : Octet;
          begin
             Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
@@ -837,7 +837,7 @@ is
                         Tls_Core.Key_Sched.Build_Finished
                           (D.Suite, D.S_Hs_Sec, Th_After_Ee, Expected_Sf);
                         Diff := 0;
-                        for I in 1 .. 32 loop
+                        for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite) loop
                            pragma Loop_Invariant (I in 1 .. 32);
                            Diff := Diff or
                              (Msg_Buf (4 + I) xor Expected_Sf (I));
@@ -867,7 +867,7 @@ is
          --  Step 5: derive app secrets.
          Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sf);
          declare
-            Master_Secret : Tls_Core.Key_Schedule.Secret;
+            Master_Secret : Tls_Core.Key_Sched.Max_Secret;
          begin
             Tls_Core.Key_Sched.Derive_App_Secrets
               (Suite       => D.Suite,
@@ -883,7 +883,7 @@ is
 
          --  Step 6: build + send client Finished.
          declare
-            Cf_Verify : Tls_Core.Sha256.Digest;
+            Cf_Verify : Tls_Core.Key_Sched.Max_Digest;
             Cf_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
             Cf_Hs_Last : Natural;
             Cf_Rec : Octet_Array (1 .. 256) := (others => 0);
@@ -892,7 +892,7 @@ is
             Tls_Core.Key_Sched.Build_Finished
               (D.Suite, D.C_Hs_Sec, Th_After_Sf, Cf_Verify);
             Encode_Hs_Message
-              (Hs_Type_Finished, Cf_Verify,
+              (Hs_Type_Finished, Cf_Verify (1 .. 32),
                Cf_Hs, Cf_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Cf_Hs (1 .. Cf_Hs_Last));
             Tls_Core.Aead_Channel.Send
@@ -911,7 +911,7 @@ is
          --  now spans CH..CF (we just appended CF).
          if D.Master_Set then
             declare
-               Th_After_Cf : Tls_Core.Sha256.Digest;
+               Th_After_Cf : Tls_Core.Key_Sched.Max_Digest;
             begin
                Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Cf);
                Tls_Core.Key_Sched.Derive_Resumption_Master_Secret

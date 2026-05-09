@@ -42,6 +42,7 @@ with Tls_Core.Alert;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Handshake_Buffer;
 with Tls_Core.Hello_Retry;
+with Tls_Core.Key_Sched;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
 with Tls_Core.Record_Layer;
@@ -478,8 +479,8 @@ is
      (D          : Driver;
       Out_Dir    : out Tls_Core.Aead_Channel.Direction;
       In_Dir     : out Tls_Core.Aead_Channel.Direction;
-      Out_Secret : out Tls_Core.Key_Schedule.Secret;
-      In_Secret  : out Tls_Core.Key_Schedule.Secret)
+      Out_Secret : out Tls_Core.Key_Sched.Max_Secret;
+      In_Secret  : out Tls_Core.Key_Sched.Max_Secret)
    with Pre => Current_State (D) = Done;
 
    --  Backward-compat shim that drops the secrets — pre-KeyUpdate
@@ -525,7 +526,7 @@ is
    procedure Send_Key_Update
      (D              : Driver;
       Out_Dir        : in out Tls_Core.Aead_Channel.Direction;
-      Send_Secret    : in out Tls_Core.Key_Schedule.Secret;
+      Send_Secret    : in out Tls_Core.Key_Sched.Max_Secret;
       Request_Update : Octet;
       Out_Buf        : out Octet_Array;
       Out_Last       : out Natural)
@@ -575,7 +576,7 @@ is
      (D            : Driver;
       In_Plaintext : Octet_Array;
       In_Dir       : in out Tls_Core.Aead_Channel.Direction;
-      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
       Want_Reply   : out Boolean;
       OK           : out Boolean)
    with
@@ -762,7 +763,7 @@ is
       Plaintext    : Octet_Array;
       Inner_Type   : Octet;
       In_Dir       : in out Tls_Core.Aead_Channel.Direction;
-      Recv_Secret  : in out Tls_Core.Key_Schedule.Secret;
+      Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
       Cache        : in out Tls_Core.Session_Cache.Cache;
       Saw_Nst      : out Boolean;
       Saw_KeyUpdate : out Boolean;
@@ -880,32 +881,32 @@ private
       --  digests are sized for SHA-256. AES-256-GCM-SHA384 negotiation
       --  is therefore not yet completable through Step (see Wall-hit
       --  note in package comment).
-      C_Hs_Sec    : Tls_Core.Key_Schedule.Secret := (others => 0);
-      S_Hs_Sec    : Tls_Core.Key_Schedule.Secret := (others => 0);
-      Hs_Secret   : Tls_Core.Key_Schedule.Secret := (others => 0);
+      C_Hs_Sec    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      S_Hs_Sec    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      Hs_Secret   : Tls_Core.Key_Sched.Max_Secret := (others => 0);
 
       --  Expected client Finished verify_data, computed at the
       --  moment server Finished is sent — saved here so the
       --  Awaiting_Cf path can do a constant-time compare against
       --  the decrypted body.
-      Expected_Cf : Tls_Core.Sha256.Digest := (others => 0);
+      Expected_Cf : Tls_Core.Key_Sched.Max_Digest := (others => 0);
 
       --  Application-data secrets (filled at the same time, used
       --  via Open_App_Directions after Done).
-      App_C_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
-      App_S_Ap    : Tls_Core.Key_Schedule.Secret := (others => 0);
+      App_C_Ap    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      App_S_Ap    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
       App_Set     : Boolean := False;
 
       --  Master_Secret saved at the moment the application-traffic
       --  secrets are derived, so the Awaiting_Cf branch (server) and
       --  the inline post-Finished branch (client) can compute
       --  resumption_master_secret over CH..CF.
-      Master_Sec     : Tls_Core.Key_Schedule.Secret := (others => 0);
+      Master_Sec     : Tls_Core.Key_Sched.Max_Secret := (others => 0);
       Master_Set     : Boolean := False;
 
       --  resumption_master_secret per RFC 8446 §7.1 — derived after
       --  client Finished is appended to the transcript (CH..CF).
-      Res_Master_Sec : Tls_Core.Key_Schedule.Secret := (others => 0);
+      Res_Master_Sec : Tls_Core.Key_Sched.Max_Secret := (others => 0);
       Res_Master_Set : Boolean := False;
 
       --  HelloRetryRequest fields (RFC 8446 §4.1.4 / §4.4.1).
@@ -946,7 +947,7 @@ private
       --  freshly-Init'd Transcript accumulator before appending HRR
       --  + CH2 + the rest of the handshake. Kept after transcript
       --  rebuild for diagnostic / test introspection.
-      Hrr_Ch1_Hash : Tls_Core.Sha256.Digest := (others => 0);
+      Hrr_Ch1_Hash : Tls_Core.Key_Sched.Max_Digest := (others => 0);
 
       --  True once the handshake-stage Aead_Channel directions
       --  have been initialised with real (non-zero) traffic secrets.
