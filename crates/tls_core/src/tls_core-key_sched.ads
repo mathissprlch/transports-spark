@@ -28,7 +28,10 @@ is
       S_Hs_Sec    : out Max_Secret;
       Hs_Secret    : out Max_Secret)
    with
-     Pre => PSK'Length in 32 | 48 and then Ecdhe_Shared'Length = 32;
+     Pre => PSK'Length in 32 | 48
+       and then PSK'Last < Integer'Last - 1024
+       and then Ecdhe_Shared'Length = 32
+       and then Ecdhe_Shared'Last < Integer'Last - 1024;
 
    procedure Derive_App_Secrets
      (Suite       : Tls_Core.Suites.Cipher_Suite_Id;
@@ -54,7 +57,8 @@ is
      (Suite   : Tls_Core.Suites.Cipher_Suite_Id;
       Ctx_256 : in out Tls_Core.Transcript.Accumulator;
       Ctx_384 : in out Tls_Core.Transcript_Sha384.Accumulator;
-      Message : Octet_Array);
+      Message : Octet_Array)
+   with Pre => Message'Last < Integer'Last - 128;
 
    procedure Transcript_Snapshot
      (Suite    : Tls_Core.Suites.Cipher_Suite_Id;
@@ -65,6 +69,7 @@ is
    procedure Init_Hs_Channel
      (Suite  : Tls_Core.Suites.Cipher_Suite_Id;
       Dir    : out Tls_Core.Aead_Channel.Direction;
-      Secret : Max_Secret);
+      Secret : Max_Secret)
+   with Pre => not Dir'Constrained;
 
 end Tls_Core.Key_Sched;
