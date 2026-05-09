@@ -340,8 +340,8 @@ is
             --  not the body alone.  Copy into a 'First=1
             --  buffer for Compute's Pre.
             declare
-               Computed : Tls_Core.Psk_Binder.Binder_Bytes;
-               Received : Tls_Core.Psk_Binder.Binder_Bytes;
+               Computed : Tls_Core.Psk_Binder.Binder_Bytes := (others => 0);
+               Received : Tls_Core.Psk_Binder.Binder_Bytes := (others => 0);
                Trunc_Len : constant Natural :=
                  T_Last - Rec_F + 1;
                Hs_Trunc : Octet_Array (1 .. 16640) :=

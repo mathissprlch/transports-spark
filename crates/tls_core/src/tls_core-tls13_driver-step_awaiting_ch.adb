@@ -621,8 +621,8 @@ is
                --  Abs_T_Last).  Copy into a local 'First=1
                --  buffer so Compute's 'First=1 Pre is satisfied.
                declare
-                  Computed : Tls_Core.Psk_Binder.Binder_Bytes;
-                  Received : Tls_Core.Psk_Binder.Binder_Bytes;
+                  Computed : Tls_Core.Psk_Binder.Binder_Bytes := (others => 0);
+                  Received : Tls_Core.Psk_Binder.Binder_Bytes := (others => 0);
                   Trunc_Len : constant Natural :=
                     Abs_T_Last - Rec_F + 1;
                   Hs_Trunc : Octet_Array (1 .. 16640) :=
