@@ -216,18 +216,24 @@ is
    --  cipher_suites list bytes (RFC 8446 §4.1.2 — flat-packed u16
    --  codepoints) so the caller can run its own selection policy.
    procedure Decode_Client_Hello_Psk
-     (In_Bytes        : Octet_Array;
-      Random          : out Random_Bytes;
-      Suites_First    : out Natural;
-      Suites_Last     : out Natural;
-      Identity_First  : out Natural;
-      Identity_Last   : out Natural;
-      Binder_First    : out Natural;
-      Binder_Last     : out Natural;
-      Key_Share_First : out Natural;
-      Key_Share_Last  : out Natural;
-      Truncated_Last  : out Natural;
-      OK              : out Boolean);
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Session_Id_First  : out Natural;
+      Session_Id_Last   : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Identity_First    : out Natural;
+      Identity_Last     : out Natural;
+      Binder_First      : out Natural;
+      Binder_Last       : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      Truncated_Last    : out Natural;
+      OK                : out Boolean);
+   --  Session_Id_First..Session_Id_Last bracket the legacy_session_id
+   --  bytes (RFC 8446 §4.1.2) — empty range when the client sent an
+   --  empty session_id.  The server MUST echo this verbatim in its
+   --  ServerHello (§4.1.3); openssl/mbedtls clients abort otherwise.
 
    --  Encode a ServerHello echoing selected_identity = 0 and the
    --  TLS 1.3 supported_versions. Selected_Suite is the cipher
@@ -236,6 +242,7 @@ is
    --  key (32-byte u-coordinate).
    procedure Encode_Server_Hello_Psk
      (Random         : Random_Bytes;
+      Session_Id_Echo : Octet_Array;        --  RFC 8446 §4.1.3
       Selected_Suite : Tls_Core.Suites.U16;
       Key_Share      : Public_Key;
       Out_Buf        : out Octet_Array;
@@ -243,9 +250,13 @@ is
    with
      Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 192,
+       and then Out_Buf'Length >= 192
+       and then Session_Id_Echo'Length <= 32,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
+   --  Session_Id_Echo MUST equal the legacy_session_id field from
+   --  the received ClientHello (RFC 8446 §4.1.3).  Length 0 is
+   --  legitimate (client sent empty); >32 is forbidden by the spec.
 
    --  Decode the server's X25519 public key from a received SH.
    --  In_Bytes is the SH body (after the 4-byte handshake header).
@@ -305,15 +316,19 @@ is
    --  First..Key_Share_Last point at the 32-byte X25519 client public
    --  key.
    procedure Decode_Client_Hello_Cert
-     (In_Bytes        : Octet_Array;
-      Random          : out Random_Bytes;
-      Suites_First    : out Natural;
-      Suites_Last     : out Natural;
-      Sig_Algs_First  : out Natural;
-      Sig_Algs_Last   : out Natural;
-      Key_Share_First : out Natural;
-      Key_Share_Last  : out Natural;
-      OK              : out Boolean);
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Session_Id_First  : out Natural;
+      Session_Id_Last   : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Sig_Algs_First    : out Natural;
+      Sig_Algs_Last     : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      OK                : out Boolean);
+   --  Session_Id_First..Session_Id_Last bracket the legacy_session_id
+   --  bytes; see comment on Decode_Client_Hello_Psk.
 
    ------------------------------------------------------------------
    --  RFC 8446 §4.1.3 cert-mode ServerHello.
@@ -329,15 +344,17 @@ is
    --  EncryptedExtensions in the server flight (RFC 8446 §4.4.2).
    ------------------------------------------------------------------
    procedure Encode_Server_Hello_Cert
-     (Random         : Random_Bytes;
-      Selected_Suite : Tls_Core.Suites.U16;
-      Key_Share      : Public_Key;
-      Out_Buf        : out Octet_Array;
-      Out_Last       : out Natural)
+     (Random          : Random_Bytes;
+      Session_Id_Echo : Octet_Array;        --  RFC 8446 §4.1.3
+      Selected_Suite  : Tls_Core.Suites.U16;
+      Key_Share       : Public_Key;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural)
    with
      Pre  =>
        Out_Buf'First = 1
-       and then Out_Buf'Length >= 192,
+       and then Out_Buf'Length >= 192
+       and then Session_Id_Echo'Length <= 32,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 

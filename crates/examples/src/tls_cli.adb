@@ -3,7 +3,7 @@
 --  Per CLAUDE.md §10a: a single binary, CLI-controlled, that
 --  exercises the same public Tls_Core APIs a downstream consumer
 --  (http_core / mqtt_core / grpc_core) would link against.  The
---  Tier D matrix drives this binary; users can also invoke it
+--  tls_interop runner drives this binary; users can also invoke it
 --  directly to talk to any RFC 8446 peer.
 --
 --  Usage:
@@ -59,6 +59,8 @@ with Interfaces;
 
 with Tls_Core;
 with Tls_Core.Aead_Channel;
+with Tls_Core.Cert_Chain;
+with Tls_Core.Suites;
 with Tls_Core.Tcp_Transport;
 with Tls_Core.Tls13_Driver;
 
@@ -86,6 +88,10 @@ procedure Tls_Cli is
    Sni_Host    : access String := new String'("");
    Alpn_List   : access String := new String'("");
    Ecdhe_Path  : access String := new String'("");
+   Cert_Path   : access String := new String'("");  --  server leaf DER
+   Key_Path    : access String := new String'("");  --  server priv (32 B EC)
+   Trust_Path  : access String := new String'("");  --  client trust root DER
+   Hostname    : access String := new String'("");  --  client SAN match
    Send_Str    : access String := new String'("");
    Recv_Len    : Natural := 0;
    Action      : App_Action := A_None;
@@ -296,6 +302,18 @@ procedure Tls_Cli is
             elsif Arg = "--ecdhe-priv" then
                A := A + 1;
                Ecdhe_Path := new String'(Ada.Command_Line.Argument (A));
+            elsif Arg = "--cert" then
+               A := A + 1;
+               Cert_Path := new String'(Ada.Command_Line.Argument (A));
+            elsif Arg = "--key" then
+               A := A + 1;
+               Key_Path := new String'(Ada.Command_Line.Argument (A));
+            elsif Arg = "--trust" then
+               A := A + 1;
+               Trust_Path := new String'(Ada.Command_Line.Argument (A));
+            elsif Arg = "--hostname" then
+               A := A + 1;
+               Hostname := new String'(Ada.Command_Line.Argument (A));
             elsif Arg = "--send" then
                A := A + 1;
                Send_Str := new String'(Ada.Command_Line.Argument (A));
@@ -504,9 +522,14 @@ procedure Tls_Cli is
 
    --  ===== Main runtime ==========================================
 
-   procedure Run_Client_Psk
-     (Sock : in out Tls_Core.Tcp_Transport.Channel;
-      D    : in out Tls_Core.Tls13_Driver.Driver)
+   --  Run_Client.  PSK mode → 3 server records (SH+EE+SF).  Cert
+   --  mode → 5 records (SH+EE+Cert+CV+SF).  CCS records (RFC 8446
+   --  Appendix D.4 middlebox-compat) are skipped by Read_N_Real_
+   --  Records.  Driver Step expects the full flight in one call.
+   procedure Run_Client
+     (Sock           : in out Tls_Core.Tcp_Transport.Channel;
+      D              : in out Tls_Core.Tls13_Driver.Driver;
+      Server_Records : Positive)
    is
       Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
       Out_Last : Natural;
@@ -525,15 +548,17 @@ procedure Tls_Cli is
       Trace ("  -> sent ClientHello (" & Natural'Image (Out_Last) & " B)");
 
       declare
-         In_Buf   : Octet_Array (1 .. 16640 * 3 + 64) := (others => 0);
+         In_Buf   : Octet_Array (1 .. 16640 * 5 + 64) := (others => 0);
          In_Last  : Natural;
          OK       : Boolean;
          CF_Buf   : Octet_Array (1 .. 4096) := (others => 0);
          CF_Last  : Natural;
       begin
-         Read_N_Real_Records (Sock, 3, In_Buf, In_Last, OK);
+         Read_N_Real_Records (Sock, Server_Records, In_Buf, In_Last, OK);
          if not OK then
-            Fail ("could not read 3 server records (SH+EE+SF)");
+            Fail ("could not read"
+                  & Natural'Image (Server_Records)
+                  & " server records");
             return;
          end if;
          Trace ("  <- read server flight (" & Natural'Image (In_Last) & " B)");
@@ -545,15 +570,19 @@ procedure Tls_Cli is
          then
             Fail ("client did not reach Done; state = "
                   & Tls_Core.Tls13_Driver.State'Image
-                      (Tls_Core.Tls13_Driver.Current_State (D)));
+                      (Tls_Core.Tls13_Driver.Current_State (D))
+                  & "; alert ="
+                  & Natural'Image
+                      (Natural (Tls_Core.Tls13_Driver
+                                 .Last_Alert_Description (D))));
             return;
          end if;
          Tls_Core.Tcp_Transport.Send_All (Sock, CF_Buf (1 .. CF_Last));
          Trace ("  -> sent client Finished (" & Natural'Image (CF_Last) & " B)");
       end;
-   end Run_Client_Psk;
+   end Run_Client;
 
-   procedure Run_Server_Psk
+   procedure Run_Server
      (Sock : in out Tls_Core.Tcp_Transport.Channel;
       D    : in out Tls_Core.Tls13_Driver.Driver)
    is
@@ -604,7 +633,7 @@ procedure Tls_Cli is
          return;
       end if;
       Trace ("  <- server reached Done");
-   end Run_Server_Psk;
+   end Run_Server;
 
    procedure Run_App_Phase
      (Sock : in out Tls_Core.Tcp_Transport.Channel;
@@ -753,21 +782,102 @@ begin
                     (D, Psk_Bytes, To_Bytes (Psk_Id.all), Ecdhe_Bytes);
                end if;
             end;
-         when M_Cert_Ec | M_Cert_Rsa =>
-            Fail ("--mode cert-ec / cert-rsa: CLI plumbing pending. "
-                  & "Driver supports it via Init_Cert_{Client,Server}; "
-                  & "wire flags --cert/--key/--trust/--hostname.");
+         when M_Cert_Ec =>
+            declare
+               Ecdhe_Bytes : Octet_Array (1 .. 32) := (others => 0);
+               OK          : Boolean;
+            begin
+               Load_Ecdhe (Ecdhe_Bytes, OK);
+               if not OK then
+                  goto Cleanup;
+               end if;
+               if Role = R_Client then
+                  if Trust_Path.all = "" then
+                     Fail ("client cert mode requires --trust DER_FILE");
+                     goto Cleanup;
+                  end if;
+                  declare
+                     Trust_Bytes : constant Octet_Array :=
+                       Read_File (Trust_Path.all);
+                     Trust_Spec  : Tls_Core.Cert_Chain.Trust_Store;
+                     Host_Bytes  : constant Octet_Array :=
+                       To_Bytes (Hostname.all);
+                  begin
+                     if Trust_Bytes'Length not in 16 .. 4096 then
+                        Fail ("--trust DER size out of range (16..4096)");
+                        goto Cleanup;
+                     end if;
+                     Trust_Spec.Count := 1;
+                     Trust_Spec.Entries (1) :=
+                       (First => 1, Last => Trust_Bytes'Length);
+                     Tls_Core.Tls13_Driver.Init_Cert_Client
+                       (D                  => D,
+                        Trust_Anchor_Bytes => Trust_Bytes,
+                        Trust_Spec         => Trust_Spec,
+                        Hostname           => Host_Bytes,
+                        Ecdhe_Priv         => Ecdhe_Bytes);
+                     if Sni_Host.all /= "" then
+                        Tls_Core.Tls13_Driver.Set_Sni_Hostname
+                          (D, To_Bytes (Sni_Host.all));
+                     end if;
+                     if Alpn_List.all /= "" then
+                        Tls_Core.Tls13_Driver.Set_Alpn_Offers
+                          (D, Alpn_To_Wire (Alpn_List.all));
+                     end if;
+                  end;
+               else
+                  if Cert_Path.all = "" or else Key_Path.all = "" then
+                     Fail ("server cert mode requires --cert and --key");
+                     goto Cleanup;
+                  end if;
+                  declare
+                     Cert_Bytes : constant Octet_Array :=
+                       Read_File (Cert_Path.all);
+                     Key_Bytes  : constant Octet_Array :=
+                       Read_File (Key_Path.all);
+                     Chain_Spec : Tls_Core.Cert_Chain.Chain;
+                  begin
+                     if Cert_Bytes'Length not in 1 .. 4096 then
+                        Fail ("--cert DER size out of range (1..4096)");
+                        goto Cleanup;
+                     end if;
+                     if Key_Bytes'Length /= 32 then
+                        Fail ("--key must be exactly 32 bytes (raw EC scalar)");
+                        goto Cleanup;
+                     end if;
+                     Chain_Spec.Count := 1;
+                     Chain_Spec.Entries (1) :=
+                       (First => 1, Last => Cert_Bytes'Length);
+                     Tls_Core.Tls13_Driver.Init_Cert_Server
+                       (D                => D,
+                        Cert_Chain_Bytes => Cert_Bytes,
+                        Chain_Spec       => Chain_Spec,
+                        Sign_Priv_Key    => Key_Bytes,
+                        Sig_Alg          =>
+                          Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256,
+                        Ecdhe_Priv       => Ecdhe_Bytes);
+                  end;
+               end if;
+            end;
+         when M_Cert_Rsa =>
+            Fail ("--mode cert-rsa: server-side RSA-PSS signing not in "
+                  & "v0.5 driver scope (verify path only). Use cert-ec.");
             goto Cleanup;
          when M_None =>
             Usage_Error ("must specify --mode");
             goto Cleanup;
       end case;
 
-      --  Run the handshake.
+      --  Run the handshake.  PSK server flight = 3 records (SH+EE+SF);
+      --  cert server flight = 5 records (SH+EE+Cert+CV+SF).
       if Role = R_Client then
-         Run_Client_Psk (Sock, D);
+         Run_Client (Sock, D,
+                     Server_Records =>
+                       (case Mode is
+                          when M_Psk_Dhe_Ke => 3,
+                          when others       => 5));
       else
-         Run_Server_Psk (Sock, D);
+         Run_Server (Sock, D);
       end if;
 
       if not Aborted then

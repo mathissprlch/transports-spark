@@ -2911,6 +2911,7 @@ procedure Tls_Core_Tests is
         (others => 16#99#);
 
       Decoded_Random : Tls_Core.Hello.Random_Bytes;
+      Sid_F, Sid_L : Natural;
       Suites_F, Suites_L : Natural;
       Id_F, Id_L, Bf, Bl, T_Last : Natural;
       Ks_F, Ks_L : Natural;
@@ -2943,6 +2944,7 @@ procedure Tls_Core_Tests is
       Tls_Core.Hello.Decode_Client_Hello_Psk
         (Wire (1 .. Wire_Last),
          Decoded_Random,
+         Sid_F, Sid_L,
          Suites_F, Suites_L,
          Id_F, Id_L, Bf, Bl, Ks_F, Ks_L, T_Last, Decode_OK);
       Check ("PSK CH: decoder accepts encoded bytes", Decode_OK);
@@ -2993,6 +2995,7 @@ procedure Tls_Core_Tests is
       begin
          Tls_Core.Hello.Encode_Server_Hello_Psk
            (Random,
+            Tls_Core.Octet_Array'(1 .. 0 => 0),  --  empty session_id_echo
             Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
             Server_Pub,
             Sh_Wire, Sh_Last);
@@ -7290,11 +7293,12 @@ procedure Tls_Core_Tests is
          Out_Last : Natural;
       begin
          Tls_Core.Hello.Encode_Server_Hello_Cert
-           (Random         => Server_Random,
-            Selected_Suite => Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
-            Key_Share      => Server_Pub,
-            Out_Buf        => Out_Buf,
-            Out_Last       => Out_Last);
+           (Random          => Server_Random,
+            Session_Id_Echo => Tls_Core.Octet_Array'(1 .. 0 => 0),
+            Selected_Suite  => Tls_Core.Suites.TLS_AES_128_GCM_SHA256,
+            Key_Share       => Server_Pub,
+            Out_Buf         => Out_Buf,
+            Out_Last        => Out_Last);
 
          Check ("Cert SH: encoded length in 1 .. Out_Buf'Last",
                 Out_Last in 1 .. Out_Buf'Last);
@@ -7528,19 +7532,23 @@ procedure Tls_Core_Tests is
 
       declare
          Decoded_Random : Tls_Core.Hello.Random_Bytes;
+         Sid_F, Sid_L : Natural;
          S_F, S_L, A_F, A_L, K_F, K_L : Natural;
          OK : Boolean;
       begin
          Tls_Core.Hello.Decode_Client_Hello_Cert
-           (In_Bytes        => Out_Buf (1 .. Out_Last),
-            Random          => Decoded_Random,
-            Suites_First    => S_F,
-            Suites_Last     => S_L,
-            Sig_Algs_First  => A_F,
-            Sig_Algs_Last   => A_L,
-            Key_Share_First => K_F,
-            Key_Share_Last  => K_L,
-            OK              => OK);
+           (In_Bytes         => Out_Buf (1 .. Out_Last),
+            Random           => Decoded_Random,
+            Session_Id_First => Sid_F,
+            Session_Id_Last  => Sid_L,
+            Suites_First     => S_F,
+            Suites_Last      => S_L,
+            Sig_Algs_First   => A_F,
+            Sig_Algs_Last    => A_L,
+            Key_Share_First  => K_F,
+            Key_Share_Last   => K_L,
+            OK               => OK);
+         pragma Unreferenced (Sid_F, Sid_L);
 
          Check ("Cert CH round-trip: OK = True", OK);
          Check ("Cert CH round-trip: random matches",
@@ -7570,6 +7578,7 @@ procedure Tls_Core_Tests is
       declare
          Mutated  : Tls_Core.Octet_Array (1 .. Out_Last);
          Decoded_Random : Tls_Core.Hello.Random_Bytes;
+         Sid_F, Sid_L : Natural;
          S_F, S_L, A_F, A_L, K_F, K_L : Natural;
          OK : Boolean;
          Found : Boolean := False;
@@ -7590,15 +7599,18 @@ procedure Tls_Core_Tests is
          Check ("Cert CH negative: setup found 0x000D ext type",
                 Found);
          Tls_Core.Hello.Decode_Client_Hello_Cert
-           (In_Bytes        => Mutated,
-            Random          => Decoded_Random,
-            Suites_First    => S_F,
-            Suites_Last     => S_L,
-            Sig_Algs_First  => A_F,
-            Sig_Algs_Last   => A_L,
-            Key_Share_First => K_F,
-            Key_Share_Last  => K_L,
-            OK              => OK);
+           (In_Bytes         => Mutated,
+            Random           => Decoded_Random,
+            Session_Id_First => Sid_F,
+            Session_Id_Last  => Sid_L,
+            Suites_First     => S_F,
+            Suites_Last      => S_L,
+            Sig_Algs_First   => A_F,
+            Sig_Algs_Last    => A_L,
+            Key_Share_First  => K_F,
+            Key_Share_Last   => K_L,
+            OK               => OK);
+         pragma Unreferenced (Sid_F, Sid_L);
          Check ("Cert CH negative: missing sig_algs → OK = False",
                 not OK);
       end;
@@ -7608,6 +7620,7 @@ procedure Tls_Core_Tests is
       declare
          Mutated  : Tls_Core.Octet_Array (1 .. Out_Last);
          Decoded_Random : Tls_Core.Hello.Random_Bytes;
+         Sid_F, Sid_L : Natural;
          S_F, S_L, A_F, A_L, K_F, K_L : Natural;
          OK : Boolean;
          Found : Boolean := False;
@@ -7625,15 +7638,18 @@ procedure Tls_Core_Tests is
          Check ("Cert CH negative: setup found 0x0033 ext type",
                 Found);
          Tls_Core.Hello.Decode_Client_Hello_Cert
-           (In_Bytes        => Mutated,
-            Random          => Decoded_Random,
-            Suites_First    => S_F,
-            Suites_Last     => S_L,
-            Sig_Algs_First  => A_F,
-            Sig_Algs_Last   => A_L,
-            Key_Share_First => K_F,
-            Key_Share_Last  => K_L,
-            OK              => OK);
+           (In_Bytes         => Mutated,
+            Random           => Decoded_Random,
+            Session_Id_First => Sid_F,
+            Session_Id_Last  => Sid_L,
+            Suites_First     => S_F,
+            Suites_Last      => S_L,
+            Sig_Algs_First   => A_F,
+            Sig_Algs_Last    => A_L,
+            Key_Share_First  => K_F,
+            Key_Share_Last   => K_L,
+            OK               => OK);
+         pragma Unreferenced (Sid_F, Sid_L);
          Check ("Cert CH negative: missing key_share → OK = False",
                 not OK);
       end;

@@ -1602,6 +1602,7 @@ is
                        Hs_Body_F + Hs_Body_Len - 1;
 
                      Random : Tls_Core.Hello.Random_Bytes;
+                     Sid_F, Sid_L : Natural;
                      Suites_F, Suites_L : Natural;
                      Sig_Algs_F, Sig_Algs_L : Natural;
                      Ks_F, Ks_L : Natural;
@@ -1613,7 +1614,8 @@ is
                      end if;
                      Tls_Core.Hello.Decode_Client_Hello_Cert
                        (In_Bytes (Hs_Body_F .. Hs_Body_L),
-                        Random, Suites_F, Suites_L,
+                        Random, Sid_F, Sid_L,
+                        Suites_F, Suites_L,
                         Sig_Algs_F, Sig_Algs_L,
                         Ks_F, Ks_L, Decode_OK);
                      if not Decode_OK then
@@ -1621,6 +1623,16 @@ is
                         return;
                      end if;
                      pragma Unreferenced (Sig_Algs_F, Sig_Algs_L);
+                     --  Capture legacy_session_id for SH echo (§4.1.3).
+                     if Sid_F > 0 and then Sid_L >= Sid_F
+                       and then Sid_L - Sid_F + 1 <= 32
+                     then
+                        D.Session_Id_Echo_Len := Sid_L - Sid_F + 1;
+                        D.Session_Id_Echo (1 .. D.Session_Id_Echo_Len) :=
+                          In_Bytes (Sid_F .. Sid_L);
+                     else
+                        D.Session_Id_Echo_Len := 0;
+                     end if;
                      --  v0.5 sig_algs scope is fixed at
                      --  ecdsa_secp256r1_sha256; client is required to
                      --  offer it. Decode_Client_Hello_Cert already
@@ -1734,6 +1746,7 @@ is
                   --  Build SH (cert-mode SH = no pre_shared_key ext).
                   Tls_Core.Hello.Encode_Server_Hello_Cert
                     (Server_Random,
+                     D.Session_Id_Echo (1 .. D.Session_Id_Echo_Len),
                      Tls_Core.Suites.Code_Of_Suite (D.Suite),
                      D.My_Ecdhe_Pub,
                      Sh_Body, Sh_Body_Last);
@@ -2036,6 +2049,7 @@ is
                   Hs_Body_L : constant Natural := Hs_Body_F + Hs_Body_Len - 1;
 
                   Random : Tls_Core.Hello.Random_Bytes;
+                  Sid_F, Sid_L : Natural;
                   Suites_F, Suites_L : Natural;
                   Id_F, Id_L, Bf, Bl, T_Last : Natural;
                   Ks_F, Ks_L : Natural;
@@ -2051,12 +2065,23 @@ is
                   Tls_Core.Hello.Decode_Client_Hello_Psk
                     (In_Bytes (Hs_Body_F .. Hs_Body_L),
                      Random,
+                     Sid_F, Sid_L,
                      Suites_F, Suites_L,
                      Id_F, Id_L, Bf, Bl,
                      Ks_F, Ks_L, T_Last, Decode_OK);
                   if not Decode_OK then
                      D.Cur_State := Failed;
                      return;
+                  end if;
+                  --  Capture legacy_session_id for SH echo (§4.1.3).
+                  if Sid_F > 0 and then Sid_L >= Sid_F
+                    and then Sid_L - Sid_F + 1 <= 32
+                  then
+                     D.Session_Id_Echo_Len := Sid_L - Sid_F + 1;
+                     D.Session_Id_Echo (1 .. D.Session_Id_Echo_Len) :=
+                       In_Bytes (Sid_F .. Sid_L);
+                  else
+                     D.Session_Id_Echo_Len := 0;
                   end if;
                   --  RFC 8446 §4.2.8 + §7.1 mode 3 — extract the
                   --  client's X25519 public key and compute ECDHE
@@ -2290,6 +2315,7 @@ is
                --  echoing the named-group the client offered (x25519).
                Tls_Core.Hello.Encode_Server_Hello_Psk
                  (Server_Random,
+                  D.Session_Id_Echo (1 .. D.Session_Id_Echo_Len),
                   Tls_Core.Suites.Code_Of_Suite (D.Suite),
                   D.My_Ecdhe_Pub,
                   Sh_Body, Sh_Body_Last);
@@ -2753,6 +2779,7 @@ is
                   Hs_Body_F : constant Natural := Rec_F + 4;
                   Hs_Body_L : constant Natural := Hs_Body_F + Hs_Body_Len - 1;
                   Random : Tls_Core.Hello.Random_Bytes;
+                  Sid_F, Sid_L : Natural;
                   Suites_F, Suites_L : Natural;
                   Id_F, Id_L, Bf, Bl, T_Last : Natural;
                   Ks_F, Ks_L : Natural;
@@ -2764,12 +2791,27 @@ is
                   end if;
                   Tls_Core.Hello.Decode_Client_Hello_Psk
                     (In_Bytes (Hs_Body_F .. Hs_Body_L),
-                     Random, Suites_F, Suites_L,
+                     Random,
+                     Sid_F, Sid_L,
+                     Suites_F, Suites_L,
                      Id_F, Id_L, Bf, Bl,
                      Ks_F, Ks_L, T_Last, Decode_OK);
                   if not Decode_OK then
                      D.Cur_State := Failed;
                      return;
+                  end if;
+                  --  Capture legacy_session_id for SH echo (§4.1.3).
+                  --  CH2 from a HRR rerun MUST carry the same
+                  --  session_id as CH1; the field is part of the
+                  --  CH→SH echo invariant.
+                  if Sid_F > 0 and then Sid_L >= Sid_F
+                    and then Sid_L - Sid_F + 1 <= 32
+                  then
+                     D.Session_Id_Echo_Len := Sid_L - Sid_F + 1;
+                     D.Session_Id_Echo (1 .. D.Session_Id_Echo_Len) :=
+                       In_Bytes (Sid_F .. Sid_L);
+                  else
+                     D.Session_Id_Echo_Len := 0;
                   end if;
                   --  Update peer pubkey + ECDHE shared from CH2's
                   --  fresh key_share. RFC 8446 §4.1.4: HRR rerun uses
@@ -2993,6 +3035,7 @@ is
             begin
                Tls_Core.Hello.Encode_Server_Hello_Psk
                  (Server_Random,
+                  D.Session_Id_Echo (1 .. D.Session_Id_Echo_Len),
                   Tls_Core.Suites.Code_Of_Suite (D.Suite),
                   D.My_Ecdhe_Pub,
                   Sh_Body, Sh_Body_Last);

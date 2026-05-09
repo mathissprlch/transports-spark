@@ -827,6 +827,15 @@ private
       Identity    : Identity_Bytes := (others => 0);
       Identity_Len : Natural := 0;
 
+      --  RFC 8446 §4.1.3 legacy_session_id_echo — server captures
+      --  the client's legacy_session_id from the received CH and
+      --  echoes it verbatim in the SH.  Empty (Len = 0) is fine:
+      --  the client may have sent an empty session_id (gnutls does
+      --  by default; openssl/mbedtls send a 32-byte random and
+      --  abort the handshake if the SH doesn't echo it back).
+      Session_Id_Echo     : Octet_Array (1 .. 32) := (others => 0);
+      Session_Id_Echo_Len : Natural := 0;
+
       --  X25519 ECDHE state (RFC 8446 §4.2.8 + §7.1 mode 3).
       --
       --  My_Ecdhe_Priv  — local private scalar (set in Init from the

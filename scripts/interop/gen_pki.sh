@@ -60,6 +60,34 @@ openssl x509 -req -in "$RSA/leaf.csr" -CA "$RSA/root.pem" -CAkey "$RSA/root.key"
         -extensions v3_req -extfile "$RSA/leaf.ext" 2>/dev/null
 rm -f "$RSA/leaf.csr" "$RSA/leaf.ext" "$RSA/root.srl"
 
+echo "==> DER + raw-scalar derivatives (consumed by Ada tls_cli)"
+# Cert PEM → DER bytes (one X.509 v3 cert each).
+openssl x509 -in "$EC/root.pem" -outform DER -out "$EC/root.der"
+openssl x509 -in "$EC/leaf.pem" -outform DER -out "$EC/leaf.der"
+openssl x509 -in "$RSA/root.pem" -outform DER -out "$RSA/root.der"
+openssl x509 -in "$RSA/leaf.pem" -outform DER -out "$RSA/leaf.der"
+
+# EC private scalar — extract the raw 32-byte big-endian integer
+# from the SEC1 EC private-key DER.  Layout (for prime256v1):
+#   SEQUENCE {
+#     INTEGER 1,
+#     OCTET STRING (32 bytes)  <- the scalar
+#     [0] OID prime256v1,
+#     [1] BIT STRING public key
+#   }
+# The 32-byte scalar starts at offset 7 (2 bytes SEQUENCE header,
+# 3 bytes INTEGER 1, 2 bytes OCTET STRING tag+len).  Verified
+# offset against `openssl asn1parse -in leaf.key`.
+openssl ec -in "$EC/leaf.key" -outform DER 2>/dev/null \
+  | dd bs=1 skip=7 count=32 of="$EC/leaf.priv" 2>/dev/null
+
+# RSA private key — full DER (RFC 8017 RSAPrivateKey ASN.1).  Our
+# driver Init_Cert_Server takes only the 32-byte EC scalar today;
+# RSA-server signing is a v0.5.x extension.  We still emit the DER
+# for completeness so peer tools can be offered RSA fixtures.
+openssl rsa -in "$RSA/leaf.key" -outform DER \
+        -out "$RSA/leaf.key.der" 2>/dev/null
+
 echo
 echo "Generated under $OUT:"
 find "$OUT" -type f | sort

@@ -7,7 +7,8 @@
 #
 #   v0.5 TLS:     tls-build  tls-test  tls-perf  tls-prove[-l3]
 #                 tls-soak[-quick]  tls-audit  tls-bare
-#   Tier D:       matrix  matrix-openssl  matrix-PEER  matrix-quick
+#   Interop:      tls-interop  tls-interop-PEER  tls-interop-quick
+#                 (end-to-end Ada TLS vs. third-party stacks)
 #   v0.1 gRPC:    grpc-build  grpc-test  grpc-codegen  grpc-bench
 #                 grpc-bench-quick
 #   v0.2 MQTT:    mqtt-build  mqtt-test
@@ -45,8 +46,10 @@ EXAMPLES_GEN := crates/examples/generated
 .PHONY: all build clean help \
         tls-build tls-test tls-perf tls-prove tls-prove-l3 \
         tls-soak tls-soak-quick tls-audit tls-bare \
-        matrix matrix-openssl matrix-rustls matrix-go matrix-gnutls \
-        matrix-mbedtls matrix-boringssl matrix-quick \
+        tls-interop tls-interop-openssl tls-interop-rustls tls-interop-go \
+        tls-interop-gnutls tls-interop-mbedtls tls-interop-boringssl \
+        tls-interop-quick tls-interop-json tls-interop-build \
+        tls-ci \
         grpc-build grpc-test grpc-codegen grpc-plugin \
         grpc-bench grpc-bench-build grpc-bench-quick \
         mqtt-build mqtt-test \
@@ -70,14 +73,16 @@ help:
 	@echo '    tls-audit        Static §0d audit (no SPARK_Mode Off / pragma Assume etc.)'
 	@echo '    tls-bare         Build crates/tls_core with -XTRANSPORT=bare'
 	@echo ''
-	@echo '  Tier D interop matrix:'
-	@echo '    matrix           Run all available peer columns'
-	@echo '    matrix-openssl   openssl peer (PSK + cert when wired)'
-	@echo '    matrix-gnutls    gnutls (gnutls-cli/serv) — when wired'
-	@echo '    matrix-mbedtls   mbedTLS (ssl_client2/server2) — when wired'
-	@echo '    matrix-rustls    rustls (tlsclient/server) — when wired'
-	@echo '    matrix-go        Go crypto/tls — when wired'
-	@echo '    matrix-boringssl BoringSSL (bssl) — when wired'
+	@echo '  Interop (end-to-end Ada TLS 1.3 vs. third-party stacks):'
+	@echo '    tls-interop           All available peers'
+	@echo '    tls-interop-openssl   openssl s_client / s_server'
+	@echo '    tls-interop-gnutls    gnutls-cli / gnutls-serv'
+	@echo '    tls-interop-mbedtls   mbedTLS ssl_client2 / ssl_server2'
+	@echo '    tls-interop-rustls    rustls tlsclient-mio / tlsserver-mio'
+	@echo '    tls-interop-go        Go crypto/tls'
+	@echo '    tls-interop-boringssl BoringSSL bssl'
+	@echo '    tls-interop-quick     openssl PSK only (~3 s)'
+	@echo '    tls-interop-json      Full table as JSON (CI ingestion)'
 	@echo ''
 	@echo '  v0.1 gRPC:'
 	@echo '    grpc-build       Build the gRPC crate stack'
@@ -120,7 +125,7 @@ clean:
 tls-build:
 	@$(ALR_ENV) alr -C crates/tls_core build
 
-tls-test: tls-build
+tls-test: tls-build tls-audit
 	@$(ALR_ENV) alr -C crates/tls_core/tests build
 	@cd crates/tls_core/tests && $(ALR_ENV) ./bin/tls_core_tests | tail -3
 
@@ -128,9 +133,13 @@ tls-perf: tls-build
 	@$(ALR_ENV) alr -C crates/tls_core/tests build
 	@cd crates/tls_core/tests && $(ALR_ENV) ./bin/tls_perf_bench
 
-tls-prove:
+tls-prove: tls-audit
 	@$(ALR_ENV) $(GNATPROVE) -P crates/tls_core/tls_core.gpr \
 	  --level=$(PROVE_LEVEL) -j0 2>&1 | tail -25
+	@$(MAKE) -s tls-audit
+	@echo
+	@echo "Reminder: a green prove headline alone is not platinum."
+	@echo "  See CLAUDE.md §0d. The audit above must also be clean."
 
 tls-prove-l3:
 	@$(MAKE) tls-prove PROVE_LEVEL=3
@@ -157,40 +166,65 @@ tls-bare:
 	@$(ALR_ENV) alr -C crates/tls_core build -- -XTRANSPORT=bare
 	@echo "tls-bare: build clean (-XTRANSPORT=bare)"
 
+# Umbrella: run audit + test + prove in sequence.  Use before any
+# release / platinum claim / interop run.  Audit runs first AND last
+# (the prove run can in principle introduce new bypasses that need
+# to be caught immediately).
+tls-ci: tls-audit tls-test tls-prove
+	@echo
+	@echo "tls-ci: audit + 594/594 tests + gnatprove level=$(PROVE_LEVEL) all clean."
+
 # ============================================================
-# Tier D matrix
+# End-to-end Ada TLS 1.3 vs. third-party stacks (interop)
 # ============================================================
 
-# Build the harness binary the matrix uses.  Single binary
-# (tls_cli) handles both client and server, all modes, all
-# extensions — driven by CLI flags.  Per CLAUDE.md §10a.
-matrix-build: tls-build
+# Build the harness binary the interop runner uses.  Single
+# binary (tls_cli) handles both client and server, all modes,
+# all extensions — driven by CLI flags.  Per CLAUDE.md §10a.
+tls-interop-build: tls-build tls-interop-go-helpers
 	@$(ALR_ENV) alr -C crates/examples build
 
-matrix: matrix-build
-	@bash scripts/interop/run_matrix.sh
+# Pre-compile Go peer helpers; `go run` is too slow to start within
+# the matrix's 0.8 s spawn window (causes c2s/s2c CONNECT_ERROR
+# false negatives).  Output to crates/examples/bin so the matrix
+# Build_Go dispatcher finds them via a stable path.
+tls-interop-go-helpers:
+	@mkdir -p crates/examples/bin
+	@command -v go >/dev/null && go build -o crates/examples/bin/go_peer_client \
+	    scripts/interop/peers/go-helpers/client.go || true
+	@command -v go >/dev/null && go build -o crates/examples/bin/go_peer_server \
+	    scripts/interop/peers/go-helpers/server.go || true
 
-matrix-openssl: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer openssl
+TLS_INTEROP := ./crates/examples/bin/tls_interop
 
-matrix-gnutls: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer gnutls
+tls-interop: tls-interop-build
+	@$(TLS_INTEROP)
 
-matrix-mbedtls: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer mbedtls
+tls-interop-openssl: tls-interop-build
+	@$(TLS_INTEROP) --peer openssl
 
-matrix-rustls: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer rustls
+tls-interop-gnutls: tls-interop-build
+	@$(TLS_INTEROP) --peer gnutls
 
-matrix-go: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer go
+tls-interop-mbedtls: tls-interop-build
+	@$(TLS_INTEROP) --peer mbedtls
 
-matrix-boringssl: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer boringssl
+tls-interop-rustls: tls-interop-build
+	@$(TLS_INTEROP) --peer rustls
+
+tls-interop-go: tls-interop-build
+	@$(TLS_INTEROP) --peer go
+
+tls-interop-boringssl: tls-interop-build
+	@$(TLS_INTEROP) --peer boringssl
 
 # A fast subset for inner-loop iteration: openssl only, PSK only.
-matrix-quick: matrix-build
-	@bash scripts/interop/run_matrix.sh --peer openssl --quick
+tls-interop-quick: tls-interop-build
+	@$(TLS_INTEROP) --peer openssl --quick
+
+# JSON output for CI ingestion.
+tls-interop-json: tls-interop-build
+	@$(TLS_INTEROP) --format json
 
 # ============================================================
 # v0.1 gRPC

@@ -38,6 +38,9 @@ grpc_core = "*"
 [[depends-on]]
 tls_core = "*"
 
+[[depends-on]]
+gnatcoll = "~25.0.0"
+
 [[pins]]
 grpc_ada = { path = "../grpc_ada" }
 
@@ -55,3 +58,12 @@ path = "../grpc_core"
 
 [pins.tls_core]
 path = "../tls_core"
+
+#  macOS SDK header/lib injection - see grpc_ada/alire.toml for details.
+[environment.'case(os)'.macos]
+CFLAGS.append = " -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+CPPFLAGS.append = " -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk -isystem /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+CPATH.append = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+C_INCLUDE_PATH.append = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"
+SDKROOT.set = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+LIBRARY_PATH.append = ":/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib"

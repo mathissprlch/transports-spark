@@ -839,18 +839,20 @@ is
    end Encode_Client_Hello_Psk_With_Cookie;
 
    procedure Decode_Client_Hello_Psk
-     (In_Bytes        : Octet_Array;
-      Random          : out Random_Bytes;
-      Suites_First    : out Natural;
-      Suites_Last     : out Natural;
-      Identity_First  : out Natural;
-      Identity_Last   : out Natural;
-      Binder_First    : out Natural;
-      Binder_Last     : out Natural;
-      Key_Share_First : out Natural;
-      Key_Share_Last  : out Natural;
-      Truncated_Last  : out Natural;
-      OK              : out Boolean)
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Session_Id_First  : out Natural;
+      Session_Id_Last   : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Identity_First    : out Natural;
+      Identity_Last     : out Natural;
+      Binder_First      : out Natural;
+      Binder_Last       : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      Truncated_Last    : out Natural;
+      OK                : out Boolean)
    is
       P : Natural := In_Bytes'First;
       Read_OK : Boolean := True;
@@ -862,6 +864,8 @@ is
       Find_OK : Boolean;
    begin
       Random := (others => 0);
+      Session_Id_First := 0;
+      Session_Id_Last  := 0;  --  Last < First means empty range
       Suites_First := 0;
       Suites_Last := 0;
       Identity_First := 0;
@@ -881,10 +885,17 @@ is
       if P + 31 > In_Bytes'Last then return; end if;
       Random := In_Bytes (P .. P + 31);
       P := P + 32;
-      --  legacy_session_id
+      --  legacy_session_id — RFC 8446 §4.1.2.  Capture the slice
+      --  bounds so the server can echo it in its ServerHello
+      --  (§4.1.3 mandate; openssl/mbedtls clients abort if missed).
       R_U8 (In_Bytes, P, U8_Val, Read_OK);
       if not Read_OK then return; end if;
+      if Natural (U8_Val) > 32 then return; end if;  --  §4.1.2: <0..32>
       if P + Natural (U8_Val) - 1 > In_Bytes'Last then return; end if;
+      if Natural (U8_Val) > 0 then
+         Session_Id_First := P;
+         Session_Id_Last  := P + Natural (U8_Val) - 1;
+      end if;
       P := P + Natural (U8_Val);
       --  cipher_suites — record the slice bounds so the caller can
       --  pick a suite. RFC 8446 §4.1.2: u16 length (must be even,
@@ -1055,6 +1066,7 @@ is
 
    procedure Encode_Server_Hello_Psk
      (Random         : Random_Bytes;
+      Session_Id_Echo : Octet_Array;
       Selected_Suite : Tls_Core.Suites.U16;
       Key_Share      : Public_Key;
       Out_Buf        : out Octet_Array;
@@ -1073,7 +1085,12 @@ is
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_Bytes (Out_Buf, Cursor, Random);
-      W_U8 (Out_Buf, Cursor, 0);              -- session_id_len
+      --  legacy_session_id_echo — MUST verbatim mirror the
+      --  client's legacy_session_id (RFC 8446 §4.1.3).
+      W_U8 (Out_Buf, Cursor, Octet (Session_Id_Echo'Length));
+      if Session_Id_Echo'Length > 0 then
+         W_Bytes (Out_Buf, Cursor, Session_Id_Echo);
+      end if;
       W_U8 (Out_Buf, Cursor, Suite_Hi);       -- selected cipher suite
       W_U8 (Out_Buf, Cursor, Suite_Lo);
       W_U8 (Out_Buf, Cursor, 0);              -- compression_method
@@ -1248,15 +1265,17 @@ is
    ---------------------------------------------------------------------
 
    procedure Decode_Client_Hello_Cert
-     (In_Bytes        : Octet_Array;
-      Random          : out Random_Bytes;
-      Suites_First    : out Natural;
-      Suites_Last     : out Natural;
-      Sig_Algs_First  : out Natural;
-      Sig_Algs_Last   : out Natural;
-      Key_Share_First : out Natural;
-      Key_Share_Last  : out Natural;
-      OK              : out Boolean)
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Session_Id_First  : out Natural;
+      Session_Id_Last   : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Sig_Algs_First    : out Natural;
+      Sig_Algs_Last     : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      OK                : out Boolean)
    is
       P : Natural := In_Bytes'First;
       Read_OK : Boolean := True;
@@ -1266,6 +1285,8 @@ is
       Ext_Block_Start : Natural;
    begin
       Random := (others => 0);
+      Session_Id_First := 0;
+      Session_Id_Last  := 0;
       Suites_First := 0;
       Suites_Last := 0;
       Sig_Algs_First := 0;
@@ -1282,9 +1303,15 @@ is
       if P + 31 > In_Bytes'Last then return; end if;
       Random := In_Bytes (P .. P + 31);
       P := P + 32;
+      --  legacy_session_id — RFC 8446 §4.1.2; capture for SH echo (§4.1.3).
       R_U8 (In_Bytes, P, U8_Val, Read_OK);
       if not Read_OK then return; end if;
+      if Natural (U8_Val) > 32 then return; end if;
       if P + Natural (U8_Val) - 1 > In_Bytes'Last then return; end if;
+      if Natural (U8_Val) > 0 then
+         Session_Id_First := P;
+         Session_Id_Last  := P + Natural (U8_Val) - 1;
+      end if;
       P := P + Natural (U8_Val);
       R_U16 (In_Bytes, P, U16_Val, Read_OK);
       if not Read_OK then return; end if;
@@ -1384,11 +1411,12 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Server_Hello_Cert
-     (Random         : Random_Bytes;
-      Selected_Suite : Tls_Core.Suites.U16;
-      Key_Share      : Public_Key;
-      Out_Buf        : out Octet_Array;
-      Out_Last       : out Natural)
+     (Random          : Random_Bytes;
+      Session_Id_Echo : Octet_Array;
+      Selected_Suite  : Tls_Core.Suites.U16;
+      Key_Share       : Public_Key;
+      Out_Buf         : out Octet_Array;
+      Out_Last        : out Natural)
    is
       use type Tls_Core.Suites.U16;
       Cursor          : Natural := 0;
@@ -1403,7 +1431,11 @@ is
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_U8 (Out_Buf, Cursor, 16#03#);
       W_Bytes (Out_Buf, Cursor, Random);
-      W_U8 (Out_Buf, Cursor, 0);              -- session_id_len
+      --  legacy_session_id_echo (RFC 8446 §4.1.3 — verbatim mirror).
+      W_U8 (Out_Buf, Cursor, Octet (Session_Id_Echo'Length));
+      if Session_Id_Echo'Length > 0 then
+         W_Bytes (Out_Buf, Cursor, Session_Id_Echo);
+      end if;
       W_U8 (Out_Buf, Cursor, Suite_Hi);       -- selected cipher suite
       W_U8 (Out_Buf, Cursor, Suite_Lo);
       W_U8 (Out_Buf, Cursor, 0);              -- compression_method

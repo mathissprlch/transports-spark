@@ -130,41 +130,64 @@ is
          if List_Len < 3 + 1 + 2 then
             return;
          end if;
-         --  Single CertificateEntry: u24 cert_data_len, then bytes,
-         --  then u16 extensions_len.
+         --  RFC 8446 §4.4.2: certificate_list is a sequence of
+         --  CertificateEntry records (u24 cert_data_len + bytes +
+         --  u16 extensions_len).  The FIRST entry is the leaf the
+         --  server vouches for; subsequent entries are intermediate
+         --  CAs (and possibly the root, depending on peer).  v0.5
+         --  validates leaf-vs-trust-anchor only, but we MUST accept
+         --  the multi-entry list because openssl/gnutls/wolfSSL all
+         --  emit the full chain by default.  Capture the leaf
+         --  indices, then walk past any remaining entries to verify
+         --  the list is well-formed and consumes exactly List_Len.
          declare
-            Cert_Len : constant Natural :=
-              Natural (Buf (Buf'First + Cursor)) * 16#10000#
-              + Natural (Buf (Buf'First + Cursor + 1)) * 16#100#
-              + Natural (Buf (Buf'First + Cursor + 2));
+            First_Pass : Boolean := True;
+            List_End   : constant Natural := Cursor + List_Len;
          begin
-            Cursor := Cursor + 3;
-            if Cert_Len = 0 then
-               return;
-            end if;
-            if Cursor + Cert_Len + 2 > Buf'Length then
-               return;
-            end if;
-            Cert_First := Buf'First + Cursor;
-            Cert_Last  := Buf'First + Cursor + Cert_Len - 1;
-            Cursor := Cursor + Cert_Len;
-            --  extensions u16 length — we accept zero only.
-            declare
-               Ext_Len : constant Natural :=
-                 Natural (Buf (Buf'First + Cursor)) * 256
-                 + Natural (Buf (Buf'First + Cursor + 1));
-            begin
-               if Ext_Len /= 0 then
-                  return;  --  v0.5: no per-cert extensions
+            while Cursor < List_End loop
+               if Cursor + 3 + 2 > List_End then
+                  return;
                end if;
-               Cursor := Cursor + 2;
-            end;
-            --  Must consume exactly the list_len.  Cursor counts
-            --  the 1-byte request_context_len plus the 3-byte
-            --  list_len_u24 field plus the list body itself; the
-            --  list body alone is List_Len bytes, so Cursor - 4
-            --  must equal List_Len.
-            if Cursor - 4 /= List_Len then
+               declare
+                  Cert_Len : constant Natural :=
+                    Natural (Buf (Buf'First + Cursor)) * 16#10000#
+                    + Natural (Buf (Buf'First + Cursor + 1)) * 16#100#
+                    + Natural (Buf (Buf'First + Cursor + 2));
+               begin
+                  Cursor := Cursor + 3;
+                  if Cert_Len = 0 then
+                     return;
+                  end if;
+                  if Cursor + Cert_Len + 2 > List_End then
+                     return;
+                  end if;
+                  if First_Pass then
+                     Cert_First := Buf'First + Cursor;
+                     Cert_Last  := Buf'First + Cursor + Cert_Len - 1;
+                     First_Pass := False;
+                  end if;
+                  Cursor := Cursor + Cert_Len;
+                  --  extensions u16 length — we accept zero only;
+                  --  per-cert extensions are server-side OCSP /
+                  --  SCT and we don't process them in v0.5.
+                  declare
+                     Ext_Len : constant Natural :=
+                       Natural (Buf (Buf'First + Cursor)) * 256
+                       + Natural (Buf (Buf'First + Cursor + 1));
+                  begin
+                     if Ext_Len /= 0 then
+                        return;
+                     end if;
+                     Cursor := Cursor + 2;
+                  end;
+               end;
+            end loop;
+            --  Must consume exactly List_Len bytes.
+            if Cursor /= List_End then
+               return;
+            end if;
+            if First_Pass then
+               --  Empty list: no leaf — fail.
                return;
             end if;
          end;
