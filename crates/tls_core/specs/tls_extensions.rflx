@@ -4,17 +4,7 @@
 
 package TLS_Extensions is
 
-   type Extension_Type is
-      (Server_Name              =>     0,
-       Supported_Groups         =>    10,
-       Signature_Algorithms     =>    13,
-       ALPN                     =>    16,
-       Pre_Shared_Key           =>    41,
-       Supported_Versions       =>    43,
-       Cookie                   =>    44,
-       Psk_Key_Exchange_Modes   =>    45,
-       Key_Share                =>    51)
-      with Size => 16;
+   type Extension_Type is unsigned 16;
 
    type Extension_Length is unsigned 16;
 

@@ -1,3 +1,4 @@
+with Tls_Core.Ext_Walk_Rflx;
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 with RFLX.Client_Hello.Message;
@@ -252,138 +253,33 @@ is
       end if;
 
       declare
-         Cursor : Natural := Ef;
+         Ext_Len  : constant Natural := El - Ef + 1;
+         Ext_Blob : Octet_Array (1 .. Ext_Len) :=
+           In_Bytes (Ef .. El);
+         Ks_F, Ks_L : Natural;
+         Ks_Found   : Boolean;
+         Psk_Id_F, Psk_Id_L : Natural;
+         Psk_Bf, Psk_Bl     : Natural;
+         Psk_TL              : Natural;
+         Psk_Found           : Boolean;
       begin
-         while Cursor + 3 <= El loop
-            declare
-               Ext_Type : constant Natural :=
-                 Natural (In_Bytes (Cursor)) * 256
-                 + Natural (In_Bytes (Cursor + 1));
-               Ext_Data_Len : constant Natural :=
-                 Natural (In_Bytes (Cursor + 2)) * 256
-                 + Natural (In_Bytes (Cursor + 3));
-               Ext_Data_F : constant Natural := Cursor + 4;
-            begin
-               if Ext_Data_F + Ext_Data_Len - 1 > El then
-                  OK := False;
-                  return;
-               end if;
+         Ext_Walk_Rflx.Find_Key_Share_X25519
+           (Ext_Blob, Ks_F, Ks_L, Ks_Found);
+         Ext_Walk_Rflx.Find_Psk_Fields
+           (Ext_Blob, Psk_Id_F, Psk_Id_L,
+            Psk_Bf, Psk_Bl, Psk_TL, Psk_Found);
 
-               if Ext_Type = 51 and then Ext_Data_Len >= 6 then
-                  declare
-                     List_Len : constant Natural :=
-                       Natural (In_Bytes (Ext_Data_F)) * 256
-                       + Natural (In_Bytes (Ext_Data_F + 1));
-                     Ks_Cur : Natural := Ext_Data_F + 2;
-                     Ks_End : constant Natural :=
-                       Ext_Data_F + 2 + List_Len - 1;
-                  begin
-                     if List_Len >= 4 and then Ks_End <= El then
-                        while Ks_Cur + 3 <= Ks_End loop
-                           declare
-                              Grp : constant Natural :=
-                                Natural (In_Bytes (Ks_Cur))
-                                  * 256
-                                + Natural
-                                    (In_Bytes (Ks_Cur + 1));
-                              Kx_Len : constant Natural :=
-                                Natural (In_Bytes (Ks_Cur + 2))
-                                  * 256
-                                + Natural
-                                    (In_Bytes (Ks_Cur + 3));
-                              Kx_F : constant Natural :=
-                                Ks_Cur + 4;
-                           begin
-                              if Kx_F + Kx_Len - 1 > Ks_End then
-                                 exit;
-                              end if;
-                              if Grp = 16#001D#
-                                and then Kx_Len = 32
-                              then
-                                 Key_Share_First := Kx_F;
-                                 Key_Share_Last  := Kx_F + 31;
-                                 exit;
-                              end if;
-                              Ks_Cur := Kx_F + Kx_Len;
-                           end;
-                        end loop;
-                     end if;
-                  end;
-               end if;
-
-               if Ext_Type = 41 and then Ext_Data_Len >= 9 then
-                  declare
-                     Ids_Len : constant Natural :=
-                       Natural (In_Bytes (Ext_Data_F)) * 256
-                       + Natural (In_Bytes (Ext_Data_F + 1));
-                     Ids_F   : constant Natural := Ext_Data_F + 2;
-                  begin
-                     if Ids_Len >= 7 and then
-                        Ids_F + Ids_Len - 1 <= El
-                     then
-                        declare
-                           Id_Len : constant Natural :=
-                             Natural (In_Bytes (Ids_F)) * 256
-                             + Natural (In_Bytes (Ids_F + 1));
-                           Id_F : constant Natural := Ids_F + 2;
-                        begin
-                           if Id_Len >= 1 and then
-                              Id_F + Id_Len - 1 <= El
-                           then
-                              Identity_First := Id_F;
-                              Identity_Last  := Id_F + Id_Len - 1;
-                           end if;
-                        end;
-                        declare
-                           Binders_Off : constant Natural :=
-                             Ids_F + Ids_Len;
-                        begin
-                           Truncated_Last := Binders_Off - 1;
-                           if Binders_Off + 1 <= El then
-                              declare
-                                 Binders_Len : constant Natural :=
-                                   Natural
-                                     (In_Bytes (Binders_Off))
-                                     * 256
-                                   + Natural
-                                       (In_Bytes
-                                          (Binders_Off + 1));
-                                 B_F : constant Natural :=
-                                   Binders_Off + 2;
-                              begin
-                                 if Binders_Len >= 33
-                                   and then B_F <= El
-                                 then
-                                    declare
-                                       B_Len : constant Natural :=
-                                         Natural
-                                           (In_Bytes (B_F));
-                                       B_Data_F : constant
-                                         Natural := B_F + 1;
-                                    begin
-                                       if B_Len >= 32
-                                         and then B_Data_F +
-                                                    B_Len - 1
-                                                    <= El
-                                       then
-                                          Binder_First :=
-                                            B_Data_F;
-                                          Binder_Last :=
-                                            B_Data_F +
-                                              B_Len - 1;
-                                       end if;
-                                    end;
-                                 end if;
-                              end;
-                           end if;
-                        end;
-                     end if;
-                  end;
-               end if;
-
-               Cursor := Ext_Data_F + Ext_Data_Len;
-            end;
-         end loop;
+         if Ks_Found then
+            Key_Share_First := Ef + Ks_F - 1;
+            Key_Share_Last  := Ef + Ks_L - 1;
+         end if;
+         if Psk_Found then
+            Identity_First := Ef + Psk_Id_F - 1;
+            Identity_Last  := Ef + Psk_Id_L - 1;
+            Binder_First   := Ef + Psk_Bf - 1;
+            Binder_Last    := Ef + Psk_Bl - 1;
+            Truncated_Last := Ef + Psk_TL - 1;
+         end if;
       end;
 
       OK := Key_Share_First > 0 and then Identity_First > 0
@@ -421,85 +317,27 @@ is
       end if;
 
       declare
-         Cursor : Natural := Ef;
+         Ext_Len  : constant Natural := El - Ef + 1;
+         Ext_Blob : Octet_Array (1 .. Ext_Len) :=
+           In_Bytes (Ef .. El);
+         Ks_F, Ks_L : Natural;
+         Ks_Found   : Boolean;
+         Sa_F, Sa_L : Natural;
+         Sa_Found   : Boolean;
       begin
-         while Cursor + 3 <= El loop
-            declare
-               Ext_Type : constant Natural :=
-                 Natural (In_Bytes (Cursor)) * 256
-                 + Natural (In_Bytes (Cursor + 1));
-               Ext_Data_Len : constant Natural :=
-                 Natural (In_Bytes (Cursor + 2)) * 256
-                 + Natural (In_Bytes (Cursor + 3));
-               Ext_Data_F : constant Natural := Cursor + 4;
-            begin
-               if Ext_Data_F + Ext_Data_Len - 1 > El then
-                  OK := False;
-                  return;
-               end if;
+         Ext_Walk_Rflx.Find_Key_Share_X25519
+           (Ext_Blob, Ks_F, Ks_L, Ks_Found);
+         Ext_Walk_Rflx.Find_Sig_Algs
+           (Ext_Blob, Sa_F, Sa_L, Sa_Found);
 
-               if Ext_Type = 51 and then Ext_Data_Len >= 6 then
-                  declare
-                     List_Len : constant Natural :=
-                       Natural (In_Bytes (Ext_Data_F)) * 256
-                       + Natural (In_Bytes (Ext_Data_F + 1));
-                     Ks_Cur : Natural := Ext_Data_F + 2;
-                     Ks_End : constant Natural :=
-                       Ext_Data_F + 2 + List_Len - 1;
-                  begin
-                     if List_Len >= 4 and then Ks_End <= El then
-                        while Ks_Cur + 3 <= Ks_End loop
-                           declare
-                              Grp : constant Natural :=
-                                Natural (In_Bytes (Ks_Cur))
-                                  * 256
-                                + Natural
-                                    (In_Bytes (Ks_Cur + 1));
-                              Kx_Len : constant Natural :=
-                                Natural (In_Bytes (Ks_Cur + 2))
-                                  * 256
-                                + Natural
-                                    (In_Bytes (Ks_Cur + 3));
-                              Kx_F : constant Natural :=
-                                Ks_Cur + 4;
-                           begin
-                              if Kx_F + Kx_Len - 1 > Ks_End then
-                                 exit;
-                              end if;
-                              if Grp = 16#001D#
-                                and then Kx_Len = 32
-                              then
-                                 Key_Share_First := Kx_F;
-                                 Key_Share_Last  := Kx_F + 31;
-                                 exit;
-                              end if;
-                              Ks_Cur := Kx_F + Kx_Len;
-                           end;
-                        end loop;
-                     end if;
-                  end;
-               end if;
-
-               if Ext_Type = 13 and then Ext_Data_Len >= 4 then
-                  declare
-                     Sa_List_Len : constant Natural :=
-                       Natural (In_Bytes (Ext_Data_F)) * 256
-                       + Natural (In_Bytes (Ext_Data_F + 1));
-                     Sa_F : constant Natural := Ext_Data_F + 2;
-                  begin
-                     if Sa_List_Len >= 2 and then
-                        Sa_F + Sa_List_Len - 1 <= El
-                     then
-                        Sig_Algs_First := Sa_F;
-                        Sig_Algs_Last  :=
-                          Sa_F + Sa_List_Len - 1;
-                     end if;
-                  end;
-               end if;
-
-               Cursor := Ext_Data_F + Ext_Data_Len;
-            end;
-         end loop;
+         if Ks_Found then
+            Key_Share_First := Ef + Ks_F - 1;
+            Key_Share_Last  := Ef + Ks_L - 1;
+         end if;
+         if Sa_Found then
+            Sig_Algs_First := Ef + Sa_F - 1;
+            Sig_Algs_Last  := Ef + Sa_L - 1;
+         end if;
       end;
 
       OK := Key_Share_First > 0 and then Sig_Algs_First > 0;

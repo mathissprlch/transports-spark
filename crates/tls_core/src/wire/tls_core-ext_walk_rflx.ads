@@ -18,4 +18,15 @@ is
    with
      Pre => Ext_Bytes'First = 1 and then Ext_Bytes'Length >= 4;
 
+   procedure Find_Psk_Fields
+     (Ext_Bytes       : Octet_Array;
+      Identity_First  : out Natural;
+      Identity_Last   : out Natural;
+      Binder_First    : out Natural;
+      Binder_Last     : out Natural;
+      Truncated_Last  : out Natural;
+      Found           : out Boolean)
+   with
+     Pre => Ext_Bytes'First = 1 and then Ext_Bytes'Length >= 4;
+
 end Tls_Core.Ext_Walk_Rflx;

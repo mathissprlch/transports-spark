@@ -18,67 +18,24 @@ with
   SPARK_Mode
 is
 
-   type Extension_Type is (Server_Name, Supported_Groups, Signature_Algorithms, ALPN, Pre_Shared_Key, Supported_Versions, Cookie, Psk_Key_Exchange_Modes, Key_Share)
+   type Extension_Type is range 0 .. 2**16 - 1
    with
      Size =>
        16;
-   for Extension_Type use (Server_Name => 0, Supported_Groups => 10, Signature_Algorithms => 13, ALPN => 16, Pre_Shared_Key => 41, Supported_Versions => 43, Cookie => 44, Psk_Key_Exchange_Modes => 45, Key_Share => 51);
 
    use type RFLX.RFLX_Types.Base_Integer;
 
    function Valid_Extension_Type (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
-     (Val in 0 | 10 | 13 | 16 | 41 | 43 | 44 | 45 | 51);
+     (Val <= 65535);
 
-   function To_Base_Integer (Enum : RFLX.TLS_Extensions.Extension_Type) return RFLX.RFLX_Types.Base_Integer is
-     (case Enum is
-          when Server_Name =>
-             0,
-          when Supported_Groups =>
-             10,
-          when Signature_Algorithms =>
-             13,
-          when ALPN =>
-             16,
-          when Pre_Shared_Key =>
-             41,
-          when Supported_Versions =>
-             43,
-          when Cookie =>
-             44,
-          when Psk_Key_Exchange_Modes =>
-             45,
-          when Key_Share =>
-             51);
-
-   pragma Warnings (Off, "unreachable branch");
+   function To_Base_Integer (Val : RFLX.TLS_Extensions.Extension_Type) return RFLX.RFLX_Types.Base_Integer is
+     (RFLX.RFLX_Types.Base_Integer (Val));
 
    function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.TLS_Extensions.Extension_Type is
-     (case Val is
-          when 0 =>
-             Server_Name,
-          when 10 =>
-             Supported_Groups,
-          when 13 =>
-             Signature_Algorithms,
-          when 16 =>
-             ALPN,
-          when 41 =>
-             Pre_Shared_Key,
-          when 43 =>
-             Supported_Versions,
-          when 44 =>
-             Cookie,
-          when 45 =>
-             Psk_Key_Exchange_Modes,
-          when 51 =>
-             Key_Share,
-          when others =>
-             RFLX.TLS_Extensions.Extension_Type'Last)
+     (RFLX.TLS_Extensions.Extension_Type (Val))
    with
      Pre =>
        Valid_Extension_Type (Val);
-
-   pragma Warnings (On, "unreachable branch");
 
    type Extension_Length is range 0 .. 2**16 - 1
    with

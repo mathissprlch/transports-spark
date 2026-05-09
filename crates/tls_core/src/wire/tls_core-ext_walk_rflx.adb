@@ -51,7 +51,7 @@ is
          end if;
 
          if Ext.Get_Ext_Type (Ext_Ctx) =
-              RFLX.TLS_Extensions.Key_Share
+              51
          then
             declare
                Ext_Data_First : constant Natural := Natural
@@ -162,7 +162,7 @@ is
          end if;
 
          if Ext.Get_Ext_Type (Ext_Ctx) =
-              RFLX.TLS_Extensions.Signature_Algorithms
+              13
          then
             declare
                Ext_Data_First : constant Natural := Natural
@@ -203,5 +203,148 @@ is
       EL.Take_Buffer (Seq_Ctx, Buf);
       RFLX.RFLX_Types.Free (Buf);
    end Find_Sig_Algs;
+
+   procedure Find_Psk_Fields
+     (Ext_Bytes       : Octet_Array;
+      Identity_First  : out Natural;
+      Identity_Last   : out Natural;
+      Binder_First    : out Natural;
+      Binder_Last     : out Natural;
+      Truncated_Last  : out Natural;
+      Found           : out Boolean)
+   is
+      package EL renames RFLX.TLS_Extensions.Extension_List;
+      package Ext renames RFLX.TLS_Extensions.Extension;
+
+      Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+        new RFLX.RFLX_Types.Bytes'
+          (1 .. RFLX.RFLX_Types.Index (Ext_Bytes'Length) => 0);
+      Seq_Ctx : EL.Context;
+      Ext_Ctx : Ext.Context;
+      J : RFLX.RFLX_Types.Index := 1;
+   begin
+      Identity_First := 0;
+      Identity_Last  := 0;
+      Binder_First   := 0;
+      Binder_Last    := 0;
+      Truncated_Last := 0;
+      Found          := False;
+
+      for I in Ext_Bytes'Range loop
+         Buf (J) := RFLX.RFLX_Types.Byte (Ext_Bytes (I));
+         J := J + 1;
+      end loop;
+
+      EL.Initialize (Seq_Ctx, Buf);
+
+      while EL.Has_Element (Seq_Ctx) loop
+         pragma Loop_Invariant (EL.Has_Buffer (Seq_Ctx));
+
+         EL.Switch (Seq_Ctx, Ext_Ctx);
+         if not Ext.Well_Formed_Message (Ext_Ctx) then
+            EL.Update (Seq_Ctx, Ext_Ctx);
+            exit;
+         end if;
+
+         if Ext.Get_Ext_Type (Ext_Ctx) =
+              41
+         then
+            declare
+               Ext_Data_First : constant Natural := Natural
+                 (Ext.Field_First (Ext_Ctx, Ext.F_Data)) / 8 + 1;
+               Ext_Data_Len : constant Natural := Natural
+                 (Ext.Get_Length (Ext_Ctx));
+            begin
+               if Ext_Data_Len >= 9 then
+                  declare
+                     Ids_Len : constant Natural :=
+                       Natural (Buf (RFLX.RFLX_Types.Index
+                                       (Ext_Data_First))) * 256
+                       + Natural (Buf (RFLX.RFLX_Types.Index
+                                        (Ext_Data_First + 1)));
+                     Ids_F : constant Natural :=
+                       Ext_Data_First + 2;
+                  begin
+                     if Ids_Len >= 7 and then
+                        Ids_F + Ids_Len - 1
+                          <= Ext_Data_First + Ext_Data_Len - 1
+                     then
+                        declare
+                           Id_Len : constant Natural :=
+                             Natural (Buf (RFLX.RFLX_Types
+                                            .Index (Ids_F))) * 256
+                             + Natural (Buf (RFLX.RFLX_Types
+                                              .Index (Ids_F + 1)));
+                           Id_F : constant Natural := Ids_F + 2;
+                        begin
+                           if Id_Len >= 1 and then
+                              Id_F + Id_Len - 1
+                                <= Ext_Data_First + Ext_Data_Len - 1
+                           then
+                              Identity_First := Id_F;
+                              Identity_Last  := Id_F + Id_Len - 1;
+                           end if;
+                        end;
+                        declare
+                           Binders_Off : constant Natural :=
+                             Ids_F + Ids_Len;
+                        begin
+                           Truncated_Last := Binders_Off - 1;
+                           if Binders_Off + 1
+                                <= Ext_Data_First + Ext_Data_Len - 1
+                           then
+                              declare
+                                 Binders_Len : constant Natural :=
+                                   Natural (Buf (RFLX.RFLX_Types
+                                     .Index (Binders_Off))) * 256
+                                   + Natural (Buf (RFLX.RFLX_Types
+                                       .Index (Binders_Off + 1)));
+                                 B_F : constant Natural :=
+                                   Binders_Off + 2;
+                              begin
+                                 if Binders_Len >= 33
+                                   and then B_F
+                                     <= Ext_Data_First
+                                          + Ext_Data_Len - 1
+                                 then
+                                    declare
+                                       B_Len : constant Natural :=
+                                         Natural (Buf
+                                           (RFLX.RFLX_Types
+                                              .Index (B_F)));
+                                       B_Data : constant Natural :=
+                                         B_F + 1;
+                                    begin
+                                       if B_Len >= 32
+                                         and then B_Data + B_Len - 1
+                                           <= Ext_Data_First
+                                                + Ext_Data_Len - 1
+                                       then
+                                          Binder_First := B_Data;
+                                          Binder_Last :=
+                                            B_Data + B_Len - 1;
+                                          Found := True;
+                                       end if;
+                                    end;
+                                 end if;
+                              end;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               end if;
+            end;
+         end if;
+
+         EL.Update (Seq_Ctx, Ext_Ctx);
+
+         if Found then
+            exit;
+         end if;
+      end loop;
+
+      EL.Take_Buffer (Seq_Ctx, Buf);
+      RFLX.RFLX_Types.Free (Buf);
+   end Find_Psk_Fields;
 
 end Tls_Core.Ext_Walk_Rflx;
