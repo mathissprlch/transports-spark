@@ -160,27 +160,14 @@ is
 
             --  Step 2: cert-mode key schedule (PSK = 0).
             Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sh);
-            Tls_Core.Key_Schedule.Extract
-              (Salt => Zero_Secret, IKM => Zero32,
-               Out_PRK => Early_Secret);
-            Tls_Core.Key_Schedule.Derive_Secret
-              (Secret_In  => Early_Secret,
-               Label      => Derived_Lab,
-               Messages   => Empty_In,
-               Out_Secret => Derived_1);
-            Tls_Core.Key_Schedule.Extract
-              (Salt => Derived_1, IKM => D.Ecdhe_Shared,
-               Out_PRK => D.Hs_Secret);
-            Hkdf_Expand_Label_Sha256
-              (Secret  => D.Hs_Secret,
-               Label   => C_Hs_Lab,
-               Context => Th_After_Sh,
-               Output  => D.C_Hs_Sec);
-            Hkdf_Expand_Label_Sha256
-              (Secret  => D.Hs_Secret,
-               Label   => S_Hs_Lab,
-               Context => Th_After_Sh,
-               Output  => D.S_Hs_Sec);
+            Tls_Core.Key_Sched.Derive_Handshake_Secrets
+              (Suite        => D.Suite,
+               PSK          => Zero_Secret,
+               Ecdhe_Shared => D.Ecdhe_Shared,
+               Th_After_Sh  => Th_After_Sh,
+               C_Hs_Sec     => D.C_Hs_Sec,
+               S_Hs_Sec     => D.S_Hs_Sec,
+               Hs_Secret    => D.Hs_Secret);
             Tls_Core.Key_Sched.Init_Hs_Channel
               (D.Suite, D.Hs_In_Dir, D.S_Hs_Sec);
             Tls_Core.Key_Sched.Init_Hs_Channel
@@ -516,28 +503,15 @@ is
             --  Step 4: app traffic secrets.
             Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sf);
             declare
-               Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
                Master_Secret : Tls_Core.Key_Schedule.Secret;
             begin
-               Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
-               Hkdf_Expand_Label_Sha256
-                 (Secret  => D.Hs_Secret,
-                  Label   => Derived_Lab,
-                  Context => Empty_Hash,
-                  Output  => Derived_2_Sec);
-               Tls_Core.Key_Schedule.Extract
-                 (Salt => Derived_2_Sec, IKM => Zero_Secret,
-                  Out_PRK => Master_Secret);
-               Hkdf_Expand_Label_Sha256
-                 (Secret  => Master_Secret,
-                  Label   => C_Ap_Lab,
-                  Context => Th_After_Sf,
-                  Output  => D.App_C_Ap);
-               Hkdf_Expand_Label_Sha256
-                 (Secret  => Master_Secret,
-                  Label   => S_Ap_Lab,
-                  Context => Th_After_Sf,
-                  Output  => D.App_S_Ap);
+               Tls_Core.Key_Sched.Derive_App_Secrets
+                 (Suite       => D.Suite,
+                  Hs_Secret   => D.Hs_Secret,
+                  Th_After_Sf => Th_After_Sf,
+                  App_C_Ap    => D.App_C_Ap,
+                  App_S_Ap    => D.App_S_Ap,
+                  Master_Sec  => Master_Secret);
                D.App_Set := True;
                D.Master_Sec := Master_Secret;
                D.Master_Set := True;
@@ -707,27 +681,14 @@ is
          --    Handshake_Secret = HKDF-Extract(Derived_1, ECDHE_secret)
          --  where ECDHE_secret is the X25519 shared we just computed.
          Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sh);
-         Tls_Core.Key_Schedule.Extract
-           (Salt => Zero_Secret, IKM => D.PSK,
-            Out_PRK => Early_Secret);
-         Tls_Core.Key_Schedule.Derive_Secret
-           (Secret_In => Early_Secret,
-            Label     => Derived_Lab,
-            Messages  => Empty_In,
-            Out_Secret => Derived_1);
-         Tls_Core.Key_Schedule.Extract
-           (Salt => Derived_1, IKM => D.Ecdhe_Shared,
-            Out_PRK => D.Hs_Secret);
-         Hkdf_Expand_Label_Sha256
-           (Secret  => D.Hs_Secret,
-            Label   => C_Hs_Lab,
-            Context => Th_After_Sh,
-            Output  => D.C_Hs_Sec);
-         Hkdf_Expand_Label_Sha256
-           (Secret  => D.Hs_Secret,
-            Label   => S_Hs_Lab,
-            Context => Th_After_Sh,
-            Output  => D.S_Hs_Sec);
+         Tls_Core.Key_Sched.Derive_Handshake_Secrets
+           (Suite        => D.Suite,
+            PSK          => D.PSK,
+            Ecdhe_Shared => D.Ecdhe_Shared,
+            Th_After_Sh  => Th_After_Sh,
+            C_Hs_Sec     => D.C_Hs_Sec,
+            S_Hs_Sec     => D.S_Hs_Sec,
+            Hs_Secret    => D.Hs_Secret);
          --  Client: in decrypts with s_hs; out encrypts with c_hs.
          --  Init_Sha256 dispatches the AEAD by D.Suite.
          Tls_Core.Key_Sched.Init_Hs_Channel
@@ -906,33 +867,16 @@ is
          --  Step 5: derive app secrets.
          Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sf);
          declare
-            Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
             Master_Secret : Tls_Core.Key_Schedule.Secret;
          begin
-            Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
-            Hkdf_Expand_Label_Sha256
-              (Secret  => D.Hs_Secret,
-               Label   => Derived_Lab,
-               Context => Empty_Hash,
-               Output  => Derived_2_Sec);
-            Tls_Core.Key_Schedule.Extract
-              (Salt => Derived_2_Sec, IKM => Zero_Secret,
-               Out_PRK => Master_Secret);
-            Hkdf_Expand_Label_Sha256
-              (Secret  => Master_Secret,
-               Label   => C_Ap_Lab,
-               Context => Th_After_Sf,
-               Output  => D.App_C_Ap);
-            Hkdf_Expand_Label_Sha256
-              (Secret  => Master_Secret,
-               Label   => S_Ap_Lab,
-               Context => Th_After_Sf,
-               Output  => D.App_S_Ap);
+            Tls_Core.Key_Sched.Derive_App_Secrets
+              (Suite       => D.Suite,
+               Hs_Secret   => D.Hs_Secret,
+               Th_After_Sf => Th_After_Sf,
+               App_C_Ap    => D.App_C_Ap,
+               App_S_Ap    => D.App_S_Ap,
+               Master_Sec  => Master_Secret);
             D.App_Set := True;
-            --  Save Master_Secret so we can derive
-            --  resumption_master_secret (RFC 8446 §7.1) once
-            --  the client Finished is appended to the
-            --  transcript below.
             D.Master_Sec := Master_Secret;
             D.Master_Set := True;
          end;
