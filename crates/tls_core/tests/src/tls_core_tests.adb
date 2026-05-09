@@ -2939,7 +2939,8 @@ procedure Tls_Core_Tests is
       --     +1 +2 : binders_total_len (u16, encoder set = 33)
       --     +3    : binder_len (u8 = 32)
       --     +4 .. +35 : binder body
-      Wire (Truncated_Last + 4 .. Truncated_Last + 35) := Computed_Binder;
+      Wire (Truncated_Last + 4 .. Truncated_Last + 35) :=
+        Computed_Binder (1 .. 32);
 
       Tls_Core.Hello.Decode_Client_Hello_Psk
         (Wire (1 .. Wire_Last),
@@ -2976,12 +2977,15 @@ procedure Tls_Core_Tests is
       --  and verify it equals what we spliced in.
       declare
          Recompute : Tls_Core.Psk_Binder.Binder_Bytes;
+         Recv_Buf  : Tls_Core.Psk_Binder.Binder_Bytes :=
+           (others => 0);
       begin
          Tls_Core.Psk_Binder.Compute
            (Psk, Wire (1 .. T_Last), Recompute);
+         Recv_Buf (1 .. Bl - Bf + 1) := Wire (Bf .. Bl);
          Check ("PSK CH: binder re-verifies on decoded truncation",
                 Tls_Core.Psk_Binder.Verify
-                  (Recompute, Wire (Bf .. Bl)));
+                  (Recompute, Recv_Buf));
       end;
 
       --  ServerHello echo round-trip — server selects AES-128.
