@@ -810,9 +810,7 @@ package body Tls_Interop_Peers is
          when Psk_External_Aes256    => return False;  --  cipher built;
                                                        --  matrix glue
                                                        --  not wired
-         when Psk_Resumption         => return False;  --  plumbing
-                                                       --  landed, key-
-                                                       --  schedule bug
+         when Psk_Resumption         => return True;
          when Hello_Retry_Request    => return True;
          when Sni_Alpn               => return True;
          when Zero_Rtt               => return False;
