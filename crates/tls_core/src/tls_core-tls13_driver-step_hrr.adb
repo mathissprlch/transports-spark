@@ -9,6 +9,7 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Session_Ticket;
 with Tls_Core.X25519;
+with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
 
 package body Tls_Core.Tls13_Driver.Step_Hrr
@@ -139,13 +140,12 @@ is
             Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256
               (D.Hrr_Ch1_Hash, Synthetic);
             Tls_Core.Transcript.Init (D.Hash_Ctx);
-            Tls_Core.Transcript.Append (D.Hash_Ctx, Synthetic);
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Synthetic);
             --  Append the HRR handshake message (NOT the wire
             --  record envelope) to the transcript — same offsets
             --  used during the magic check above, Rec_F .. Rec_L
             --  brackets exactly the type+u24-len + body bytes.
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, In_Bytes (Rec_F .. Rec_L));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, In_Bytes (Rec_F .. Rec_L));
          end;
       end;
 
@@ -205,8 +205,7 @@ is
          Encode_Hs_Message
            (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
             Ch_Hs, Ch_Hs_Last);
-         Tls_Core.Transcript.Append
-           (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
+         Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
          Wrap_Tls_Plaintext
            (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
          Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
@@ -373,8 +372,7 @@ is
             --  Append CH2 handshake message (without record
             --  envelope) to the transcript. After this:
             --    transcript = synthetic(CH1) || HRR || CH2
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, In_Bytes (Rec_F .. Rec_L));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, In_Bytes (Rec_F .. Rec_L));
             --  Cookie validation: walk CH2's extensions, find
             --  cookie ext, compare to D.Hrr_Cookie. If we
             --  emitted no cookie (Hrr_Cookie_Len = 0), no
@@ -527,8 +525,7 @@ is
          Encode_Hs_Message
            (Hs_Type_SH, Sh_Body (1 .. Sh_Body_Last),
             Sh_Hs_Msg, Sh_Hs_Last);
-         Tls_Core.Transcript.Append
-           (D.Hash_Ctx, Sh_Hs_Msg (1 .. Sh_Hs_Last));
+         Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Sh_Hs_Msg (1 .. Sh_Hs_Last));
          Wrap_Tls_Plaintext
            (Sh_Hs_Msg (1 .. Sh_Hs_Last), Sh_Record, Sh_Record_Last);
          Tls_Core.Key_Schedule.Extract
@@ -542,7 +539,7 @@ is
          Tls_Core.Key_Schedule.Extract
            (Salt => Derived_1, IKM => D.Ecdhe_Shared,
             Out_PRK => Hs_Secret);
-         Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_SH);
+         Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_SH);
          Hkdf_Expand_Label_Sha256
            (Secret  => Hs_Secret,
             Label   => C_Hs_Label,
@@ -553,10 +550,10 @@ is
             Label   => S_Hs_Label,
             Context => Th_After_SH,
             Output  => S_Hs_Sec);
-         Tls_Core.Aead_Channel.Init_Sha256
-           (D.Hs_Out_Dir, D.Suite, S_Hs_Sec);
-         Tls_Core.Aead_Channel.Init_Sha256
-           (D.Hs_In_Dir,  D.Suite, C_Hs_Sec);
+         Tls_Core.Key_Sched.Init_Hs_Channel
+           (D.Suite, D.Hs_Out_Dir, S_Hs_Sec);
+         Tls_Core.Key_Sched.Init_Hs_Channel
+           (D.Suite, D.Hs_In_Dir, C_Hs_Sec);
          D.C_Hs_Sec := C_Hs_Sec;
          D.S_Hs_Sec := S_Hs_Sec;
          D.Hs_Secret := Hs_Secret;
@@ -592,21 +589,19 @@ is
          begin
             Encode_Hs_Message
               (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, Ee_Hs (1 .. Ee_Hs_Last));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ee_Hs (1 .. Ee_Hs_Last));
             Tls_Core.Aead_Channel.Send
               (D.Hs_Out_Dir,
                Ee_Hs (1 .. Ee_Hs_Last),
                Tls_Core.Aead_Channel.Inner_Type_Handshake,
                Ee_Rec, Ee_Rec_Last);
 
-            Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_EE);
-            Build_Finished_Body (S_Hs_Sec, Th_After_EE, Verify_Data);
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_EE);
+            Tls_Core.Key_Sched.Build_Finished (D.Suite, S_Hs_Sec, Th_After_EE, Verify_Data);
             Encode_Hs_Message
               (Hs_Type_Finished, Verify_Data,
                Fin_Hs, Fin_Hs_Last);
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, Fin_Hs (1 .. Fin_Hs_Last));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
             Tls_Core.Aead_Channel.Send
               (D.Hs_Out_Dir,
                Fin_Hs (1 .. Fin_Hs_Last),
@@ -627,7 +622,7 @@ is
                Out_Last := Cursor + Fin_Rec_Last;
             end;
 
-            Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_SF);
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_SF);
             Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
             Hkdf_Expand_Label_Sha256
               (Secret  => D.Hs_Secret,
@@ -654,8 +649,8 @@ is
             --  once the client Finished is appended.
             D.Master_Sec := Master_Secret;
             D.Master_Set := True;
-            Build_Finished_Body
-              (D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
+            Tls_Core.Key_Sched.Build_Finished
+              (D.Suite, D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
          end;
 
          D.Cur_State := Awaiting_Cf;

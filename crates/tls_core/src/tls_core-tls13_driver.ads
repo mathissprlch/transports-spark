@@ -50,6 +50,7 @@ with Tls_Core.Session_Ticket;
 with Tls_Core.Sha256;
 with Tls_Core.Suites;
 with Tls_Core.Transcript;
+with Tls_Core.Transcript_Sha384;
 
 package Tls_Core.Tls13_Driver
 with SPARK_Mode
@@ -824,7 +825,8 @@ private
    type Driver is record
       My_Role     : Role := Server;
       Cur_State   : State := Awaiting_CH;
-      Hash_Ctx    : Tls_Core.Transcript.Accumulator;
+      Hash_Ctx     : Tls_Core.Transcript.Accumulator;
+      Hash_Ctx_384 : Tls_Core.Transcript_Sha384.Accumulator;
 
       PSK         : Psk_Bytes := (others => 0);
       Identity    : Identity_Bytes := (others => 0);

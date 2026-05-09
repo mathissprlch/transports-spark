@@ -10,6 +10,7 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Psk_Binder;
 with Tls_Core.Session_Ticket;
 with Tls_Core.X25519;
+with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
 
 package body Tls_Core.Tls13_Driver.Step_Awaiting_Ch
@@ -158,8 +159,7 @@ is
                   end if;
                end;
                --  Append CH (handshake message) to transcript.
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, In_Bytes (Rec_F .. Rec_L));
+               Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, In_Bytes (Rec_F .. Rec_L));
             end;
          end;
 
@@ -221,8 +221,7 @@ is
             Encode_Hs_Message
               (Hs_Type_SH, Sh_Body (1 .. Sh_Body_Last),
                Sh_Hs, Sh_Hs_Last);
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, Sh_Hs (1 .. Sh_Hs_Last));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Sh_Hs (1 .. Sh_Hs_Last));
             Wrap_Tls_Plaintext
               (Sh_Hs (1 .. Sh_Hs_Last), Sh_Rec, Sh_Rec_Last);
 
@@ -238,7 +237,7 @@ is
             Tls_Core.Key_Schedule.Extract
               (Salt => Derived_1, IKM => D.Ecdhe_Shared,
                Out_PRK => D.Hs_Secret);
-            Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Sh);
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sh);
             Hkdf_Expand_Label_Sha256
               (Secret  => D.Hs_Secret,
                Label   => C_Hs_Lab,
@@ -250,10 +249,10 @@ is
                Context => Th_After_Sh,
                Output  => D.S_Hs_Sec);
             --  Open handshake-stage Aead_Channel directions.
-            Tls_Core.Aead_Channel.Init_Sha256
-              (D.Hs_Out_Dir, D.Suite, D.S_Hs_Sec);
-            Tls_Core.Aead_Channel.Init_Sha256
-              (D.Hs_In_Dir,  D.Suite, D.C_Hs_Sec);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, D.Hs_Out_Dir, D.S_Hs_Sec);
+            Tls_Core.Key_Sched.Init_Hs_Channel
+              (D.Suite, D.Hs_In_Dir, D.C_Hs_Sec);
 
             --  Output buffer accumulator: SH (TLSPlaintext)
             --  followed by encrypted EE/Cert/CertVerify/SF
@@ -272,8 +271,7 @@ is
             begin
                Encode_Hs_Message
                  (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, Ee_Hs (1 .. Ee_Hs_Last));
+               Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ee_Hs (1 .. Ee_Hs_Last));
                Tls_Core.Aead_Channel.Send
                  (D.Hs_Out_Dir,
                   Ee_Hs (1 .. Ee_Hs_Last),
@@ -318,8 +316,7 @@ is
                Encode_Hs_Message
                  (Hs_Type_Cert, Cert_Body (1 .. Cert_Body_Last),
                   Cert_Hs, Cert_Hs_Last);
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, Cert_Hs (1 .. Cert_Hs_Last));
+               Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Cert_Hs (1 .. Cert_Hs_Last));
                Tls_Core.Aead_Channel.Send
                  (D.Hs_Out_Dir,
                   Cert_Hs (1 .. Cert_Hs_Last),
@@ -336,8 +333,7 @@ is
             end;
 
             --  CertificateVerify (RFC 8446 §4.4.3).
-            Tls_Core.Transcript.Snapshot
-              (D.Hash_Ctx, Th_After_Cert);
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Cert);
             declare
                Signed_Buf : Octet_Array (1 .. 64 + 33 + 1 + 32) :=
                  (others => 0);
@@ -396,8 +392,7 @@ is
                  (Hs_Type_Cert_Verify,
                   Cv_Body (1 .. Cv_Body_Last),
                   Cv_Hs, Cv_Hs_Last);
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, Cv_Hs (1 .. Cv_Hs_Last));
+               Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Cv_Hs (1 .. Cv_Hs_Last));
                Tls_Core.Aead_Channel.Send
                  (D.Hs_Out_Dir,
                   Cv_Hs (1 .. Cv_Hs_Last),
@@ -415,7 +410,7 @@ is
 
             --  Server Finished — HMAC of s_hs_finished_key over
             --  transcript-after-CertVerify (§4.4.4).
-            Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_CV);
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_CV);
             declare
                Verify_Data : Tls_Core.Sha256.Digest;
                Fin_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
@@ -423,13 +418,12 @@ is
                Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
                Fin_Rec_Last : Natural;
             begin
-               Build_Finished_Body
-                 (D.S_Hs_Sec, Th_After_CV, Verify_Data);
+               Tls_Core.Key_Sched.Build_Finished
+                 (D.Suite, D.S_Hs_Sec, Th_After_CV, Verify_Data);
                Encode_Hs_Message
                  (Hs_Type_Finished, Verify_Data,
                   Fin_Hs, Fin_Hs_Last);
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, Fin_Hs (1 .. Fin_Hs_Last));
+               Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
                Tls_Core.Aead_Channel.Send
                  (D.Hs_Out_Dir,
                   Fin_Hs (1 .. Fin_Hs_Last),
@@ -447,7 +441,7 @@ is
 
             --  Application traffic secrets + expected client
             --  Finished verify_data.
-            Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Sf);
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sf);
             declare
                Derived_2_Sec : Tls_Core.Key_Schedule.Secret;
                Master_Secret : Tls_Core.Key_Schedule.Secret;
@@ -476,8 +470,8 @@ is
                D.App_Set := True;
                D.Master_Sec := Master_Secret;
                D.Master_Set := True;
-               Build_Finished_Body
-                 (D.C_Hs_Sec, Th_After_Sf, D.Expected_Cf);
+               Tls_Core.Key_Sched.Build_Finished
+                 (D.Suite, D.C_Hs_Sec, Th_After_Sf, D.Expected_Cf);
             end;
 
             D.Cur_State := Awaiting_Cf;
@@ -671,8 +665,7 @@ is
             end;
             --  Append the CH handshake message (NOT the
             --  record wrapper) to the transcript.
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, In_Bytes (Rec_F .. Rec_L));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, In_Bytes (Rec_F .. Rec_L));
          end;
       end;
 
@@ -723,9 +716,8 @@ is
             Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256
               (D.Hrr_Ch1_Hash, Synthetic);
             Tls_Core.Transcript.Init (D.Hash_Ctx);
-            Tls_Core.Transcript.Append (D.Hash_Ctx, Synthetic);
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, Hrr_Hs (1 .. Hrr_Hs_Last));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Synthetic);
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Hrr_Hs (1 .. Hrr_Hs_Last));
             --  Wrap HRR as TLSPlaintext on the wire.
             Wrap_Tls_Plaintext
               (Hrr_Hs (1 .. Hrr_Hs_Last), Hrr_Rec, Hrr_Rec_Last);
@@ -793,8 +785,7 @@ is
             Sh_Body (1 .. Sh_Body_Last),
             Sh_Hs_Msg, Sh_Hs_Last);
          --  Append to transcript.
-         Tls_Core.Transcript.Append
-           (D.Hash_Ctx, Sh_Hs_Msg (1 .. Sh_Hs_Last));
+         Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Sh_Hs_Msg (1 .. Sh_Hs_Last));
          --  Wrap as TLSPlaintext for the wire.
          Wrap_Tls_Plaintext
            (Sh_Hs_Msg (1 .. Sh_Hs_Last), Sh_Record, Sh_Record_Last);
@@ -813,8 +804,7 @@ is
            (Salt => Derived_1, IKM => D.Ecdhe_Shared,
             Out_PRK => Hs_Secret);
          --  Snapshot current transcript hash (CH || SH).
-         Tls_Core.Transcript.Snapshot
-           (D.Hash_Ctx, Transcript_Hash_After_SH);
+         Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Transcript_Hash_After_SH);
          --  c_hs / s_hs traffic secrets — same as Derive_Secret
          --  but with the snapshot we just took as the context.
          Hkdf_Expand_Label_Sha256
@@ -831,10 +821,10 @@ is
          --  Open Aead_Channel Hs_Out_Dir / Hs_In_Dir (server:
          --  out encrypts with s_hs, in decrypts with c_hs). The
          --  Init_Sha256 dispatcher pins the variant to D.Suite.
-         Tls_Core.Aead_Channel.Init_Sha256
-           (D.Hs_Out_Dir, D.Suite, S_Hs_Sec);
-         Tls_Core.Aead_Channel.Init_Sha256
-           (D.Hs_In_Dir,  D.Suite, C_Hs_Sec);
+         Tls_Core.Key_Sched.Init_Hs_Channel
+           (D.Suite, D.Hs_Out_Dir, S_Hs_Sec);
+         Tls_Core.Key_Sched.Init_Hs_Channel
+           (D.Suite, D.Hs_In_Dir, C_Hs_Sec);
 
          --  Save the secrets for later finished-key derivation
          --  + master-secret derivation in this same Step body.
@@ -852,8 +842,7 @@ is
          begin
             Encode_Hs_Message
               (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, Ee_Hs (1 .. Ee_Hs_Last));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ee_Hs (1 .. Ee_Hs_Last));
             Tls_Core.Aead_Channel.Send
               (D.Hs_Out_Dir,
                Ee_Hs (1 .. Ee_Hs_Last),
@@ -869,14 +858,13 @@ is
                Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
                Fin_Rec_Last : Natural;
             begin
-               Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_EE);
-               Build_Finished_Body
-                 (S_Hs_Sec, Th_After_EE, Verify_Data);
+               Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_EE);
+               Tls_Core.Key_Sched.Build_Finished
+                 (D.Suite, S_Hs_Sec, Th_After_EE, Verify_Data);
                Encode_Hs_Message
                  (Hs_Type_Finished, Verify_Data,
                   Fin_Hs, Fin_Hs_Last);
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, Fin_Hs (1 .. Fin_Hs_Last));
+               Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
                Tls_Core.Aead_Channel.Send
                  (D.Hs_Out_Dir,
                   Fin_Hs (1 .. Fin_Hs_Last),
@@ -921,8 +909,7 @@ is
                     (16#73#, 16#20#, 16#61#, 16#70#, 16#20#, 16#74#,
                      16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
                begin
-                  Tls_Core.Transcript.Snapshot
-                    (D.Hash_Ctx, Th_After_SF);
+                  Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_SF);
 
                   --  Derived_2 = Derive-Secret(Hs_Secret, "derived", "")
                   Tls_Core.Sha256.Hash (Empty_In, Empty_Hash);
@@ -956,8 +943,8 @@ is
 
                   --  Expected client Finished body — HMAC of
                   --  c_hs_finished_key over Th_After_SF.
-                  Build_Finished_Body
-                    (D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
+                  Tls_Core.Key_Sched.Build_Finished
+                    (D.Suite, D.C_Hs_Sec, Th_After_SF, D.Expected_Cf);
                end;
             end;
          end;

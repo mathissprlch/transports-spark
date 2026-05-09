@@ -1,5 +1,6 @@
 with Tls_Core.Hello;
 with Tls_Core.Psk_Binder;
+with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
 
 package body Tls_Core.Tls13_Driver.Step_Idle
@@ -45,8 +46,7 @@ is
             Encode_Hs_Message
               (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
                Ch_Hs, Ch_Hs_Last);
-            Tls_Core.Transcript.Append
-              (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
+            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
             Wrap_Tls_Plaintext
               (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
             Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
@@ -90,8 +90,7 @@ is
          Encode_Hs_Message
            (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
             Ch_Hs, Ch_Hs_Last);
-         Tls_Core.Transcript.Append
-           (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
+         Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
          Wrap_Tls_Plaintext
            (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
          Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);

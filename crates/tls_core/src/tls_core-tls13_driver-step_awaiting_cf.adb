@@ -1,5 +1,6 @@
 with Tls_Core.Aead_Channel;
 with Tls_Core.Session_Ticket;
+with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
 
 package body Tls_Core.Tls13_Driver.Step_Awaiting_Cf
@@ -48,17 +49,17 @@ is
          end if;
       end;
 
-      Tls_Core.Transcript.Append (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
+      Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Pt_Buf (1 .. Pt_Last));
 
       if D.Master_Set then
          declare
             Th_After_Cf : Tls_Core.Sha256.Digest;
          begin
-            Tls_Core.Transcript.Snapshot (D.Hash_Ctx, Th_After_Cf);
-            Tls_Core.Session_Ticket
-              .Derive_Resumption_Master_Secret_Sha256
-                (Master_Secret     => D.Master_Sec,
-                 Transcript_Hash   => Th_After_Cf,
+            Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Cf);
+            Tls_Core.Key_Sched.Derive_Resumption_Master_Secret
+                (Suite             => D.Suite,
+                 Master_Secret     => D.Master_Sec,
+                 Th_After_Cf       => Th_After_Cf,
                  Resumption_Secret => D.Res_Master_Sec);
             D.Res_Master_Set := True;
          end;
