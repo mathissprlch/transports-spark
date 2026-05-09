@@ -144,4 +144,169 @@ is
       end;
    end Decode_Client_Hello_Fields;
 
+   procedure Decode_Client_Hello_Psk
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Sid_First         : out Natural;
+      Sid_Last          : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Identity_First    : out Natural;
+      Identity_Last     : out Natural;
+      Binder_First      : out Natural;
+      Binder_Last       : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      Truncated_Last    : out Natural;
+      OK                : out Boolean)
+   is
+      Ef, El : Natural;
+      Fields_OK : Boolean;
+   begin
+      Identity_First  := 0;
+      Identity_Last   := 0;
+      Binder_First    := 0;
+      Binder_Last     := 0;
+      Key_Share_First := 0;
+      Key_Share_Last  := 0;
+      Truncated_Last  := 0;
+
+      Decode_Client_Hello_Fields
+        (In_Bytes, Random, Sid_First, Sid_Last,
+         Suites_First, Suites_Last, Ef, El, Fields_OK);
+
+      if not Fields_OK or else Ef = 0 then
+         OK := False;
+         return;
+      end if;
+
+      declare
+         Cursor : Natural := Ef;
+      begin
+         while Cursor + 3 <= El loop
+            declare
+               Ext_Type : constant Natural :=
+                 Natural (In_Bytes (Cursor)) * 256
+                 + Natural (In_Bytes (Cursor + 1));
+               Ext_Data_Len : constant Natural :=
+                 Natural (In_Bytes (Cursor + 2)) * 256
+                 + Natural (In_Bytes (Cursor + 3));
+               Ext_Data_F : constant Natural := Cursor + 4;
+            begin
+               if Ext_Data_F + Ext_Data_Len - 1 > El then
+                  OK := False;
+                  return;
+               end if;
+
+               if Ext_Type = 51 and then Ext_Data_Len >= 6 then
+                  declare
+                     List_Len : constant Natural :=
+                       Natural (In_Bytes (Ext_Data_F)) * 256
+                       + Natural (In_Bytes (Ext_Data_F + 1));
+                  begin
+                     if List_Len >= 4
+                       and then Ext_Data_F + 2 + List_Len - 1
+                                  <= El
+                     then
+                        declare
+                           Ks_Grp_F : constant Natural :=
+                             Ext_Data_F + 2;
+                           Ks_Kx_Len : constant Natural :=
+                             Natural (In_Bytes (Ks_Grp_F + 2))
+                               * 256
+                             + Natural
+                                 (In_Bytes (Ks_Grp_F + 3));
+                           Ks_Kx_F : constant Natural :=
+                             Ks_Grp_F + 4;
+                        begin
+                           if Ks_Kx_Len = 32 and then
+                              Ks_Kx_F + 31 <= El
+                           then
+                              Key_Share_First := Ks_Kx_F;
+                              Key_Share_Last  := Ks_Kx_F + 31;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               end if;
+
+               if Ext_Type = 41 and then Ext_Data_Len >= 9 then
+                  declare
+                     Ids_Len : constant Natural :=
+                       Natural (In_Bytes (Ext_Data_F)) * 256
+                       + Natural (In_Bytes (Ext_Data_F + 1));
+                     Ids_F   : constant Natural := Ext_Data_F + 2;
+                  begin
+                     if Ids_Len >= 7 and then
+                        Ids_F + Ids_Len - 1 <= El
+                     then
+                        declare
+                           Id_Len : constant Natural :=
+                             Natural (In_Bytes (Ids_F)) * 256
+                             + Natural (In_Bytes (Ids_F + 1));
+                           Id_F : constant Natural := Ids_F + 2;
+                        begin
+                           if Id_Len >= 1 and then
+                              Id_F + Id_Len - 1 <= El
+                           then
+                              Identity_First := Id_F;
+                              Identity_Last  := Id_F + Id_Len - 1;
+                           end if;
+                        end;
+                        declare
+                           Binders_Off : constant Natural :=
+                             Ids_F + Ids_Len;
+                        begin
+                           Truncated_Last := Binders_Off - 1;
+                           if Binders_Off + 1 <= El then
+                              declare
+                                 Binders_Len : constant Natural :=
+                                   Natural
+                                     (In_Bytes (Binders_Off))
+                                     * 256
+                                   + Natural
+                                       (In_Bytes
+                                          (Binders_Off + 1));
+                                 B_F : constant Natural :=
+                                   Binders_Off + 2;
+                              begin
+                                 if Binders_Len >= 33
+                                   and then B_F <= El
+                                 then
+                                    declare
+                                       B_Len : constant Natural :=
+                                         Natural
+                                           (In_Bytes (B_F));
+                                       B_Data_F : constant
+                                         Natural := B_F + 1;
+                                    begin
+                                       if B_Len >= 32
+                                         and then B_Data_F +
+                                                    B_Len - 1
+                                                    <= El
+                                       then
+                                          Binder_First :=
+                                            B_Data_F;
+                                          Binder_Last :=
+                                            B_Data_F +
+                                              B_Len - 1;
+                                       end if;
+                                    end;
+                                 end if;
+                              end;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               end if;
+
+               Cursor := Ext_Data_F + Ext_Data_Len;
+            end;
+         end loop;
+      end;
+
+      OK := Key_Share_First > 0 and then Identity_First > 0
+            and then Binder_First > 0 and then Truncated_Last > 0;
+   end Decode_Client_Hello_Psk;
+
 end Tls_Core.Client_Hello_Rflx;
