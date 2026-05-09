@@ -13,7 +13,7 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types;
 
-package RFLX.Handshake_Layer.Envelope
+package RFLX.Pre_Shared_Key.Server_Hello_Payload
 with
   SPARK_Mode,
   Always_Terminates
@@ -26,10 +26,6 @@ is
    pragma Warnings (Off, """BASE_INTEGER"" is already use-visible through previous use_type_clause");
 
    pragma Warnings (Off, """LENGTH"" is already use-visible through previous use_type_clause");
-
-   use type RFLX_Types.Bytes;
-
-   use type RFLX_Types.Byte;
 
    use type RFLX_Types.Bytes_Ptr;
 
@@ -53,9 +49,9 @@ is
 
    pragma Unevaluated_Use_Of_Old (Allow);
 
-   type Virtual_Field is (F_Initial, F_Msg_Type, F_Length, F_Body_Bytes, F_Final);
+   type Virtual_Field is (F_Initial, F_Selected_Identity, F_Final);
 
-   subtype Field is Virtual_Field range F_Msg_Type .. F_Body_Bytes;
+   subtype Field is Virtual_Field range F_Selected_Identity .. F_Selected_Identity;
 
    type Field_Cursor is private;
 
@@ -135,7 +131,7 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx),
+       and RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -148,7 +144,7 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
+       and RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
        and RFLX_Types.To_Index (First) >= Ctx.Buffer_First
        and RFLX_Types.To_Index (Last) <= Ctx.Buffer_Last
        and First <= Last + 1
@@ -166,7 +162,7 @@ is
    procedure Take_Buffer (Ctx : in out Context; Buffer : out RFLX_Types.Bytes_Ptr)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        not Has_Buffer (Ctx)
        and then Buffer /= null
@@ -185,16 +181,16 @@ is
    procedure Copy (Ctx : Context; Buffer : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed_Message (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Byte_Size (Ctx) = Buffer'Length;
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Well_Formed_Message (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Byte_Size (Ctx) = Buffer'Length;
 
    function Read (Ctx : Context) return RFLX_Types.Bytes
    with
      Ghost,
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed_Message (Ctx);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Well_Formed_Message (Ctx);
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
 
@@ -213,8 +209,8 @@ is
    procedure Generic_Read (Ctx : Context)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed_Message (Ctx)
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Well_Formed_Message (Ctx)
        and then Pre (Read (Ctx));
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
@@ -235,9 +231,9 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then Offset < RFLX.Handshake_Layer.Envelope.Buffer_Length (Ctx)
-       and then Pre (RFLX.Handshake_Layer.Envelope.Buffer_Length (Ctx), Offset),
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then Offset < RFLX.Pre_Shared_Key.Server_Hello_Payload.Buffer_Length (Ctx)
+       and then Pre (RFLX.Pre_Shared_Key.Server_Hello_Payload.Buffer_Length (Ctx), Offset),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -250,12 +246,12 @@ is
    function Buffer_Length (Ctx : Context) return RFLX_Types.Length
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx);
 
    function Buffer_Size (Ctx : Context) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx);
 
    function Size (Ctx : Context) return RFLX_Types.Bit_Length
    with
@@ -271,9 +267,9 @@ is
    procedure Data (Ctx : Context; Data : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed_Message (Ctx)
-       and then Data'Length = RFLX.Handshake_Layer.Envelope.Byte_Size (Ctx);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Well_Formed_Message (Ctx)
+       and then Data'Length = RFLX.Pre_Shared_Key.Server_Hello_Payload.Byte_Size (Ctx);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -289,9 +285,9 @@ is
    function Field_Condition (Ctx : Context; Fld : Field) return Boolean
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld)
-       and then RFLX.Handshake_Layer.Envelope.Sufficient_Space (Ctx, Fld),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Sufficient_Space (Ctx, Fld),
      Post =>
        True;
 
@@ -300,20 +296,14 @@ is
    function Field_Size (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld),
-     Post =>
-       (case Fld is
-           when F_Body_Bytes =>
-              Field_Size'Result rem RFLX_Types.Byte'Size = 0,
-           when others =>
-              True);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
    function Field_First (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Index
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld),
      Post =>
        True;
 
@@ -322,37 +312,25 @@ is
    function Field_Last (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld)
-       and then RFLX.Handshake_Layer.Envelope.Sufficient_Space (Ctx, Fld),
-     Post =>
-       (case Fld is
-           when F_Body_Bytes =>
-              Field_Last'Result rem RFLX_Types.Byte'Size = 0,
-           when others =>
-              True);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Sufficient_Space (Ctx, Fld);
 
    function Valid_Next (Ctx : Context; Fld : Field) return Boolean;
 
    function Available_Space (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    function Sufficient_Space (Ctx : Context; Fld : Field) return Boolean
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld);
-
-   function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean
-   with
-     Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    procedure Verify (Ctx : in out Context; Fld : Field)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -363,7 +341,7 @@ is
    procedure Verify_Message (Ctx : in out Context)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -387,12 +365,12 @@ is
    function Well_Formed_Message (Ctx : Context) return Boolean
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx);
 
    function Valid_Message (Ctx : Context) return Boolean
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -405,52 +383,19 @@ is
 
    pragma Warnings (Off, "precondition is always False");
 
-   function Get_Msg_Type (Ctx : Context) return RFLX.Handshake_Layer.Handshake_Type
+   function Get_Selected_Identity (Ctx : Context) return RFLX.Pre_Shared_Key.Selected_Identity_Type
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid (Ctx, RFLX.Handshake_Layer.Envelope.F_Msg_Type);
-
-   function Get_Length (Ctx : Context) return RFLX.Handshake_Layer.Length_U24
-   with
-     Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid (Ctx, RFLX.Handshake_Layer.Envelope.F_Length);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid (Ctx, RFLX.Pre_Shared_Key.Server_Hello_Payload.F_Selected_Identity);
 
    pragma Warnings (On, "precondition is always False");
-
-   function Get_Body_Bytes (Ctx : Context) return RFLX_Types.Bytes
-   with
-     Ghost,
-     Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes),
-     Post =>
-       Get_Body_Bytes'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Body_Bytes));
-
-   procedure Get_Body_Bytes (Ctx : Context; Data : out RFLX_Types.Bytes)
-   with
-     Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then Data'Length = RFLX_Types.To_Length (RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)),
-     Post =>
-       Equal (Ctx, F_Body_Bytes, Data);
-
-   generic
-      with procedure Process_Body_Bytes (Body_Bytes : RFLX_Types.Bytes);
-   procedure Generic_Get_Body_Bytes (Ctx : Context)
-   with
-     Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and RFLX.Handshake_Layer.Envelope.Present (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld),
      Post =>
        True;
 
@@ -458,149 +403,29 @@ is
 
    pragma Warnings (Off, "aspect ""*"" not enforced on inlined subprogram ""*""");
 
-   procedure Set_Msg_Type (Ctx : in out Context; Val : RFLX.Handshake_Layer.Handshake_Type)
+   procedure Set_Selected_Identity (Ctx : in out Context; Val : RFLX.Pre_Shared_Key.Selected_Identity_Type)
    with
      Inline_Always,
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Msg_Type)
-       and then RFLX.Handshake_Layer.Valid_Handshake_Type (RFLX.Handshake_Layer.To_Base_Integer (Val))
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Msg_Type) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Msg_Type)
-       and then RFLX.Handshake_Layer.Envelope.Field_Condition (Ctx, RFLX.Handshake_Layer.Envelope.F_Msg_Type),
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Pre_Shared_Key.Server_Hello_Payload.F_Selected_Identity)
+       and then RFLX.Pre_Shared_Key.Valid_Selected_Identity_Type (RFLX.Pre_Shared_Key.To_Base_Integer (Val))
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Available_Space (Ctx, RFLX.Pre_Shared_Key.Server_Hello_Payload.F_Selected_Identity) >= RFLX.Pre_Shared_Key.Server_Hello_Payload.Field_Size (Ctx, RFLX.Pre_Shared_Key.Server_Hello_Payload.F_Selected_Identity)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Field_Condition (Ctx, RFLX.Pre_Shared_Key.Server_Hello_Payload.F_Selected_Identity),
      Post =>
        Has_Buffer (Ctx)
-       and Valid (Ctx, F_Msg_Type)
-       and Get_Msg_Type (Ctx) = Val
-       and Invalid (Ctx, F_Length)
-       and Invalid (Ctx, F_Body_Bytes)
-       and Valid_Next (Ctx, F_Length)
+       and Valid (Ctx, F_Selected_Identity)
+       and Get_Selected_Identity (Ctx) = Val
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Selected_Identity))
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Msg_Type) = Valid_Next (Ctx, F_Msg_Type)'Old
-       and Field_First (Ctx, F_Msg_Type) = Field_First (Ctx, F_Msg_Type)'Old;
-
-   procedure Set_Length (Ctx : in out Context; Val : RFLX.Handshake_Layer.Length_U24)
-   with
-     Inline_Always,
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Length)
-       and then RFLX.Handshake_Layer.Valid_Length_U24 (RFLX.Handshake_Layer.To_Base_Integer (Val))
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Length) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Length)
-       and then RFLX.Handshake_Layer.Envelope.Field_Condition (Ctx, RFLX.Handshake_Layer.Envelope.F_Length),
-     Post =>
-       Has_Buffer (Ctx)
-       and Valid (Ctx, F_Length)
-       and Get_Length (Ctx) = Val
-       and Invalid (Ctx, F_Body_Bytes)
-       and Valid_Next (Ctx, F_Body_Bytes)
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Length) = Valid_Next (Ctx, F_Length)'Old
-       and Get_Msg_Type (Ctx) = Get_Msg_Type (Ctx)'Old
-       and Field_First (Ctx, F_Length) = Field_First (Ctx, F_Length)'Old
-       and (for all F in Field range F_Msg_Type .. F_Msg_Type =>
-               Context_Cursors_Index (Context_Cursors (Ctx), F) = Context_Cursors_Index (Context_Cursors (Ctx)'Old, F));
+       and Valid_Next (Ctx, F_Selected_Identity) = Valid_Next (Ctx, F_Selected_Identity)'Old
+       and Field_First (Ctx, F_Selected_Identity) = Field_First (Ctx, F_Selected_Identity)'Old;
 
    pragma Warnings (On, "aspect ""*"" not enforced on inlined subprogram ""*""");
-
-   procedure Set_Body_Bytes_Empty (Ctx : in out Context)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Field_Condition (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes) = 0,
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Body_Bytes)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Body_Bytes))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Body_Bytes) = Valid_Next (Ctx, F_Body_Bytes)'Old
-       and Get_Msg_Type (Ctx) = Get_Msg_Type (Ctx)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Field_First (Ctx, F_Body_Bytes) = Field_First (Ctx, F_Body_Bytes)'Old;
-
-   procedure Initialize_Body_Bytes (Ctx : in out Context)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes),
-     Post =>
-       Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Body_Bytes)
-       and then (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Body_Bytes))
-       and then Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and then Ctx.First = Ctx.First'Old
-       and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Body_Bytes) = Valid_Next (Ctx, F_Body_Bytes)'Old
-       and then Get_Msg_Type (Ctx) = Get_Msg_Type (Ctx)'Old
-       and then Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and then Field_First (Ctx, F_Body_Bytes) = Field_First (Ctx, F_Body_Bytes)'Old;
-
-   procedure Set_Body_Bytes (Ctx : in out Context; Data : RFLX_Types.Bytes)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Length (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes, Data'Length)
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes) >= Data'Length * RFLX_Types.Byte'Size
-       and then RFLX.Handshake_Layer.Envelope.Field_Condition (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Body_Bytes)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Body_Bytes))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Body_Bytes) = Valid_Next (Ctx, F_Body_Bytes)'Old
-       and Get_Msg_Type (Ctx) = Get_Msg_Type (Ctx)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Field_First (Ctx, F_Body_Bytes) = Field_First (Ctx, F_Body_Bytes)'Old
-       and Equal (Ctx, F_Body_Bytes, Data);
-
-   generic
-      with procedure Process_Body_Bytes (Body_Bytes : out RFLX_Types.Bytes);
-      with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
-   procedure Generic_Set_Body_Bytes (Ctx : in out Context; Length : RFLX_Types.Length)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Length (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes, Length)
-       and then RFLX_Types.To_Length (RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)) >= Length
-       and then Process_Data_Pre (Length),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Body_Bytes)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Body_Bytes))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Body_Bytes) = Valid_Next (Ctx, F_Body_Bytes)'Old
-       and Get_Msg_Type (Ctx) = Get_Msg_Type (Ctx)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Field_First (Ctx, F_Body_Bytes) = Field_First (Ctx, F_Body_Bytes)'Old;
 
    function Context_Cursor (Ctx : Context; Fld : Field) return Field_Cursor
    with
@@ -622,9 +447,7 @@ is
 
    type Structure is
       record
-         Msg_Type : RFLX.Handshake_Layer.Handshake_Type;
-         Length : RFLX.Handshake_Layer.Length_U24;
-         Body_Bytes : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 16777214);
+         Selected_Identity : RFLX.Pre_Shared_Key.Selected_Identity_Type;
       end record;
 
    function Valid_Structure (Unused_Struct : Structure) return Boolean;
@@ -632,37 +455,27 @@ is
    procedure To_Structure (Ctx : Context; Struct : out Structure)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Well_Formed_Message (Ctx),
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Well_Formed_Message (Ctx),
      Post =>
        Valid_Structure (Struct);
 
-   function Sufficient_Buffer_Length (Ctx : Context; Struct : Structure) return Boolean;
+   function Sufficient_Buffer_Length (Ctx : Context; Unused_Struct : Structure) return Boolean;
 
    procedure To_Context (Struct : Structure; Ctx : in out Context)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Structure (Struct)
-       and then RFLX.Handshake_Layer.Envelope.Sufficient_Buffer_Length (Ctx, Struct),
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Structure (Struct)
+       and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Sufficient_Buffer_Length (Ctx, Struct),
      Post =>
        Has_Buffer (Ctx)
        and Well_Formed_Message (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old;
 
-   function Field_Size_Msg_Type (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Length (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Body_Bytes (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Selected_Identity (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
@@ -716,9 +529,7 @@ private
    pragma Warnings (Off, "unused variable ""*""");
 
    function Valid_Predecessors_Invariant (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return Boolean is
-     ((if Well_Formed (Cursors (F_Msg_Type)) then True)
-      and then (if Well_Formed (Cursors (F_Length)) then Valid (Cursors (F_Msg_Type)))
-      and then (if Well_Formed (Cursors (F_Body_Bytes)) then Valid (Cursors (F_Length))))
+     ((if Well_Formed (Cursors (F_Selected_Identity)) then True))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last),
@@ -735,14 +546,8 @@ private
 
    function Valid_Next_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return Boolean is
      (case Fld is
-          when F_Msg_Type =>
-             True,
-          when F_Length =>
-             (Valid (Cursors (F_Msg_Type))
-              and then True),
-          when F_Body_Bytes =>
-             (Valid (Cursors (F_Length))
-              and then True))
+          when F_Selected_Identity =>
+             True)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -758,12 +563,8 @@ private
 
    function Field_Size_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return RFLX_Types.Bit_Length'Base is
      (case Fld is
-          when F_Msg_Type =>
-             8,
-          when F_Length =>
-             24,
-          when F_Body_Bytes =>
-             RFLX_Types.Bit_Length (Cursors (F_Length).Value) * 8)
+          when F_Selected_Identity =>
+             16)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -782,38 +583,18 @@ private
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
 
-   function Field_First_Msg_Type (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+   function Field_First_Selected_Identity (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
      (First)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Msg_Type);
-
-   function Field_First_Length (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (First + 8)
-   with
-     Pre =>
-       Cursors_Invariant (Cursors, First, Verified_Last)
-       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Length);
-
-   function Field_First_Body_Bytes (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (First + 32)
-   with
-     Pre =>
-       Cursors_Invariant (Cursors, First, Verified_Last)
-       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Body_Bytes);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Selected_Identity);
 
    function Field_First_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return RFLX_Types.Bit_Index'Base is
      (case Fld is
-          when F_Msg_Type =>
-             Field_First_Msg_Type (Cursors, First, Verified_Last, Written_Last),
-          when F_Length =>
-             Field_First_Length (Cursors, First, Verified_Last, Written_Last),
-          when F_Body_Bytes =>
-             Field_First_Body_Bytes (Cursors, First, Verified_Last, Written_Last))
+          when F_Selected_Identity =>
+             Field_First_Selected_Identity (Cursors, First, Verified_Last, Written_Last))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -859,20 +640,10 @@ private
       and then Cursors_Invariant (Cursors, First, Verified_Last)
       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
       and then ((if
-                    Well_Formed (Cursors (F_Msg_Type))
+                    Well_Formed (Cursors (F_Selected_Identity))
                  then
-                    (Cursors (F_Msg_Type).Last - Cursors (F_Msg_Type).First + 1 = 8
-                     and then Cursors (F_Msg_Type).First = First))
-                and then (if
-                             Well_Formed (Cursors (F_Length))
-                          then
-                             (Cursors (F_Length).Last - Cursors (F_Length).First + 1 = 24
-                              and then Cursors (F_Length).First = Cursors (F_Msg_Type).Last + 1))
-                and then (if
-                             Well_Formed (Cursors (F_Body_Bytes))
-                          then
-                             (Cursors (F_Body_Bytes).Last - Cursors (F_Body_Bytes).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Length).Value) * 8
-                              and then Cursors (F_Body_Bytes).First = Cursors (F_Length).Last + 1))))
+                    (Cursors (F_Selected_Identity).Last - Cursors (F_Selected_Identity).First + 1 = 16
+                     and then Cursors (F_Selected_Identity).First = First))))
    with
      Post =>
        True;
@@ -894,11 +665,10 @@ private
 
    function Initialized (Ctx : Context) return Boolean is
      (Ctx.Verified_Last = Ctx.First - 1
-      and then Valid_Next (Ctx, F_Msg_Type)
-      and then RFLX.Handshake_Layer.Envelope.Field_First (Ctx, RFLX.Handshake_Layer.Envelope.F_Msg_Type) rem RFLX_Types.Byte'Size = 1
-      and then Available_Space (Ctx, F_Msg_Type) = Ctx.Last - Ctx.First + 1
-      and then (for all F in Field =>
-                   Invalid (Ctx, F)));
+      and then Valid_Next (Ctx, F_Selected_Identity)
+      and then RFLX.Pre_Shared_Key.Server_Hello_Payload.Field_First (Ctx, RFLX.Pre_Shared_Key.Server_Hello_Payload.F_Selected_Identity) rem RFLX_Types.Byte'Size = 1
+      and then Available_Space (Ctx, F_Selected_Identity) = Ctx.Last - Ctx.First + 1
+      and then Invalid (Ctx, F_Selected_Identity));
 
    function Read (Ctx : Context) return RFLX_Types.Bytes is
      (Ctx.Buffer.all (RFLX_Types.To_Index (Ctx.First) .. RFLX_Types.To_Index (Ctx.Verified_Last)));
@@ -926,16 +696,12 @@ private
 
    function Valid_Value (Fld : Field; Val : RFLX_Types.Base_Integer) return Boolean is
      (case Fld is
-          when F_Msg_Type =>
-             RFLX.Handshake_Layer.Valid_Handshake_Type (Val),
-          when F_Length =>
-             RFLX.Handshake_Layer.Valid_Length_U24 (Val),
-          when F_Body_Bytes =>
-             True);
+          when F_Selected_Identity =>
+             RFLX.Pre_Shared_Key.Valid_Selected_Identity_Type (Val));
 
    function Field_Condition (Ctx : Context; Fld : Field) return Boolean is
      (case Fld is
-          when F_Msg_Type | F_Length | F_Body_Bytes =>
+          when F_Selected_Identity =>
              True);
 
    function Field_Size (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length is
@@ -976,26 +742,23 @@ private
       or Ctx.Cursors (Fld).State = S_Incomplete);
 
    function Well_Formed_Message (Ctx : Context) return Boolean is
-     (Well_Formed (Ctx, F_Body_Bytes));
+     (Valid (Ctx, F_Selected_Identity));
 
    function Valid_Message (Ctx : Context) return Boolean is
-     (Valid (Ctx, F_Body_Bytes));
+     (Valid (Ctx, F_Selected_Identity));
 
    function Incomplete_Message (Ctx : Context) return Boolean is
      ((for some F in Field =>
           Incomplete (Ctx, F)));
 
-   function Get_Msg_Type (Ctx : Context) return RFLX.Handshake_Layer.Handshake_Type is
-     (To_Actual (Ctx.Cursors (F_Msg_Type).Value));
-
-   function Get_Length (Ctx : Context) return RFLX.Handshake_Layer.Length_U24 is
-     (To_Actual (Ctx.Cursors (F_Length).Value));
+   function Get_Selected_Identity (Ctx : Context) return RFLX.Pre_Shared_Key.Selected_Identity_Type is
+     (To_Actual (Ctx.Cursors (F_Selected_Identity).Value));
 
    function Valid_Size (Ctx : Context; Fld : Field; Size : RFLX_Types.Bit_Length) return Boolean is
      (Size = Field_Size (Ctx, Fld))
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld);
+       RFLX.Pre_Shared_Key.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean is
      (Valid_Size (Ctx, Fld, RFLX_Types.To_Bit_Length (Length)));
@@ -1012,16 +775,10 @@ private
    function Valid_Structure (Unused_Struct : Structure) return Boolean is
      (True);
 
-   function Sufficient_Buffer_Length (Ctx : Context; Struct : Structure) return Boolean is
-     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= RFLX_Types.Base_Integer (Struct.Length) * 8 + 32);
+   function Sufficient_Buffer_Length (Ctx : Context; Unused_Struct : Structure) return Boolean is
+     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= 16);
 
-   function Field_Size_Msg_Type (Struct : Structure) return RFLX_Types.Bit_Length is
-     (8);
+   function Field_Size_Selected_Identity (Struct : Structure) return RFLX_Types.Bit_Length is
+     (16);
 
-   function Field_Size_Length (Struct : Structure) return RFLX_Types.Bit_Length is
-     (24);
-
-   function Field_Size_Body_Bytes (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Length) * 8);
-
-end RFLX.Handshake_Layer.Envelope;
+end RFLX.Pre_Shared_Key.Server_Hello_Payload;

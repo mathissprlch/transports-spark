@@ -12,8 +12,10 @@ pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types;
+with RFLX.TLS_Extensions;
+use RFLX.TLS_Extensions;
 
-package RFLX.Hkdf.Label
+package RFLX.Key_Share.Server_Hello_Payload
 with
   SPARK_Mode,
   Always_Terminates
@@ -53,9 +55,9 @@ is
 
    pragma Unevaluated_Use_Of_Old (Allow);
 
-   type Virtual_Field is (F_Initial, F_Length, F_Label_Len, F_Label_Bytes, F_Context_Len, F_Context_Bytes, F_Final);
+   type Virtual_Field is (F_Initial, F_Group, F_Key_Exchange_Len, F_Key_Exchange, F_Final);
 
-   subtype Field is Virtual_Field range F_Length .. F_Context_Bytes;
+   subtype Field is Virtual_Field range F_Group .. F_Key_Exchange;
 
    type Field_Cursor is private;
 
@@ -135,7 +137,7 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and RFLX.Hkdf.Label.Has_Buffer (Ctx),
+       and RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -148,7 +150,7 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and RFLX.Hkdf.Label.Has_Buffer (Ctx)
+       and RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
        and RFLX_Types.To_Index (First) >= Ctx.Buffer_First
        and RFLX_Types.To_Index (Last) <= Ctx.Buffer_Last
        and First <= Last + 1
@@ -166,7 +168,7 @@ is
    procedure Take_Buffer (Ctx : in out Context; Buffer : out RFLX_Types.Bytes_Ptr)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        not Has_Buffer (Ctx)
        and then Buffer /= null
@@ -185,16 +187,16 @@ is
    procedure Copy (Ctx : Context; Buffer : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed_Message (Ctx)
-       and then RFLX.Hkdf.Label.Byte_Size (Ctx) = Buffer'Length;
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed_Message (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Byte_Size (Ctx) = Buffer'Length;
 
    function Read (Ctx : Context) return RFLX_Types.Bytes
    with
      Ghost,
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed_Message (Ctx);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed_Message (Ctx);
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
 
@@ -213,8 +215,8 @@ is
    procedure Generic_Read (Ctx : Context)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed_Message (Ctx)
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed_Message (Ctx)
        and then Pre (Read (Ctx));
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
@@ -235,9 +237,9 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then Offset < RFLX.Hkdf.Label.Buffer_Length (Ctx)
-       and then Pre (RFLX.Hkdf.Label.Buffer_Length (Ctx), Offset),
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then Offset < RFLX.Key_Share.Server_Hello_Payload.Buffer_Length (Ctx)
+       and then Pre (RFLX.Key_Share.Server_Hello_Payload.Buffer_Length (Ctx), Offset),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -250,12 +252,12 @@ is
    function Buffer_Length (Ctx : Context) return RFLX_Types.Length
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx);
 
    function Buffer_Size (Ctx : Context) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx);
 
    function Size (Ctx : Context) return RFLX_Types.Bit_Length
    with
@@ -271,9 +273,9 @@ is
    procedure Data (Ctx : Context; Data : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed_Message (Ctx)
-       and then Data'Length = RFLX.Hkdf.Label.Byte_Size (Ctx);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed_Message (Ctx)
+       and then Data'Length = RFLX.Key_Share.Server_Hello_Payload.Byte_Size (Ctx);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -289,9 +291,9 @@ is
    function Field_Condition (Ctx : Context; Fld : Field) return Boolean
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, Fld)
-       and then RFLX.Hkdf.Label.Sufficient_Space (Ctx, Fld),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld)
+       and then RFLX.Key_Share.Server_Hello_Payload.Sufficient_Space (Ctx, Fld),
      Post =>
        True;
 
@@ -300,10 +302,10 @@ is
    function Field_Size (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld),
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld),
      Post =>
        (case Fld is
-           when F_Label_Bytes | F_Context_Bytes =>
+           when F_Key_Exchange =>
               Field_Size'Result rem RFLX_Types.Byte'Size = 0,
            when others =>
               True);
@@ -313,7 +315,7 @@ is
    function Field_First (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Index
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld),
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld),
      Post =>
        True;
 
@@ -322,11 +324,11 @@ is
    function Field_Last (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld)
-       and then RFLX.Hkdf.Label.Sufficient_Space (Ctx, Fld),
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld)
+       and then RFLX.Key_Share.Server_Hello_Payload.Sufficient_Space (Ctx, Fld),
      Post =>
        (case Fld is
-           when F_Label_Bytes | F_Context_Bytes =>
+           when F_Key_Exchange =>
               Field_Last'Result rem RFLX_Types.Byte'Size = 0,
            when others =>
               True);
@@ -336,23 +338,23 @@ is
    function Available_Space (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld);
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    function Sufficient_Space (Ctx : Context; Fld : Field) return Boolean
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld);
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and RFLX.Hkdf.Label.Valid_Next (Ctx, Fld);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    procedure Verify (Ctx : in out Context; Fld : Field)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -363,7 +365,7 @@ is
    procedure Verify_Message (Ctx : in out Context)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -387,12 +389,12 @@ is
    function Well_Formed_Message (Ctx : Context) return Boolean
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx);
 
    function Valid_Message (Ctx : Context) return Boolean
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -405,85 +407,52 @@ is
 
    pragma Warnings (Off, "precondition is always False");
 
-   function Get_Length (Ctx : Context) return RFLX.Hkdf.Length_U16
+   function Get_Group (Ctx : Context) return RFLX.TLS_Extensions.Named_Group
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid (Ctx, RFLX.Hkdf.Label.F_Length);
+       RFLX.Key_Share.Server_Hello_Payload.Valid (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Group);
 
-   function Get_Label_Len (Ctx : Context) return RFLX.Hkdf.Label_Length
+   function Get_Key_Exchange_Len (Ctx : Context) return RFLX.Key_Share.Key_Exchange_Length
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid (Ctx, RFLX.Hkdf.Label.F_Label_Len);
-
-   function Get_Context_Len (Ctx : Context) return RFLX.Hkdf.Context_Length
-   with
-     Pre =>
-       RFLX.Hkdf.Label.Valid (Ctx, RFLX.Hkdf.Label.F_Context_Len);
+       RFLX.Key_Share.Server_Hello_Payload.Valid (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange_Len);
 
    pragma Warnings (On, "precondition is always False");
 
-   function Get_Label_Bytes (Ctx : Context) return RFLX_Types.Bytes
+   function Get_Key_Exchange (Ctx : Context) return RFLX_Types.Bytes
    with
      Ghost,
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Bytes),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange),
      Post =>
-       Get_Label_Bytes'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Label_Bytes));
+       Get_Key_Exchange'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Key_Exchange));
 
-   function Get_Context_Bytes (Ctx : Context) return RFLX_Types.Bytes
-   with
-     Ghost,
-     Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes),
-     Post =>
-       Get_Context_Bytes'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Context_Bytes));
-
-   procedure Get_Label_Bytes (Ctx : Context; Data : out RFLX_Types.Bytes)
+   procedure Get_Key_Exchange (Ctx : Context; Data : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then Data'Length = RFLX_Types.To_Length (RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then Data'Length = RFLX_Types.To_Length (RFLX.Key_Share.Server_Hello_Payload.Field_Size (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)),
      Post =>
-       Equal (Ctx, F_Label_Bytes, Data);
-
-   procedure Get_Context_Bytes (Ctx : Context; Data : out RFLX_Types.Bytes)
-   with
-     Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then Data'Length = RFLX_Types.To_Length (RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)),
-     Post =>
-       Equal (Ctx, F_Context_Bytes, Data);
+       Equal (Ctx, F_Key_Exchange, Data);
 
    generic
-      with procedure Process_Label_Bytes (Label_Bytes : RFLX_Types.Bytes);
-   procedure Generic_Get_Label_Bytes (Ctx : Context)
+      with procedure Process_Key_Exchange (Key_Exchange : RFLX_Types.Bytes);
+   procedure Generic_Get_Key_Exchange (Ctx : Context)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and RFLX.Hkdf.Label.Present (Ctx, RFLX.Hkdf.Label.F_Label_Bytes);
-
-   generic
-      with procedure Process_Context_Bytes (Context_Bytes : RFLX_Types.Bytes);
-   procedure Generic_Get_Context_Bytes (Ctx : Context)
-   with
-     Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and RFLX.Hkdf.Label.Present (Ctx, RFLX.Hkdf.Label.F_Context_Bytes);
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and RFLX.Key_Share.Server_Hello_Payload.Present (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld),
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld),
      Post =>
        True;
 
@@ -491,260 +460,127 @@ is
 
    pragma Warnings (Off, "aspect ""*"" not enforced on inlined subprogram ""*""");
 
-   procedure Set_Length (Ctx : in out Context; Val : RFLX.Hkdf.Length_U16)
+   procedure Set_Group (Ctx : in out Context; Val : RFLX.TLS_Extensions.Named_Group)
    with
      Inline_Always,
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Length)
-       and then RFLX.Hkdf.Valid_Length_U16 (RFLX.Hkdf.To_Base_Integer (Val))
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Length) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Length)
-       and then RFLX.Hkdf.Label.Field_Condition (Ctx, RFLX.Hkdf.Label.F_Length),
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Group)
+       and then RFLX.TLS_Extensions.Valid_Named_Group (RFLX.TLS_Extensions.To_Base_Integer (Val))
+       and then RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Group) >= RFLX.Key_Share.Server_Hello_Payload.Field_Size (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Group)
+       and then RFLX.Key_Share.Server_Hello_Payload.Field_Condition (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Group),
      Post =>
        Has_Buffer (Ctx)
-       and Valid (Ctx, F_Length)
-       and Get_Length (Ctx) = Val
-       and Invalid (Ctx, F_Label_Len)
-       and Invalid (Ctx, F_Label_Bytes)
-       and Invalid (Ctx, F_Context_Len)
-       and Invalid (Ctx, F_Context_Bytes)
-       and Valid_Next (Ctx, F_Label_Len)
+       and Valid (Ctx, F_Group)
+       and Get_Group (Ctx) = Val
+       and Invalid (Ctx, F_Key_Exchange_Len)
+       and Invalid (Ctx, F_Key_Exchange)
+       and Valid_Next (Ctx, F_Key_Exchange_Len)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Length) = Valid_Next (Ctx, F_Length)'Old
-       and Field_First (Ctx, F_Length) = Field_First (Ctx, F_Length)'Old;
+       and Valid_Next (Ctx, F_Group) = Valid_Next (Ctx, F_Group)'Old
+       and Field_First (Ctx, F_Group) = Field_First (Ctx, F_Group)'Old;
 
-   procedure Set_Label_Len (Ctx : in out Context; Val : RFLX.Hkdf.Label_Length)
+   procedure Set_Key_Exchange_Len (Ctx : in out Context; Val : RFLX.Key_Share.Key_Exchange_Length)
    with
      Inline_Always,
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Len)
-       and then RFLX.Hkdf.Valid_Label_Length (RFLX.Hkdf.To_Base_Integer (Val))
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Len) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Label_Len)
-       and then RFLX.Hkdf.Label.Field_Condition (Ctx, RFLX.Hkdf.Label.F_Label_Len),
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange_Len)
+       and then RFLX.Key_Share.Valid_Key_Exchange_Length (RFLX.Key_Share.To_Base_Integer (Val))
+       and then RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange_Len) >= RFLX.Key_Share.Server_Hello_Payload.Field_Size (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange_Len)
+       and then RFLX.Key_Share.Server_Hello_Payload.Field_Condition (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange_Len),
      Post =>
        Has_Buffer (Ctx)
-       and Valid (Ctx, F_Label_Len)
-       and Get_Label_Len (Ctx) = Val
-       and Invalid (Ctx, F_Label_Bytes)
-       and Invalid (Ctx, F_Context_Len)
-       and Invalid (Ctx, F_Context_Bytes)
-       and Valid_Next (Ctx, F_Label_Bytes)
+       and Valid (Ctx, F_Key_Exchange_Len)
+       and Get_Key_Exchange_Len (Ctx) = Val
+       and Invalid (Ctx, F_Key_Exchange)
+       and Valid_Next (Ctx, F_Key_Exchange)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Label_Len) = Valid_Next (Ctx, F_Label_Len)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Field_First (Ctx, F_Label_Len) = Field_First (Ctx, F_Label_Len)'Old
-       and (for all F in Field range F_Length .. F_Length =>
-               Context_Cursors_Index (Context_Cursors (Ctx), F) = Context_Cursors_Index (Context_Cursors (Ctx)'Old, F));
-
-   procedure Set_Context_Len (Ctx : in out Context; Val : RFLX.Hkdf.Context_Length)
-   with
-     Inline_Always,
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Len)
-       and then RFLX.Hkdf.Valid_Context_Length (RFLX.Hkdf.To_Base_Integer (Val))
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Len) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Len)
-       and then RFLX.Hkdf.Label.Field_Condition (Ctx, RFLX.Hkdf.Label.F_Context_Len),
-     Post =>
-       Has_Buffer (Ctx)
-       and Valid (Ctx, F_Context_Len)
-       and Get_Context_Len (Ctx) = Val
-       and Invalid (Ctx, F_Context_Bytes)
-       and Valid_Next (Ctx, F_Context_Bytes)
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Context_Len) = Valid_Next (Ctx, F_Context_Len)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and Field_First (Ctx, F_Context_Len) = Field_First (Ctx, F_Context_Len)'Old
-       and (for all F in Field range F_Length .. F_Label_Bytes =>
+       and Valid_Next (Ctx, F_Key_Exchange_Len) = Valid_Next (Ctx, F_Key_Exchange_Len)'Old
+       and Get_Group (Ctx) = Get_Group (Ctx)'Old
+       and Field_First (Ctx, F_Key_Exchange_Len) = Field_First (Ctx, F_Key_Exchange_Len)'Old
+       and (for all F in Field range F_Group .. F_Group =>
                Context_Cursors_Index (Context_Cursors (Ctx), F) = Context_Cursors_Index (Context_Cursors (Ctx)'Old, F));
 
    pragma Warnings (On, "aspect ""*"" not enforced on inlined subprogram ""*""");
 
-   procedure Set_Context_Bytes_Empty (Ctx : in out Context)
+   procedure Initialize_Key_Exchange (Ctx : in out Context)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Field_Condition (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Bytes) = 0,
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange) >= RFLX.Key_Share.Server_Hello_Payload.Field_Size (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange),
      Post =>
        Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Context_Bytes)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Context_Bytes))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Context_Bytes) = Valid_Next (Ctx, F_Context_Bytes)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and Get_Context_Len (Ctx) = Get_Context_Len (Ctx)'Old
-       and Field_First (Ctx, F_Context_Bytes) = Field_First (Ctx, F_Context_Bytes)'Old;
-
-   procedure Initialize_Label_Bytes (Ctx : in out Context)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Label_Bytes),
-     Post =>
-       Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Label_Bytes)
-       and then Invalid (Ctx, F_Context_Len)
-       and then Invalid (Ctx, F_Context_Bytes)
-       and then Valid_Next (Ctx, F_Context_Len)
+       and then Well_Formed (Ctx, F_Key_Exchange)
+       and then (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Key_Exchange))
        and then Ctx.Buffer_First = Ctx.Buffer_First'Old
        and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and then Ctx.First = Ctx.First'Old
        and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Label_Bytes) = Valid_Next (Ctx, F_Label_Bytes)'Old
-       and then Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and then Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and then Field_First (Ctx, F_Label_Bytes) = Field_First (Ctx, F_Label_Bytes)'Old;
+       and then Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
+       and then Get_Group (Ctx) = Get_Group (Ctx)'Old
+       and then Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
+       and then Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old;
 
-   procedure Initialize_Context_Bytes (Ctx : in out Context)
+   procedure Set_Key_Exchange (Ctx : in out Context; Data : RFLX_Types.Bytes)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Bytes),
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange) >= RFLX.Key_Share.Server_Hello_Payload.Field_Size (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Length (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange, Data'Length)
+       and then RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange) >= Data'Length * RFLX_Types.Byte'Size
+       and then RFLX.Key_Share.Server_Hello_Payload.Field_Condition (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange),
      Post =>
        Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Context_Bytes)
-       and then (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Context_Bytes))
-       and then Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and then Ctx.First = Ctx.First'Old
-       and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Context_Bytes) = Valid_Next (Ctx, F_Context_Bytes)'Old
-       and then Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and then Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and then Get_Context_Len (Ctx) = Get_Context_Len (Ctx)'Old
-       and then Field_First (Ctx, F_Context_Bytes) = Field_First (Ctx, F_Context_Bytes)'Old;
-
-   procedure Set_Label_Bytes (Ctx : in out Context; Data : RFLX_Types.Bytes)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Label_Bytes, Data'Length)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Bytes) >= Data'Length * RFLX_Types.Byte'Size
-       and then RFLX.Hkdf.Label.Field_Condition (Ctx, RFLX.Hkdf.Label.F_Label_Bytes),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Label_Bytes)
-       and Invalid (Ctx, F_Context_Len)
-       and Invalid (Ctx, F_Context_Bytes)
-       and Valid_Next (Ctx, F_Context_Len)
+       and Well_Formed (Ctx, F_Key_Exchange)
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Key_Exchange))
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Label_Bytes) = Valid_Next (Ctx, F_Label_Bytes)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and Field_First (Ctx, F_Label_Bytes) = Field_First (Ctx, F_Label_Bytes)'Old
-       and Equal (Ctx, F_Label_Bytes, Data);
-
-   procedure Set_Context_Bytes (Ctx : in out Context; Data : RFLX_Types.Bytes)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Context_Bytes, Data'Length)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes) >= Data'Length * RFLX_Types.Byte'Size
-       and then RFLX.Hkdf.Label.Field_Condition (Ctx, RFLX.Hkdf.Label.F_Context_Bytes),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Context_Bytes)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Context_Bytes))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Context_Bytes) = Valid_Next (Ctx, F_Context_Bytes)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and Get_Context_Len (Ctx) = Get_Context_Len (Ctx)'Old
-       and Field_First (Ctx, F_Context_Bytes) = Field_First (Ctx, F_Context_Bytes)'Old
-       and Equal (Ctx, F_Context_Bytes, Data);
+       and Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
+       and Get_Group (Ctx) = Get_Group (Ctx)'Old
+       and Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
+       and Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old
+       and Equal (Ctx, F_Key_Exchange, Data);
 
    generic
-      with procedure Process_Label_Bytes (Label_Bytes : out RFLX_Types.Bytes);
+      with procedure Process_Key_Exchange (Key_Exchange : out RFLX_Types.Bytes);
       with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
-   procedure Generic_Set_Label_Bytes (Ctx : in out Context; Length : RFLX_Types.Length)
+   procedure Generic_Set_Key_Exchange (Ctx : in out Context; Length : RFLX_Types.Length)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Label_Bytes, Length)
-       and then RFLX_Types.To_Length (RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)) >= Length
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange) >= RFLX.Key_Share.Server_Hello_Payload.Field_Size (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Length (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange, Length)
+       and then RFLX_Types.To_Length (RFLX.Key_Share.Server_Hello_Payload.Available_Space (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Key_Exchange)) >= Length
        and then Process_Data_Pre (Length),
      Post =>
        Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Label_Bytes)
-       and Invalid (Ctx, F_Context_Len)
-       and Invalid (Ctx, F_Context_Bytes)
-       and Valid_Next (Ctx, F_Context_Len)
+       and Well_Formed (Ctx, F_Key_Exchange)
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Key_Exchange))
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Label_Bytes) = Valid_Next (Ctx, F_Label_Bytes)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and Field_First (Ctx, F_Label_Bytes) = Field_First (Ctx, F_Label_Bytes)'Old;
-
-   generic
-      with procedure Process_Context_Bytes (Context_Bytes : out RFLX_Types.Bytes);
-      with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
-   procedure Generic_Set_Context_Bytes (Ctx : in out Context; Length : RFLX_Types.Length)
-   with
-     Pre =>
-       not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes) >= RFLX.Hkdf.Label.Field_Size (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Context_Bytes, Length)
-       and then RFLX_Types.To_Length (RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)) >= Length
-       and then Process_Data_Pre (Length),
-     Post =>
-       Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Context_Bytes)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Context_Bytes))
-       and Ctx.Buffer_First = Ctx.Buffer_First'Old
-       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
-       and Ctx.First = Ctx.First'Old
-       and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Context_Bytes) = Valid_Next (Ctx, F_Context_Bytes)'Old
-       and Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and Get_Context_Len (Ctx) = Get_Context_Len (Ctx)'Old
-       and Field_First (Ctx, F_Context_Bytes) = Field_First (Ctx, F_Context_Bytes)'Old;
+       and Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
+       and Get_Group (Ctx) = Get_Group (Ctx)'Old
+       and Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
+       and Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old;
 
    function Context_Cursor (Ctx : Context; Fld : Field) return Field_Cursor
    with
@@ -766,11 +602,9 @@ is
 
    type Structure is
       record
-         Length : RFLX.Hkdf.Length_U16;
-         Label_Len : RFLX.Hkdf.Label_Length;
-         Label_Bytes : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 254);
-         Context_Len : RFLX.Hkdf.Context_Length;
-         Context_Bytes : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 254);
+         Group : RFLX.TLS_Extensions.Named_Group;
+         Key_Exchange_Len : RFLX.Key_Share.Key_Exchange_Length;
+         Key_Exchange : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 65534);
       end record;
 
    function Valid_Structure (Unused_Struct : Structure) return Boolean;
@@ -778,8 +612,8 @@ is
    procedure To_Structure (Ctx : Context; Struct : out Structure)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Well_Formed_Message (Ctx),
+       RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Well_Formed_Message (Ctx),
      Post =>
        Valid_Structure (Struct);
 
@@ -789,36 +623,26 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Structure (Struct)
-       and then RFLX.Hkdf.Label.Sufficient_Buffer_Length (Ctx, Struct),
+       and then RFLX.Key_Share.Server_Hello_Payload.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Server_Hello_Payload.Valid_Structure (Struct)
+       and then RFLX.Key_Share.Server_Hello_Payload.Sufficient_Buffer_Length (Ctx, Struct),
      Post =>
        Has_Buffer (Ctx)
        and Well_Formed_Message (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old;
 
-   function Field_Size_Length (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Group (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
 
-   function Field_Size_Label_Len (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Key_Exchange_Len (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
 
-   function Field_Size_Label_Bytes (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Context_Len (Struct : Structure) return RFLX_Types.Bit_Length
-   with
-     Pre =>
-       Valid_Structure (Struct);
-
-   function Field_Size_Context_Bytes (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Key_Exchange (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
@@ -872,11 +696,9 @@ private
    pragma Warnings (Off, "unused variable ""*""");
 
    function Valid_Predecessors_Invariant (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return Boolean is
-     ((if Well_Formed (Cursors (F_Length)) then True)
-      and then (if Well_Formed (Cursors (F_Label_Len)) then Valid (Cursors (F_Length)))
-      and then (if Well_Formed (Cursors (F_Label_Bytes)) then Valid (Cursors (F_Label_Len)))
-      and then (if Well_Formed (Cursors (F_Context_Len)) then Well_Formed (Cursors (F_Label_Bytes)))
-      and then (if Well_Formed (Cursors (F_Context_Bytes)) then Valid (Cursors (F_Context_Len))))
+     ((if Well_Formed (Cursors (F_Group)) then True)
+      and then (if Well_Formed (Cursors (F_Key_Exchange_Len)) then Valid (Cursors (F_Group)))
+      and then (if Well_Formed (Cursors (F_Key_Exchange)) then Valid (Cursors (F_Key_Exchange_Len))))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last),
@@ -893,19 +715,13 @@ private
 
    function Valid_Next_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return Boolean is
      (case Fld is
-          when F_Length =>
+          when F_Group =>
              True,
-          when F_Label_Len =>
-             (Valid (Cursors (F_Length))
+          when F_Key_Exchange_Len =>
+             (Valid (Cursors (F_Group))
               and then True),
-          when F_Label_Bytes =>
-             (Valid (Cursors (F_Label_Len))
-              and then True),
-          when F_Context_Len =>
-             (Well_Formed (Cursors (F_Label_Bytes))
-              and then True),
-          when F_Context_Bytes =>
-             (Valid (Cursors (F_Context_Len))
+          when F_Key_Exchange =>
+             (Valid (Cursors (F_Key_Exchange_Len))
               and then True))
    with
      Pre =>
@@ -922,16 +738,10 @@ private
 
    function Field_Size_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return RFLX_Types.Bit_Length'Base is
      (case Fld is
-          when F_Length =>
+          when F_Group | F_Key_Exchange_Len =>
              16,
-          when F_Label_Len =>
-             8,
-          when F_Label_Bytes =>
-             RFLX_Types.Bit_Length (Cursors (F_Label_Len).Value) * 8,
-          when F_Context_Len =>
-             8,
-          when F_Context_Bytes =>
-             RFLX_Types.Bit_Length (Cursors (F_Context_Len).Value) * 8)
+          when F_Key_Exchange =>
+             RFLX_Types.Bit_Length (Cursors (F_Key_Exchange_Len).Value) * 8)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -950,58 +760,38 @@ private
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
 
-   function Field_First_Length (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+   function Field_First_Group (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
      (First)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Length);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Group);
 
-   function Field_First_Label_Len (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+   function Field_First_Key_Exchange_Len (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
      (First + 16)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Label_Len);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Key_Exchange_Len);
 
-   function Field_First_Label_Bytes (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (First + 24)
+   function Field_First_Key_Exchange (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+     (First + 32)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Label_Bytes);
-
-   function Field_First_Context_Len (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (Field_First_Label_Bytes (Cursors, First, Verified_Last, Written_Last) + Field_Size_Internal (Cursors, First, Verified_Last, Written_Last, F_Label_Bytes))
-   with
-     Pre =>
-       Cursors_Invariant (Cursors, First, Verified_Last)
-       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Context_Len);
-
-   function Field_First_Context_Bytes (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (Field_First_Label_Bytes (Cursors, First, Verified_Last, Written_Last) + Field_Size_Internal (Cursors, First, Verified_Last, Written_Last, F_Label_Bytes) + 8)
-   with
-     Pre =>
-       Cursors_Invariant (Cursors, First, Verified_Last)
-       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Context_Bytes);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Key_Exchange);
 
    function Field_First_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return RFLX_Types.Bit_Index'Base is
      (case Fld is
-          when F_Length =>
-             Field_First_Length (Cursors, First, Verified_Last, Written_Last),
-          when F_Label_Len =>
-             Field_First_Label_Len (Cursors, First, Verified_Last, Written_Last),
-          when F_Label_Bytes =>
-             Field_First_Label_Bytes (Cursors, First, Verified_Last, Written_Last),
-          when F_Context_Len =>
-             Field_First_Context_Len (Cursors, First, Verified_Last, Written_Last),
-          when F_Context_Bytes =>
-             Field_First_Context_Bytes (Cursors, First, Verified_Last, Written_Last))
+          when F_Group =>
+             Field_First_Group (Cursors, First, Verified_Last, Written_Last),
+          when F_Key_Exchange_Len =>
+             Field_First_Key_Exchange_Len (Cursors, First, Verified_Last, Written_Last),
+          when F_Key_Exchange =>
+             Field_First_Key_Exchange (Cursors, First, Verified_Last, Written_Last))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -1047,30 +837,20 @@ private
       and then Cursors_Invariant (Cursors, First, Verified_Last)
       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
       and then ((if
-                    Well_Formed (Cursors (F_Length))
+                    Well_Formed (Cursors (F_Group))
                  then
-                    (Cursors (F_Length).Last - Cursors (F_Length).First + 1 = 16
-                     and then Cursors (F_Length).First = First))
+                    (Cursors (F_Group).Last - Cursors (F_Group).First + 1 = 16
+                     and then Cursors (F_Group).First = First))
                 and then (if
-                             Well_Formed (Cursors (F_Label_Len))
+                             Well_Formed (Cursors (F_Key_Exchange_Len))
                           then
-                             (Cursors (F_Label_Len).Last - Cursors (F_Label_Len).First + 1 = 8
-                              and then Cursors (F_Label_Len).First = Cursors (F_Length).Last + 1))
+                             (Cursors (F_Key_Exchange_Len).Last - Cursors (F_Key_Exchange_Len).First + 1 = 16
+                              and then Cursors (F_Key_Exchange_Len).First = Cursors (F_Group).Last + 1))
                 and then (if
-                             Well_Formed (Cursors (F_Label_Bytes))
+                             Well_Formed (Cursors (F_Key_Exchange))
                           then
-                             (Cursors (F_Label_Bytes).Last - Cursors (F_Label_Bytes).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Label_Len).Value) * 8
-                              and then Cursors (F_Label_Bytes).First = Cursors (F_Label_Len).Last + 1))
-                and then (if
-                             Well_Formed (Cursors (F_Context_Len))
-                          then
-                             (Cursors (F_Context_Len).Last - Cursors (F_Context_Len).First + 1 = 8
-                              and then Cursors (F_Context_Len).First = Cursors (F_Label_Bytes).Last + 1))
-                and then (if
-                             Well_Formed (Cursors (F_Context_Bytes))
-                          then
-                             (Cursors (F_Context_Bytes).Last - Cursors (F_Context_Bytes).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Context_Len).Value) * 8
-                              and then Cursors (F_Context_Bytes).First = Cursors (F_Context_Len).Last + 1))))
+                             (Cursors (F_Key_Exchange).Last - Cursors (F_Key_Exchange).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Key_Exchange_Len).Value) * 8
+                              and then Cursors (F_Key_Exchange).First = Cursors (F_Key_Exchange_Len).Last + 1))))
    with
      Post =>
        True;
@@ -1092,9 +872,9 @@ private
 
    function Initialized (Ctx : Context) return Boolean is
      (Ctx.Verified_Last = Ctx.First - 1
-      and then Valid_Next (Ctx, F_Length)
-      and then RFLX.Hkdf.Label.Field_First (Ctx, RFLX.Hkdf.Label.F_Length) rem RFLX_Types.Byte'Size = 1
-      and then Available_Space (Ctx, F_Length) = Ctx.Last - Ctx.First + 1
+      and then Valid_Next (Ctx, F_Group)
+      and then RFLX.Key_Share.Server_Hello_Payload.Field_First (Ctx, RFLX.Key_Share.Server_Hello_Payload.F_Group) rem RFLX_Types.Byte'Size = 1
+      and then Available_Space (Ctx, F_Group) = Ctx.Last - Ctx.First + 1
       and then (for all F in Field =>
                    Invalid (Ctx, F)));
 
@@ -1124,20 +904,16 @@ private
 
    function Valid_Value (Fld : Field; Val : RFLX_Types.Base_Integer) return Boolean is
      (case Fld is
-          when F_Length =>
-             RFLX.Hkdf.Valid_Length_U16 (Val),
-          when F_Label_Len =>
-             RFLX.Hkdf.Valid_Label_Length (Val),
-          when F_Label_Bytes =>
-             True,
-          when F_Context_Len =>
-             RFLX.Hkdf.Valid_Context_Length (Val),
-          when F_Context_Bytes =>
+          when F_Group =>
+             RFLX.TLS_Extensions.Valid_Named_Group (Val),
+          when F_Key_Exchange_Len =>
+             RFLX.Key_Share.Valid_Key_Exchange_Length (Val),
+          when F_Key_Exchange =>
              True);
 
    function Field_Condition (Ctx : Context; Fld : Field) return Boolean is
      (case Fld is
-          when F_Length | F_Label_Len | F_Label_Bytes | F_Context_Len | F_Context_Bytes =>
+          when F_Group | F_Key_Exchange_Len | F_Key_Exchange =>
              True);
 
    function Field_Size (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length is
@@ -1178,29 +954,26 @@ private
       or Ctx.Cursors (Fld).State = S_Incomplete);
 
    function Well_Formed_Message (Ctx : Context) return Boolean is
-     (Well_Formed (Ctx, F_Context_Bytes));
+     (Well_Formed (Ctx, F_Key_Exchange));
 
    function Valid_Message (Ctx : Context) return Boolean is
-     (Valid (Ctx, F_Context_Bytes));
+     (Valid (Ctx, F_Key_Exchange));
 
    function Incomplete_Message (Ctx : Context) return Boolean is
      ((for some F in Field =>
           Incomplete (Ctx, F)));
 
-   function Get_Length (Ctx : Context) return RFLX.Hkdf.Length_U16 is
-     (To_Actual (Ctx.Cursors (F_Length).Value));
+   function Get_Group (Ctx : Context) return RFLX.TLS_Extensions.Named_Group is
+     (To_Actual (Ctx.Cursors (F_Group).Value));
 
-   function Get_Label_Len (Ctx : Context) return RFLX.Hkdf.Label_Length is
-     (To_Actual (Ctx.Cursors (F_Label_Len).Value));
-
-   function Get_Context_Len (Ctx : Context) return RFLX.Hkdf.Context_Length is
-     (To_Actual (Ctx.Cursors (F_Context_Len).Value));
+   function Get_Key_Exchange_Len (Ctx : Context) return RFLX.Key_Share.Key_Exchange_Length is
+     (To_Actual (Ctx.Cursors (F_Key_Exchange_Len).Value));
 
    function Valid_Size (Ctx : Context; Fld : Field; Size : RFLX_Types.Bit_Length) return Boolean is
      (Size = Field_Size (Ctx, Fld))
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld);
+       RFLX.Key_Share.Server_Hello_Payload.Valid_Next (Ctx, Fld);
 
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean is
      (Valid_Size (Ctx, Fld, RFLX_Types.To_Bit_Length (Length)));
@@ -1218,21 +991,15 @@ private
      (True);
 
    function Sufficient_Buffer_Length (Ctx : Context; Struct : Structure) return Boolean is
-     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= RFLX_Types.Base_Integer (Struct.Context_Len) * 8 + RFLX_Types.Base_Integer (Struct.Label_Len) * 8 + 32);
+     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= RFLX_Types.Base_Integer (Struct.Key_Exchange_Len) * 8 + 32);
 
-   function Field_Size_Length (Struct : Structure) return RFLX_Types.Bit_Length is
+   function Field_Size_Group (Struct : Structure) return RFLX_Types.Bit_Length is
      (16);
 
-   function Field_Size_Label_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (8);
+   function Field_Size_Key_Exchange_Len (Struct : Structure) return RFLX_Types.Bit_Length is
+     (16);
 
-   function Field_Size_Label_Bytes (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Label_Len) * 8);
+   function Field_Size_Key_Exchange (Struct : Structure) return RFLX_Types.Bit_Length is
+     (RFLX_Types.Bit_Length (Struct.Key_Exchange_Len) * 8);
 
-   function Field_Size_Context_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (8);
-
-   function Field_Size_Context_Bytes (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Context_Len) * 8);
-
-end RFLX.Hkdf.Label;
+end RFLX.Key_Share.Server_Hello_Payload;

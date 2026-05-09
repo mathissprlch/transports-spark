@@ -13,7 +13,7 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types.Operations;
 
-package body RFLX.Handshake_Layer.Envelope
+package body RFLX.Key_Share.Key_Share_Entry
 with
   SPARK_Mode
 is
@@ -79,11 +79,11 @@ is
 
    function Invalid_Successor (Ctx : Context; Fld : Field) return Boolean is
      (case Fld is
-          when F_Msg_Type =>
-             Invalid (Ctx.Cursors (F_Length)),
-          when F_Length =>
-             Invalid (Ctx.Cursors (F_Body_Bytes)),
-          when F_Body_Bytes =>
+          when F_Group =>
+             Invalid (Ctx.Cursors (F_Key_Exchange_Len)),
+          when F_Key_Exchange_Len =>
+             Invalid (Ctx.Cursors (F_Key_Exchange)),
+          when F_Key_Exchange =>
              True);
 
    function Sufficient_Buffer_Length (Ctx : Context; Fld : Field) return Boolean is
@@ -93,13 +93,13 @@ is
       and Field_First (Ctx, Fld) + Field_Size (Ctx, Fld) - 1 <= Ctx.Written_Last)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld);
+       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
+       and RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld);
 
    function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean is
      (Sufficient_Buffer_Length (Ctx, Fld)
       and then (case Fld is
-                   when F_Body_Bytes =>
+                   when F_Key_Exchange =>
                       Data'Length = RFLX_Types.To_Index (Field_Last (Ctx, Fld)) - RFLX_Types.To_Index (Field_First (Ctx, Fld)) + 1
                       and then (for all I in RFLX_Types.Index range RFLX_Types.To_Index (Field_First (Ctx, Fld)) .. RFLX_Types.To_Index (Field_Last (Ctx, Fld)) =>
                                    Ctx.Buffer.all (I) = Data (Data'First + (I - RFLX_Types.To_Index (Field_First (Ctx, Fld))))),
@@ -109,7 +109,7 @@ is
    procedure Reset_Dependent_Fields (Ctx : in out Context; Fld : Field)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld),
+       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld),
      Post =>
        Valid_Next (Ctx, Fld)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -133,15 +133,15 @@ is
    end Reset_Dependent_Fields;
 
    function Composite_Field (Fld : Field) return Boolean is
-     (Fld in F_Body_Bytes);
+     (Fld in F_Key_Exchange);
 
    function Get (Ctx : Context; Fld : Field) return RFLX_Types.Base_Integer
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld)
-       and then RFLX.Handshake_Layer.Envelope.Sufficient_Buffer_Length (Ctx, Fld)
-       and then not RFLX.Handshake_Layer.Envelope.Composite_Field (Fld)
+       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld)
+       and then RFLX.Key_Share.Key_Share_Entry.Sufficient_Buffer_Length (Ctx, Fld)
+       and then not RFLX.Key_Share.Key_Share_Entry.Composite_Field (Fld)
    is
       First : constant RFLX_Types.Bit_Index := Field_First (Ctx, Fld);
       Last : constant RFLX_Types.Bit_Index := Field_Last (Ctx, Fld);
@@ -149,10 +149,8 @@ is
       Buffer_Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Last);
       Offset : constant RFLX_Types.Offset := RFLX_Types.Offset ((RFLX_Types.Byte'Size - Last mod RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size);
       Size : constant Positive := (case Fld is
-          when F_Msg_Type =>
-             8,
-          when F_Length =>
-             24,
+          when F_Group | F_Key_Exchange_Len =>
+             16,
           when others =>
              Positive'Last);
       Byte_Order : constant RFLX_Types.Byte_Order := RFLX_Types.High_Order_First;
@@ -173,7 +171,7 @@ is
                Valid_Value (Fld, Value)
                and then Field_Condition (Ctx, Fld)
             then
-               pragma Assert (if Fld = F_Body_Bytes then Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0);
+               pragma Assert (if Fld = F_Key_Exchange then Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0);
                pragma Assert ((((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size = 0);
                Ctx.Verified_Last := ((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size;
                pragma Assert (Field_Last (Ctx, Fld) <= Ctx.Verified_Last);
@@ -203,38 +201,38 @@ is
       end loop;
    end Verify_Message;
 
-   function Get_Body_Bytes (Ctx : Context) return RFLX_Types.Bytes is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Body_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Body_Bytes).Last);
+   function Get_Key_Exchange (Ctx : Context) return RFLX_Types.Bytes is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Key_Exchange).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Key_Exchange).Last);
    begin
       return Ctx.Buffer.all (First .. Last);
-   end Get_Body_Bytes;
+   end Get_Key_Exchange;
 
-   procedure Get_Body_Bytes (Ctx : Context; Data : out RFLX_Types.Bytes) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Body_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Body_Bytes).Last);
+   procedure Get_Key_Exchange (Ctx : Context; Data : out RFLX_Types.Bytes) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Key_Exchange).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Key_Exchange).Last);
    begin
       Data := (others => RFLX_Types.Byte'First);
       Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
-   end Get_Body_Bytes;
+   end Get_Key_Exchange;
 
-   procedure Generic_Get_Body_Bytes (Ctx : Context) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Body_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Body_Bytes).Last);
+   procedure Generic_Get_Key_Exchange (Ctx : Context) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Key_Exchange).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Key_Exchange).Last);
    begin
-      Process_Body_Bytes (Ctx.Buffer.all (First .. Last));
-   end Generic_Get_Body_Bytes;
+      Process_Key_Exchange (Ctx.Buffer.all (First .. Last));
+   end Generic_Get_Key_Exchange;
 
    procedure Set (Ctx : in out Context; Fld : Field; Val : RFLX_Types.Base_Integer; Size : RFLX_Types.Bit_Length; State_Valid : Boolean; Buffer_First : out RFLX_Types.Index; Buffer_Last : out RFLX_Types.Index; Offset : out RFLX_Types.Offset)
    with
      Pre =>
-       RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Value (Fld, Val)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Size (Ctx, Fld, Size)
-       and then Size <= RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, Fld)
+       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Value (Fld, Val)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Size (Ctx, Fld, Size)
+       and then Size <= RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, Fld)
        and then (if
-                    RFLX.Handshake_Layer.Envelope.Composite_Field (Fld)
+                    RFLX.Key_Share.Key_Share_Entry.Composite_Field (Fld)
                  then
                     Size mod RFLX_Types.Byte'Size = 0
                  else
@@ -259,7 +257,7 @@ is
        and then (if State_Valid and Size > 0 then Valid (Ctx, Fld) else Well_Formed (Ctx, Fld))
        and then (Ctx.Cursors (Fld).Value = Val
                  and then (if
-                              Fld in F_Body_Bytes
+                              Fld in F_Key_Exchange
                               and then Well_Formed_Message (Ctx)
                            then
                               Message_Last (Ctx) = Field_Last (Ctx, Fld)))
@@ -291,21 +289,21 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, Fld)
-       and then Fld in F_Msg_Type | F_Length
-       and then RFLX.Handshake_Layer.Envelope.Valid_Value (Fld, Val)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Size (Ctx, Fld, RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, Fld))
-       and then RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, Fld) >= RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, Fld)
-       and then RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, Fld) in 1 .. RFLX_Types.Base_Integer'Size
-       and then RFLX_Types.Fits_Into (Val, Natural (RFLX.Handshake_Layer.Envelope.Field_Size (Ctx, Fld))),
+       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld)
+       and then Fld in F_Group | F_Key_Exchange_Len
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Value (Fld, Val)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Size (Ctx, Fld, RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, Fld))
+       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, Fld) >= RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, Fld)
+       and then RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, Fld) in 1 .. RFLX_Types.Base_Integer'Size
+       and then RFLX_Types.Fits_Into (Val, Natural (RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, Fld))),
      Post =>
        Has_Buffer (Ctx)
        and Valid (Ctx, Fld)
        and Invalid_Successor (Ctx, Fld)
        and (Ctx.Cursors (Fld).Value = Val
             and then (if
-                         Fld in F_Body_Bytes
+                         Fld in F_Key_Exchange
                          and then Well_Formed_Message (Ctx)
                       then
                          Message_Last (Ctx) = Field_Last (Ctx, Fld)))
@@ -327,95 +325,88 @@ is
       RFLX_Types.Operations.Insert (Val, Ctx.Buffer.all, Buffer_First, Buffer_Last, Offset, Positive (Size), RFLX_Types.High_Order_First);
    end Set_Scalar;
 
-   procedure Set_Msg_Type (Ctx : in out Context; Val : RFLX.Handshake_Layer.Handshake_Type) is
+   procedure Set_Group (Ctx : in out Context; Val : RFLX.TLS_Extensions.Named_Group) is
    begin
-      Set_Scalar (Ctx, F_Msg_Type, RFLX.Handshake_Layer.To_Base_Integer (Val));
-   end Set_Msg_Type;
+      Set_Scalar (Ctx, F_Group, RFLX.TLS_Extensions.To_Base_Integer (Val));
+   end Set_Group;
 
-   procedure Set_Length (Ctx : in out Context; Val : RFLX.Handshake_Layer.Length_U24) is
+   procedure Set_Key_Exchange_Len (Ctx : in out Context; Val : RFLX.Key_Share.Key_Exchange_Length) is
    begin
-      Set_Scalar (Ctx, F_Length, RFLX.Handshake_Layer.To_Base_Integer (Val));
-   end Set_Length;
+      Set_Scalar (Ctx, F_Key_Exchange_Len, RFLX.Key_Share.To_Base_Integer (Val));
+   end Set_Key_Exchange_Len;
 
-   procedure Set_Body_Bytes_Empty (Ctx : in out Context) is
-      Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
-      Unused_Offset : RFLX_Types.Offset;
-   begin
-      Set (Ctx, F_Body_Bytes, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
-   end Set_Body_Bytes_Empty;
-
-   procedure Initialize_Body_Bytes_Private (Ctx : in out Context; Length : RFLX_Types.Length)
+   procedure Initialize_Key_Exchange_Private (Ctx : in out Context; Length : RFLX_Types.Length)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Handshake_Layer.Envelope.Has_Buffer (Ctx)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Next (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)
-       and then RFLX.Handshake_Layer.Envelope.Valid_Length (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes, Length)
-       and then RFLX_Types.To_Length (RFLX.Handshake_Layer.Envelope.Available_Space (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes)) >= Length,
+       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
+       and then RFLX.Key_Share.Key_Share_Entry.Valid_Length (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange, Length)
+       and then RFLX_Types.To_Length (RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)) >= Length,
      Post =>
        Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Body_Bytes)
-       and then Field_Size (Ctx, F_Body_Bytes) = RFLX_Types.To_Bit_Length (Length)
-       and then Ctx.Verified_Last = Field_Last (Ctx, F_Body_Bytes)
+       and then Well_Formed (Ctx, F_Key_Exchange)
+       and then Field_Size (Ctx, F_Key_Exchange) = RFLX_Types.To_Bit_Length (Length)
+       and then Ctx.Verified_Last = Field_Last (Ctx, F_Key_Exchange)
        and then Ctx.Buffer_First = Ctx.Buffer_First'Old
        and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and then Ctx.First = Ctx.First'Old
        and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Body_Bytes) = Valid_Next (Ctx, F_Body_Bytes)'Old
-       and then Get_Msg_Type (Ctx) = Get_Msg_Type (Ctx)'Old
-       and then Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and then Field_First (Ctx, F_Body_Bytes) = Field_First (Ctx, F_Body_Bytes)'Old
+       and then Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
+       and then Get_Group (Ctx) = Get_Group (Ctx)'Old
+       and then Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
+       and then Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old
    is
-      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Body_Bytes);
-      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Body_Bytes) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Key_Exchange);
+      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Key_Exchange) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
    begin
       pragma Assert (Last mod RFLX_Types.Byte'Size = 0);
-      Reset_Dependent_Fields (Ctx, F_Body_Bytes);
+      Reset_Dependent_Fields (Ctx, F_Key_Exchange);
       pragma Warnings (Off, "attribute Update is an obsolescent feature");
       Ctx := Ctx'Update (Verified_Last => Last, Written_Last => Last);
       pragma Warnings (On, "attribute Update is an obsolescent feature");
-      Ctx.Cursors (F_Body_Bytes) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
-   end Initialize_Body_Bytes_Private;
+      Ctx.Cursors (F_Key_Exchange) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
+   end Initialize_Key_Exchange_Private;
 
-   procedure Initialize_Body_Bytes (Ctx : in out Context) is
+   procedure Initialize_Key_Exchange (Ctx : in out Context) is
    begin
-      Initialize_Body_Bytes_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Body_Bytes)));
-   end Initialize_Body_Bytes;
+      Initialize_Key_Exchange_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Key_Exchange)));
+   end Initialize_Key_Exchange;
 
-   procedure Set_Body_Bytes (Ctx : in out Context; Data : RFLX_Types.Bytes) is
-      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Body_Bytes));
+   procedure Set_Key_Exchange (Ctx : in out Context; Data : RFLX_Types.Bytes) is
+      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Key_Exchange));
       Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
    begin
-      Initialize_Body_Bytes_Private (Ctx, Data'Length);
-      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Body_Bytes)));
+      Initialize_Key_Exchange_Private (Ctx, Data'Length);
+      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Key_Exchange)));
       Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
-      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Body_Bytes)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Body_Bytes))) = Data);
-   end Set_Body_Bytes;
+      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Key_Exchange)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Key_Exchange))) = Data);
+   end Set_Key_Exchange;
 
-   procedure Generic_Set_Body_Bytes (Ctx : in out Context; Length : RFLX_Types.Length) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Body_Bytes));
+   procedure Generic_Set_Key_Exchange (Ctx : in out Context; Length : RFLX_Types.Length) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Key_Exchange));
    begin
       if Length > 0 then
-         Process_Body_Bytes (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
+         Process_Key_Exchange (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
       end if;
-      pragma Assert (RFLX.Handshake_Layer.Envelope.Valid_Length (Ctx, RFLX.Handshake_Layer.Envelope.F_Body_Bytes, Length));
-      Initialize_Body_Bytes_Private (Ctx, Length);
-   end Generic_Set_Body_Bytes;
+      pragma Assert (RFLX.Key_Share.Key_Share_Entry.Valid_Length (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange, Length));
+      Initialize_Key_Exchange_Private (Ctx, Length);
+   end Generic_Set_Key_Exchange;
 
    procedure To_Structure (Ctx : Context; Struct : out Structure) is
    begin
-      Struct.Msg_Type := Get_Msg_Type (Ctx);
-      Struct.Length := Get_Length (Ctx);
-      Struct.Body_Bytes := (others => 0);
-      Get_Body_Bytes (Ctx, Struct.Body_Bytes (Struct.Body_Bytes'First .. Struct.Body_Bytes'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Body_Bytes)) + 1) - 2));
+      Struct.Group := Get_Group (Ctx);
+      Struct.Key_Exchange_Len := Get_Key_Exchange_Len (Ctx);
+      Struct.Key_Exchange := (others => 0);
+      Get_Key_Exchange (Ctx, Struct.Key_Exchange (Struct.Key_Exchange'First .. Struct.Key_Exchange'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Key_Exchange)) + 1) - 2));
    end To_Structure;
 
    procedure To_Context (Struct : Structure; Ctx : in out Context) is
    begin
       Reset (Ctx);
-      Set_Msg_Type (Ctx, Struct.Msg_Type);
-      Set_Length (Ctx, Struct.Length);
-      Set_Body_Bytes (Ctx, Struct.Body_Bytes (Struct.Body_Bytes'First .. Struct.Body_Bytes'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Length) * 8) + 1) - 2));
+      Set_Group (Ctx, Struct.Group);
+      Set_Key_Exchange_Len (Ctx, Struct.Key_Exchange_Len);
+      Set_Key_Exchange (Ctx, Struct.Key_Exchange (Struct.Key_Exchange'First .. Struct.Key_Exchange'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Key_Exchange_Len) * 8) + 1) - 2));
    end To_Context;
 
-end RFLX.Handshake_Layer.Envelope;
+end RFLX.Key_Share.Key_Share_Entry;
