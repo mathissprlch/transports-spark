@@ -200,7 +200,7 @@ is
             Truncated_Client_Hello => Ch_Hs (1 .. 4 + T_Last),
             Out_Binder             => Binder,
             Is_Resumption          => D.Is_Resumption);
-         Ch_Body (T_Last + 4 .. T_Last + 35) := Binder;  -- offset by binders_total_len(2)+binder_len(1)+1
+         Ch_Body (T_Last + 4 .. T_Last + 35) := Binder (1 .. 32);  -- offset by binders_total_len(2)+binder_len(1)+1
          Encode_Hs_Message
            (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
             Ch_Hs, Ch_Hs_Last);

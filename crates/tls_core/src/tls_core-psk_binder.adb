@@ -1,7 +1,11 @@
 with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
+with Tls_Core.Hkdf_Sha384;
 with Tls_Core.Hmac_Sha256;
+with Tls_Core.Hmac_Sha384;
 with Tls_Core.Key_Schedule;
+with Tls_Core.Key_Schedule_Sha384;
+with Tls_Core.Sha384;
 
 package body Tls_Core.Psk_Binder
 with SPARK_Mode
@@ -10,29 +14,22 @@ is
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
+   use type Tls_Core.Suites.Cipher_Suite_Id;
 
-   procedure Hkdf_Expand_Label_Sha256
-     is new Tls_Core.Hkdf.Expand_Label
-       (Hash_Length      => Tls_Core.Sha256.Hash_Length,
-        Max_Info         => 512,
-        Spec_Hmac_Expand => Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand,
-        Hmac_Expand      => Tls_Core.Hkdf_Sha256.Hmac_Expand);
+   procedure Exp256 is new Tls_Core.Hkdf.Expand_Label
+     (Tls_Core.Sha256.Hash_Length, 512,
+      Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand, Tls_Core.Hkdf_Sha256.Hmac_Expand);
 
-   --  Labels per RFC 8446 §7.1 — bytes only, the "tls13 " prefix
-   --  is added by Hkdf.Expand_Label.
+   procedure Exp384 is new Tls_Core.Hkdf.Expand_Label
+     (Tls_Core.Sha384.Hash_Length, 512,
+      Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand, Tls_Core.Hkdf_Sha384.Hmac_Expand);
+
    Ext_Binder_Label : constant Octet_Array (1 .. 10) :=
      (16#65#, 16#78#, 16#74#, 16#20#, 16#62#, 16#69#,
-      16#6E#, 16#64#, 16#65#, 16#72#);  --  "ext binder"
-
-   --  RFC 8446 §4.2.11.2: resumption-PSK binder uses a different
-   --  binder_key label.  Server-side derivation of the same secret
-   --  picks the same label based on whether the offered PSK is a
-   --  resumption ticket (which our v0.5 server doesn't issue, so
-   --  the corresponding server-side path stays "ext binder").
+      16#6E#, 16#64#, 16#65#, 16#72#);
    Res_Binder_Label : constant Octet_Array (1 .. 10) :=
      (16#72#, 16#65#, 16#73#, 16#20#, 16#62#, 16#69#,
-      16#6E#, 16#64#, 16#65#, 16#72#);  --  "res binder"
-
+      16#6E#, 16#64#, 16#65#, 16#72#);
    Finished_Label : constant Octet_Array (1 .. 8) :=
      (16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#);
 
@@ -40,58 +37,46 @@ is
      (PSK                    : Octet_Array;
       Truncated_Client_Hello : Octet_Array;
       Out_Binder             : out Binder_Bytes;
-      Is_Resumption          : Boolean := False)
+      Is_Resumption          : Boolean := False;
+      Suite                  : Tls_Core.Suites.Cipher_Suite_Id :=
+        Tls_Core.Suites.Chacha20_Poly1305_Sha256)
    is
-      Zero32       : constant Octet_Array (1 .. 32) := (others => 0);
-      Empty        : constant Octet_Array (1 .. 0)  := (others => 0);
-      Early_Secret : Tls_Core.Key_Schedule.Secret;
-      Binder_Key   : Tls_Core.Key_Schedule.Secret;
-      Finished_Key : Tls_Core.Key_Schedule.Secret;
-      Partial_Hash : Tls_Core.Sha256.Digest;
+      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Label : constant Octet_Array (1 .. 10) :=
+        (if Is_Resumption then Res_Binder_Label else Ext_Binder_Label);
    begin
-      --  Early_Secret = HKDF-Extract(0_32, PSK).
-      Tls_Core.Key_Schedule.Extract
-        (Salt    => Zero32,
-         IKM     => PSK,
-         Out_PRK => Early_Secret);
-
-      --  binder_key = Derive-Secret(Early_Secret, "ext binder", "")
-      --  per RFC 8446 §7.1.  Derive-Secret hashes its Messages
-      --  argument first, so for empty Messages the context fed to
-      --  HKDF-Expand-Label is SHA-256("") (the canonical 32-byte
-      --  empty-string digest), NOT a 0-byte literal context.
-      --  Calling Hkdf_Expand_Label_Sha256 directly with Context =>
-      --  Empty (0 bytes) produces a different binder_key than
-      --  spec-conformant peers (openssl / rustls / Go) compute.
-      if Is_Resumption then
-         Tls_Core.Key_Schedule.Derive_Secret
-           (Secret_In  => Early_Secret,
-            Label      => Res_Binder_Label,
-            Messages   => Empty,
-            Out_Secret => Binder_Key);
+      Out_Binder := (others => 0);
+      if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
+         declare
+            Z48 : constant Octet_Array (1 .. 48) := (others => 0);
+            P48 : Tls_Core.Key_Schedule_Sha384.Secret := (others => 0);
+            ES, BK, FK : Tls_Core.Key_Schedule_Sha384.Secret;
+            PH : Tls_Core.Sha384.Digest;
+            R  : Tls_Core.Sha384.Digest;
+         begin
+            P48 (1 .. PSK'Length) := PSK;
+            Tls_Core.Key_Schedule_Sha384.Extract (Salt => Z48, IKM => P48, Out_PRK => ES);
+            Tls_Core.Key_Schedule_Sha384.Derive_Secret
+              (Secret_In => ES, Label => Label, Messages => Empty, Out_Secret => BK);
+            Exp384 (Secret => BK, Label => Finished_Label, Context => Empty, Output => FK);
+            Tls_Core.Sha384.Hash (Truncated_Client_Hello, PH);
+            Tls_Core.Hmac_Sha384.Compute (Key => FK, Message => PH, Out_Tag => R);
+            Out_Binder (1 .. 48) := R;
+         end;
       else
-         Tls_Core.Key_Schedule.Derive_Secret
-           (Secret_In  => Early_Secret,
-            Label      => Ext_Binder_Label,
-            Messages   => Empty,
-            Out_Secret => Binder_Key);
+         declare
+            Z32 : constant Octet_Array (1 .. 32) := (others => 0);
+            ES, BK, FK : Tls_Core.Key_Schedule.Secret;
+            PH : Tls_Core.Sha256.Digest;
+         begin
+            Tls_Core.Key_Schedule.Extract (Salt => Z32, IKM => PSK, Out_PRK => ES);
+            Tls_Core.Key_Schedule.Derive_Secret
+              (Secret_In => ES, Label => Label, Messages => Empty, Out_Secret => BK);
+            Exp256 (Secret => BK, Label => Finished_Label, Context => Empty, Output => FK);
+            Tls_Core.Sha256.Hash (Truncated_Client_Hello, PH);
+            Tls_Core.Hmac_Sha256.Compute (Key => FK, Message => PH, Out_Tag => Out_Binder (1 .. 32));
+         end;
       end if;
-
-      --  finished_key = HKDF-Expand-Label(binder_key, "finished", "", 32).
-      Hkdf_Expand_Label_Sha256
-        (Secret  => Binder_Key,
-         Label   => Finished_Label,
-         Context => Empty,
-         Output  => Finished_Key);
-
-      --  partial_hash = SHA-256(truncated ClientHello).
-      Tls_Core.Sha256.Hash (Truncated_Client_Hello, Partial_Hash);
-
-      --  binder = HMAC-SHA-256(finished_key, partial_hash).
-      Tls_Core.Hmac_Sha256.Compute
-        (Key     => Finished_Key,
-         Message => Partial_Hash,
-         Out_Tag => Out_Binder);
    end Compute;
 
    function Verify

@@ -1,44 +1,20 @@
---  Tls_Core.Psk_Binder — RFC 8446 §4.2.11.2 PSK binder computation.
---
---  An external pre-shared key in TLS 1.3 is authenticated via a
---  binder field in the ClientHello's pre_shared_key extension:
---
---      Early_Secret  = HKDF-Extract(0_32, PSK)
---      binder_key    = HKDF-Expand-Label(Early_Secret, "ext binder", "", 32)
---      finished_key  = HKDF-Expand-Label(binder_key,  "finished",   "", 32)
---      partial_hash  = SHA-256(Truncate(ClientHello))    -- CH minus binders
---      binder        = HMAC-SHA-256(finished_key, partial_hash)
---
---  ("Truncate" per §4.2.11.2: the ClientHello bytes up to but not
---  including the binders portion of the pre_shared_key extension.)
---
---  This helper computes binder bytes from PSK + truncated CH; the
---  caller is responsible for splicing the result into the right
---  byte offset of the on-wire ClientHello.
-
+with Tls_Core.Key_Sched;
 with Tls_Core.Sha256;
+with Tls_Core.Suites;
 
 package Tls_Core.Psk_Binder
 with SPARK_Mode
 is
 
-   subtype Binder_Bytes is Octet_Array (1 .. 32);
+   subtype Binder_Bytes is Tls_Core.Key_Sched.Max_Digest;
 
-   --  Compute the 32-byte binder for an external PSK over the
-   --  truncated ClientHello bytes (CH up to but not including the
-   --  binders portion of the pre_shared_key extension).
-   --
-   --  RFC 8448 PSK vectors at the handshake-driver level provide
-   --  the functional check; no Post is asserted here.
-   --  Is_Resumption selects the binder_key derivation label per
-   --  RFC 8446 §4.2.11.2: external PSK = "ext binder", resumption
-   --  PSK = "res binder".  Default False (external PSK) preserves
-   --  the prior call-site contract.
    procedure Compute
      (PSK                    : Octet_Array;
       Truncated_Client_Hello : Octet_Array;
       Out_Binder             : out Binder_Bytes;
-      Is_Resumption          : Boolean := False)
+      Is_Resumption          : Boolean := False;
+      Suite                  : Tls_Core.Suites.Cipher_Suite_Id :=
+        Tls_Core.Suites.Chacha20_Poly1305_Sha256)
    with
      Pre =>
        PSK'Length = 32
@@ -48,15 +24,8 @@ is
                   < Integer'Last - Tls_Core.Sha256.Block_Length
        and then Truncated_Client_Hello'Length <= Natural'Last - 9 - 64;
 
-   --  Constant-time binder check used on the server side. True iff
-   --  Computed_Binder = Expected_Binder.
    function Verify
      (Computed : Binder_Bytes;
       Received : Binder_Bytes) return Boolean;
-
-private
-
-   pragma Warnings (Off, "no entities of * are referenced");
-   pragma Warnings (On,  "no entities of * are referenced");
 
 end Tls_Core.Psk_Binder;

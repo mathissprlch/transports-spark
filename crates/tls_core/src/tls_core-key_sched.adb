@@ -65,7 +65,7 @@ is
             E, D1, H, C, S : Tls_Core.Key_Schedule_Sha384.Secret;
          begin
             P48 (1 .. PSK'Length) := PSK;
-            Tls_Core.Key_Schedule_Sha384.Extract (Salt => P48, IKM => Z48, Out_PRK => E);
+            Tls_Core.Key_Schedule_Sha384.Extract (Salt => Z48, IKM => P48, Out_PRK => E);
             Tls_Core.Key_Schedule_Sha384.Derive_Secret (Secret_In => E, Label => Derived_Lab, Messages => Empty, Out_Secret => D1);
             Tls_Core.Key_Schedule_Sha384.Extract (Salt => D1, IKM => Ecdhe_Shared, Out_PRK => H);
             Exp384 (Secret => H, Label => C_Hs_Lab, Context => Th_After_Sh (1 .. HH), Output => C);
@@ -77,7 +77,7 @@ is
             Z32 : constant Octet_Array (1 .. HL) := (others => 0);
             E, D1, H, C, S : Tls_Core.Key_Schedule.Secret;
          begin
-            Tls_Core.Key_Schedule.Extract (Salt => PSK (PSK'First .. PSK'First + 31), IKM => Z32, Out_PRK => E);
+            Tls_Core.Key_Schedule.Extract (Salt => Z32, IKM => PSK (PSK'First .. PSK'First + 31), Out_PRK => E);
             Tls_Core.Key_Schedule.Derive_Secret (Secret_In => E, Label => Derived_Lab, Messages => Empty, Out_Secret => D1);
             Tls_Core.Key_Schedule.Extract (Salt => D1, IKM => Ecdhe_Shared, Out_PRK => H);
             Exp256 (Secret => H, Label => C_Hs_Lab, Context => Th_After_Sh (1 .. HL), Output => C);
