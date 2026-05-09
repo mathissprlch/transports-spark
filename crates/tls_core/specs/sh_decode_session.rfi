@@ -1,0 +1,5 @@
+Machine:
+  Decode:
+    External_IO_Buffers: True
+    Buffer_Size:
+      Default: 512

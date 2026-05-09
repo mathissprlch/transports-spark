@@ -1,0 +1,28 @@
+--  Trivial session machine wrapping Server_Hello message decode.
+--
+--  Exists solely for External_IO_Buffers support on message
+--  parsing. RecordFlux only offers heap-free buffers on session
+--  machines, not standalone message contexts.
+
+with Server_Hello;
+
+package SH_Decode_Session is
+
+   generic
+      Network : Channel with Readable;
+   machine Decode is
+      Msg : Server_Hello::Message;
+   begin
+      state Await_SH is
+      begin
+         Network'Read (Msg);
+      transition
+         goto null
+            if Msg'Valid
+         goto null
+      exception
+         goto null
+      end Await_SH;
+   end Decode;
+
+end SH_Decode_Session;
