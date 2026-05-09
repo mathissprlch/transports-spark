@@ -85,4 +85,79 @@ package Tls_Interop_Peers is
    function Image (R : Role_Kind) return String;
    function Image (C : Cipher_Kind) return String;
 
+   ---------------------------------------------------------------------
+   --  Feature inventory.  One feature = one row in the per-peer
+   --  matrix table.  The orchestrator walks every (peer, feature,
+   --  direction) tuple, dispatching to one of four buckets:
+   --
+   --    PASS           — both Ada and peer support; cell ran green
+   --    FAIL           — both support; ran but produced wrong result
+   --    NOT_IMPL_ADA   — peer supports, Ada driver does not yet
+   --    NOT_IMPL_3P    — Ada supports, peer's CLI / library does not
+   --
+   --  Categories close cleanly: every feature is exactly one bucket.
+   ---------------------------------------------------------------------
+
+   type Feature_Kind is
+     (Cert_Ecdsa_P256_Sha256,
+      --  ECDSA-P256 cert chain, ecdsa_secp256r1_sha256 sign+verify.
+
+      Cert_Rsa_Pss_Sha256,
+      --  RSA cert chain, rsa_pss_rsae_sha256.  Ada verifies but the
+      --  v0.5 server doesn't sign RSA-PSS (only ECDSA).
+
+      Psk_External_Chacha20,
+      --  RFC 8446 §4.2.11 external PSK + ChaCha20-Poly1305-SHA256.
+
+      Psk_External_Aes128,
+      --  RFC 8446 §4.2.11 external PSK + AES-128-GCM-SHA256.
+
+      Psk_External_Aes256,
+      --  RFC 8446 §4.2.11 external PSK + AES-256-GCM-SHA384.  Ada
+      --  has the cipher suite but no negotiation glue yet; matrix
+      --  reports it as NOT_IMPL_ADA pending wiring.
+
+      Psk_Resumption,
+      --  RFC 8446 §4.6.1 resumption-PSK (cert-mode → NewSessionTicket
+      --  → reconnect with ticket).  Ada plumbing landed; key-
+      --  schedule bug deferred — see v0.5-not-impl.md.
+
+      Hello_Retry_Request,
+      --  RFC 8446 §4.1.4 — server demands a different named group.
+
+      Sni_Alpn,
+      --  RFC 6066 §3 SNI + RFC 7301 ALPN extensions in the
+      --  cert-mode CH/SH.
+
+      Zero_Rtt,
+      --  RFC 8446 §4.2.10 / §2.3 0-RTT early data.  NOT_IMPL_ADA;
+      --  v0.6+ scope per CLAUDE.md §0a (production-default rule).
+
+      Key_Update);
+      --  RFC 8446 §4.6.3 post-handshake key rotation.
+
+   --  Does the peer's CLI / library expose this feature in a way
+   --  our matrix harness can drive?  This is "peer-CLI-supports",
+   --  not "peer-library-supports" — rustls-the-library has external
+   --  PSK but rustls-mio CLI doesn't expose it, hence NOT_IMPL_3P.
+   function Peer_Supports (P : Peer_Kind; F : Feature_Kind) return Boolean;
+
+   --  Does the Ada driver implement this feature in v0.5?  When
+   --  False, the matrix shows NOT_IMPL_ADA + a work-item link from
+   --  Ada_Unblock_Link below.
+   function Ada_Supports (F : Feature_Kind) return Boolean;
+
+   --  Work-item identifier for a NOT_IMPL_ADA cell.  Points to a
+   --  row in docs/v0.5-not-impl.md.  Empty when Ada_Supports = True.
+   function Ada_Unblock_Link (F : Feature_Kind) return String;
+
+   --  Short label for the feature in the matrix table.
+   function Image (F : Feature_Kind) return String;
+
+   --  All non-deprecated features the v0.5 matrix iterates over.
+   function All_Features return String;
+   --  Returns a comma-joined list — used by the help text + JSON
+   --  output.  Concrete iteration in the orchestrator uses
+   --  Feature_Kind'Range.
+
 end Tls_Interop_Peers;

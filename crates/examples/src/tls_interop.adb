@@ -185,15 +185,23 @@ procedure Tls_Interop is
 
    --  ===== Cell run ============================================
 
-   --  Result of running one cell.
-   type Cell_Result is (Pass, Fail, NA);
+   --  Cell outcome — four buckets per the v0.5 reporting format:
+   --    PASS           — both sides have it; ran green
+   --    FAIL           — both sides have it; ran but produced wrong
+   --                     result (deviation we can fix)
+   --    NOT_IMPL_ADA   — peer has it; Ada driver doesn't yet.  Note
+   --                     field carries a v0.5-not-impl.md anchor.
+   --    NOT_IMPL_3P    — Ada has it; peer's CLI doesn't expose it
+   --                     (or peer lib doesn't have it at all)
+   type Cell_Result is (Pass, Fail, Not_Impl_Ada, Not_Impl_3P);
 
    function Image (R : Cell_Result) return String is
    begin
       case R is
-         when Pass => return "PASS";
-         when Fail => return "FAIL";
-         when NA   => return "N/A";
+         when Pass         => return "PASS";
+         when Fail         => return "FAIL";
+         when Not_Impl_Ada => return "NOT_IMPL_ADA";
+         when Not_Impl_3P  => return "NOT_IMPL_3P";
       end case;
    end Image;
 
@@ -234,9 +242,12 @@ procedure Tls_Interop is
       Direction   : String;
       Cell_Name   : String;
       Result      : out Cell_Result;
-      Note        : out Unbounded_String)
+      Note        : out Unbounded_String;
+      Elapsed     : out Duration)
    is
       Port : constant Natural := Alloc_Port;
+      use Ada.Calendar;
+      Cell_Start : constant Time := Clock;
       Server_Log, Client_Log : Unbounded_String;
       Server_Cell, Client_Cell : Cell_Spec;
       Server_Bin, Client_Bin   : Unbounded_String;
@@ -280,6 +291,7 @@ procedure Tls_Interop is
       Cell_Logs (Image (Peer), Cell_Name, Direction, Server_Log, Client_Log);
       Result := Fail;
       Note := Null_Unbounded_String;
+      Elapsed := 0.0;
 
       --  ---- Build commands ----
       if Direction = "c2s" then
@@ -296,9 +308,13 @@ procedure Tls_Interop is
       Build_Command (Client_Cell, Client_Bin, Client_Args,
                      Client_Sup, Client_Reason);
 
-      --  ---- Decide N/A early ----
+      --  ---- Decide NOT_IMPL_3P early ----
+      --  Build_Command's Supported = False means peer's CLI / lib
+      --  doesn't expose this feature.  (Distinct from NOT_IMPL_ADA,
+      --  which the orchestrator decides upstream from
+      --  Tls_Interop_Peers.Ada_Supports.)
       if not Server_Sup or else not Client_Sup then
-         Result := NA;
+         Result := Not_Impl_3P;
          if not Server_Sup then
             Note := Server_Reason;
          else
@@ -306,6 +322,7 @@ procedure Tls_Interop is
          end if;
          Free (Server_Args);
          Free (Client_Args);
+         Elapsed := 0.0;
          return;
       end if;
 
@@ -323,6 +340,7 @@ procedure Tls_Interop is
             Note := To_Unbounded_String ("could not spawn server");
             Free (Server_Args);
             Free (Client_Args);
+            Elapsed := 0.0;
             return;
          end if;
          delay 0.8;  --  let server bind + listen
@@ -453,22 +471,55 @@ procedure Tls_Interop is
             end if;
          end if;
       end;
+      Elapsed := Clock - Cell_Start;
    end Run_Cell;
 
    --  ===== Output helpers =======================================
 
-   procedure Md_Header is
+   --  Pretty-print a Duration as "1.234 s" with millisecond
+   --  precision, padded to 8 chars wide.
+   function Image_Time (D : Duration) return String is
+      Ms : constant Integer := Integer (D * 1000.0);
+      function Pad (S : String) return String is
+      begin
+         if S'Length >= 8 then return S (S'First .. S'First + 7); end if;
+         return (1 .. 8 - S'Length => ' ') & S;
+      end Pad;
    begin
-      Put_Line
-        ("| Peer       | Cell                       | Result  | Notes / log |");
-      Put_Line
-        ("|------------|----------------------------|---------|-------------|");
-   end Md_Header;
+      if Ms = 0 then
+         return "       -";
+      end if;
+      declare
+         Whole : constant Integer := Ms / 1000;
+         Frac  : constant Integer := Ms mod 1000;
+         W_Img : constant String := Ada.Strings.Fixed.Trim
+                   (Integer'Image (Whole), Ada.Strings.Both);
+         F_Img : constant String := (if Frac < 10 then "00"
+                                     elsif Frac < 100 then "0" else "")
+                   & Ada.Strings.Fixed.Trim
+                       (Integer'Image (Frac), Ada.Strings.Both);
+      begin
+         return Pad (W_Img & "." & F_Img & " s");
+      end;
+   end Image_Time;
 
-   procedure Md_Row
-     (Peer_Lbl, Cell_Lbl : String;
-      Result : Cell_Result;
-      Note   : String)
+   procedure Md_Peer_Header (Peer : Peer_Kind) is
+   begin
+      Put_Line ("");
+      Put_Line ("### " & Image (Peer));
+      Put_Line ("");
+      Put_Line
+        ("| Feature                       | c2s            | s2c            | Notes |");
+      Put_Line
+        ("|-------------------------------|----------------|----------------|-------|");
+   end Md_Peer_Header;
+
+   --  One row in a per-peer table covers BOTH directions (c2s + s2c).
+   procedure Md_Feature_Row
+     (Feature_Lbl : String;
+      C2S_Result, S2C_Result : Cell_Result;
+      C2S_Time,   S2C_Time   : Duration;
+      Note : String)
    is
       function Pad (S : String; W : Natural) return String is
       begin
@@ -477,33 +528,51 @@ procedure Tls_Interop is
          end if;
          return S & (1 .. W - S'Length => ' ');
       end Pad;
+      function Cell (R : Cell_Result; T : Duration) return String is
+        ((case R is
+            when Pass         => "PASS",
+            when Fail         => "FAIL",
+            when Not_Impl_Ada => "NI-Ada",
+            when Not_Impl_3P  => "NI-3P")
+         & " "
+         & (if R = Pass or R = Fail then Image_Time (T) else "       -"));
    begin
       Put_Line
-        ("| " & Pad (Peer_Lbl, 10)
-         & " | " & Pad (Cell_Lbl, 26)
-         & " | " & Pad (Image (Result), 7)
+        ("| " & Pad (Feature_Lbl, 29)
+         & " | " & Pad (Cell (C2S_Result, C2S_Time), 14)
+         & " | " & Pad (Cell (S2C_Result, S2C_Time), 14)
          & " | " & Note & " |");
-   end Md_Row;
+   end Md_Feature_Row;
 
-   --  JSON output buffer: collect rows as JSON_Value objects,
-   --  serialise once at the end via GNATCOLL.JSON (per CLAUDE.md
-   --  §10c — wire formats should be formalised, JSON included).
+   --  JSON output: array of {peer, feature, c2s:{result,time,note}, s2c:{...}}.
    Json_Rows : GNATCOLL.JSON.JSON_Array := GNATCOLL.JSON.Empty_Array;
 
-   procedure Json_Row
-     (Peer_Lbl, Cell_Lbl : String;
-      Result : Cell_Result;
-      Note   : String)
+   procedure Json_Peer_Feature
+     (Peer : Peer_Kind;
+      Feat : Feature_Kind;
+      C2S_Result, S2C_Result : Cell_Result;
+      C2S_Time,   S2C_Time   : Duration;
+      Note : String)
    is
       use GNATCOLL.JSON;
       Row : constant JSON_Value := Create_Object;
+      function Make_Side
+        (R : Cell_Result; T : Duration) return JSON_Value
+      is
+         V : constant JSON_Value := Create_Object;
+      begin
+         V.Set_Field ("result", Image (R));
+         V.Set_Field ("time_ms", Integer (T * 1000.0));
+         return V;
+      end Make_Side;
    begin
-      Row.Set_Field ("peer",   Peer_Lbl);
-      Row.Set_Field ("cell",   Cell_Lbl);
-      Row.Set_Field ("result", Image (Result));
-      Row.Set_Field ("note",   Note);
+      Row.Set_Field ("peer",    Image (Peer));
+      Row.Set_Field ("feature", Image (Feat));
+      Row.Set_Field ("c2s",     Make_Side (C2S_Result, C2S_Time));
+      Row.Set_Field ("s2c",     Make_Side (S2C_Result, S2C_Time));
+      Row.Set_Field ("note",    Note);
       Append (Json_Rows, Row);
-   end Json_Row;
+   end Json_Peer_Feature;
 
    --  ===== Init log dir + PSK file ===============================
 
@@ -557,31 +626,105 @@ procedure Tls_Interop is
 
    --  ===== Main ==================================================
 
-   procedure Run_One_Cell
-     (Peer  : Peer_Kind;
-      Mode  : Mode_Kind;
-      Cipher : Cipher_Kind;
-      Cell_Label : String)
+   --  Map a Feature_Kind to (Mode_Kind, Cipher_Kind) suitable for
+   --  Build_Command.  Some features run additional setup (e.g.,
+   --  resumption-PSK chains a cert-mode handshake first); for v0.5
+   --  this matrix records the inner-handshake cell only — the
+   --  chained variant is exercised separately via tls_cli flags.
+   procedure Feature_To_Cell
+     (F : Feature_Kind;
+      M : out Mode_Kind;
+      C : out Cipher_Kind)
    is
-      Result : Cell_Result;
-      Note   : Unbounded_String;
    begin
-      for Direction in Boolean range False .. True loop
-         declare
-            Dir : constant String := (if Direction then "s2c" else "c2s");
-            Full_Cell : constant String := Cell_Label & "-" & Dir;
-         begin
-            Run_Cell (Peer, Mode, Cipher, Dir, Cell_Label, Result, Note);
-            case Format is
-               when Markdown =>
-                  Md_Row (Image (Peer), Full_Cell, Result, To_String (Note));
-               when Json =>
-                  Json_Row (Image (Peer), Full_Cell, Result,
+      case F is
+         when Cert_Ecdsa_P256_Sha256 =>
+            M := Cert_Ec; C := Auto;
+         when Cert_Rsa_Pss_Sha256 =>
+            M := Cert_Rsa; C := Auto;
+         when Psk_External_Chacha20 =>
+            M := Psk_Dhe_Ke; C := Chacha20_Poly1305_Sha256;
+         when Psk_External_Aes128 =>
+            M := Psk_Dhe_Ke; C := Aes128_Gcm_Sha256;
+         when Psk_External_Aes256 =>
+            M := Psk_Dhe_Ke; C := Aes256_Gcm_Sha384;
+         when Psk_Resumption =>
+            --  Run the underlying cert-mode handshake; the matrix
+            --  doesn't yet chain ticket-save / ticket-load (the
+            --  driver-side bug deferred per v0.5-not-impl.md).
+            M := Cert_Ec; C := Auto;
+         when Hello_Retry_Request =>
+            M := Cert_Ec; C := Auto;
+         when Sni_Alpn =>
+            M := Cert_Ec; C := Auto;
+         when Zero_Rtt =>
+            M := Cert_Ec; C := Auto;
+         when Key_Update =>
+            M := Cert_Ec; C := Auto;
+      end case;
+   end Feature_To_Cell;
+
+   --  Run the (peer, feature) entry — iterates both directions.
+   --  Returns the row-summary directly through the output sink
+   --  for the current --format.
+   procedure Run_Peer_Feature
+     (Peer : Peer_Kind;
+      Feat : Feature_Kind)
+   is
+      M : Mode_Kind;
+      C : Cipher_Kind;
+      C2S_Result, S2C_Result : Cell_Result;
+      C2S_Note,   S2C_Note   : Unbounded_String;
+      C2S_Time,   S2C_Time   : Duration := 0.0;
+      Note : Unbounded_String;
+   begin
+      --  NOT_IMPL_ADA short-circuit: peer supports it but our
+      --  driver doesn't.  No subprocess spawn; result + work-item
+      --  link emitted directly.
+      if not Ada_Supports (Feat) then
+         C2S_Result := Not_Impl_Ada;
+         S2C_Result := Not_Impl_Ada;
+         Note := To_Unbounded_String
+           ("see " & Ada_Unblock_Link (Feat));
+      --  NOT_IMPL_3P short-circuit: peer's CLI / lib doesn't
+      --  expose this feature.
+      elsif not Peer_Supports (Peer, Feat) then
+         C2S_Result := Not_Impl_3P;
+         S2C_Result := Not_Impl_3P;
+         Note := To_Unbounded_String ("peer-CLI gap");
+      else
+         Feature_To_Cell (Feat, M, C);
+         Run_Cell (Peer, M, C, "c2s", Image (Feat),
+                   C2S_Result, C2S_Note, C2S_Time);
+         Run_Cell (Peer, M, C, "s2c", Image (Feat),
+                   S2C_Result, S2C_Note, S2C_Time);
+         --  Compose a single short note.  Prefer FAIL note over
+         --  PASS log path; if both PASS, point at log dir only.
+         if C2S_Result = Fail or else S2C_Result = Fail then
+            Note := (if C2S_Result = Fail then C2S_Note else S2C_Note);
+         elsif C2S_Result = Pass and then S2C_Result = Pass then
+            Note := To_Unbounded_String (To_String (Log_Dir));
+         else
+            --  One side ran (PASS or FAIL), the other was
+            --  short-circuited.  Carry whichever side's note is
+            --  populated.
+            Note := (if C2S_Note /= Null_Unbounded_String
+                     then C2S_Note else S2C_Note);
+         end if;
+      end if;
+      case Format is
+         when Markdown =>
+            Md_Feature_Row (Image (Feat),
+                            C2S_Result, S2C_Result,
+                            C2S_Time, S2C_Time,
                             To_String (Note));
-            end case;
-         end;
-      end loop;
-   end Run_One_Cell;
+         when Json =>
+            Json_Peer_Feature (Peer, Feat,
+                               C2S_Result, S2C_Result,
+                               C2S_Time, S2C_Time,
+                               To_String (Note));
+      end case;
+   end Run_Peer_Feature;
 
 begin
    Parse_Args;
@@ -595,66 +738,38 @@ begin
    case Format is
       when Markdown =>
          Put_Line ("");
-         Put_Line ("## Tier D matrix run — log dir: " & To_String (Log_Dir));
-         if Quick then
-            Put_Line ("mode: --quick (psk-chacha20 only)");
-         end if;
+         Put_Line ("# v0.5 Tier D interop matrix");
          Put_Line ("");
-         Md_Header;
+         Put_Line ("Log directory: `" & To_String (Log_Dir) & "`");
+         Put_Line ("");
+         Put_Line ("Result classes: PASS, FAIL (Ada bug), "
+                   & "NI-Ada (Ada driver gap, link), NI-3P (peer-CLI gap)");
+         Put_Line ("");
+         if Quick then
+            Put_Line ("Mode: `--quick` (cert-ecdsa-p256-sha256 only)");
+            Put_Line ("");
+         end if;
       when Json =>
          null;  --  JSON written at end via GNATCOLL.JSON
    end case;
 
-   --  Sanity baseline: Ada-vs-Ada PSK chacha20.
+   --  Per-peer iteration — peers ordered by production prevalence.
    declare
-      Result : Cell_Result;
-      Note   : Unbounded_String;
-   begin
-      Run_Cell (Ada_Native, Psk_Dhe_Ke, Chacha20_Poly1305_Sha256,
-                "c2s", "psk-chacha20", Result, Note);
-      case Format is
-         when Markdown =>
-            Md_Row ("ada-ada", "psk-chacha20-aa", Result,
-                    "sanity baseline");
-         when Json =>
-            Json_Row ("ada-ada", "psk-chacha20-aa", Result,
-                      "sanity baseline");
-      end case;
-   end;
-
-   --  Per-peer cells.
-   --
-   --  Output ordering (per CLAUDE.md §0a "production-default first"):
-   --    1. Outer loop: mode in production-prevalence order — cert-ec
-   --       (>99% of production TLS), then external PSK chacha20,
-   --       then external PSK aes128.  Resumption PSK rolls in via
-   --       its own pass (WS3); PSK-external stays for backward
-   --       coverage of the IoT/embedded peers that already pass it.
-   --    2. Inner loop: peer in production-prevalence order — openssl,
-   --       boringssl, go, rustls, gnutls, mbedtls, wolfssl.  Drives
-   --       readability: the most-cited peer's row appears first
-   --       inside each category.
-   declare
-      Modes  : constant array (1 .. 3) of Mode_Kind :=
-        (Cert_Ec, Psk_Dhe_Ke, Psk_Dhe_Ke);
-      --  Cipher index aligns with Modes; Auto for cert-ec.
-      Ciphers : constant array (1 .. 3) of Cipher_Kind :=
-        (Auto, Chacha20_Poly1305_Sha256, Aes128_Gcm_Sha256);
-      Labels  : constant array (1 .. 3) of access String :=
-        (new String'("cert-ec"),
-         new String'("psk-chacha20"),
-         new String'("psk-aes128"));
-      Peers   : constant array (1 .. 7) of Peer_Kind :=
+      Peers : constant array (1 .. 7) of Peer_Kind :=
         (Openssl, Boringssl, Go_Lang, Rustls, Gnutls, Mbedtls, Wolfssl);
    begin
-      for I in Modes'Range loop
-         --  --quick = first mode (cert-ec) only.
-         exit when Quick and then I > 1;
-         for P of Peers loop
-            if Peer_Matches_Filter (P) then
-               Run_One_Cell (P, Modes (I), Ciphers (I), Labels (I).all);
+      for P of Peers loop
+         exit when not Peer_Matches_Filter (P);
+         if Peer_Matches_Filter (P) then
+            if Format = Markdown then
+               Md_Peer_Header (P);
             end if;
-         end loop;
+            for F in Feature_Kind'Range loop
+               --  --quick = first feature only (cert-ec).
+               exit when Quick and then F > Cert_Ecdsa_P256_Sha256;
+               Run_Peer_Feature (P, F);
+            end loop;
+         end if;
       end loop;
    end;
 

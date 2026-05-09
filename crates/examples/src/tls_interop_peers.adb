@@ -755,4 +755,110 @@ package body Tls_Interop_Peers is
       end if;
    end Build_Command;
 
+   ---------------------------------------------------------------------
+   --  Feature inventory tables
+   ---------------------------------------------------------------------
+
+   function Peer_Supports (P : Peer_Kind; F : Feature_Kind) return Boolean
+   is
+   begin
+      case F is
+         when Cert_Ecdsa_P256_Sha256 =>
+            return P /= Ada_Native;  --  every TLS 1.3 peer supports it
+
+         when Cert_Rsa_Pss_Sha256 =>
+            --  All TLS 1.3 peers verify rsa_pss_rsae_sha256.  Ada
+            --  driver verifies but does not sign — flagged as
+            --  NOT_IMPL_ADA below.
+            return P /= Ada_Native;
+
+         when Psk_External_Chacha20 | Psk_External_Aes128
+            | Psk_External_Aes256 =>
+            --  External-PSK CLI exposure varies.
+            return P in Ada_Native | Openssl | Gnutls | Mbedtls;
+
+         when Psk_Resumption =>
+            --  Every TLS 1.3 peer issues NewSessionTicket; resumption-
+            --  PSK is the production PSK path.
+            return P /= Ada_Native;
+
+         when Hello_Retry_Request =>
+            return P /= Ada_Native;  --  every peer supports HRR
+
+         when Sni_Alpn =>
+            return P /= Ada_Native;  --  every peer supports SNI/ALPN
+
+         when Zero_Rtt =>
+            --  All major peers support 0-RTT, but their CLI surface
+            --  for it is uneven.  Treat as supported by the peer
+            --  (its lib has the API); Ada NOT_IMPL covers the gap.
+            return P /= Ada_Native;
+
+         when Key_Update =>
+            return P /= Ada_Native;
+      end case;
+   end Peer_Supports;
+
+   function Ada_Supports (F : Feature_Kind) return Boolean is
+   begin
+      case F is
+         when Cert_Ecdsa_P256_Sha256 => return True;
+         when Cert_Rsa_Pss_Sha256    => return False;  --  v0.5: verify
+                                                       --  only, no sign
+         when Psk_External_Chacha20  => return True;
+         when Psk_External_Aes128    => return True;
+         when Psk_External_Aes256    => return False;  --  cipher built;
+                                                       --  matrix glue
+                                                       --  not wired
+         when Psk_Resumption         => return False;  --  plumbing
+                                                       --  landed, key-
+                                                       --  schedule bug
+         when Hello_Retry_Request    => return True;
+         when Sni_Alpn               => return True;
+         when Zero_Rtt               => return False;
+         when Key_Update             => return True;
+      end case;
+   end Ada_Supports;
+
+   function Ada_Unblock_Link (F : Feature_Kind) return String is
+   begin
+      case F is
+         when Cert_Rsa_Pss_Sha256 => return "v0.5-not-impl.md#rsa-pss-sign";
+         when Psk_External_Aes256 => return "v0.5-not-impl.md#aes256-gcm-cell";
+         when Psk_Resumption      => return "v0.5-not-impl.md#psk-resume-keysched";
+         when Zero_Rtt            => return "v0.5-not-impl.md#zero-rtt";
+         when others              => return "";
+      end case;
+   end Ada_Unblock_Link;
+
+   function Image (F : Feature_Kind) return String is
+   begin
+      case F is
+         when Cert_Ecdsa_P256_Sha256 => return "cert-ecdsa-p256-sha256";
+         when Cert_Rsa_Pss_Sha256    => return "cert-rsa-pss-sha256";
+         when Psk_External_Chacha20  => return "psk-external-chacha20";
+         when Psk_External_Aes128    => return "psk-external-aes128";
+         when Psk_External_Aes256    => return "psk-external-aes256";
+         when Psk_Resumption         => return "psk-resumption";
+         when Hello_Retry_Request    => return "hello-retry-request";
+         when Sni_Alpn               => return "sni-alpn";
+         when Zero_Rtt               => return "zero-rtt";
+         when Key_Update             => return "key-update";
+      end case;
+   end Image;
+
+   function All_Features return String is
+      Result : Unbounded_String;
+      First  : Boolean := True;
+   begin
+      for F in Feature_Kind'Range loop
+         if not First then
+            Append (Result, ", ");
+         end if;
+         Append (Result, Image (F));
+         First := False;
+      end loop;
+      return To_String (Result);
+   end All_Features;
+
 end Tls_Interop_Peers;
