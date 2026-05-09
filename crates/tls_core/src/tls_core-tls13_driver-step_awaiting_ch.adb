@@ -150,6 +150,14 @@ is
                             .Chacha20_Poly1305_Sha256;
                         Found := True;
                         exit;
+                     elsif Code =
+                             Tls_Core.Suites
+                               .TLS_AES_256_GCM_SHA384
+                     then
+                        D.Suite :=
+                          Tls_Core.Suites.Aes_256_Gcm_Sha384;
+                        Found := True;
+                        exit;
                      end if;
                      Q := Q + 2;
                   end loop;
@@ -400,7 +408,7 @@ is
             Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_CV);
             declare
                Verify_Data : Tls_Core.Key_Sched.Max_Digest;
-               Fin_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+               Fin_Hs : Octet_Array (1 .. 4 + 48) := (others => 0);
                Fin_Hs_Last : Natural;
                Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
                Fin_Rec_Last : Natural;
@@ -408,7 +416,7 @@ is
                Tls_Core.Key_Sched.Build_Finished
                  (D.Suite, D.S_Hs_Sec, Th_After_CV, Verify_Data);
                Encode_Hs_Message
-                 (Hs_Type_Finished, Verify_Data (1 .. 32),
+                 (Hs_Type_Finished, Verify_Data (1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)),
                   Fin_Hs, Fin_Hs_Last);
                Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
                Tls_Core.Aead_Channel.Send
@@ -560,6 +568,12 @@ is
                         Tls_Core.Suites.TLS_CHACHA20_POLY1305_SHA256
                   then
                      D.Suite := Tls_Core.Suites.Chacha20_Poly1305_Sha256;
+                     Found := True;
+                     exit;
+                  elsif Code =
+                        Tls_Core.Suites.TLS_AES_256_GCM_SHA384
+                  then
+                     D.Suite := Tls_Core.Suites.Aes_256_Gcm_Sha384;
                      Found := True;
                      exit;
                   end if;
@@ -810,7 +824,7 @@ is
             declare
                Th_After_EE : Tls_Core.Key_Sched.Max_Digest;
                Verify_Data : Tls_Core.Key_Sched.Max_Digest;
-               Fin_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+               Fin_Hs : Octet_Array (1 .. 4 + 48) := (others => 0);
                Fin_Hs_Last : Natural;
                Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
                Fin_Rec_Last : Natural;
@@ -819,7 +833,7 @@ is
                Tls_Core.Key_Sched.Build_Finished
                  (D.Suite, S_Hs_Sec, Th_After_EE, Verify_Data);
                Encode_Hs_Message
-                 (Hs_Type_Finished, Verify_Data (1 .. 32),
+                 (Hs_Type_Finished, Verify_Data (1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)),
                   Fin_Hs, Fin_Hs_Last);
                Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
                Tls_Core.Aead_Channel.Send

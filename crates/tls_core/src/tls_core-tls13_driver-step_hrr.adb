@@ -116,7 +116,6 @@ is
             --  Validate echoed cipher suite (must be one we
             --  offered) and remember it for later.
             if not Tls_Core.Suites.Is_Supported_Suite (Hrr_Cs)
-              or else Hrr_Cs = Tls_Core.Suites.TLS_AES_256_GCM_SHA384
             then
                D.Cur_State := Failed;
                return;
@@ -553,7 +552,7 @@ is
             Ee_Rec_Last : Natural;
             Th_After_EE : Tls_Core.Key_Sched.Max_Digest;
             Verify_Data : Tls_Core.Key_Sched.Max_Digest;
-            Fin_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+            Fin_Hs : Octet_Array (1 .. 4 + 48) := (others => 0);
             Fin_Hs_Last : Natural;
             Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
             Fin_Rec_Last : Natural;
@@ -586,7 +585,7 @@ is
             Tls_Core.Key_Sched.Transcript_Snapshot (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_EE);
             Tls_Core.Key_Sched.Build_Finished (D.Suite, S_Hs_Sec, Th_After_EE, Verify_Data);
             Encode_Hs_Message
-              (Hs_Type_Finished, Verify_Data (1 .. 32),
+              (Hs_Type_Finished, Verify_Data (1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)),
                Fin_Hs, Fin_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Fin_Hs (1 .. Fin_Hs_Last));
             Tls_Core.Aead_Channel.Send

@@ -122,8 +122,6 @@ is
                         (In_Bytes (Sh_Rec_F + 40));
                begin
                   if not Tls_Core.Suites.Is_Supported_Suite (Code)
-                    or else Code =
-                      Tls_Core.Suites.TLS_AES_256_GCM_SHA384
                   then
                      D.Cur_State := Failed;
                      return;
@@ -520,7 +518,7 @@ is
             --  Step 5: build + send client Finished.
             declare
                Cf_Verify : Tls_Core.Key_Sched.Max_Digest;
-               Cf_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+               Cf_Hs : Octet_Array (1 .. 4 + 48) := (others => 0);
                Cf_Hs_Last : Natural;
                Cf_Rec : Octet_Array (1 .. 256) := (others => 0);
                Cf_Rec_Last : Natural;
@@ -528,7 +526,7 @@ is
                Tls_Core.Key_Sched.Build_Finished
                  (D.Suite, D.C_Hs_Sec, Th_After_Sf, Cf_Verify);
                Encode_Hs_Message
-                 (Hs_Type_Finished, Cf_Verify (1 .. 32),
+                 (Hs_Type_Finished, Cf_Verify (1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)),
                   Cf_Hs, Cf_Hs_Last);
                Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Cf_Hs (1 .. Cf_Hs_Last));
                Tls_Core.Aead_Channel.Send
@@ -632,8 +630,6 @@ is
                  + Tls_Core.Suites.U16 (In_Bytes (Sh_Rec_F + 40));
             begin
                if not Tls_Core.Suites.Is_Supported_Suite (Code)
-                 or else Code =
-                           Tls_Core.Suites.TLS_AES_256_GCM_SHA384
                then
                   --  Unrecognised, or AES-256-GCM-SHA384 (driver
                   --  schedule path is SHA-256-only — see package
@@ -884,7 +880,7 @@ is
          --  Step 6: build + send client Finished.
          declare
             Cf_Verify : Tls_Core.Key_Sched.Max_Digest;
-            Cf_Hs : Octet_Array (1 .. 4 + 32) := (others => 0);
+            Cf_Hs : Octet_Array (1 .. 4 + 48) := (others => 0);
             Cf_Hs_Last : Natural;
             Cf_Rec : Octet_Array (1 .. 256) := (others => 0);
             Cf_Rec_Last : Natural;
@@ -892,7 +888,7 @@ is
             Tls_Core.Key_Sched.Build_Finished
               (D.Suite, D.C_Hs_Sec, Th_After_Sf, Cf_Verify);
             Encode_Hs_Message
-              (Hs_Type_Finished, Cf_Verify (1 .. 32),
+              (Hs_Type_Finished, Cf_Verify (1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)),
                Cf_Hs, Cf_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Cf_Hs (1 .. Cf_Hs_Last));
             Tls_Core.Aead_Channel.Send
