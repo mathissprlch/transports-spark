@@ -26,19 +26,19 @@ echo "Phase 1: cert-ec handshake (get ticket)..."
 case $PEER in
   openssl)
     openssl s_server -tls1_3 -accept $PORT \
-      -cert "$FIXTURES/leaf.pem" -key "$FIXTURES/leaf-key.pem" \
+      -cert "$FIXTURES/leaf.pem" -key "$FIXTURES/leaf.key" \
       -www -quiet &
     ;;
   gnutls)
     gnutls-serv --port=$PORT \
       --x509certfile="$FIXTURES/leaf.pem" \
-      --x509keyfile="$FIXTURES/leaf-key.pem" \
+      --x509keyfile="$FIXTURES/leaf.key" \
       --disable-client-cert &
     ;;
   mbedtls)
     ssl_server2 server_port=$PORT \
       crt_file="$FIXTURES/leaf.pem" \
-      key_file="$FIXTURES/leaf-key.pem" \
+      key_file="$FIXTURES/leaf.key" \
       force_version=tls13 &
     ;;
   *)
@@ -77,19 +77,19 @@ PORT2=$((PORT + 1))
 case $PEER in
   openssl)
     openssl s_server -tls1_3 -accept $PORT2 \
-      -cert "$FIXTURES/leaf.pem" -key "$FIXTURES/leaf-key.pem" \
+      -cert "$FIXTURES/leaf.pem" -key "$FIXTURES/leaf.key" \
       -www -quiet &
     ;;
   gnutls)
     gnutls-serv --port=$PORT2 \
       --x509certfile="$FIXTURES/leaf.pem" \
-      --x509keyfile="$FIXTURES/leaf-key.pem" \
+      --x509keyfile="$FIXTURES/leaf.key" \
       --disable-client-cert &
     ;;
   mbedtls)
     ssl_server2 server_port=$PORT2 \
       crt_file="$FIXTURES/leaf.pem" \
-      key_file="$FIXTURES/leaf-key.pem" \
+      key_file="$FIXTURES/leaf.key" \
       force_version=tls13 &
     ;;
 esac
