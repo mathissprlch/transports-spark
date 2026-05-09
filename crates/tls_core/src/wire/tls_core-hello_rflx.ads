@@ -18,4 +18,12 @@ is
    with
      Pre => In_Bytes'First = 1 and then In_Bytes'Length >= 40;
 
+   procedure Decode_Server_Hello_Key_Share
+     (In_Bytes        : Octet_Array;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
+      OK              : out Boolean)
+   with
+     Pre => In_Bytes'Length >= 40;
+
 end Tls_Core.Hello_Rflx;
