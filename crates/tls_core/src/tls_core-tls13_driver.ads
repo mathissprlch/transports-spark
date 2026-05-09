@@ -798,10 +798,10 @@ is
    --               first Step that emits the resumption ClientHello).
    --  Proven at:   gnatprove --level=2 (audit-clean)
    --
-   --  v0.5 cap: 64-byte identity, matching Tls_Core.Hello's
-   --  Psk_Identity_Len. Real-world ticket bytes can exceed this; the
-   --  driver-internal cap will lift in the same wave that lifts
-   --  Tls_Core.Hello's identity bound.
+   --  v0.5 cap (lifted Tier D): 1024-byte identity, matching
+   --  Tls_Core.Hello's Psk_Identity_Len upper bound.  This sizes
+   --  for production NewSessionTicket bytes (~190 B from openssl,
+   --  larger for some peers).
    --------------------------------------------------------------------
    procedure Init_Psk_Resumption_Client
      (D    : out Driver;
@@ -809,14 +809,17 @@ is
    with
      Pre =>
        Slot.Used
-       and then Slot.Ticket_Len in 1 .. 64
+       and then Slot.Ticket_Len in 1 .. 1024
        and then Slot.Ticket_Nonce_Len in
          0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length;
 
 private
 
    subtype Psk_Bytes  is Octet_Array (1 .. 32);
-   subtype Identity_Bytes is Octet_Array (1 .. 64);
+   --  1024 mirrors Tls_Core.Hello.Psk_Identity_Len upper bound; sized
+   --  for production NewSessionTicket (~190 B openssl, larger for
+   --  some peers).  Driver-private state.
+   subtype Identity_Bytes is Octet_Array (1 .. 1024);
 
    type Driver is record
       My_Role     : Role := Server;

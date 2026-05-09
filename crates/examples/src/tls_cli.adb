@@ -60,6 +60,8 @@ with Interfaces;
 with Tls_Core;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Cert_Chain;
+with Tls_Core.Session_Cache;
+with Tls_Core.Session_Ticket;
 with Tls_Core.Suites;
 with Tls_Core.Tcp_Transport;
 with Tls_Core.Tls13_Driver;
@@ -76,7 +78,8 @@ procedure Tls_Cli is
    --  ===== CLI configuration =====================================
 
    type Role_Kind is (R_Client, R_Server, R_None);
-   type Mode_Kind is (M_Psk_Dhe_Ke, M_Cert_Ec, M_Cert_Rsa, M_None);
+   type Mode_Kind is (M_Psk_Dhe_Ke, M_Cert_Ec, M_Cert_Rsa, M_Psk_Resume,
+                      M_None);
    type App_Action is (A_None, A_Send_Recv, A_Echo);
 
    Role        : Role_Kind := R_None;
@@ -92,6 +95,8 @@ procedure Tls_Cli is
    Key_Path    : access String := new String'("");  --  server priv (32 B EC)
    Trust_Path  : access String := new String'("");  --  client trust root DER
    Hostname    : access String := new String'("");  --  client SAN match
+   Save_Ticket : access String := new String'("");  --  client: write Slot
+   Load_Ticket : access String := new String'("");  --  client: read Slot
    Send_Str    : access String := new String'("");
    Recv_Len    : Natural := 0;
    Action      : App_Action := A_None;
@@ -279,6 +284,8 @@ procedure Tls_Cli is
                      Mode := M_Cert_Ec;
                   elsif M = "cert-rsa" then
                      Mode := M_Cert_Rsa;
+                  elsif M = "psk-resume" then
+                     Mode := M_Psk_Resume;
                   else
                      Usage_Error ("unknown --mode: " & M);
                      return;
@@ -314,6 +321,12 @@ procedure Tls_Cli is
             elsif Arg = "--hostname" then
                A := A + 1;
                Hostname := new String'(Ada.Command_Line.Argument (A));
+            elsif Arg = "--save-ticket" then
+               A := A + 1;
+               Save_Ticket := new String'(Ada.Command_Line.Argument (A));
+            elsif Arg = "--load-ticket" then
+               A := A + 1;
+               Load_Ticket := new String'(Ada.Command_Line.Argument (A));
             elsif Arg = "--send" then
                A := A + 1;
                Send_Str := new String'(Ada.Command_Line.Argument (A));
@@ -519,6 +532,147 @@ procedure Tls_Cli is
          Out_Bytes := (others => 16#22#);
       end if;
    end Load_Ecdhe;
+
+   --  ===== Session-ticket persistence (resumption-PSK) =============
+   --
+   --  Compact binary serialisation of a Session_Cache.Slot.  The
+   --  matrix and downstream callers persist the slot to disk between
+   --  the cert-mode "ticket-issuing" handshake and the resumption-
+   --  PSK "ticket-presenting" handshake.
+   --
+   --  Layout (big-endian):
+   --    1B  Suite_Id (0=Chacha20_Poly1305, 1=Aes_128_Gcm, 2=Aes_256_Gcm)
+   --    4B  Lifetime
+   --    4B  Age_Add
+   --    1B  Ticket_Nonce_Len   (n, 0..255)
+   --    nB  Ticket_Nonce
+   --    2B  Ticket_Len         (m, 1..1024)
+   --    mB  Ticket
+   --   32B  Resumption_Secret  (SHA-256 digest)
+
+   procedure Save_Slot
+     (Slot : Tls_Core.Session_Cache.Slot;
+      Path : String;
+      OK   : out Boolean)
+   is
+      use Ada.Streams;
+      use type Tls_Core.Session_Ticket.U32;
+      Suite_Id : constant Octet :=
+        (case Slot.Suite is
+           when Tls_Core.Suites.Chacha20_Poly1305_Sha256 => 0,
+           when Tls_Core.Suites.Aes_128_Gcm_Sha256       => 1,
+           when Tls_Core.Suites.Aes_256_Gcm_Sha384       => 2);
+      Buf : Octet_Array (1 .. 1 + 4 + 4 + 1
+                          + Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
+                          + 2 + Tls_Core.Session_Ticket.Max_Ticket_Length
+                          + 32) := (others => 0);
+      Cursor : Natural := 0;
+      File   : Stream_IO.File_Type;
+   begin
+      OK := False;
+      Cursor := Cursor + 1; Buf (Cursor) := Suite_Id;
+      for I in 0 .. 3 loop
+         Cursor := Cursor + 1;
+         Buf (Cursor) := Octet
+           ((Slot.Lifetime / 2 ** (8 * (3 - I))) and 16#FF#);
+      end loop;
+      for I in 0 .. 3 loop
+         Cursor := Cursor + 1;
+         Buf (Cursor) := Octet
+           ((Slot.Age_Add / 2 ** (8 * (3 - I))) and 16#FF#);
+      end loop;
+      Cursor := Cursor + 1; Buf (Cursor) := Octet (Slot.Ticket_Nonce_Len);
+      if Slot.Ticket_Nonce_Len > 0 then
+         Buf (Cursor + 1 .. Cursor + Slot.Ticket_Nonce_Len) :=
+           Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len);
+         Cursor := Cursor + Slot.Ticket_Nonce_Len;
+      end if;
+      Cursor := Cursor + 1; Buf (Cursor) :=
+        Octet (Slot.Ticket_Len / 256);
+      Cursor := Cursor + 1; Buf (Cursor) :=
+        Octet (Slot.Ticket_Len mod 256);
+      Buf (Cursor + 1 .. Cursor + Slot.Ticket_Len) :=
+        Slot.Ticket (1 .. Slot.Ticket_Len);
+      Cursor := Cursor + Slot.Ticket_Len;
+      Buf (Cursor + 1 .. Cursor + 32) := Slot.Resumption_Secret;
+      Cursor := Cursor + 32;
+
+      Stream_IO.Create (File, Stream_IO.Out_File, Path);
+      declare
+         SEA : Stream_Element_Array (1 .. Stream_Element_Offset (Cursor));
+         for SEA'Address use Buf'Address;
+      begin
+         Stream_IO.Write (File, SEA);
+      end;
+      Stream_IO.Close (File);
+      OK := True;
+   exception
+      when others =>
+         if Stream_IO.Is_Open (File) then
+            Stream_IO.Close (File);
+         end if;
+   end Save_Slot;
+
+   procedure Load_Slot
+     (Path : String;
+      Slot : out Tls_Core.Session_Cache.Slot;
+      OK   : out Boolean)
+   is
+      use type Tls_Core.Session_Ticket.U32;
+      Buf : constant Octet_Array := Read_File (Path);
+      P : Natural := Buf'First;
+      Suite_Id : Octet;
+      function R_U32 (Start : Natural) return Tls_Core.Session_Ticket.U32 is
+        (Tls_Core.Session_Ticket.U32 (Buf (Start))     * 16#01000000#
+         + Tls_Core.Session_Ticket.U32 (Buf (Start + 1)) * 16#00010000#
+         + Tls_Core.Session_Ticket.U32 (Buf (Start + 2)) * 16#00000100#
+         + Tls_Core.Session_Ticket.U32 (Buf (Start + 3)));
+   begin
+      OK := False;
+      Slot := (others => <>);
+      if Buf'Length < 1 + 4 + 4 + 1 + 2 + 1 + 32 then
+         return;
+      end if;
+      Suite_Id := Buf (P); P := P + 1;
+      Slot.Suite :=
+        (case Suite_Id is
+           when 0 => Tls_Core.Suites.Chacha20_Poly1305_Sha256,
+           when 1 => Tls_Core.Suites.Aes_128_Gcm_Sha256,
+           when 2 => Tls_Core.Suites.Aes_256_Gcm_Sha384,
+           when others => Tls_Core.Suites.Aes_128_Gcm_Sha256);
+      Slot.Lifetime := R_U32 (P); P := P + 4;
+      Slot.Age_Add  := R_U32 (P); P := P + 4;
+      Slot.Ticket_Nonce_Len := Natural (Buf (P)); P := P + 1;
+      if Slot.Ticket_Nonce_Len
+        > Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
+      then
+         return;
+      end if;
+      if P - 1 + Slot.Ticket_Nonce_Len > Buf'Last then return; end if;
+      if Slot.Ticket_Nonce_Len > 0 then
+         Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len) :=
+           Buf (P .. P + Slot.Ticket_Nonce_Len - 1);
+         P := P + Slot.Ticket_Nonce_Len;
+      end if;
+      if P + 1 > Buf'Last then return; end if;
+      Slot.Ticket_Len :=
+        Natural (Buf (P)) * 256 + Natural (Buf (P + 1));
+      P := P + 2;
+      if Slot.Ticket_Len < 1
+        or else Slot.Ticket_Len > Tls_Core.Session_Ticket.Max_Ticket_Length
+      then
+         return;
+      end if;
+      if P - 1 + Slot.Ticket_Len > Buf'Last then return; end if;
+      Slot.Ticket (1 .. Slot.Ticket_Len) :=
+        Buf (P .. P + Slot.Ticket_Len - 1);
+      P := P + Slot.Ticket_Len;
+      if P + 31 > Buf'Last then return; end if;
+      Slot.Resumption_Secret := Buf (P .. P + 31);
+      Slot.Used := True;
+      Slot.Insertion_Seq := 1;
+      OK := True;
+   end Load_Slot;
 
    --  ===== Main runtime ==========================================
 
@@ -863,6 +1017,32 @@ begin
             Fail ("--mode cert-rsa: server-side RSA-PSS signing not in "
                   & "v0.5 driver scope (verify path only). Use cert-ec.");
             goto Cleanup;
+         when M_Psk_Resume =>
+            --  Resumption-PSK client: load Slot from --load-ticket
+            --  and feed it to Init_Psk_Resumption_Client.  Server
+            --  side does NOT use this mode — the matrix peer is the
+            --  server in resumption tests.
+            if Role /= R_Client then
+               Fail ("--mode psk-resume only supported on client side");
+               goto Cleanup;
+            end if;
+            if Load_Ticket.all = "" then
+               Fail ("--mode psk-resume requires --load-ticket FILE");
+               goto Cleanup;
+            end if;
+            declare
+               Slot : Tls_Core.Session_Cache.Slot;
+               OK   : Boolean;
+            begin
+               Load_Slot (Load_Ticket.all, Slot, OK);
+               if not OK then
+                  Fail ("could not load ticket from " & Load_Ticket.all);
+                  goto Cleanup;
+               end if;
+               Tls_Core.Tls13_Driver.Init_Psk_Resumption_Client
+                 (D    => D,
+                  Slot => Slot);
+            end;
          when M_None =>
             Usage_Error ("must specify --mode");
             goto Cleanup;
@@ -874,10 +1054,71 @@ begin
          Run_Client (Sock, D,
                      Server_Records =>
                        (case Mode is
-                          when M_Psk_Dhe_Ke => 3,
-                          when others       => 5));
+                          when M_Psk_Dhe_Ke | M_Psk_Resume => 3,
+                          when others                      => 5));
       else
          Run_Server (Sock, D);
+      end if;
+
+      --  --save-ticket: cert-mode client drains the post-handshake
+      --  NewSessionTicket record and persists the resulting Slot
+      --  to disk.  Done BEFORE Run_App_Phase so the openssl/gnutls
+      --  servers (which emit NST immediately after their flight)
+      --  see no app-data interleave. RFC 8446 §4.6.1.
+      if not Aborted
+        and then Role = R_Client
+        and then (Mode = M_Cert_Ec or else Mode = M_Cert_Rsa)
+        and then Save_Ticket.all /= ""
+      then
+         declare
+            Out_Dir, In_Dir : Tls_Core.Aead_Channel.Direction;
+            Cache : Tls_Core.Session_Cache.Cache;
+            Rec_Buf : Octet_Array (1 .. 4096) := (others => 0);
+            Rec_Last : Natural;
+            OK : Boolean;
+            NST_OK : Boolean := False;
+         begin
+            Tls_Core.Session_Cache.Init (Cache);
+            Tls_Core.Tls13_Driver.Open_App_Directions
+              (D, Out_Dir => Out_Dir, In_Dir => In_Dir);
+            Read_Record (Sock, Rec_Buf, Rec_Last, OK);
+            if not OK or else Rec_Last < (5 + 1 + 16) then
+               Trace ("  (no NST received from server)");
+            else
+               Tls_Core.Tls13_Driver.Receive_New_Session_Ticket
+                 (D            => D,
+                  In_Dir       => In_Dir,
+                  Cache        => Cache,
+                  Record_Bytes => Rec_Buf (1 .. Rec_Last),
+                  OK           => NST_OK);
+            end if;
+            if NST_OK then
+               declare
+                  Index : Tls_Core.Session_Cache.Slot_Index;
+                  Found : Boolean;
+               begin
+                  Tls_Core.Session_Cache.Lookup_Most_Recent
+                    (Cache, Index, Found);
+                  if Found then
+                     declare
+                        Saved : Boolean;
+                     begin
+                        Save_Slot (Cache.Slots (Index),
+                                   Save_Ticket.all, Saved);
+                        if Saved then
+                           Trace ("  <- captured NST; ticket="
+                                  & Natural'Image
+                                       (Cache.Slots (Index).Ticket_Len)
+                                  & " B → "
+                                  & Save_Ticket.all);
+                        else
+                           Trace ("  (NST captured; save_slot failed)");
+                        end if;
+                     end;
+                  end if;
+               end;
+            end if;
+         end;
       end if;
 
       if not Aborted then

@@ -605,6 +605,21 @@ is
          end;
       end if;
 
+      --  signature_algorithms — RFC 8446 §4.2.3 / §9.2 require it
+      --  in every CH (incl. resumption-PSK CHs, which openssl
+      --  rejects with "missing sigalgs extension" otherwise).  We
+      --  list ecdsa_secp256r1_sha256 + rsa_pss_rsae_sha256 to match
+      --  the cert-mode CH encoder.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 6) :=
+           (1 => 16#00#, 2 => 16#04#,
+            3 => 16#04#, 4 => 16#03#,    --  ecdsa_secp256r1_sha256
+            5 => 16#08#, 6 => 16#04#);   --  rsa_pss_rsae_sha256
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Signature_Algorithms, Body_Bytes);
+      end;
+
       --  key_share = [{x25519, 32-byte u-coord}]. RFC 8446 §4.2.8.
       --  CH layout: u16 client_shares_len + KeyShareEntry{
       --      u16 group, u16 key_exch_len, key_exch (32 bytes for x25519)

@@ -131,7 +131,11 @@ is
    --  PSK + ECDHE story.
    ------------------------------------------------------------------
 
-   subtype Psk_Identity_Len is Positive range 1 .. 64;
+   --  PSK identity bytes — 1..1024 to accommodate session-resumption
+   --  tickets from production peers (openssl 5.9.x emits ~190-byte
+   --  tickets; gnutls/bssl can push beyond 256 B).  RFC 8446 §4.2.11
+   --  caps PskIdentity opaque<1..2^16-1>; 1024 is our v0.5 envelope.
+   subtype Psk_Identity_Len is Positive range 1 .. 1024;
    subtype Binder is Octet_Array (1 .. 32);
 
    --  Encode a CH with the PSK + DHE extension stack. Out_Bytes will

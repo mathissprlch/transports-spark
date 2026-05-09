@@ -3871,6 +3871,8 @@ is
       Slot : Tls_Core.Session_Cache.Slot)
    is
       Derived_Psk : Tls_Core.Key_Schedule.Secret;
+      Priv_32     : Tls_Core.X25519.Bytes_32;
+      Pub_32      : Tls_Core.X25519.Bytes_32;
    begin
       --  Compute the resumption-PSK on the spot.
       Tls_Core.Session_Ticket.Derive_Psk_From_Ticket_Sha256
@@ -3880,9 +3882,7 @@ is
          Psk               => Derived_Psk);
 
       --  Initialise as a regular PSK client (the existing PSK_KE
-      --  path drives the handshake; once the parallel C7 mode-3
-      --  / psk_dhe_ke track lands, this entry point becomes the
-      --  canonical resumption initialiser).
+      --  path drives the handshake).
       D.My_Role := Client;
       D.Cur_State := Idle;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
@@ -3901,6 +3901,22 @@ is
       D.Hrr_Cookie    := (others => 0);
       D.Hrr_Cookie_Len := 0;
       D.Hrr_Ch1_Hash  := (others => 0);
+      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
+
+      --  Resumption is psk_dhe_ke (mode 3) — needs a fresh X25519
+      --  ephemeral.  Use a deterministic-but-non-zero scalar derived
+      --  from the resumption_secret so peers compute a real shared.
+      --  RFC 8446 §4.2.11.2: resumption-PSK + ECDHE; key_share is
+      --  mandatory in CH.  (Production callers should layer a CSPRNG
+      --  here; v0.5 derives from the unique-per-session resumption
+      --  secret so each session has a distinct ephemeral.)
+      Priv_32 := Slot.Resumption_Secret;
+      --  RFC 7748 §5: the X25519.Derive_Public clamps the scalar.
+      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
+      D.My_Ecdhe_Priv := Priv_32;
+      D.My_Ecdhe_Pub  := Pub_32;
+      D.Peer_Ecdhe_Pub := (others => 0);
+      D.Ecdhe_Shared := (others => 0);
    end Init_Psk_Resumption_Client;
 
 end Tls_Core.Tls13_Driver;
