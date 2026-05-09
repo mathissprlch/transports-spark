@@ -10,6 +10,7 @@ with Tls_Core.Psk_Binder;
 with Tls_Core.Session_Cache;
 with Tls_Core.Session_Ticket;
 with Tls_Core.Tls13_Driver.Helpers;
+with Tls_Core.Tls13_Driver.Step_Awaiting_Cf;
 with Tls_Core.X25519;
 
 package body Tls_Core.Tls13_Driver
@@ -2284,63 +2285,7 @@ is
             end;
 
          when Awaiting_Cf =>
-            --  Read encrypted Finished record from In_Bytes.
-            declare
-               Pt_Buf : Octet_Array (1 .. 1024) := (others => 0);
-               Pt_Last : Natural;
-               Inner_Type : Octet;
-               OK : Boolean;
-            begin
-               Tls_Core.Aead_Channel.Receive
-                 (D.Hs_In_Dir, In_Bytes,
-                  Pt_Buf, Pt_Last, Inner_Type, OK);
-               if not OK
-                 or else Inner_Type /=
-                           Tls_Core.Aead_Channel.Inner_Type_Handshake
-                 or else Pt_Last /= 4 + 32
-                 or else Pt_Buf (1) /= Hs_Type_Finished
-               then
-                  D.Cur_State := Failed;
-                  return;
-               end if;
-               --  Constant-time compare of received verify_data
-               --  against the expected value computed at SF send time.
-               declare
-                  Diff : Octet := 0;
-               begin
-                  for I in 1 .. 32 loop
-                     Diff := Diff or (Pt_Buf (4 + I) xor D.Expected_Cf (I));
-                  end loop;
-                  if Diff /= 0 then
-                     D.Cur_State := Failed;
-                     return;
-                  end if;
-               end;
-               Tls_Core.Transcript.Append (D.Hash_Ctx, Pt_Buf (1 .. Pt_Last));
-
-               --  Derive resumption_master_secret per RFC 8446 §7.1:
-               --    Derive-Secret(Master_Secret, "res master", CH..CF)
-               --  Server side: Master_Sec was saved in the
-               --  Awaiting_CH branch when App_C_Ap / App_S_Ap were
-               --  derived; the transcript now spans CH..CF (we just
-               --  appended CF).
-               if D.Master_Set then
-                  declare
-                     Th_After_Cf : Tls_Core.Sha256.Digest;
-                  begin
-                     Tls_Core.Transcript.Snapshot
-                       (D.Hash_Ctx, Th_After_Cf);
-                     Tls_Core.Session_Ticket
-                       .Derive_Resumption_Master_Secret_Sha256
-                         (Master_Secret     => D.Master_Sec,
-                          Transcript_Hash   => Th_After_Cf,
-                          Resumption_Secret => D.Res_Master_Sec);
-                     D.Res_Master_Set := True;
-                  end;
-               end if;
-
-               D.Cur_State := Done;
-            end;
+            Step_Awaiting_Cf.Handle (D, In_Bytes, Out_Buf, Out_Last);
 
          when Awaiting_Sh_Or_Hrr =>
             --  RFC 8446 §4.1.4 — client just sent CH1; server's first
