@@ -1,0 +1,23 @@
+--  NewSessionTicket: RFC 8446 §4.6.1.
+
+package New_Session_Ticket is
+
+   type Lifetime is unsigned 32;
+   type Age_Add is unsigned 32;
+   type Nonce_Length is unsigned 8;
+   type Ticket_Length is range 1 .. 65535 with Size => 16;
+   type Extensions_Length is range 0 .. 65534 with Size => 16;
+
+   type Message is
+      message
+         Ticket_Lifetime : Lifetime;
+         Ticket_Age_Add  : Age_Add;
+         Nonce_Len       : Nonce_Length;
+         Ticket_Nonce    : Opaque with Size => Nonce_Len * 8;
+         Ticket_Len      : Ticket_Length;
+         Ticket          : Opaque with Size => Ticket_Len * 8;
+         Extensions_Len  : Extensions_Length;
+         Extensions      : Opaque with Size => Extensions_Len * 8;
+      end message;
+
+end New_Session_Ticket;

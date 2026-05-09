@@ -1,0 +1,32 @@
+--  Key Share extension payloads.
+--
+--  Source: RFC 8446 §4.2.8.
+
+with TLS_Extensions;
+
+package Key_Share is
+
+   type Key_Exchange_Length is range 1 .. 65535 with Size => 16;
+   type Client_Shares_Length is unsigned 16;
+
+   type Key_Share_Entry is
+      message
+         Group            : TLS_Extensions::Named_Group;
+         Key_Exchange_Len : Key_Exchange_Length;
+         Key_Exchange     : Opaque with Size => Key_Exchange_Len * 8;
+      end message;
+
+   type Client_Hello_Payload is
+      message
+         Client_Shares_Len : Client_Shares_Length;
+         Client_Shares     : Opaque with Size => Client_Shares_Len * 8;
+      end message;
+
+   type Server_Hello_Payload is
+      message
+         Group            : TLS_Extensions::Named_Group;
+         Key_Exchange_Len : Key_Exchange_Length;
+         Key_Exchange     : Opaque with Size => Key_Exchange_Len * 8;
+      end message;
+
+end Key_Share;

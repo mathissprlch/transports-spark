@@ -1,0 +1,40 @@
+--  Pre-Shared Key extension payloads.
+--
+--  Source: RFC 8446 §4.2.11.
+
+package Pre_Shared_Key is
+
+   type Identity_Length is range 1 .. 65535 with Size => 16;
+   type Ticket_Age is unsigned 32;
+   type Identities_Length is range 7 .. 65535 with Size => 16;
+   type Binder_Length is range 32 .. 255 with Size => 8;
+   type Binders_Length is range 33 .. 65535 with Size => 16;
+   type Selected_Identity_Type is unsigned 16;
+
+   type Psk_Identity is
+      message
+         Identity_Len          : Identity_Length;
+         Identity              : Opaque with Size => Identity_Len * 8;
+         Obfuscated_Ticket_Age : Ticket_Age;
+      end message;
+
+   type Psk_Binder_Entry is
+      message
+         Binder_Len : Binder_Length;
+         Binder     : Opaque with Size => Binder_Len * 8;
+      end message;
+
+   type Client_Hello_Payload is
+      message
+         Identities_Len : Identities_Length;
+         Identities     : Opaque with Size => Identities_Len * 8;
+         Binders_Len    : Binders_Length;
+         Binders        : Opaque with Size => Binders_Len * 8;
+      end message;
+
+   type Server_Hello_Payload is
+      message
+         Selected_Identity : Selected_Identity_Type;
+      end message;
+
+end Pre_Shared_Key;

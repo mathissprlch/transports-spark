@@ -1,0 +1,25 @@
+--  ServerHello: TLS 1.3 ServerHello message body.
+--
+--  Source: RFC 8446 §4.1.3.
+
+package Server_Hello is
+
+   type Legacy_Version is range 16#0303# .. 16#0303# with Size => 16;
+   type Session_Id_Length is range 0 .. 32 with Size => 8;
+   type Cipher_Suite is unsigned 16;
+   type Compression_Method is range 0 .. 0 with Size => 8;
+   type Extensions_Length is range 6 .. 65535 with Size => 16;
+
+   type Message is
+      message
+         Legacy_Version_Field   : Legacy_Version;
+         Random                 : Opaque with Size => 256;
+         Session_Id_Len         : Session_Id_Length;
+         Session_Id_Echo        : Opaque with Size => Session_Id_Len * 8;
+         Selected_Cipher_Suite  : Cipher_Suite;
+         Compression_Method_Val : Compression_Method;
+         Extensions_Len         : Extensions_Length;
+         Extensions             : Opaque with Size => Extensions_Len * 8;
+      end message;
+
+end Server_Hello;
