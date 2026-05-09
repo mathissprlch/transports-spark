@@ -649,9 +649,8 @@ procedure Tls_Interop is
          when Psk_External_Aes256 =>
             M := Psk_Dhe_Ke; C := Aes256_Gcm_Sha384;
          when Psk_Resumption =>
-            --  Run the underlying cert-mode handshake; the matrix
-            --  doesn't yet chain ticket-save / ticket-load (the
-            --  driver-side bug deferred per v0.5-not-impl.md).
+            --  Resumption is handled as a two-phase special case
+            --  in Run_Peer_Feature; this branch is not reached.
             M := Cert_Ec; C := Auto;
          when Hello_Retry_Request =>
             M := Cert_Ec; C := Auto;
@@ -692,6 +691,99 @@ procedure Tls_Interop is
          C2S_Result := Not_Impl_3P;
          S2C_Result := Not_Impl_3P;
          Note := To_Unbounded_String ("peer-CLI gap");
+      elsif Feat = Psk_Resumption then
+         --  Two-phase cell: cert-ec → save ticket → psk-resume
+         --  with ticket, against the same peer server. Delegates
+         --  to scripts/test-psk-resumption.sh <peer>.
+         --  c2s only; s2c (Ada server accepting external
+         --  resumption) is not yet wired.
+         S2C_Result := Not_Impl_Ada;
+         S2C_Note   := To_Unbounded_String
+           ("Ada server resumption-accept not wired");
+         declare
+            use Ada.Calendar;
+            T0 : constant Time := Clock;
+            Script : GNAT.OS_Lib.String_Access :=
+              Locate_Exec_On_Path ("bash");
+            Script_Path : constant String :=
+              Repo & "/scripts/test-psk-resumption.sh";
+            Peer_Str : constant String := Image (Peer);
+            Log_File : constant String :=
+              To_String (Log_Dir) & "/" & Peer_Str
+              & "-psk-resumption-c2s.log";
+            Args : Argument_List_Access :=
+              new Argument_List'
+                (new String'(Script_Path),
+                 new String'(Peer_Str));
+            Ret : Boolean;
+            Pid : Process_Id;
+         begin
+            if Script = null then
+               C2S_Result := Fail;
+               C2S_Note := To_Unbounded_String ("bash not found");
+            else
+               Pid := Non_Blocking_Spawn
+                 (Program_Name => Script.all,
+                  Args         => Args.all,
+                  Output_File  => Log_File,
+                  Err_To_Out   => True);
+               Free (Script);
+               if Pid = Invalid_Pid then
+                  C2S_Result := Fail;
+                  C2S_Note := To_Unbounded_String
+                    ("could not spawn resumption script");
+               else
+                  declare
+                     Reaped : Process_Id;
+                     Ok     : Boolean;
+                  begin
+                     loop
+                        Wait_Process (Reaped, Ok);
+                        exit when Reaped = Pid
+                          or else Reaped = Invalid_Pid;
+                     end loop;
+                  end;
+                  declare
+                     F  : Ada.Text_IO.File_Type;
+                     L  : String (1 .. 256);
+                     Last : Natural;
+                     Found_Pass : Boolean := False;
+                  begin
+                     Ada.Text_IO.Open
+                       (F, Ada.Text_IO.In_File, Log_File);
+                     while not Ada.Text_IO.End_Of_File (F) loop
+                        Ada.Text_IO.Get_Line (F, L, Last);
+                        if Last >= 4
+                          and then L (1 .. 4) = "=== "
+                          and then Ada.Strings.Fixed.Index
+                                    (L (1 .. Last), "PASS") /= 0
+                        then
+                           Found_Pass := True;
+                        end if;
+                     end loop;
+                     Ada.Text_IO.Close (F);
+                     if Found_Pass then
+                        C2S_Result := Pass;
+                        C2S_Note := To_Unbounded_String (Log_File);
+                     else
+                        C2S_Result := Fail;
+                        C2S_Note := To_Unbounded_String
+                          ("see " & Log_File);
+                     end if;
+                  exception
+                     when others =>
+                        C2S_Result := Fail;
+                        C2S_Note := To_Unbounded_String
+                          ("see " & Log_File);
+                  end;
+               end if;
+            end if;
+            Free (Args);
+            C2S_Time := Clock - T0;
+         end;
+         Note := (if C2S_Result = Pass
+                  then To_Unbounded_String (To_String (Log_Dir))
+                  else C2S_Note);
       else
          Feature_To_Cell (Feat, M, C);
          Run_Cell (Peer, M, C, "c2s", Image (Feat),

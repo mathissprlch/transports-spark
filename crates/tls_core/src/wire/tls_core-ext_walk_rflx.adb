@@ -153,6 +153,43 @@ is
       RFLX.RFLX_Types.Free (Buf);
    end Find_Key_Share_X25519;
 
+   procedure Find_Key_Share_X25519_Sh
+     (Ext_Bytes       : Octet_Array;
+      Key_Share_First : out Natural;
+      Key_Share_Last  : out Natural;
+      Found           : out Boolean)
+   is
+      Df, Dl : Natural;
+      Buf : RFLX.RFLX_Types.Bytes_Ptr;
+      Ext_Found : Boolean;
+   begin
+      Key_Share_First := 0;
+      Key_Share_Last  := 0;
+      Found           := False;
+      Walk_Find (Ext_Bytes, 51, Df, Dl, Buf, Ext_Found);
+      if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
+      if not Ext_Found or else Dl < 36
+        or else Df < 1
+        or else Df + 35 > Ext_Bytes'Length
+      then return; end if;
+      declare
+         Grp : constant Natural :=
+           Natural (Ext_Bytes (Df)) * 256
+           + Natural (Ext_Bytes (Df + 1));
+         Kx_Len : constant Natural :=
+           Natural (Ext_Bytes (Df + 2)) * 256
+           + Natural (Ext_Bytes (Df + 3));
+      begin
+         if Grp = 16#001D# and then Kx_Len = 32
+           and then Df + 35 <= Ext_Bytes'Length
+         then
+            Key_Share_First := Df + 4;
+            Key_Share_Last  := Df + 35;
+            Found := True;
+         end if;
+      end;
+   end Find_Key_Share_X25519_Sh;
+
    procedure Find_Sig_Algs
      (Ext_Bytes      : Octet_Array;
       Sig_Algs_First : out Natural;

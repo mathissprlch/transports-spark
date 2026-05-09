@@ -119,8 +119,8 @@ package Tls_Interop_Peers is
 
       Psk_Resumption,
       --  RFC 8446 §4.6.1 resumption-PSK (cert-mode → NewSessionTicket
-      --  → reconnect with ticket).  Ada plumbing landed; key-
-      --  schedule bug deferred — see v0.5-not-impl.md.
+      --  → reconnect with ticket).  c2s tested via two-phase shell
+      --  script; s2c pending Ada server resumption-accept wiring.
 
       Hello_Retry_Request,
       --  RFC 8446 §4.1.4 — server demands a different named group.

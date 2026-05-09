@@ -8,8 +8,14 @@ set -euo pipefail
 #
 # PEER = openssl (default), gnutls, mbedtls
 #
-# Phase 1: cert-ec handshake → save ticket
-# Phase 2: psk-resume handshake using saved ticket
+# Phase 1: cert-ec handshake → save ticket (against running server)
+# Phase 2: psk-resume handshake using saved ticket (same server)
+#
+# The server MUST stay running between phases so it retains the
+# ticket encryption key that was used to issue the NewSessionTicket.
+# Starting a fresh server for Phase 2 would give a different key
+# and the server would reject the ticket (falling back to cert-mode
+# while our client expects PSK → bad_record_mac).
 
 PEER=${1:-openssl}
 TICKET=/tmp/spark-tls-resume-ticket.bin
@@ -19,9 +25,7 @@ TLS_CLI=$(dirname "$0")/../crates/examples/bin/tls_cli
 
 echo "=== PSK Resumption test against $PEER on port $PORT ==="
 
-# --- Phase 1: cert-ec handshake to get a ticket ---
-
-echo "Phase 1: cert-ec handshake (get ticket)..."
+# --- Start ONE server for both phases ---
 
 case $PEER in
   openssl)
@@ -48,15 +52,19 @@ esac
 SRV_PID=$!
 sleep 0.5
 
+cleanup() { kill $SRV_PID 2>/dev/null || true; wait $SRV_PID 2>/dev/null || true; rm -f "$TICKET"; }
+trap cleanup EXIT
+
+# --- Phase 1: cert-ec handshake to get a ticket ---
+
+echo "Phase 1: cert-ec handshake (get ticket)..."
+
 TRUST_DER="${FIXTURES}/root.der"
 "$TLS_CLI" client --connect "127.0.0.1:$PORT" \
   --mode cert-ec --trust "$TRUST_DER" \
   --hostname localhost \
   --save-ticket "$TICKET"
 PHASE1=$?
-
-kill $SRV_PID 2>/dev/null || true
-wait $SRV_PID 2>/dev/null || true
 
 if [ $PHASE1 -ne 0 ]; then
   echo "FAIL: Phase 1 (cert-ec) failed with exit $PHASE1"
@@ -69,41 +77,15 @@ if [ ! -f "$TICKET" ]; then
 fi
 echo "Phase 1: OK (ticket saved: $(wc -c < "$TICKET") bytes)"
 
-# --- Phase 2: psk-resume handshake using ticket ---
+sleep 0.3
+
+# --- Phase 2: psk-resume handshake using ticket (same server) ---
 
 echo "Phase 2: psk-resume handshake..."
-PORT2=$((PORT + 1))
 
-case $PEER in
-  openssl)
-    openssl s_server -tls1_3 -accept $PORT2 \
-      -cert "$FIXTURES/leaf.pem" -key "$FIXTURES/leaf.key" \
-      -www -quiet &
-    ;;
-  gnutls)
-    gnutls-serv --port=$PORT2 \
-      --x509certfile="$FIXTURES/leaf.pem" \
-      --x509keyfile="$FIXTURES/leaf.key" \
-      --disable-client-cert &
-    ;;
-  mbedtls)
-    ssl_server2 server_port=$PORT2 \
-      crt_file="$FIXTURES/leaf.pem" \
-      key_file="$FIXTURES/leaf.key" \
-      force_version=tls13 &
-    ;;
-esac
-SRV_PID=$!
-sleep 0.5
-
-"$TLS_CLI" client --connect "127.0.0.1:$PORT2" \
+"$TLS_CLI" client --connect "127.0.0.1:$PORT" \
   --mode psk-resume --load-ticket "$TICKET"
 PHASE2=$?
-
-kill $SRV_PID 2>/dev/null || true
-wait $SRV_PID 2>/dev/null || true
-
-rm -f "$TICKET"
 
 if [ $PHASE2 -ne 0 ]; then
   echo "FAIL: Phase 2 (psk-resume) failed with exit $PHASE2"

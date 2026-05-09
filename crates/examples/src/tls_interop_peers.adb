@@ -823,7 +823,7 @@ package body Tls_Interop_Peers is
       case F is
          when Cert_Rsa_Pss_Sha256 => return "v0.5-not-impl.md#rsa-pss-sign";
          when Psk_External_Aes256 => return "v0.5-not-impl.md#aes256-gcm-cell";
-         when Psk_Resumption      => return "v0.5-not-impl.md#psk-resume-keysched";
+         when Psk_Resumption      => return "";
          when Zero_Rtt            => return "v0.5-not-impl.md#zero-rtt";
          when others              => return "";
       end case;

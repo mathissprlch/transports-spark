@@ -1,6 +1,7 @@
 with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 with RFLX.Server_Hello.Message;
+with Tls_Core.Ext_Walk_Rflx;
 
 package body Tls_Core.Hello_Rflx
 with SPARK_Mode
@@ -227,50 +228,28 @@ is
          Decode_Server_Hello_Fields
            (Local, Rnd, Suite, Sf, Sl, Ef, El, Fields_OK);
 
-         if not Fields_OK or else Ef = 0 then
+         if not Fields_OK or else Ef = 0
+           or else El < Ef + 3
+         then
             return;
          end if;
 
          declare
-            Cursor : Natural := Ef;
+            Ext_Len : constant Natural := El - Ef + 1;
+            Ext_Copy : Octet_Array (1 .. Ext_Len) :=
+              Local (Ef .. El);
+            Ks_Ef, Ks_El : Natural;
+            Ks_Found : Boolean;
          begin
-            while Cursor + 3 <= El loop
-               declare
-                  Ext_Type : constant Natural :=
-                    Natural (Local (Cursor)) * 256
-                    + Natural (Local (Cursor + 1));
-                  Ext_Data_Len : constant Natural :=
-                    Natural (Local (Cursor + 2)) * 256
-                    + Natural (Local (Cursor + 3));
-                  Ext_Data_F : constant Natural := Cursor + 4;
-               begin
-                  if Ext_Data_F + Ext_Data_Len - 1 > El then
-                     return;
-                  end if;
-
-                  if Ext_Type = 51 and then Ext_Data_Len >= 4 then
-                     declare
-                        Kx_Len : constant Natural :=
-                          Natural (Local (Ext_Data_F + 2)) * 256
-                          + Natural (Local (Ext_Data_F + 3));
-                        Kx_F : constant Natural := Ext_Data_F + 4;
-                     begin
-                        if Kx_Len = 32 and then
-                           Kx_F + 31 <= El
-                        then
-                           Key_Share_First :=
-                             In_Bytes'First + Kx_F - 1;
-                           Key_Share_Last :=
-                             In_Bytes'First + Kx_F + 30;
-                           OK := True;
-                        end if;
-                     end;
-                     return;
-                  end if;
-
-                  Cursor := Ext_Data_F + Ext_Data_Len;
-               end;
-            end loop;
+            Tls_Core.Ext_Walk_Rflx.Find_Key_Share_X25519_Sh
+              (Ext_Copy, Ks_Ef, Ks_El, Ks_Found);
+            if Ks_Found then
+               Key_Share_First :=
+                 In_Bytes'First + (Ef - 1) + Ks_Ef - 1;
+               Key_Share_Last :=
+                 In_Bytes'First + (Ef - 1) + Ks_El - 1;
+               OK := True;
+            end if;
          end;
       end;
    end Decode_Server_Hello_Key_Share;
