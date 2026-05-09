@@ -11,6 +11,7 @@ with Tls_Core.Session_Cache;
 with Tls_Core.Session_Ticket;
 with Tls_Core.Tls13_Driver.Helpers;
 with Tls_Core.Tls13_Driver.Step_Awaiting_Cf;
+with Tls_Core.Tls13_Driver.Step_Idle;
 with Tls_Core.X25519;
 
 package body Tls_Core.Tls13_Driver
@@ -275,107 +276,7 @@ is
 
       case D.Cur_State is
          when Idle =>
-            --  Client only: emit ClientHello, dispatched on D.Mode.
-            if D.My_Role /= Client then
-               D.Cur_State := Failed;
-               return;
-            end if;
-            if D.Mode = Cert_Mode then
-               --  RFC 8446 §4.1.2 cert-mode ClientHello — no PSK
-               --  extension, no binder. Includes signature_algorithms.
-               declare
-                  Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-                    (others => 16#A1#);
-                  Ch_Body : Octet_Array (1 .. 512) := (others => 0);
-                  Ch_Body_Last : Natural;
-                  Ch_Hs   : Octet_Array (1 .. 1024) := (others => 0);
-                  Ch_Hs_Last : Natural;
-                  Ch_Rec  : Octet_Array (1 .. 1024) := (others => 0);
-                  Ch_Rec_Last : Natural;
-               begin
-                  Tls_Core.Hello.Encode_Client_Hello_Cert
-                    (Random      => Client_Random,
-                     Key_Share   => D.My_Ecdhe_Pub,
-                     Server_Name => D.Sni_Hostname (1 .. D.Sni_Len),
-                     Alpn_Offers => D.Alpn_Offers (1 .. D.Alpn_Offers_Len),
-                     Out_Buf     => Ch_Body,
-                     Out_Last    => Ch_Body_Last);
-                  Encode_Hs_Message
-                    (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
-                     Ch_Hs, Ch_Hs_Last);
-                  Tls_Core.Transcript.Append
-                    (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
-                  Wrap_Tls_Plaintext
-                    (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
-                  Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
-                  Out_Last := Ch_Rec_Last;
-                  --  Cert mode does not pair with HRR-aware client
-                  --  init in v0.5 (HRR + cert is a v0.5.x extension).
-                  D.Cur_State := Awaiting_Sf;
-               end;
-               return;
-            end if;
-            declare
-               Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-                 (others => 16#A1#);
-               Ch_Body : Octet_Array (1 .. 512) := (others => 0);
-               Ch_Body_Last : Natural;
-               T_Last  : Natural;
-               Binder  : Tls_Core.Psk_Binder.Binder_Bytes;
-               Ch_Hs   : Octet_Array (1 .. 1024) := (others => 0);
-               Ch_Hs_Last : Natural;
-               Ch_Rec  : Octet_Array (1 .. 1024) := (others => 0);
-               Ch_Rec_Last : Natural;
-            begin
-               Tls_Core.Hello.Encode_Client_Hello_Psk
-                 (Client_Random,
-                  D.Identity (1 .. D.Identity_Len),
-                  D.My_Ecdhe_Pub,
-                  D.Sni_Hostname (1 .. D.Sni_Len),
-                  D.Alpn_Offers (1 .. D.Alpn_Offers_Len),
-                  Ch_Body, Ch_Body_Last, T_Last);
-               --  RFC 8446 §4.2.11.2 + §4.4.1: the binder is computed
-               --  over the truncated *handshake message* (handshake
-               --  type 0x01 + uint24 length + body, truncated up to
-               --  but not including the binders), NOT the body alone.
-               --  Build the truncated handshake-formatted bytes in
-               --  Ch_Hs (scratch — overwritten by Encode_Hs_Message
-               --  below), then hash that.
-               Ch_Hs := (others => 0);
-               Ch_Hs (1) := Hs_Type_CH;
-               Ch_Hs (2) := Octet ((Ch_Body_Last / 65536) mod 256);
-               Ch_Hs (3) := Octet ((Ch_Body_Last / 256) mod 256);
-               Ch_Hs (4) := Octet (Ch_Body_Last mod 256);
-               Ch_Hs (5 .. 4 + T_Last) := Ch_Body (1 .. T_Last);
-               Tls_Core.Psk_Binder.Compute
-                 (PSK                    => D.PSK,
-                  Truncated_Client_Hello => Ch_Hs (1 .. 4 + T_Last),
-                  Out_Binder             => Binder,
-                  Is_Resumption          => D.Is_Resumption);
-               Ch_Body (T_Last + 4 .. T_Last + 35) := Binder;  -- offset by binders_total_len(2)+binder_len(1)+1
-               --  Wrap as handshake message (type 0x01 + u24 + body).
-               Encode_Hs_Message
-                 (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
-                  Ch_Hs, Ch_Hs_Last);
-               --  Append handshake message (NOT record wrapper) to transcript.
-               Tls_Core.Transcript.Append
-                 (D.Hash_Ctx, Ch_Hs (1 .. Ch_Hs_Last));
-               --  Wrap in TLSPlaintext record.
-               Wrap_Tls_Plaintext
-                 (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
-               Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
-               Out_Last := Ch_Rec_Last;
-               --  HRR-aware client transitions to Awaiting_Sh_Or_Hrr;
-               --  the next Step inspects the server's first record and
-               --  dispatches by ServerHello.random == magic per
-               --  RFC 8446 §4.1.4. Non-HRR-aware client falls through
-               --  to the historical Awaiting_Sf direct path.
-               if D.Hrr_Aware then
-                  D.Cur_State := Awaiting_Sh_Or_Hrr;
-               else
-                  D.Cur_State := Awaiting_Sf;
-               end if;
-            end;
+            Step_Idle.Handle (D, In_Bytes, Out_Buf, Out_Last);
 
          when Awaiting_Sf =>
             --  Client: parse server flight.  For PSK mode the flight
