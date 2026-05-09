@@ -24,13 +24,23 @@ is
      (16#65#, 16#78#, 16#74#, 16#20#, 16#62#, 16#69#,
       16#6E#, 16#64#, 16#65#, 16#72#);  --  "ext binder"
 
+   --  RFC 8446 §4.2.11.2: resumption-PSK binder uses a different
+   --  binder_key label.  Server-side derivation of the same secret
+   --  picks the same label based on whether the offered PSK is a
+   --  resumption ticket (which our v0.5 server doesn't issue, so
+   --  the corresponding server-side path stays "ext binder").
+   Res_Binder_Label : constant Octet_Array (1 .. 10) :=
+     (16#72#, 16#65#, 16#73#, 16#20#, 16#62#, 16#69#,
+      16#6E#, 16#64#, 16#65#, 16#72#);  --  "res binder"
+
    Finished_Label : constant Octet_Array (1 .. 8) :=
      (16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#);
 
    procedure Compute
      (PSK                    : Octet_Array;
       Truncated_Client_Hello : Octet_Array;
-      Out_Binder             : out Binder_Bytes)
+      Out_Binder             : out Binder_Bytes;
+      Is_Resumption          : Boolean := False)
    is
       Zero32       : constant Octet_Array (1 .. 32) := (others => 0);
       Empty        : constant Octet_Array (1 .. 0)  := (others => 0);
@@ -53,11 +63,19 @@ is
       --  Calling Hkdf_Expand_Label_Sha256 directly with Context =>
       --  Empty (0 bytes) produces a different binder_key than
       --  spec-conformant peers (openssl / rustls / Go) compute.
-      Tls_Core.Key_Schedule.Derive_Secret
-        (Secret_In  => Early_Secret,
-         Label      => Ext_Binder_Label,
-         Messages   => Empty,
-         Out_Secret => Binder_Key);
+      if Is_Resumption then
+         Tls_Core.Key_Schedule.Derive_Secret
+           (Secret_In  => Early_Secret,
+            Label      => Res_Binder_Label,
+            Messages   => Empty,
+            Out_Secret => Binder_Key);
+      else
+         Tls_Core.Key_Schedule.Derive_Secret
+           (Secret_In  => Early_Secret,
+            Label      => Ext_Binder_Label,
+            Messages   => Empty,
+            Out_Secret => Binder_Key);
+      end if;
 
       --  finished_key = HKDF-Expand-Label(binder_key, "finished", "", 32).
       Hkdf_Expand_Label_Sha256

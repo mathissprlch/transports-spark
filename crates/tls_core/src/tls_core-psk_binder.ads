@@ -30,10 +30,15 @@ is
    --
    --  RFC 8448 PSK vectors at the handshake-driver level provide
    --  the functional check; no Post is asserted here.
+   --  Is_Resumption selects the binder_key derivation label per
+   --  RFC 8446 §4.2.11.2: external PSK = "ext binder", resumption
+   --  PSK = "res binder".  Default False (external PSK) preserves
+   --  the prior call-site contract.
    procedure Compute
      (PSK                    : Octet_Array;
       Truncated_Client_Hello : Octet_Array;
-      Out_Binder             : out Binder_Bytes)
+      Out_Binder             : out Binder_Bytes;
+      Is_Resumption          : Boolean := False)
    with
      Pre =>
        PSK'Length = 32

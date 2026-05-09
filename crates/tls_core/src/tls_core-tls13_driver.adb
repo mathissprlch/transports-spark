@@ -562,9 +562,10 @@ is
                Ch_Hs (4) := Octet (Ch_Body_Last mod 256);
                Ch_Hs (5 .. 4 + T_Last) := Ch_Body (1 .. T_Last);
                Tls_Core.Psk_Binder.Compute
-                 (D.PSK,
-                  Ch_Hs (1 .. 4 + T_Last),
-                  Binder);
+                 (PSK                    => D.PSK,
+                  Truncated_Client_Hello => Ch_Hs (1 .. 4 + T_Last),
+                  Out_Binder             => Binder,
+                  Is_Resumption          => D.Is_Resumption);
                Ch_Body (T_Last + 4 .. T_Last + 35) := Binder;  -- offset by binders_total_len(2)+binder_len(1)+1
                --  Wrap as handshake message (type 0x01 + u24 + body).
                Encode_Hs_Message
@@ -2725,9 +2726,10 @@ is
                Ch_Hs (4) := Octet (Ch_Body_Last mod 256);
                Ch_Hs (5 .. 4 + T_Last) := Ch_Body (1 .. T_Last);
                Tls_Core.Psk_Binder.Compute
-                 (D.PSK,
-                  Ch_Hs (1 .. 4 + T_Last),
-                  Binder);
+                 (PSK                    => D.PSK,
+                  Truncated_Client_Hello => Ch_Hs (1 .. 4 + T_Last),
+                  Out_Binder             => Binder,
+                  Is_Resumption          => D.Is_Resumption);
                Ch_Body (T_Last + 4 .. T_Last + 35) := Binder;  -- offset by binders_total_len(2)+binder_len(1)+1
                Encode_Hs_Message
                  (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
@@ -3891,6 +3893,7 @@ is
       D.Identity_Len := Slot.Ticket_Len;
       D.Identity (1 .. Slot.Ticket_Len) :=
         Slot.Ticket (1 .. Slot.Ticket_Len);
+      D.Is_Resumption := True;  --  use "res binder" label
       D.App_Set := False;
       Prime_Driver_Defaults (D);
       D.Hrr_Demand    := False;

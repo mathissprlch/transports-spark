@@ -22,6 +22,7 @@ with Ada.Calendar;
 with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Exceptions;
+with Ada.Numerics.Discrete_Random;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO;
@@ -177,6 +178,11 @@ procedure Tls_Interop is
 
    Log_Dir : Unbounded_String;
 
+   --  Per-cell wall-clock budget.  Any cell taking longer is killed
+   --  + classified as `timeout`.  10 s is comfortable for
+   --  handshake-only cells (which complete in tens of ms locally).
+   Cell_Timeout : constant Duration := 10.0;
+
    --  ===== Cell run ============================================
 
    --  Result of running one cell.
@@ -191,12 +197,18 @@ procedure Tls_Interop is
       end case;
    end Image;
 
-   --  Allocate a new port from a counter.
-   Next_Port : Natural := 14430;
+   --  Allocate a port for a cell.  We use a random pick from a
+   --  20 000-port window so that back-to-back matrix runs don't
+   --  collide on TIME_WAIT (~30 s on macOS).  SO_REUSEADDR on the
+   --  Ada listener mitigates this further; randomization is the
+   --  belt-and-braces step.  Per CLAUDE.md §12: cheap fix, big
+   --  stability win.
+   subtype Port_Range is Natural range 20000 .. 59999;
+   package Port_Random is new Ada.Numerics.Discrete_Random (Port_Range);
+   Port_Rng : Port_Random.Generator;
    function Alloc_Port return Natural is
-      P : constant Natural := Next_Port;
+      P : constant Port_Range := Port_Random.Random (Port_Rng);
    begin
-      Next_Port := Next_Port + 1;
       return P;
    end Alloc_Port;
 
@@ -264,7 +276,6 @@ procedure Tls_Interop is
          return C;
       end Make_Peer_Cell;
 
-      Status : Integer;
    begin
       Cell_Logs (Image (Peer), Cell_Name, Direction, Server_Log, Client_Log);
       Result := Fail;
@@ -316,18 +327,65 @@ procedure Tls_Interop is
          end if;
          delay 0.8;  --  let server bind + listen
 
-         --  ---- Run client synchronously ----
+         --  ---- Run client with a hard wall-clock deadline ----
+         --
+         --  Bounded-time guarantee: any cell completes within
+         --  Cell_Timeout (default 10 s) regardless of peer-CLI
+         --  pathologies (rustls --http stuck on shutdown, bssl
+         --  half-RTT-NST coalescing waiting for a client ACK that
+         --  never comes, etc.).  When the deadline fires we kill
+         --  the client process group and mark the cell as a
+         --  timeout — the matrix proceeds to the next peer.
          declare
-            Spawn_Ok : Boolean;
+            Client_Pid : Process_Id;
+            Timed_Out  : Boolean := False;
+
+            task Wait_Client is
+               entry Done;
+            end Wait_Client;
+
+            task body Wait_Client is
+               P  : Process_Id;
+               OK : Boolean;
+            begin
+               --  Wait_Process blocks for ANY child; loop until
+               --  we see our client PID (or Invalid_Pid on error).
+               loop
+                  Wait_Process (P, OK);
+                  exit when P = Client_Pid or else P = Invalid_Pid;
+               end loop;
+               accept Done;
+            exception
+               when others =>
+                  begin accept Done; exception when others => null; end;
+            end Wait_Client;
          begin
-            Spawn
+            Client_Pid := Non_Blocking_Spawn
               (Program_Name => To_String (Client_Bin),
                Args         => Client_Args.all,
                Output_File  => To_String (Client_Log),
-               Success      => Spawn_Ok,
-               Return_Code  => Status,
                Err_To_Out   => True);
-            pragma Unreferenced (Spawn_Ok);
+            if Client_Pid = Invalid_Pid then
+               Result := Fail;
+               Note := To_Unbounded_String ("could not spawn client");
+            else
+               select
+                  Wait_Client.Done;
+               or
+                  delay Cell_Timeout;
+                  Timed_Out := True;
+                  Kill (Client_Pid, Hard_Kill => True);
+                  Wait_Client.Done;  --  reap after Kill
+               end select;
+            end if;
+            if Timed_Out then
+               Result := Fail;
+               Note := To_Unbounded_String
+                 ("timeout (>"
+                  & Ada.Strings.Fixed.Trim
+                      (Duration'Image (Cell_Timeout), Ada.Strings.Both)
+                  & "s) — peer-CLI hung");
+            end if;
          end;
 
          --  ---- Reap server ----
@@ -473,6 +531,10 @@ procedure Tls_Interop is
       Log_Dir := To_Unbounded_String
         ("/tmp/spark-tls-interop/" & Compress (TS));
       Ada.Directories.Create_Path (To_String (Log_Dir));
+
+      --  Reset the port RNG with a clock-based seed so each run
+      --  picks an independent port window.
+      Port_Random.Reset (Port_Rng);
 
       --  Materialise the PSK file once (32 bytes of 0x42).
       declare

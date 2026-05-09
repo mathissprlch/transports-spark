@@ -830,6 +830,12 @@ private
       Identity    : Identity_Bytes := (others => 0);
       Identity_Len : Natural := 0;
 
+      --  RFC 8446 §4.2.11.2: resumption-PSK uses the "res binder"
+      --  binder_key derivation label, not "ext binder".  Set True
+      --  by Init_Psk_Resumption_Client; left False for external PSK
+      --  via Init_Psk_Client.
+      Is_Resumption : Boolean := False;
+
       --  RFC 8446 §4.1.3 legacy_session_id_echo — server captures
       --  the client's legacy_session_id from the received CH and
       --  echoes it verbatim in the SH.  Empty (Len = 0) is fine:
