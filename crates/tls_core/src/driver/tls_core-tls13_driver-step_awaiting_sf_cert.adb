@@ -4,6 +4,7 @@ with Tls_Core.Cert_Chain;
 with Tls_Core.Cert_Verify;
 with Tls_Core.Handshake_Buffer;
 with Tls_Core.Hello;
+with Tls_Core.Hello_Rflx;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Session_Ticket;
 with Tls_Core.X25519;
@@ -109,7 +110,7 @@ is
                Peer_Pub : Tls_Core.X25519.Bytes_32;
                Shared   : Tls_Core.X25519.Bytes_32;
             begin
-               Tls_Core.Hello.Decode_Server_Hello_Psk_Key_Share
+               Tls_Core.Hello_Rflx.Decode_Server_Hello_Key_Share
                  (In_Bytes (Sh_Body_F .. Sh_Body_L),
                   Ks_F, Ks_L, Ks_OK);
                if not Ks_OK then

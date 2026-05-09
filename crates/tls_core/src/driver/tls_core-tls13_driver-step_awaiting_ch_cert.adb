@@ -3,6 +3,7 @@ with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
 with Tls_Core.Cert;
 with Tls_Core.Cert_Chain;
+with Tls_Core.Client_Hello_Rflx;
 with Tls_Core.Cert_Verify;
 with Tls_Core.Ecdsa_P256;
 with Tls_Core.Hello;

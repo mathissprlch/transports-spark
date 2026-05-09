@@ -134,4 +134,27 @@ is
             CH_Suites_First (In_Bytes)
               + CH_Suites_Len (In_Bytes) - 1);
 
+   procedure Decode_Client_Hello_Cert
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Sid_First         : out Natural;
+      Sid_Last          : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Sig_Algs_First    : out Natural;
+      Sig_Algs_Last     : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      OK                : out Boolean)
+   with
+     Pre  => In_Bytes'First = 1 and then In_Bytes'Length >= 42,
+     Post =>
+       (if OK then
+          CH_Valid (In_Bytes)
+          and then Random = CH_Random (In_Bytes)
+          and then Suites_First = CH_Suites_First (In_Bytes)
+          and then Suites_Last =
+            CH_Suites_First (In_Bytes)
+              + CH_Suites_Len (In_Bytes) - 1);
+
 end Tls_Core.Client_Hello_Rflx;

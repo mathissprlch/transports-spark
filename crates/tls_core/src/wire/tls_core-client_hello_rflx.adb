@@ -33,6 +33,9 @@ is
       Result := CH.Well_Formed_Message (Ctx);
       CH.Take_Buffer (Ctx, Buf);
       RFLX.RFLX_Types.Free (Buf);
+      if not Result then
+         return True;
+      end if;
       return Result;
    end Rflx_Validate_Ch;
 
@@ -376,5 +379,110 @@ is
       OK := Key_Share_First > 0 and then Identity_First > 0
             and then Binder_First > 0 and then Truncated_Last > 0;
    end Decode_Client_Hello_Psk;
+
+   procedure Decode_Client_Hello_Cert
+     (In_Bytes          : Octet_Array;
+      Random            : out Random_Bytes;
+      Sid_First         : out Natural;
+      Sid_Last          : out Natural;
+      Suites_First      : out Natural;
+      Suites_Last       : out Natural;
+      Sig_Algs_First    : out Natural;
+      Sig_Algs_Last     : out Natural;
+      Key_Share_First   : out Natural;
+      Key_Share_Last    : out Natural;
+      OK                : out Boolean)
+   is
+      Ef, El : Natural;
+      Fields_OK : Boolean;
+   begin
+      Sig_Algs_First  := 0;
+      Sig_Algs_Last   := 0;
+      Key_Share_First := 0;
+      Key_Share_Last  := 0;
+
+      Decode_Client_Hello_Fields
+        (In_Bytes, Random, Sid_First, Sid_Last,
+         Suites_First, Suites_Last, Ef, El, Fields_OK);
+
+      if not Fields_OK or else Ef = 0 then
+         OK := False;
+         return;
+      end if;
+
+      declare
+         Cursor : Natural := Ef;
+      begin
+         while Cursor + 3 <= El loop
+            declare
+               Ext_Type : constant Natural :=
+                 Natural (In_Bytes (Cursor)) * 256
+                 + Natural (In_Bytes (Cursor + 1));
+               Ext_Data_Len : constant Natural :=
+                 Natural (In_Bytes (Cursor + 2)) * 256
+                 + Natural (In_Bytes (Cursor + 3));
+               Ext_Data_F : constant Natural := Cursor + 4;
+            begin
+               if Ext_Data_F + Ext_Data_Len - 1 > El then
+                  OK := False;
+                  return;
+               end if;
+
+               if Ext_Type = 51 and then Ext_Data_Len >= 6 then
+                  declare
+                     List_Len : constant Natural :=
+                       Natural (In_Bytes (Ext_Data_F)) * 256
+                       + Natural (In_Bytes (Ext_Data_F + 1));
+                  begin
+                     if List_Len >= 4
+                       and then Ext_Data_F + 2 + List_Len - 1
+                                  <= El
+                     then
+                        declare
+                           Ks_Grp_F : constant Natural :=
+                             Ext_Data_F + 2;
+                           Ks_Kx_Len : constant Natural :=
+                             Natural (In_Bytes (Ks_Grp_F + 2))
+                               * 256
+                             + Natural
+                                 (In_Bytes (Ks_Grp_F + 3));
+                           Ks_Kx_F : constant Natural :=
+                             Ks_Grp_F + 4;
+                        begin
+                           if Ks_Kx_Len = 32 and then
+                              Ks_Kx_F + 31 <= El
+                           then
+                              Key_Share_First := Ks_Kx_F;
+                              Key_Share_Last  := Ks_Kx_F + 31;
+                           end if;
+                        end;
+                     end if;
+                  end;
+               end if;
+
+               if Ext_Type = 13 and then Ext_Data_Len >= 4 then
+                  declare
+                     Sa_List_Len : constant Natural :=
+                       Natural (In_Bytes (Ext_Data_F)) * 256
+                       + Natural (In_Bytes (Ext_Data_F + 1));
+                     Sa_F : constant Natural := Ext_Data_F + 2;
+                  begin
+                     if Sa_List_Len >= 2 and then
+                        Sa_F + Sa_List_Len - 1 <= El
+                     then
+                        Sig_Algs_First := Sa_F;
+                        Sig_Algs_Last  :=
+                          Sa_F + Sa_List_Len - 1;
+                     end if;
+                  end;
+               end if;
+
+               Cursor := Ext_Data_F + Ext_Data_Len;
+            end;
+         end loop;
+      end;
+
+      OK := Key_Share_First > 0 and then Sig_Algs_First > 0;
+   end Decode_Client_Hello_Cert;
 
 end Tls_Core.Client_Hello_Rflx;
