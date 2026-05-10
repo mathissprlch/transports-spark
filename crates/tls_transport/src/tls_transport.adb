@@ -1,6 +1,7 @@
 with Ada.Streams;
 with RFLX.RFLX_Types;
 with RFLX.Record_Layer.Plaintext;
+with Logger;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Suites;
@@ -155,6 +156,9 @@ package body Tls_Transport is
          exit when Tls13_Driver.Current_State (Chan.Driver) = Done
            or else Tls13_Driver.Current_State (Chan.Driver) = Failed;
 
+         Logger.Log (Logger.Debug,
+           "hs: state=" & State'Image (Current_State (Chan.Driver)));
+
          loop
             if Current_State (Chan.Driver) = Awaiting_SF then
                Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
@@ -162,13 +166,20 @@ package body Tls_Transport is
                Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
             end if;
             if not In_OK then
+               Logger.Log (Logger.Error, "hs: EOF during handshake");
                raise Connect_Error with "TLS: EOF during handshake";
             end if;
             exit when In_Last < 1
               or else In_Buf (In_Buf'First) /= Ccs_Type;
+            Logger.Log (Logger.Debug, "hs: skipped CCS record");
          end loop;
 
+         Logger.Log (Logger.Debug,
+           "hs: read" & Natural'Image (In_Last) & "B, stepping");
          Step (Chan.Driver, In_Buf (1 .. In_Last), Out_Buf, Out_Last);
+         Logger.Log (Logger.Debug,
+           "hs: -> " & State'Image (Current_State (Chan.Driver))
+           & " out=" & Natural'Image (Out_Last) & "B");
 
          if Out_Last > 0 then
             Tcp_Transport.Send_All (Chan.Tcp, Out_Buf (1 .. Out_Last));
@@ -176,6 +187,8 @@ package body Tls_Transport is
       end loop;
 
       if Tls13_Driver.Current_State (Chan.Driver) /= Done then
+         Logger.Log (Logger.Error, "hs: handshake failed at state="
+           & State'Image (Current_State (Chan.Driver)));
          raise Connect_Error with "TLS: handshake failed";
       end if;
 

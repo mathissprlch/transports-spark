@@ -1,4 +1,5 @@
 with "../tls_core/tls_core.gpr";
+with "../logger/logger.gpr";
 
 project Tls_Transport is
 

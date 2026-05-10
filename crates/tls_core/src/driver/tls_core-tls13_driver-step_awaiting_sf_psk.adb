@@ -145,6 +145,19 @@ is
             Cursor := Sh_Rec_L + 1;
          end;
 
+         --  Skip legacy ChangeCipherSpec if present (RFC 8446 §5.1).
+         if Cursor + 5 <= In_Bytes'Last
+           and then In_Bytes (Cursor) = 16#14#
+         then
+            declare
+               Ccs_Len : constant Natural :=
+                 Natural (In_Bytes (Cursor + 3)) * 256
+                 + Natural (In_Bytes (Cursor + 4));
+            begin
+               Cursor := Cursor + 5 + Ccs_Len;
+            end;
+         end if;
+
          --  Step 2: derive handshake secrets. RFC 8446 §7.1 mode 3:
          --    Handshake_Secret = HKDF-Extract(Derived_1, ECDHE_secret)
          --  where ECDHE_secret is the X25519 shared we just computed.

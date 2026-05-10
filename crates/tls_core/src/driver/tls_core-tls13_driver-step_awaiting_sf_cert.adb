@@ -117,9 +117,7 @@ is
                   D.Cur_State := Failed;
                   return;
                end if;
-               for I in 1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)
-               loop
-                  pragma Loop_Invariant (I in 1 .. 32);
+               for I in 1 .. 32 loop
                   Peer_Pub (I) := In_Bytes (Ks_F + I - 1);
                end loop;
                D.Peer_Ecdhe_Pub := Peer_Pub;
@@ -132,6 +130,19 @@ is
                In_Bytes (Sh_Rec_F .. Sh_Rec_L));
             Cursor := Sh_Rec_L + 1;
          end;
+
+         --  Skip legacy ChangeCipherSpec if present (RFC 8446 §5.1).
+         if Cursor + 5 <= In_Bytes'Last
+           and then In_Bytes (Cursor) = 16#14#
+         then
+            declare
+               Ccs_Len : constant Natural :=
+                 Natural (In_Bytes (Cursor + 3)) * 256
+                 + Natural (In_Bytes (Cursor + 4));
+            begin
+               Cursor := Cursor + 5 + Ccs_Len;
+            end;
+         end if;
 
          --  Step 2: cert-mode key schedule (PSK = 0).
          Tls_Core.Key_Sched.Transcript_Snapshot
