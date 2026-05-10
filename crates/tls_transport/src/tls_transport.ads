@@ -113,7 +113,7 @@ private
       Selector : GNAT.Sockets.Selector_Type;
       Sel_Open : Boolean := False;
       Open     : Boolean := False;
-      Pending  : Tls_Core.Octet_Array (1 .. Pt_Buf_Size) := (others => 0);
+      Pending    : Tls_Core.Octet_Array (1 .. Pt_Buf_Size) := (others => 0);
       Pend_First : Natural := 1;
       Pend_Last  : Natural := 0;
    end record;

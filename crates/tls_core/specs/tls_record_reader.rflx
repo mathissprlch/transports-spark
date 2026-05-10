@@ -1,0 +1,44 @@
+--  TLS record reader session machine.
+--
+--  Source: RFC 8446 §5.1 — Record Layer.
+--
+--  Reads bytes from a Network channel, parses the 5-byte TLS record
+--  header (content_type + legacy_version + length), then reads
+--  exactly `length` bytes of fragment. Emits the validated record
+--  (header + fragment) on the App_Record output channel.
+--
+--  Replaces the hand-written Read_One_Record + Read_Flight in
+--  tls_transport.adb with a formally verified RFLX session machine.
+
+with Record_Layer;
+
+package TLS_Record_Reader is
+
+   generic
+      Network    : Channel with Readable;
+      App_Record : Channel with Writable;
+   machine Reader is
+      Record_Msg : Record_Layer::Plaintext;
+   begin
+      --  §5.1 — read one complete TLS record from the network.
+      state Await_Record is
+      begin
+         Network'Read (Record_Msg);
+      transition
+         goto Forward
+            if Record_Msg'Valid
+         goto null
+      exception
+         goto null
+      end Await_Record;
+
+      --  Forward the validated record to the application layer.
+      state Forward is
+      begin
+         App_Record'Write (Record_Msg);
+      transition
+         goto Await_Record
+      end Forward;
+   end Reader;
+
+end TLS_Record_Reader;

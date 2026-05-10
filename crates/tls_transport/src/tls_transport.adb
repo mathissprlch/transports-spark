@@ -35,11 +35,16 @@ package body Tls_Transport is
            Natural (Buf (Buf'First + 3)) * 256
            + Natural (Buf (Buf'First + 4));
       begin
-         if Buf'First + 5 + Rec_Len - 1 > Buf'Last then return; end if;
+         if Rec_Len > 16640 or else
+           Buf'First + 5 + Rec_Len - 1 > Buf'Last
+         then
+            return;
+         end if;
          Tcp_Transport.Recv_All
            (Tcp, Buf (Buf'First + 5 .. Buf'First + 4 + Rec_Len), Hdr_OK);
          if not Hdr_OK then return; end if;
          Last := Buf'First + 4 + Rec_Len;
+         null;
          OK := True;
       end;
    end Read_One_Record;
