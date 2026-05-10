@@ -1,4 +1,6 @@
 with Ada.Streams;
+with RFLX.RFLX_Types;
+with RFLX.Record_Layer.Plaintext;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Suites;
@@ -17,13 +19,18 @@ package body Tls_Transport is
       16#01#, 16#12#, 16#23#, 16#34#, 16#45#, 16#56#, 16#67#, 16#78#,
       16#89#, 16#9A#, 16#AB#, 16#BC#, 16#CD#, 16#DE#, 16#EF#, 16#F0#);
 
+   Rflx_Rec_Max : constant := 16896;
+
    procedure Read_One_Record
-     (Tcp    : Tls_Core.Tcp_Transport.Channel;
-      Buf    : out Tls_Core.Octet_Array;
-      Last   : out Natural;
-      OK     : out Boolean)
+     (Tcp      : Tls_Core.Tcp_Transport.Channel;
+      Buf      : out Tls_Core.Octet_Array;
+      Last     : out Natural;
+      OK       : out Boolean;
+      Rflx_Ptr : in out RFLX.RFLX_Types.Bytes_Ptr)
    is
       use Tls_Core;
+      use type RFLX.RFLX_Types.Bytes_Ptr;
+      use type RFLX.RFLX_Types.Index;
       Hdr_OK : Boolean;
    begin
       Last := 0;
@@ -44,16 +51,41 @@ package body Tls_Transport is
            (Tcp, Buf (Buf'First + 5 .. Buf'First + 4 + Rec_Len), Hdr_OK);
          if not Hdr_OK then return; end if;
          Last := Buf'First + 4 + Rec_Len;
-         null;
+         if Rflx_Ptr /= null then
+            declare
+               use RFLX.RFLX_Types;
+               Rec_Size : constant Index := Index (Last - Buf'First + 1);
+               W_Last   : constant Bit_Length :=
+                 To_Last_Bit_Index (Length (Rec_Size));
+               Ctx : RFLX.Record_Layer.Plaintext.Context;
+            begin
+               for I in Buf'First .. Last loop
+                  Rflx_Ptr (Index (I - Buf'First + 1)) :=
+                    RFLX.RFLX_Types.Byte (Buf (I));
+               end loop;
+               begin
+                  RFLX.Record_Layer.Plaintext.Initialize
+                    (Ctx, Rflx_Ptr, Written_Last => W_Last);
+                  RFLX.Record_Layer.Plaintext.Verify_Message (Ctx);
+                  if not RFLX.Record_Layer.Plaintext.Well_Formed_Message (Ctx) then
+                     RFLX.Record_Layer.Plaintext.Take_Buffer (Ctx, Rflx_Ptr);
+                     OK := False;
+                     return;
+                  end if;
+                  RFLX.Record_Layer.Plaintext.Take_Buffer (Ctx, Rflx_Ptr);
+               end;
+            end;
+         end if;
          OK := True;
       end;
    end Read_One_Record;
 
    procedure Read_Flight
-     (Tcp    : Tls_Core.Tcp_Transport.Channel;
-      Buf    : out Tls_Core.Octet_Array;
-      Last   : out Natural;
-      OK     : out Boolean)
+     (Tcp      : Tls_Core.Tcp_Transport.Channel;
+      Buf      : out Tls_Core.Octet_Array;
+      Last     : out Natural;
+      OK       : out Boolean;
+      Rflx_Ptr : in out RFLX.RFLX_Types.Bytes_Ptr)
    is
       use Tls_Core;
       Cursor : Natural := Buf'First;
@@ -62,7 +94,7 @@ package body Tls_Transport is
    begin
       Last := 0;
       OK := False;
-      Read_One_Record (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK);
+      Read_One_Record (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK, Rflx_Ptr);
       if not Rec_OK then return; end if;
       Cursor := Rec_Last + 1;
       loop
@@ -91,7 +123,7 @@ package body Tls_Transport is
             end if;
          end;
          Read_One_Record
-           (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK);
+           (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK, Rflx_Ptr);
          exit when not Rec_OK;
          Cursor := Rec_Last + 1;
       end loop;
@@ -115,9 +147,9 @@ package body Tls_Transport is
            or else Tls13_Driver.Current_State (Chan.Driver) = Failed;
 
          if Current_State (Chan.Driver) = Awaiting_SF then
-            Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK);
+            Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
          else
-            Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK);
+            Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
          end if;
          if not In_OK then
             raise Connect_Error with "TLS: EOF during handshake";
@@ -152,6 +184,7 @@ package body Tls_Transport is
       Out_Last : Natural;
    begin
       Tcp_Transport.Connect (Chan.Tcp, Host, Port);
+      Chan.Rflx_Buf := new RFLX.RFLX_Types.Bytes'(1 .. Rflx_Rec_Max => 0);
 
       declare
          Trust_Spec : Tls_Core.Cert_Chain.Trust_Store;
@@ -281,7 +314,7 @@ package body Tls_Transport is
       Aead_OK    : Boolean;
    begin
       OK := False;
-      Read_One_Record (Chan.Tcp, Rec_Buf, Rec_Last, Rec_OK);
+      Read_One_Record (Chan.Tcp, Rec_Buf, Rec_Last, Rec_OK, Chan.Rflx_Buf);
       if not Rec_OK then return; end if;
 
       Aead_Channel.Receive
@@ -332,7 +365,11 @@ package body Tls_Transport is
    end Receive;
 
    procedure Close (Chan : in out Channel) is
+      use type RFLX.RFLX_Types.Bytes_Ptr;
    begin
+      if Chan.Rflx_Buf /= null then
+         RFLX.RFLX_Types.Free (Chan.Rflx_Buf);
+      end if;
       if Chan.Sel_Open then
          begin
             GNAT.Sockets.Close_Selector (Chan.Selector);
@@ -372,6 +409,7 @@ package body Tls_Transport is
       Out_Last : Natural;
    begin
       Tcp_Transport.Accept_One (L.Tcp, Chan.Tcp);
+      Chan.Rflx_Buf := new RFLX.RFLX_Types.Bytes'(1 .. Rflx_Rec_Max => 0);
 
       declare
          pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");

@@ -13,46 +13,45 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types;
 
-package RFLX.Key_Share
+package RFLX.Certificate_Verify
 with
   SPARK_Mode
 is
 
-   type Key_Exchange_Length is range 1 .. 65535
+   type Sig_Scheme is range 0 .. 2**16 - 1
    with
      Size =>
        16;
 
    use type RFLX.RFLX_Types.Base_Integer;
 
-   function Valid_Key_Exchange_Length (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
-     (Val >= 1
-      and Val <= 65535);
+   function Valid_Sig_Scheme (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+     (Val <= 65535);
 
-   function To_Base_Integer (Val : RFLX.Key_Share.Key_Exchange_Length) return RFLX.RFLX_Types.Base_Integer is
+   function To_Base_Integer (Val : RFLX.Certificate_Verify.Sig_Scheme) return RFLX.RFLX_Types.Base_Integer is
      (RFLX.RFLX_Types.Base_Integer (Val));
 
-   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Key_Share.Key_Exchange_Length is
-     (RFLX.Key_Share.Key_Exchange_Length (Val))
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Certificate_Verify.Sig_Scheme is
+     (RFLX.Certificate_Verify.Sig_Scheme (Val))
    with
      Pre =>
-       Valid_Key_Exchange_Length (Val);
+       Valid_Sig_Scheme (Val);
 
-   type Client_Shares_Length is range 0 .. 2**16 - 1
+   type Sig_Length is range 0 .. 2**16 - 1
    with
      Size =>
        16;
 
-   function Valid_Client_Shares_Length (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
+   function Valid_Sig_Length (Val : RFLX.RFLX_Types.Base_Integer) return Boolean is
      (Val <= 65535);
 
-   function To_Base_Integer (Val : RFLX.Key_Share.Client_Shares_Length) return RFLX.RFLX_Types.Base_Integer is
+   function To_Base_Integer (Val : RFLX.Certificate_Verify.Sig_Length) return RFLX.RFLX_Types.Base_Integer is
      (RFLX.RFLX_Types.Base_Integer (Val));
 
-   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Key_Share.Client_Shares_Length is
-     (RFLX.Key_Share.Client_Shares_Length (Val))
+   function To_Actual (Val : RFLX.RFLX_Types.Base_Integer) return RFLX.Certificate_Verify.Sig_Length is
+     (RFLX.Certificate_Verify.Sig_Length (Val))
    with
      Pre =>
-       Valid_Client_Shares_Length (Val);
+       Valid_Sig_Length (Val);
 
-end RFLX.Key_Share;
+end RFLX.Certificate_Verify;

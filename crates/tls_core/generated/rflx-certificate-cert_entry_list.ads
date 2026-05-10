@@ -13,9 +13,9 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 pragma SPARK_Mode;
 with RFLX.RFLX_Message_Sequence;
-with RFLX.Key_Share.Key_Share_Entry;
+with RFLX.Certificate.Cert_Entry;
 pragma Warnings (Off, "unit ""*RFLX_Types"" is not referenced");
 with RFLX.RFLX_Types;
 pragma Warnings (On, "unit ""*RFLX_Types"" is not referenced");
 
-package RFLX.Key_Share.Key_Share_Entry_List is new RFLX.RFLX_Message_Sequence (RFLX.Key_Share.Key_Share_Entry.Context, RFLX.Key_Share.Key_Share_Entry.Initialize, RFLX.Key_Share.Key_Share_Entry.Take_Buffer, RFLX.Key_Share.Key_Share_Entry.Copy, RFLX.Key_Share.Key_Share_Entry.Has_Buffer, RFLX.Key_Share.Key_Share_Entry.Size, RFLX.Key_Share.Key_Share_Entry.Message_Last, RFLX.Key_Share.Key_Share_Entry.Initialized, RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message);
+package RFLX.Certificate.Cert_Entry_List is new RFLX.RFLX_Message_Sequence (RFLX.Certificate.Cert_Entry.Context, RFLX.Certificate.Cert_Entry.Initialize, RFLX.Certificate.Cert_Entry.Take_Buffer, RFLX.Certificate.Cert_Entry.Copy, RFLX.Certificate.Cert_Entry.Has_Buffer, RFLX.Certificate.Cert_Entry.Size, RFLX.Certificate.Cert_Entry.Message_Last, RFLX.Certificate.Cert_Entry.Initialized, RFLX.Certificate.Cert_Entry.Well_Formed_Message);

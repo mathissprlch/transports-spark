@@ -11,11 +11,10 @@
 pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
-pragma SPARK_Mode;
-with RFLX.RFLX_Message_Sequence;
-with RFLX.Key_Share.Key_Share_Entry;
-pragma Warnings (Off, "unit ""*RFLX_Types"" is not referenced");
-with RFLX.RFLX_Types;
-pragma Warnings (On, "unit ""*RFLX_Types"" is not referenced");
 
-package RFLX.Key_Share.Key_Share_Entry_List is new RFLX.RFLX_Message_Sequence (RFLX.Key_Share.Key_Share_Entry.Context, RFLX.Key_Share.Key_Share_Entry.Initialize, RFLX.Key_Share.Key_Share_Entry.Take_Buffer, RFLX.Key_Share.Key_Share_Entry.Copy, RFLX.Key_Share.Key_Share_Entry.Has_Buffer, RFLX.Key_Share.Key_Share_Entry.Size, RFLX.Key_Share.Key_Share_Entry.Message_Last, RFLX.Key_Share.Key_Share_Entry.Initialized, RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message);
+package RFLX.TLS_Record_Reader
+with
+  SPARK_Mode
+is
+
+end RFLX.TLS_Record_Reader;

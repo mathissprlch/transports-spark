@@ -13,7 +13,7 @@ pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types.Operations;
 
-package body RFLX.Hkdf.Label
+package body RFLX.Certificate.Cert_Entry
 with
   SPARK_Mode
 is
@@ -79,15 +79,13 @@ is
 
    function Invalid_Successor (Ctx : Context; Fld : Field) return Boolean is
      (case Fld is
-          when F_Length =>
-             Invalid (Ctx.Cursors (F_Label_Len)),
-          when F_Label_Len =>
-             Invalid (Ctx.Cursors (F_Label_Bytes)),
-          when F_Label_Bytes =>
-             Invalid (Ctx.Cursors (F_Context_Len)),
-          when F_Context_Len =>
-             Invalid (Ctx.Cursors (F_Context_Bytes)),
-          when F_Context_Bytes =>
+          when F_Cert_Data_Len =>
+             Invalid (Ctx.Cursors (F_Cert_Data)),
+          when F_Cert_Data =>
+             Invalid (Ctx.Cursors (F_Ext_Len)),
+          when F_Ext_Len =>
+             Invalid (Ctx.Cursors (F_Extensions)),
+          when F_Extensions =>
              True);
 
    function Sufficient_Buffer_Length (Ctx : Context; Fld : Field) return Boolean is
@@ -97,13 +95,13 @@ is
       and Field_First (Ctx, Fld) + Field_Size (Ctx, Fld) - 1 <= Ctx.Written_Last)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and RFLX.Hkdf.Label.Valid_Next (Ctx, Fld);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld);
 
    function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean is
      (Sufficient_Buffer_Length (Ctx, Fld)
       and then (case Fld is
-                   when F_Label_Bytes | F_Context_Bytes =>
+                   when F_Cert_Data | F_Extensions =>
                       Data'Length = RFLX_Types.To_Index (Field_Last (Ctx, Fld)) - RFLX_Types.To_Index (Field_First (Ctx, Fld)) + 1
                       and then (for all I in RFLX_Types.Index range RFLX_Types.To_Index (Field_First (Ctx, Fld)) .. RFLX_Types.To_Index (Field_Last (Ctx, Fld)) =>
                                    Ctx.Buffer.all (I) = Data (Data'First + (I - RFLX_Types.To_Index (Field_First (Ctx, Fld))))),
@@ -113,7 +111,7 @@ is
    procedure Reset_Dependent_Fields (Ctx : in out Context; Fld : Field)
    with
      Pre =>
-       RFLX.Hkdf.Label.Valid_Next (Ctx, Fld),
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld),
      Post =>
        Valid_Next (Ctx, Fld)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -137,15 +135,15 @@ is
    end Reset_Dependent_Fields;
 
    function Composite_Field (Fld : Field) return Boolean is
-     (Fld in F_Label_Bytes | F_Context_Bytes);
+     (Fld in F_Cert_Data | F_Extensions);
 
    function Get (Ctx : Context; Fld : Field) return RFLX_Types.Base_Integer
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, Fld)
-       and then RFLX.Hkdf.Label.Sufficient_Buffer_Length (Ctx, Fld)
-       and then not RFLX.Hkdf.Label.Composite_Field (Fld)
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld)
+       and then RFLX.Certificate.Cert_Entry.Sufficient_Buffer_Length (Ctx, Fld)
+       and then not RFLX.Certificate.Cert_Entry.Composite_Field (Fld)
    is
       First : constant RFLX_Types.Bit_Index := Field_First (Ctx, Fld);
       Last : constant RFLX_Types.Bit_Index := Field_Last (Ctx, Fld);
@@ -153,10 +151,10 @@ is
       Buffer_Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Last);
       Offset : constant RFLX_Types.Offset := RFLX_Types.Offset ((RFLX_Types.Byte'Size - Last mod RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size);
       Size : constant Positive := (case Fld is
-          when F_Length =>
+          when F_Cert_Data_Len =>
+             24,
+          when F_Ext_Len =>
              16,
-          when F_Label_Len | F_Context_Len =>
-             8,
           when others =>
              Positive'Last);
       Byte_Order : constant RFLX_Types.Byte_Order := RFLX_Types.High_Order_First;
@@ -177,7 +175,7 @@ is
                Valid_Value (Fld, Value)
                and then Field_Condition (Ctx, Fld)
             then
-               pragma Assert (if Fld = F_Context_Bytes then Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0);
+               pragma Assert (if Fld = F_Extensions then Field_Last (Ctx, Fld) mod RFLX_Types.Byte'Size = 0);
                pragma Assert ((((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size) mod RFLX_Types.Byte'Size = 0);
                Ctx.Verified_Last := ((Field_Last (Ctx, Fld) + RFLX_Types.Byte'Size - 1) / RFLX_Types.Byte'Size) * RFLX_Types.Byte'Size;
                pragma Assert (Field_Last (Ctx, Fld) <= Ctx.Verified_Last);
@@ -207,59 +205,64 @@ is
       end loop;
    end Verify_Message;
 
-   function Get_Label_Bytes (Ctx : Context) return RFLX_Types.Bytes is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Label_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Label_Bytes).Last);
+   function Get_Cert_Data (Ctx : Context) return RFLX_Types.Bytes is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Cert_Data).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Cert_Data).Last);
    begin
       return Ctx.Buffer.all (First .. Last);
-   end Get_Label_Bytes;
+   end Get_Cert_Data;
 
-   function Get_Context_Bytes (Ctx : Context) return RFLX_Types.Bytes is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Context_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Context_Bytes).Last);
+   function Get_Extensions (Ctx : Context) return RFLX_Types.Bytes is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).Last);
    begin
       return Ctx.Buffer.all (First .. Last);
-   end Get_Context_Bytes;
+   end Get_Extensions;
 
-   procedure Get_Label_Bytes (Ctx : Context; Data : out RFLX_Types.Bytes) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Label_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Label_Bytes).Last);
+   procedure Get_Cert_Data (Ctx : Context; Data : out RFLX_Types.Bytes) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Cert_Data).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Cert_Data).Last);
    begin
       Data := (others => RFLX_Types.Byte'First);
       Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
-   end Get_Label_Bytes;
+   end Get_Cert_Data;
 
-   procedure Get_Context_Bytes (Ctx : Context; Data : out RFLX_Types.Bytes) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Context_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Context_Bytes).Last);
+   procedure Get_Extensions (Ctx : Context; Data : out RFLX_Types.Bytes) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).Last);
    begin
       Data := (others => RFLX_Types.Byte'First);
       Data (Data'First .. Data'First + (Last - First)) := Ctx.Buffer.all (First .. Last);
-   end Get_Context_Bytes;
+   end Get_Extensions;
 
-   procedure Generic_Get_Label_Bytes (Ctx : Context) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Label_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Label_Bytes).Last);
+   procedure Generic_Get_Cert_Data (Ctx : Context) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Cert_Data).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Cert_Data).Last);
    begin
-      Process_Label_Bytes (Ctx.Buffer.all (First .. Last));
-   end Generic_Get_Label_Bytes;
+      Process_Cert_Data (Ctx.Buffer.all (First .. Last));
+   end Generic_Get_Cert_Data;
 
-   procedure Generic_Get_Context_Bytes (Ctx : Context) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Context_Bytes).First);
-      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Context_Bytes).Last);
+   procedure Generic_Get_Extensions (Ctx : Context) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).First);
+      Last : constant RFLX_Types.Index := RFLX_Types.To_Index (Ctx.Cursors (F_Extensions).Last);
    begin
-      Process_Context_Bytes (Ctx.Buffer.all (First .. Last));
-   end Generic_Get_Context_Bytes;
+      Process_Extensions (Ctx.Buffer.all (First .. Last));
+   end Generic_Get_Extensions;
 
    procedure Set (Ctx : in out Context; Fld : Field; Val : RFLX_Types.Base_Integer; Size : RFLX_Types.Bit_Length; State_Valid : Boolean; Buffer_First : out RFLX_Types.Index; Buffer_Last : out RFLX_Types.Index; Offset : out RFLX_Types.Offset)
    with
      Pre =>
-       RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, Fld)
-       and then RFLX.Hkdf.Label.Valid_Value (Fld, Val)
-       and then RFLX.Hkdf.Label.Valid_Size (Ctx, Fld, Size)
-       and then Size <= RFLX.Hkdf.Label.Available_Space (Ctx, Fld)
-       and then (if RFLX.Hkdf.Label.Composite_Field (Fld) then Size mod RFLX_Types.Byte'Size = 0 else State_Valid),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld)
+       and then RFLX.Certificate.Cert_Entry.Valid_Value (Fld, Val)
+       and then RFLX.Certificate.Cert_Entry.Valid_Size (Ctx, Fld, Size)
+       and then Size <= RFLX.Certificate.Cert_Entry.Available_Space (Ctx, Fld)
+       and then (if
+                    RFLX.Certificate.Cert_Entry.Composite_Field (Fld)
+                 then
+                    Size mod RFLX_Types.Byte'Size = 0
+                 else
+                    State_Valid),
      Post =>
        Valid_Next (Ctx, Fld)
        and then Invalid_Successor (Ctx, Fld)
@@ -280,7 +283,7 @@ is
        and then (if State_Valid and Size > 0 then Valid (Ctx, Fld) else Well_Formed (Ctx, Fld))
        and then (Ctx.Cursors (Fld).Value = Val
                  and then (if
-                              Fld in F_Context_Bytes
+                              Fld in F_Extensions
                               and then Well_Formed_Message (Ctx)
                            then
                               Message_Last (Ctx) = Field_Last (Ctx, Fld)))
@@ -312,21 +315,21 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, Fld)
-       and then Fld in F_Length | F_Label_Len | F_Context_Len
-       and then RFLX.Hkdf.Label.Valid_Value (Fld, Val)
-       and then RFLX.Hkdf.Label.Valid_Size (Ctx, Fld, RFLX.Hkdf.Label.Field_Size (Ctx, Fld))
-       and then RFLX.Hkdf.Label.Available_Space (Ctx, Fld) >= RFLX.Hkdf.Label.Field_Size (Ctx, Fld)
-       and then RFLX.Hkdf.Label.Field_Size (Ctx, Fld) in 1 .. RFLX_Types.Base_Integer'Size
-       and then RFLX_Types.Fits_Into (Val, Natural (RFLX.Hkdf.Label.Field_Size (Ctx, Fld))),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld)
+       and then Fld in F_Cert_Data_Len | F_Ext_Len
+       and then RFLX.Certificate.Cert_Entry.Valid_Value (Fld, Val)
+       and then RFLX.Certificate.Cert_Entry.Valid_Size (Ctx, Fld, RFLX.Certificate.Cert_Entry.Field_Size (Ctx, Fld))
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, Fld) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, Fld)
+       and then RFLX.Certificate.Cert_Entry.Field_Size (Ctx, Fld) in 1 .. RFLX_Types.Base_Integer'Size
+       and then RFLX_Types.Fits_Into (Val, Natural (RFLX.Certificate.Cert_Entry.Field_Size (Ctx, Fld))),
      Post =>
        Has_Buffer (Ctx)
        and Valid (Ctx, Fld)
        and Invalid_Successor (Ctx, Fld)
        and (Ctx.Cursors (Fld).Value = Val
             and then (if
-                         Fld in F_Context_Bytes
+                         Fld in F_Extensions
                          and then Well_Formed_Message (Ctx)
                       then
                          Message_Last (Ctx) = Field_Last (Ctx, Fld)))
@@ -348,167 +351,165 @@ is
       RFLX_Types.Operations.Insert (Val, Ctx.Buffer.all, Buffer_First, Buffer_Last, Offset, Positive (Size), RFLX_Types.High_Order_First);
    end Set_Scalar;
 
-   procedure Set_Length (Ctx : in out Context; Val : RFLX.Hkdf.Length_U16) is
+   procedure Set_Cert_Data_Len (Ctx : in out Context; Val : RFLX.Certificate.Cert_Data_Length) is
    begin
-      Set_Scalar (Ctx, F_Length, RFLX.Hkdf.To_Base_Integer (Val));
-   end Set_Length;
+      Set_Scalar (Ctx, F_Cert_Data_Len, RFLX.Certificate.To_Base_Integer (Val));
+   end Set_Cert_Data_Len;
 
-   procedure Set_Label_Len (Ctx : in out Context; Val : RFLX.Hkdf.Label_Length) is
+   procedure Set_Ext_Len (Ctx : in out Context; Val : RFLX.Certificate.Extensions_Length) is
    begin
-      Set_Scalar (Ctx, F_Label_Len, RFLX.Hkdf.To_Base_Integer (Val));
-   end Set_Label_Len;
+      Set_Scalar (Ctx, F_Ext_Len, RFLX.Certificate.To_Base_Integer (Val));
+   end Set_Ext_Len;
 
-   procedure Set_Context_Len (Ctx : in out Context; Val : RFLX.Hkdf.Context_Length) is
-   begin
-      Set_Scalar (Ctx, F_Context_Len, RFLX.Hkdf.To_Base_Integer (Val));
-   end Set_Context_Len;
-
-   procedure Set_Context_Bytes_Empty (Ctx : in out Context) is
+   procedure Set_Cert_Data_Empty (Ctx : in out Context) is
       Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
       Unused_Offset : RFLX_Types.Offset;
    begin
-      Set (Ctx, F_Context_Bytes, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
-   end Set_Context_Bytes_Empty;
+      Set (Ctx, F_Cert_Data, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
+   end Set_Cert_Data_Empty;
 
-   procedure Initialize_Label_Bytes_Private (Ctx : in out Context; Length : RFLX_Types.Length)
+   procedure Set_Extensions_Empty (Ctx : in out Context) is
+      Unused_Buffer_First, Unused_Buffer_Last : RFLX_Types.Index;
+      Unused_Offset : RFLX_Types.Offset;
+   begin
+      Set (Ctx, F_Extensions, 0, 0, True, Unused_Buffer_First, Unused_Buffer_Last, Unused_Offset);
+   end Set_Extensions_Empty;
+
+   procedure Initialize_Cert_Data_Private (Ctx : in out Context; Length : RFLX_Types.Length)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Label_Bytes, Length)
-       and then RFLX_Types.To_Length (RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Label_Bytes)) >= Length,
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data, Length)
+       and then RFLX_Types.To_Length (RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)) >= Length,
      Post =>
        Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Label_Bytes)
-       and then Field_Size (Ctx, F_Label_Bytes) = RFLX_Types.To_Bit_Length (Length)
-       and then Ctx.Verified_Last = Field_Last (Ctx, F_Label_Bytes)
-       and then Invalid (Ctx, F_Context_Len)
-       and then Invalid (Ctx, F_Context_Bytes)
-       and then Valid_Next (Ctx, F_Context_Len)
+       and then Well_Formed (Ctx, F_Cert_Data)
+       and then Field_Size (Ctx, F_Cert_Data) = RFLX_Types.To_Bit_Length (Length)
+       and then Ctx.Verified_Last = Field_Last (Ctx, F_Cert_Data)
+       and then Invalid (Ctx, F_Ext_Len)
+       and then Invalid (Ctx, F_Extensions)
+       and then Valid_Next (Ctx, F_Ext_Len)
        and then Ctx.Buffer_First = Ctx.Buffer_First'Old
        and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and then Ctx.First = Ctx.First'Old
        and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Label_Bytes) = Valid_Next (Ctx, F_Label_Bytes)'Old
-       and then Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and then Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and then Field_First (Ctx, F_Label_Bytes) = Field_First (Ctx, F_Label_Bytes)'Old
+       and then Valid_Next (Ctx, F_Cert_Data) = Valid_Next (Ctx, F_Cert_Data)'Old
+       and then Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and then Field_First (Ctx, F_Cert_Data) = Field_First (Ctx, F_Cert_Data)'Old
    is
-      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Label_Bytes);
-      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Label_Bytes) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Cert_Data);
+      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Cert_Data) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
    begin
       pragma Assert (Last mod RFLX_Types.Byte'Size = 0);
-      Reset_Dependent_Fields (Ctx, F_Label_Bytes);
+      Reset_Dependent_Fields (Ctx, F_Cert_Data);
       pragma Warnings (Off, "attribute Update is an obsolescent feature");
       Ctx := Ctx'Update (Verified_Last => Last, Written_Last => Last);
       pragma Warnings (On, "attribute Update is an obsolescent feature");
-      Ctx.Cursors (F_Label_Bytes) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
-   end Initialize_Label_Bytes_Private;
+      Ctx.Cursors (F_Cert_Data) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
+   end Initialize_Cert_Data_Private;
 
-   procedure Initialize_Label_Bytes (Ctx : in out Context) is
+   procedure Initialize_Cert_Data (Ctx : in out Context) is
    begin
-      Initialize_Label_Bytes_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Label_Bytes)));
-   end Initialize_Label_Bytes;
+      Initialize_Cert_Data_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Cert_Data)));
+   end Initialize_Cert_Data;
 
-   procedure Initialize_Context_Bytes_Private (Ctx : in out Context; Length : RFLX_Types.Length)
+   procedure Initialize_Extensions_Private (Ctx : in out Context; Length : RFLX_Types.Length)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Hkdf.Label.Has_Buffer (Ctx)
-       and then RFLX.Hkdf.Label.Valid_Next (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)
-       and then RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Context_Bytes, Length)
-       and then RFLX_Types.To_Length (RFLX.Hkdf.Label.Available_Space (Ctx, RFLX.Hkdf.Label.F_Context_Bytes)) >= Length,
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions, Length)
+       and then RFLX_Types.To_Length (RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)) >= Length,
      Post =>
        Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Context_Bytes)
-       and then Field_Size (Ctx, F_Context_Bytes) = RFLX_Types.To_Bit_Length (Length)
-       and then Ctx.Verified_Last = Field_Last (Ctx, F_Context_Bytes)
+       and then Well_Formed (Ctx, F_Extensions)
+       and then Field_Size (Ctx, F_Extensions) = RFLX_Types.To_Bit_Length (Length)
+       and then Ctx.Verified_Last = Field_Last (Ctx, F_Extensions)
        and then Ctx.Buffer_First = Ctx.Buffer_First'Old
        and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and then Ctx.First = Ctx.First'Old
        and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Context_Bytes) = Valid_Next (Ctx, F_Context_Bytes)'Old
-       and then Get_Length (Ctx) = Get_Length (Ctx)'Old
-       and then Get_Label_Len (Ctx) = Get_Label_Len (Ctx)'Old
-       and then Get_Context_Len (Ctx) = Get_Context_Len (Ctx)'Old
-       and then Field_First (Ctx, F_Context_Bytes) = Field_First (Ctx, F_Context_Bytes)'Old
+       and then Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
+       and then Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and then Get_Ext_Len (Ctx) = Get_Ext_Len (Ctx)'Old
+       and then Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old
    is
-      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Context_Bytes);
-      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Context_Bytes) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
+      First : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Extensions);
+      Last : constant RFLX_Types.Bit_Index := Field_First (Ctx, F_Extensions) + RFLX_Types.Bit_Length (Length) * RFLX_Types.Byte'Size - 1;
    begin
       pragma Assert (Last mod RFLX_Types.Byte'Size = 0);
-      Reset_Dependent_Fields (Ctx, F_Context_Bytes);
+      Reset_Dependent_Fields (Ctx, F_Extensions);
       pragma Warnings (Off, "attribute Update is an obsolescent feature");
       Ctx := Ctx'Update (Verified_Last => Last, Written_Last => Last);
       pragma Warnings (On, "attribute Update is an obsolescent feature");
-      Ctx.Cursors (F_Context_Bytes) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
-   end Initialize_Context_Bytes_Private;
+      Ctx.Cursors (F_Extensions) := (State => S_Well_Formed, First => First, Last => Last, Value => 0);
+   end Initialize_Extensions_Private;
 
-   procedure Initialize_Context_Bytes (Ctx : in out Context) is
+   procedure Initialize_Extensions (Ctx : in out Context) is
    begin
-      Initialize_Context_Bytes_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Context_Bytes)));
-   end Initialize_Context_Bytes;
+      Initialize_Extensions_Private (Ctx, RFLX_Types.To_Length (Field_Size (Ctx, F_Extensions)));
+   end Initialize_Extensions;
 
-   procedure Set_Label_Bytes (Ctx : in out Context; Data : RFLX_Types.Bytes) is
-      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Label_Bytes));
+   procedure Set_Cert_Data (Ctx : in out Context; Data : RFLX_Types.Bytes) is
+      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Cert_Data));
       Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
    begin
-      Initialize_Label_Bytes_Private (Ctx, Data'Length);
-      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Label_Bytes)));
+      Initialize_Cert_Data_Private (Ctx, Data'Length);
+      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Cert_Data)));
       Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
-      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Label_Bytes)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Label_Bytes))) = Data);
-   end Set_Label_Bytes;
+      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Cert_Data)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Cert_Data))) = Data);
+   end Set_Cert_Data;
 
-   procedure Set_Context_Bytes (Ctx : in out Context; Data : RFLX_Types.Bytes) is
-      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Context_Bytes));
+   procedure Set_Extensions (Ctx : in out Context; Data : RFLX_Types.Bytes) is
+      Buffer_First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Extensions));
       Buffer_Last : constant RFLX_Types.Index := Buffer_First + Data'Length - 1;
    begin
-      Initialize_Context_Bytes_Private (Ctx, Data'Length);
-      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Context_Bytes)));
+      Initialize_Extensions_Private (Ctx, Data'Length);
+      pragma Assert (Buffer_Last = RFLX_Types.To_Index (Field_Last (Ctx, F_Extensions)));
       Ctx.Buffer.all (Buffer_First .. Buffer_Last) := Data;
-      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Context_Bytes)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Context_Bytes))) = Data);
-   end Set_Context_Bytes;
+      pragma Assert (Ctx.Buffer.all (RFLX_Types.To_Index (Field_First (Ctx, F_Extensions)) .. RFLX_Types.To_Index (Field_Last (Ctx, F_Extensions))) = Data);
+   end Set_Extensions;
 
-   procedure Generic_Set_Label_Bytes (Ctx : in out Context; Length : RFLX_Types.Length) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Label_Bytes));
+   procedure Generic_Set_Cert_Data (Ctx : in out Context; Length : RFLX_Types.Length) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Cert_Data));
    begin
       if Length > 0 then
-         Process_Label_Bytes (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
+         Process_Cert_Data (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
       end if;
-      pragma Assert (RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Label_Bytes, Length));
-      Initialize_Label_Bytes_Private (Ctx, Length);
-   end Generic_Set_Label_Bytes;
+      pragma Assert (RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data, Length));
+      Initialize_Cert_Data_Private (Ctx, Length);
+   end Generic_Set_Cert_Data;
 
-   procedure Generic_Set_Context_Bytes (Ctx : in out Context; Length : RFLX_Types.Length) is
-      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Context_Bytes));
+   procedure Generic_Set_Extensions (Ctx : in out Context; Length : RFLX_Types.Length) is
+      First : constant RFLX_Types.Index := RFLX_Types.To_Index (Field_First (Ctx, F_Extensions));
    begin
       if Length > 0 then
-         Process_Context_Bytes (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
+         Process_Extensions (Ctx.Buffer.all (First .. First + RFLX_Types.Index (Length) - 1));
       end if;
-      pragma Assert (RFLX.Hkdf.Label.Valid_Length (Ctx, RFLX.Hkdf.Label.F_Context_Bytes, Length));
-      Initialize_Context_Bytes_Private (Ctx, Length);
-   end Generic_Set_Context_Bytes;
+      pragma Assert (RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions, Length));
+      Initialize_Extensions_Private (Ctx, Length);
+   end Generic_Set_Extensions;
 
    procedure To_Structure (Ctx : Context; Struct : out Structure) is
    begin
-      Struct.Length := Get_Length (Ctx);
-      Struct.Label_Len := Get_Label_Len (Ctx);
-      Struct.Label_Bytes := (others => 0);
-      Get_Label_Bytes (Ctx, Struct.Label_Bytes (Struct.Label_Bytes'First .. Struct.Label_Bytes'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Label_Bytes)) + 1) - 2));
-      Struct.Context_Len := Get_Context_Len (Ctx);
-      Struct.Context_Bytes := (others => 0);
-      Get_Context_Bytes (Ctx, Struct.Context_Bytes (Struct.Context_Bytes'First .. Struct.Context_Bytes'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Context_Bytes)) + 1) - 2));
+      Struct.Cert_Data_Len := Get_Cert_Data_Len (Ctx);
+      Struct.Cert_Data := (others => 0);
+      Get_Cert_Data (Ctx, Struct.Cert_Data (Struct.Cert_Data'First .. Struct.Cert_Data'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Cert_Data)) + 1) - 2));
+      Struct.Ext_Len := Get_Ext_Len (Ctx);
+      Struct.Extensions := (others => 0);
+      Get_Extensions (Ctx, Struct.Extensions (Struct.Extensions'First .. Struct.Extensions'First + RFLX_Types.Index (RFLX_Types.To_Length (Field_Size (Ctx, F_Extensions)) + 1) - 2));
    end To_Structure;
 
    procedure To_Context (Struct : Structure; Ctx : in out Context) is
    begin
       Reset (Ctx);
-      Set_Length (Ctx, Struct.Length);
-      Set_Label_Len (Ctx, Struct.Label_Len);
-      Set_Label_Bytes (Ctx, Struct.Label_Bytes (Struct.Label_Bytes'First .. Struct.Label_Bytes'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Label_Len) * 8) + 1) - 2));
-      Set_Context_Len (Ctx, Struct.Context_Len);
-      Set_Context_Bytes (Ctx, Struct.Context_Bytes (Struct.Context_Bytes'First .. Struct.Context_Bytes'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Context_Len) * 8) + 1) - 2));
+      Set_Cert_Data_Len (Ctx, Struct.Cert_Data_Len);
+      Set_Cert_Data (Ctx, Struct.Cert_Data (Struct.Cert_Data'First .. Struct.Cert_Data'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Cert_Data_Len) * 8) + 1) - 2));
+      Set_Ext_Len (Ctx, Struct.Ext_Len);
+      Set_Extensions (Ctx, Struct.Extensions (Struct.Extensions'First .. Struct.Extensions'First + RFLX_Types.Index (RFLX_Types.To_Length (RFLX_Types.Bit_Length (Struct.Ext_Len) * 8) + 1) - 2));
    end To_Context;
 
-end RFLX.Hkdf.Label;
+end RFLX.Certificate.Cert_Entry;

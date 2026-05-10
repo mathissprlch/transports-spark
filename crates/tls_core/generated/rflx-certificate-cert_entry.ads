@@ -12,10 +12,8 @@ pragma Ada_2012;
 pragma Style_Checks ("N3aAbCdefhiIklnOprStux");
 pragma Warnings (Off, "redundant conversion");
 with RFLX.RFLX_Types;
-with RFLX.TLS_Extensions;
-use RFLX.TLS_Extensions;
 
-package RFLX.Key_Share.Key_Share_Entry
+package RFLX.Certificate.Cert_Entry
 with
   SPARK_Mode,
   Always_Terminates
@@ -55,9 +53,9 @@ is
 
    pragma Unevaluated_Use_Of_Old (Allow);
 
-   type Virtual_Field is (F_Initial, F_Group, F_Key_Exchange_Len, F_Key_Exchange, F_Final);
+   type Virtual_Field is (F_Initial, F_Cert_Data_Len, F_Cert_Data, F_Ext_Len, F_Extensions, F_Final);
 
-   subtype Field is Virtual_Field range F_Group .. F_Key_Exchange;
+   subtype Field is Virtual_Field range F_Cert_Data_Len .. F_Extensions;
 
    type Field_Cursor is private;
 
@@ -137,7 +135,7 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx),
+       and RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -150,7 +148,7 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
+       and RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
        and RFLX_Types.To_Index (First) >= Ctx.Buffer_First
        and RFLX_Types.To_Index (Last) <= Ctx.Buffer_Last
        and First <= Last + 1
@@ -168,7 +166,7 @@ is
    procedure Take_Buffer (Ctx : in out Context; Buffer : out RFLX_Types.Bytes_Ptr)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx),
      Post =>
        not Has_Buffer (Ctx)
        and then Buffer /= null
@@ -187,16 +185,16 @@ is
    procedure Copy (Ctx : Context; Buffer : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Byte_Size (Ctx) = Buffer'Length;
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed_Message (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Byte_Size (Ctx) = Buffer'Length;
 
    function Read (Ctx : Context) return RFLX_Types.Bytes
    with
      Ghost,
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message (Ctx);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed_Message (Ctx);
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
 
@@ -215,8 +213,8 @@ is
    procedure Generic_Read (Ctx : Context)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message (Ctx)
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed_Message (Ctx)
        and then Pre (Read (Ctx));
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
@@ -237,9 +235,9 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then Offset < RFLX.Key_Share.Key_Share_Entry.Buffer_Length (Ctx)
-       and then Pre (RFLX.Key_Share.Key_Share_Entry.Buffer_Length (Ctx), Offset),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then Offset < RFLX.Certificate.Cert_Entry.Buffer_Length (Ctx)
+       and then Pre (RFLX.Certificate.Cert_Entry.Buffer_Length (Ctx), Offset),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -252,12 +250,12 @@ is
    function Buffer_Length (Ctx : Context) return RFLX_Types.Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx);
 
    function Buffer_Size (Ctx : Context) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx);
 
    function Size (Ctx : Context) return RFLX_Types.Bit_Length
    with
@@ -273,9 +271,9 @@ is
    procedure Data (Ctx : Context; Data : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message (Ctx)
-       and then Data'Length = RFLX.Key_Share.Key_Share_Entry.Byte_Size (Ctx);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed_Message (Ctx)
+       and then Data'Length = RFLX.Certificate.Cert_Entry.Byte_Size (Ctx);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -291,9 +289,9 @@ is
    function Field_Condition (Ctx : Context; Fld : Field) return Boolean
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld)
-       and then RFLX.Key_Share.Key_Share_Entry.Sufficient_Space (Ctx, Fld),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld)
+       and then RFLX.Certificate.Cert_Entry.Sufficient_Space (Ctx, Fld),
      Post =>
        True;
 
@@ -302,10 +300,10 @@ is
    function Field_Size (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld),
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld),
      Post =>
        (case Fld is
-           when F_Key_Exchange =>
+           when F_Cert_Data | F_Extensions =>
               Field_Size'Result rem RFLX_Types.Byte'Size = 0,
            when others =>
               True);
@@ -315,7 +313,7 @@ is
    function Field_First (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Index
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld),
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld),
      Post =>
        True;
 
@@ -324,11 +322,11 @@ is
    function Field_Last (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld)
-       and then RFLX.Key_Share.Key_Share_Entry.Sufficient_Space (Ctx, Fld),
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld)
+       and then RFLX.Certificate.Cert_Entry.Sufficient_Space (Ctx, Fld),
      Post =>
        (case Fld is
-           when F_Key_Exchange =>
+           when F_Cert_Data | F_Extensions =>
               Field_Last'Result rem RFLX_Types.Byte'Size = 0,
            when others =>
               True);
@@ -338,23 +336,23 @@ is
    function Available_Space (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld);
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld);
 
    function Sufficient_Space (Ctx : Context; Fld : Field) return Boolean
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld);
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld);
 
    function Equal (Ctx : Context; Fld : Field; Data : RFLX_Types.Bytes) return Boolean
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld);
 
    procedure Verify (Ctx : in out Context; Fld : Field)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -365,7 +363,7 @@ is
    procedure Verify_Message (Ctx : in out Context)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx),
      Post =>
        Has_Buffer (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
@@ -389,12 +387,12 @@ is
    function Well_Formed_Message (Ctx : Context) return Boolean
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx);
 
    function Valid_Message (Ctx : Context) return Boolean
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
@@ -407,52 +405,80 @@ is
 
    pragma Warnings (Off, "precondition is always False");
 
-   function Get_Group (Ctx : Context) return RFLX.TLS_Extensions.Named_Group
+   function Get_Cert_Data_Len (Ctx : Context) return RFLX.Certificate.Cert_Data_Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Group);
+       RFLX.Certificate.Cert_Entry.Valid (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data_Len);
 
-   function Get_Key_Exchange_Len (Ctx : Context) return RFLX.Key_Share.Key_Exchange_Length
+   function Get_Ext_Len (Ctx : Context) return RFLX.Certificate.Extensions_Length
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange_Len);
+       RFLX.Certificate.Cert_Entry.Valid (Ctx, RFLX.Certificate.Cert_Entry.F_Ext_Len);
 
    pragma Warnings (On, "precondition is always False");
 
-   function Get_Key_Exchange (Ctx : Context) return RFLX_Types.Bytes
+   function Get_Cert_Data (Ctx : Context) return RFLX_Types.Bytes
    with
      Ghost,
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data),
      Post =>
-       Get_Key_Exchange'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Key_Exchange));
+       Get_Cert_Data'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Cert_Data));
 
-   procedure Get_Key_Exchange (Ctx : Context; Data : out RFLX_Types.Bytes)
+   function Get_Extensions (Ctx : Context) return RFLX_Types.Bytes
+   with
+     Ghost,
+     Pre =>
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions),
+     Post =>
+       Get_Extensions'Result'Length = RFLX_Types.To_Length (Field_Size (Ctx, F_Extensions));
+
+   procedure Get_Cert_Data (Ctx : Context; Data : out RFLX_Types.Bytes)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then Data'Length = RFLX_Types.To_Length (RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then Data'Length = RFLX_Types.To_Length (RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)),
      Post =>
-       Equal (Ctx, F_Key_Exchange, Data);
+       Equal (Ctx, F_Cert_Data, Data);
+
+   procedure Get_Extensions (Ctx : Context; Data : out RFLX_Types.Bytes)
+   with
+     Pre =>
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then Data'Length = RFLX_Types.To_Length (RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)),
+     Post =>
+       Equal (Ctx, F_Extensions, Data);
 
    generic
-      with procedure Process_Key_Exchange (Key_Exchange : RFLX_Types.Bytes);
-   procedure Generic_Get_Key_Exchange (Ctx : Context)
+      with procedure Process_Cert_Data (Cert_Data : RFLX_Types.Bytes);
+   procedure Generic_Get_Cert_Data (Ctx : Context)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and RFLX.Key_Share.Key_Share_Entry.Present (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange);
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and RFLX.Certificate.Cert_Entry.Present (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data);
+
+   generic
+      with procedure Process_Extensions (Extensions : RFLX_Types.Bytes);
+   procedure Generic_Get_Extensions (Ctx : Context)
+   with
+     Pre =>
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and RFLX.Certificate.Cert_Entry.Present (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions);
 
    pragma Warnings (Off, "postcondition does not mention function result");
 
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld),
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld),
      Post =>
        True;
 
@@ -460,127 +486,246 @@ is
 
    pragma Warnings (Off, "aspect ""*"" not enforced on inlined subprogram ""*""");
 
-   procedure Set_Group (Ctx : in out Context; Val : RFLX.TLS_Extensions.Named_Group)
+   procedure Set_Cert_Data_Len (Ctx : in out Context; Val : RFLX.Certificate.Cert_Data_Length)
    with
      Inline_Always,
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Group)
-       and then RFLX.TLS_Extensions.Valid_Named_Group (RFLX.TLS_Extensions.To_Base_Integer (Val))
-       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Group) >= RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Group)
-       and then RFLX.Key_Share.Key_Share_Entry.Field_Condition (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Group),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data_Len)
+       and then RFLX.Certificate.Valid_Cert_Data_Length (RFLX.Certificate.To_Base_Integer (Val))
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data_Len) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data_Len)
+       and then RFLX.Certificate.Cert_Entry.Field_Condition (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data_Len),
      Post =>
        Has_Buffer (Ctx)
-       and Valid (Ctx, F_Group)
-       and Get_Group (Ctx) = Val
-       and Invalid (Ctx, F_Key_Exchange_Len)
-       and Invalid (Ctx, F_Key_Exchange)
-       and Valid_Next (Ctx, F_Key_Exchange_Len)
+       and Valid (Ctx, F_Cert_Data_Len)
+       and Get_Cert_Data_Len (Ctx) = Val
+       and Invalid (Ctx, F_Cert_Data)
+       and Invalid (Ctx, F_Ext_Len)
+       and Invalid (Ctx, F_Extensions)
+       and Valid_Next (Ctx, F_Cert_Data)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Group) = Valid_Next (Ctx, F_Group)'Old
-       and Field_First (Ctx, F_Group) = Field_First (Ctx, F_Group)'Old;
+       and Valid_Next (Ctx, F_Cert_Data_Len) = Valid_Next (Ctx, F_Cert_Data_Len)'Old
+       and Field_First (Ctx, F_Cert_Data_Len) = Field_First (Ctx, F_Cert_Data_Len)'Old;
 
-   procedure Set_Key_Exchange_Len (Ctx : in out Context; Val : RFLX.Key_Share.Key_Exchange_Length)
+   procedure Set_Ext_Len (Ctx : in out Context; Val : RFLX.Certificate.Extensions_Length)
    with
      Inline_Always,
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange_Len)
-       and then RFLX.Key_Share.Valid_Key_Exchange_Length (RFLX.Key_Share.To_Base_Integer (Val))
-       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange_Len) >= RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange_Len)
-       and then RFLX.Key_Share.Key_Share_Entry.Field_Condition (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange_Len),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Ext_Len)
+       and then RFLX.Certificate.Valid_Extensions_Length (RFLX.Certificate.To_Base_Integer (Val))
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Ext_Len) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Ext_Len)
+       and then RFLX.Certificate.Cert_Entry.Field_Condition (Ctx, RFLX.Certificate.Cert_Entry.F_Ext_Len),
      Post =>
        Has_Buffer (Ctx)
-       and Valid (Ctx, F_Key_Exchange_Len)
-       and Get_Key_Exchange_Len (Ctx) = Val
-       and Invalid (Ctx, F_Key_Exchange)
-       and Valid_Next (Ctx, F_Key_Exchange)
+       and Valid (Ctx, F_Ext_Len)
+       and Get_Ext_Len (Ctx) = Val
+       and Invalid (Ctx, F_Extensions)
+       and Valid_Next (Ctx, F_Extensions)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Key_Exchange_Len) = Valid_Next (Ctx, F_Key_Exchange_Len)'Old
-       and Get_Group (Ctx) = Get_Group (Ctx)'Old
-       and Field_First (Ctx, F_Key_Exchange_Len) = Field_First (Ctx, F_Key_Exchange_Len)'Old
-       and (for all F in Field range F_Group .. F_Group =>
+       and Valid_Next (Ctx, F_Ext_Len) = Valid_Next (Ctx, F_Ext_Len)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Field_First (Ctx, F_Ext_Len) = Field_First (Ctx, F_Ext_Len)'Old
+       and (for all F in Field range F_Cert_Data_Len .. F_Cert_Data =>
                Context_Cursors_Index (Context_Cursors (Ctx), F) = Context_Cursors_Index (Context_Cursors (Ctx)'Old, F));
 
    pragma Warnings (On, "aspect ""*"" not enforced on inlined subprogram ""*""");
 
-   procedure Initialize_Key_Exchange (Ctx : in out Context)
+   procedure Set_Cert_Data_Empty (Ctx : in out Context)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange) >= RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Field_Condition (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data) = 0,
      Post =>
        Has_Buffer (Ctx)
-       and then Well_Formed (Ctx, F_Key_Exchange)
-       and then (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Key_Exchange))
+       and Well_Formed (Ctx, F_Cert_Data)
+       and Invalid (Ctx, F_Ext_Len)
+       and Invalid (Ctx, F_Extensions)
+       and Valid_Next (Ctx, F_Ext_Len)
+       and Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and Ctx.First = Ctx.First'Old
+       and Ctx.Last = Ctx.Last'Old
+       and Valid_Next (Ctx, F_Cert_Data) = Valid_Next (Ctx, F_Cert_Data)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Field_First (Ctx, F_Cert_Data) = Field_First (Ctx, F_Cert_Data)'Old;
+
+   procedure Set_Extensions_Empty (Ctx : in out Context)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Field_Condition (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions) = 0,
+     Post =>
+       Has_Buffer (Ctx)
+       and Well_Formed (Ctx, F_Extensions)
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
+       and Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and Ctx.First = Ctx.First'Old
+       and Ctx.Last = Ctx.Last'Old
+       and Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Get_Ext_Len (Ctx) = Get_Ext_Len (Ctx)'Old
+       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old;
+
+   procedure Initialize_Cert_Data (Ctx : in out Context)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data),
+     Post =>
+       Has_Buffer (Ctx)
+       and then Well_Formed (Ctx, F_Cert_Data)
+       and then Invalid (Ctx, F_Ext_Len)
+       and then Invalid (Ctx, F_Extensions)
+       and then Valid_Next (Ctx, F_Ext_Len)
        and then Ctx.Buffer_First = Ctx.Buffer_First'Old
        and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and then Ctx.First = Ctx.First'Old
        and then Ctx.Last = Ctx.Last'Old
-       and then Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
-       and then Get_Group (Ctx) = Get_Group (Ctx)'Old
-       and then Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
-       and then Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old;
+       and then Valid_Next (Ctx, F_Cert_Data) = Valid_Next (Ctx, F_Cert_Data)'Old
+       and then Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and then Field_First (Ctx, F_Cert_Data) = Field_First (Ctx, F_Cert_Data)'Old;
 
-   procedure Set_Key_Exchange (Ctx : in out Context; Data : RFLX_Types.Bytes)
+   procedure Initialize_Extensions (Ctx : in out Context)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange) >= RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Length (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange, Data'Length)
-       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange) >= Data'Length * RFLX_Types.Byte'Size
-       and then RFLX.Key_Share.Key_Share_Entry.Field_Condition (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions),
      Post =>
        Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Key_Exchange)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Key_Exchange))
+       and then Well_Formed (Ctx, F_Extensions)
+       and then (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
+       and then Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and then Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and then Ctx.First = Ctx.First'Old
+       and then Ctx.Last = Ctx.Last'Old
+       and then Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
+       and then Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and then Get_Ext_Len (Ctx) = Get_Ext_Len (Ctx)'Old
+       and then Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old;
+
+   procedure Set_Cert_Data (Ctx : in out Context; Data : RFLX_Types.Bytes)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data, Data'Length)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data) >= Data'Length * RFLX_Types.Byte'Size
+       and then RFLX.Certificate.Cert_Entry.Field_Condition (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data),
+     Post =>
+       Has_Buffer (Ctx)
+       and Well_Formed (Ctx, F_Cert_Data)
+       and Invalid (Ctx, F_Ext_Len)
+       and Invalid (Ctx, F_Extensions)
+       and Valid_Next (Ctx, F_Ext_Len)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
-       and Get_Group (Ctx) = Get_Group (Ctx)'Old
-       and Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
-       and Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old
-       and Equal (Ctx, F_Key_Exchange, Data);
+       and Valid_Next (Ctx, F_Cert_Data) = Valid_Next (Ctx, F_Cert_Data)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Field_First (Ctx, F_Cert_Data) = Field_First (Ctx, F_Cert_Data)'Old
+       and Equal (Ctx, F_Cert_Data, Data);
 
-   generic
-      with procedure Process_Key_Exchange (Key_Exchange : out RFLX_Types.Bytes);
-      with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
-   procedure Generic_Set_Key_Exchange (Ctx : in out Context; Length : RFLX_Types.Length)
+   procedure Set_Extensions (Ctx : in out Context; Data : RFLX_Types.Bytes)
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange) >= RFLX.Key_Share.Key_Share_Entry.Field_Size (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Length (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange, Length)
-       and then RFLX_Types.To_Length (RFLX.Key_Share.Key_Share_Entry.Available_Space (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Key_Exchange)) >= Length
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions, Data'Length)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions) >= Data'Length * RFLX_Types.Byte'Size
+       and then RFLX.Certificate.Cert_Entry.Field_Condition (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions),
+     Post =>
+       Has_Buffer (Ctx)
+       and Well_Formed (Ctx, F_Extensions)
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
+       and Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and Ctx.First = Ctx.First'Old
+       and Ctx.Last = Ctx.Last'Old
+       and Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Get_Ext_Len (Ctx) = Get_Ext_Len (Ctx)'Old
+       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old
+       and Equal (Ctx, F_Extensions, Data);
+
+   generic
+      with procedure Process_Cert_Data (Cert_Data : out RFLX_Types.Bytes);
+      with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
+   procedure Generic_Set_Cert_Data (Ctx : in out Context; Length : RFLX_Types.Length)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)
+       and then RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data, Length)
+       and then RFLX_Types.To_Length (RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data)) >= Length
        and then Process_Data_Pre (Length),
      Post =>
        Has_Buffer (Ctx)
-       and Well_Formed (Ctx, F_Key_Exchange)
-       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Key_Exchange))
+       and Well_Formed (Ctx, F_Cert_Data)
+       and Invalid (Ctx, F_Ext_Len)
+       and Invalid (Ctx, F_Extensions)
+       and Valid_Next (Ctx, F_Ext_Len)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
        and Ctx.First = Ctx.First'Old
        and Ctx.Last = Ctx.Last'Old
-       and Valid_Next (Ctx, F_Key_Exchange) = Valid_Next (Ctx, F_Key_Exchange)'Old
-       and Get_Group (Ctx) = Get_Group (Ctx)'Old
-       and Get_Key_Exchange_Len (Ctx) = Get_Key_Exchange_Len (Ctx)'Old
-       and Field_First (Ctx, F_Key_Exchange) = Field_First (Ctx, F_Key_Exchange)'Old;
+       and Valid_Next (Ctx, F_Cert_Data) = Valid_Next (Ctx, F_Cert_Data)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Field_First (Ctx, F_Cert_Data) = Field_First (Ctx, F_Cert_Data)'Old;
+
+   generic
+      with procedure Process_Extensions (Extensions : out RFLX_Types.Bytes);
+      with function Process_Data_Pre (Length : RFLX_Types.Length) return Boolean;
+   procedure Generic_Set_Extensions (Ctx : in out Context; Length : RFLX_Types.Length)
+   with
+     Pre =>
+       not Ctx'Constrained
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions) >= RFLX.Certificate.Cert_Entry.Field_Size (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)
+       and then RFLX.Certificate.Cert_Entry.Valid_Length (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions, Length)
+       and then RFLX_Types.To_Length (RFLX.Certificate.Cert_Entry.Available_Space (Ctx, RFLX.Certificate.Cert_Entry.F_Extensions)) >= Length
+       and then Process_Data_Pre (Length),
+     Post =>
+       Has_Buffer (Ctx)
+       and Well_Formed (Ctx, F_Extensions)
+       and (if Well_Formed_Message (Ctx) then Message_Last (Ctx) = Field_Last (Ctx, F_Extensions))
+       and Ctx.Buffer_First = Ctx.Buffer_First'Old
+       and Ctx.Buffer_Last = Ctx.Buffer_Last'Old
+       and Ctx.First = Ctx.First'Old
+       and Ctx.Last = Ctx.Last'Old
+       and Valid_Next (Ctx, F_Extensions) = Valid_Next (Ctx, F_Extensions)'Old
+       and Get_Cert_Data_Len (Ctx) = Get_Cert_Data_Len (Ctx)'Old
+       and Get_Ext_Len (Ctx) = Get_Ext_Len (Ctx)'Old
+       and Field_First (Ctx, F_Extensions) = Field_First (Ctx, F_Extensions)'Old;
 
    function Context_Cursor (Ctx : Context; Fld : Field) return Field_Cursor
    with
@@ -602,9 +747,10 @@ is
 
    type Structure is
       record
-         Group : RFLX.TLS_Extensions.Named_Group;
-         Key_Exchange_Len : RFLX.Key_Share.Key_Exchange_Length;
-         Key_Exchange : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 65534);
+         Cert_Data_Len : RFLX.Certificate.Cert_Data_Length;
+         Cert_Data : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 16777214);
+         Ext_Len : RFLX.Certificate.Extensions_Length;
+         Extensions : RFLX_Types.Bytes (RFLX_Types.Index'First .. RFLX_Types.Index'First + 65534);
       end record;
 
    function Valid_Structure (Unused_Struct : Structure) return Boolean;
@@ -612,8 +758,8 @@ is
    procedure To_Structure (Ctx : Context; Struct : out Structure)
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Well_Formed_Message (Ctx),
+       RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Well_Formed_Message (Ctx),
      Post =>
        Valid_Structure (Struct);
 
@@ -623,26 +769,31 @@ is
    with
      Pre =>
        not Ctx'Constrained
-       and then RFLX.Key_Share.Key_Share_Entry.Has_Buffer (Ctx)
-       and then RFLX.Key_Share.Key_Share_Entry.Valid_Structure (Struct)
-       and then RFLX.Key_Share.Key_Share_Entry.Sufficient_Buffer_Length (Ctx, Struct),
+       and then RFLX.Certificate.Cert_Entry.Has_Buffer (Ctx)
+       and then RFLX.Certificate.Cert_Entry.Valid_Structure (Struct)
+       and then RFLX.Certificate.Cert_Entry.Sufficient_Buffer_Length (Ctx, Struct),
      Post =>
        Has_Buffer (Ctx)
        and Well_Formed_Message (Ctx)
        and Ctx.Buffer_First = Ctx.Buffer_First'Old
        and Ctx.Buffer_Last = Ctx.Buffer_Last'Old;
 
-   function Field_Size_Group (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Cert_Data_Len (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
 
-   function Field_Size_Key_Exchange_Len (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Cert_Data (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
 
-   function Field_Size_Key_Exchange (Struct : Structure) return RFLX_Types.Bit_Length
+   function Field_Size_Ext_Len (Struct : Structure) return RFLX_Types.Bit_Length
+   with
+     Pre =>
+       Valid_Structure (Struct);
+
+   function Field_Size_Extensions (Struct : Structure) return RFLX_Types.Bit_Length
    with
      Pre =>
        Valid_Structure (Struct);
@@ -696,9 +847,10 @@ private
    pragma Warnings (Off, "unused variable ""*""");
 
    function Valid_Predecessors_Invariant (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return Boolean is
-     ((if Well_Formed (Cursors (F_Group)) then True)
-      and then (if Well_Formed (Cursors (F_Key_Exchange_Len)) then Valid (Cursors (F_Group)))
-      and then (if Well_Formed (Cursors (F_Key_Exchange)) then Valid (Cursors (F_Key_Exchange_Len))))
+     ((if Well_Formed (Cursors (F_Cert_Data_Len)) then True)
+      and then (if Well_Formed (Cursors (F_Cert_Data)) then Valid (Cursors (F_Cert_Data_Len)))
+      and then (if Well_Formed (Cursors (F_Ext_Len)) then Well_Formed (Cursors (F_Cert_Data)))
+      and then (if Well_Formed (Cursors (F_Extensions)) then Valid (Cursors (F_Ext_Len))))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last),
@@ -715,13 +867,16 @@ private
 
    function Valid_Next_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return Boolean is
      (case Fld is
-          when F_Group =>
+          when F_Cert_Data_Len =>
              True,
-          when F_Key_Exchange_Len =>
-             (Valid (Cursors (F_Group))
+          when F_Cert_Data =>
+             (Valid (Cursors (F_Cert_Data_Len))
               and then True),
-          when F_Key_Exchange =>
-             (Valid (Cursors (F_Key_Exchange_Len))
+          when F_Ext_Len =>
+             (Well_Formed (Cursors (F_Cert_Data))
+              and then True),
+          when F_Extensions =>
+             (Valid (Cursors (F_Ext_Len))
               and then True))
    with
      Pre =>
@@ -738,10 +893,14 @@ private
 
    function Field_Size_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return RFLX_Types.Bit_Length'Base is
      (case Fld is
-          when F_Group | F_Key_Exchange_Len =>
+          when F_Cert_Data_Len =>
+             24,
+          when F_Cert_Data =>
+             RFLX_Types.Bit_Length (Cursors (F_Cert_Data_Len).Value) * 8,
+          when F_Ext_Len =>
              16,
-          when F_Key_Exchange =>
-             RFLX_Types.Bit_Length (Cursors (F_Key_Exchange_Len).Value) * 8)
+          when F_Extensions =>
+             RFLX_Types.Bit_Length (Cursors (F_Ext_Len).Value) * 8)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -760,38 +919,48 @@ private
 
    pragma Warnings (Off, "formal parameter ""*"" is not referenced");
 
-   function Field_First_Group (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+   function Field_First_Cert_Data_Len (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
      (First)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Group);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Cert_Data_Len);
 
-   function Field_First_Key_Exchange_Len (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (First + 16)
+   function Field_First_Cert_Data (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+     (First + 24)
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Key_Exchange_Len);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Cert_Data);
 
-   function Field_First_Key_Exchange (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
-     (First + 32)
+   function Field_First_Ext_Len (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+     (Field_First_Cert_Data (Cursors, First, Verified_Last, Written_Last) + Field_Size_Internal (Cursors, First, Verified_Last, Written_Last, F_Cert_Data))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
        and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
-       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Key_Exchange);
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Ext_Len);
+
+   function Field_First_Extensions (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length) return RFLX_Types.Bit_Index'Base is
+     (Field_First_Cert_Data (Cursors, First, Verified_Last, Written_Last) + Field_Size_Internal (Cursors, First, Verified_Last, Written_Last, F_Cert_Data) + 16)
+   with
+     Pre =>
+       Cursors_Invariant (Cursors, First, Verified_Last)
+       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
+       and then Valid_Next_Internal (Cursors, First, Verified_Last, Written_Last, F_Extensions);
 
    function Field_First_Internal (Cursors : Field_Cursors; First : RFLX_Types.Bit_Index; Verified_Last : RFLX_Types.Bit_Length; Written_Last : RFLX_Types.Bit_Length; Fld : Field) return RFLX_Types.Bit_Index'Base is
      (case Fld is
-          when F_Group =>
-             Field_First_Group (Cursors, First, Verified_Last, Written_Last),
-          when F_Key_Exchange_Len =>
-             Field_First_Key_Exchange_Len (Cursors, First, Verified_Last, Written_Last),
-          when F_Key_Exchange =>
-             Field_First_Key_Exchange (Cursors, First, Verified_Last, Written_Last))
+          when F_Cert_Data_Len =>
+             Field_First_Cert_Data_Len (Cursors, First, Verified_Last, Written_Last),
+          when F_Cert_Data =>
+             Field_First_Cert_Data (Cursors, First, Verified_Last, Written_Last),
+          when F_Ext_Len =>
+             Field_First_Ext_Len (Cursors, First, Verified_Last, Written_Last),
+          when F_Extensions =>
+             Field_First_Extensions (Cursors, First, Verified_Last, Written_Last))
    with
      Pre =>
        Cursors_Invariant (Cursors, First, Verified_Last)
@@ -837,20 +1006,25 @@ private
       and then Cursors_Invariant (Cursors, First, Verified_Last)
       and then Valid_Predecessors_Invariant (Cursors, First, Verified_Last, Written_Last)
       and then ((if
-                    Well_Formed (Cursors (F_Group))
+                    Well_Formed (Cursors (F_Cert_Data_Len))
                  then
-                    (Cursors (F_Group).Last - Cursors (F_Group).First + 1 = 16
-                     and then Cursors (F_Group).First = First))
+                    (Cursors (F_Cert_Data_Len).Last - Cursors (F_Cert_Data_Len).First + 1 = 24
+                     and then Cursors (F_Cert_Data_Len).First = First))
                 and then (if
-                             Well_Formed (Cursors (F_Key_Exchange_Len))
+                             Well_Formed (Cursors (F_Cert_Data))
                           then
-                             (Cursors (F_Key_Exchange_Len).Last - Cursors (F_Key_Exchange_Len).First + 1 = 16
-                              and then Cursors (F_Key_Exchange_Len).First = Cursors (F_Group).Last + 1))
+                             (Cursors (F_Cert_Data).Last - Cursors (F_Cert_Data).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Cert_Data_Len).Value) * 8
+                              and then Cursors (F_Cert_Data).First = Cursors (F_Cert_Data_Len).Last + 1))
                 and then (if
-                             Well_Formed (Cursors (F_Key_Exchange))
+                             Well_Formed (Cursors (F_Ext_Len))
                           then
-                             (Cursors (F_Key_Exchange).Last - Cursors (F_Key_Exchange).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Key_Exchange_Len).Value) * 8
-                              and then Cursors (F_Key_Exchange).First = Cursors (F_Key_Exchange_Len).Last + 1))))
+                             (Cursors (F_Ext_Len).Last - Cursors (F_Ext_Len).First + 1 = 16
+                              and then Cursors (F_Ext_Len).First = Cursors (F_Cert_Data).Last + 1))
+                and then (if
+                             Well_Formed (Cursors (F_Extensions))
+                          then
+                             (Cursors (F_Extensions).Last - Cursors (F_Extensions).First + 1 = RFLX_Types.Bit_Length (Cursors (F_Ext_Len).Value) * 8
+                              and then Cursors (F_Extensions).First = Cursors (F_Ext_Len).Last + 1))))
    with
      Post =>
        True;
@@ -872,9 +1046,9 @@ private
 
    function Initialized (Ctx : Context) return Boolean is
      (Ctx.Verified_Last = Ctx.First - 1
-      and then Valid_Next (Ctx, F_Group)
-      and then RFLX.Key_Share.Key_Share_Entry.Field_First (Ctx, RFLX.Key_Share.Key_Share_Entry.F_Group) rem RFLX_Types.Byte'Size = 1
-      and then Available_Space (Ctx, F_Group) = Ctx.Last - Ctx.First + 1
+      and then Valid_Next (Ctx, F_Cert_Data_Len)
+      and then RFLX.Certificate.Cert_Entry.Field_First (Ctx, RFLX.Certificate.Cert_Entry.F_Cert_Data_Len) rem RFLX_Types.Byte'Size = 1
+      and then Available_Space (Ctx, F_Cert_Data_Len) = Ctx.Last - Ctx.First + 1
       and then (for all F in Field =>
                    Invalid (Ctx, F)));
 
@@ -904,16 +1078,18 @@ private
 
    function Valid_Value (Fld : Field; Val : RFLX_Types.Base_Integer) return Boolean is
      (case Fld is
-          when F_Group =>
-             RFLX.TLS_Extensions.Valid_Named_Group (Val),
-          when F_Key_Exchange_Len =>
-             RFLX.Key_Share.Valid_Key_Exchange_Length (Val),
-          when F_Key_Exchange =>
+          when F_Cert_Data_Len =>
+             RFLX.Certificate.Valid_Cert_Data_Length (Val),
+          when F_Cert_Data =>
+             True,
+          when F_Ext_Len =>
+             RFLX.Certificate.Valid_Extensions_Length (Val),
+          when F_Extensions =>
              True);
 
    function Field_Condition (Ctx : Context; Fld : Field) return Boolean is
      (case Fld is
-          when F_Group | F_Key_Exchange_Len | F_Key_Exchange =>
+          when F_Cert_Data_Len | F_Cert_Data | F_Ext_Len | F_Extensions =>
              True);
 
    function Field_Size (Ctx : Context; Fld : Field) return RFLX_Types.Bit_Length is
@@ -954,26 +1130,26 @@ private
       or Ctx.Cursors (Fld).State = S_Incomplete);
 
    function Well_Formed_Message (Ctx : Context) return Boolean is
-     (Well_Formed (Ctx, F_Key_Exchange));
+     (Well_Formed (Ctx, F_Extensions));
 
    function Valid_Message (Ctx : Context) return Boolean is
-     (Valid (Ctx, F_Key_Exchange));
+     (Valid (Ctx, F_Extensions));
 
    function Incomplete_Message (Ctx : Context) return Boolean is
      ((for some F in Field =>
           Incomplete (Ctx, F)));
 
-   function Get_Group (Ctx : Context) return RFLX.TLS_Extensions.Named_Group is
-     (To_Actual (Ctx.Cursors (F_Group).Value));
+   function Get_Cert_Data_Len (Ctx : Context) return RFLX.Certificate.Cert_Data_Length is
+     (To_Actual (Ctx.Cursors (F_Cert_Data_Len).Value));
 
-   function Get_Key_Exchange_Len (Ctx : Context) return RFLX.Key_Share.Key_Exchange_Length is
-     (To_Actual (Ctx.Cursors (F_Key_Exchange_Len).Value));
+   function Get_Ext_Len (Ctx : Context) return RFLX.Certificate.Extensions_Length is
+     (To_Actual (Ctx.Cursors (F_Ext_Len).Value));
 
    function Valid_Size (Ctx : Context; Fld : Field; Size : RFLX_Types.Bit_Length) return Boolean is
      (Size = Field_Size (Ctx, Fld))
    with
      Pre =>
-       RFLX.Key_Share.Key_Share_Entry.Valid_Next (Ctx, Fld);
+       RFLX.Certificate.Cert_Entry.Valid_Next (Ctx, Fld);
 
    function Valid_Length (Ctx : Context; Fld : Field; Length : RFLX_Types.Length) return Boolean is
      (Valid_Size (Ctx, Fld, RFLX_Types.To_Bit_Length (Length)));
@@ -991,15 +1167,18 @@ private
      (True);
 
    function Sufficient_Buffer_Length (Ctx : Context; Struct : Structure) return Boolean is
-     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= RFLX_Types.Base_Integer (Struct.Key_Exchange_Len) * 8 + 32);
+     (RFLX_Types.Base_Integer (RFLX_Types.To_Last_Bit_Index (Ctx.Buffer_Last) - RFLX_Types.To_First_Bit_Index (Ctx.Buffer_First) + 1) >= RFLX_Types.Base_Integer (Struct.Cert_Data_Len) * 8 + RFLX_Types.Base_Integer (Struct.Ext_Len) * 8 + 40);
 
-   function Field_Size_Group (Struct : Structure) return RFLX_Types.Bit_Length is
+   function Field_Size_Cert_Data_Len (Struct : Structure) return RFLX_Types.Bit_Length is
+     (24);
+
+   function Field_Size_Cert_Data (Struct : Structure) return RFLX_Types.Bit_Length is
+     (RFLX_Types.Bit_Length (Struct.Cert_Data_Len) * 8);
+
+   function Field_Size_Ext_Len (Struct : Structure) return RFLX_Types.Bit_Length is
      (16);
 
-   function Field_Size_Key_Exchange_Len (Struct : Structure) return RFLX_Types.Bit_Length is
-     (16);
+   function Field_Size_Extensions (Struct : Structure) return RFLX_Types.Bit_Length is
+     (RFLX_Types.Bit_Length (Struct.Ext_Len) * 8);
 
-   function Field_Size_Key_Exchange (Struct : Structure) return RFLX_Types.Bit_Length is
-     (RFLX_Types.Bit_Length (Struct.Key_Exchange_Len) * 8);
-
-end RFLX.Key_Share.Key_Share_Entry;
+end RFLX.Certificate.Cert_Entry;

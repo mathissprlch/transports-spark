@@ -10,6 +10,7 @@
 --  and adds protocol-specific config (ALPN, SNI).
 
 with GNAT.Sockets;
+with RFLX.RFLX_Types;
 with Tls_Core;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Tls13_Driver;
@@ -116,6 +117,7 @@ private
       Pending    : Tls_Core.Octet_Array (1 .. Pt_Buf_Size) := (others => 0);
       Pend_First : Natural := 1;
       Pend_Last  : Natural := 0;
+      Rflx_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
    end record;
 
    type Listener is limited record
