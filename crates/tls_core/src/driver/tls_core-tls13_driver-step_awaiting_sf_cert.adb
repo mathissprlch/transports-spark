@@ -1,3 +1,4 @@
+with Ada.Text_IO;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
 with Tls_Core.Cert_Chain;
@@ -147,6 +148,14 @@ is
          --  Step 2: cert-mode key schedule (PSK = 0).
          Tls_Core.Key_Sched.Transcript_Snapshot
            (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sh);
+         Ada.Text_IO.Put_Line
+           ("  [D] sf_cert: suite=" &
+            Tls_Core.Suites.Cipher_Suite_Id'Image (D.Suite) &
+            " th(1..4)=" &
+            Octet'Image (Th_After_Sh (1)) &
+            Octet'Image (Th_After_Sh (2)) &
+            Octet'Image (Th_After_Sh (3)) &
+            Octet'Image (Th_After_Sh (4)));
          Tls_Core.Key_Sched.Derive_Handshake_Secrets
            (Suite        => D.Suite,
             PSK          => Zero_Secret,
@@ -183,6 +192,13 @@ is
             Diff : Octet;
          begin
             Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
+            if Cursor <= In_Bytes'Last then
+               Ada.Text_IO.Put_Line
+                 ("  [D] sf_cert: encrypted start ct=" &
+                  Tls_Core.Octet'Image (In_Bytes (Cursor)) &
+                  " cursor=" & Natural'Image (Cursor) &
+                  " last=" & Natural'Image (In_Bytes'Last));
+            end if;
             while Cursor <= In_Bytes'Last
               and then Sub /= Done_Sub
             loop
@@ -200,6 +216,10 @@ is
                Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
                           + Natural (In_Bytes (Cursor + 4));
                Rec_End := Cursor + 5 + Rec_Len - 1;
+               Ada.Text_IO.Put_Line
+                 ("  [D] sf_cert: aead rec len=" &
+                  Natural'Image (Rec_Len) &
+                  " sub=" & Sub_State'Image (Sub));
                if Rec_End > In_Bytes'Last then
                   Fail_Encrypted
                     (D, Tls_Core.Alert.Desc_Decode_Error,
@@ -209,6 +229,10 @@ is
                Tls_Core.Aead_Channel.Receive
                  (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
                   Pt_Buf, Pt_Last, Inner_Type, Aead_OK);
+               Ada.Text_IO.Put_Line
+                 ("  [D] sf_cert: aead_ok=" &
+                  Boolean'Image (Aead_OK) &
+                  " pt_last=" & Natural'Image (Pt_Last));
                if not Aead_OK then
                   Fail_Encrypted
                     (D, Tls_Core.Alert.Desc_Bad_Record_Mac,

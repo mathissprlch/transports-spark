@@ -25,3 +25,4 @@ vendor/aws/
 .vscode/
 .idea/
 .claude/
+crates/examples/obj_tls/
