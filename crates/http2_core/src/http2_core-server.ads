@@ -134,12 +134,16 @@ package Http2_Core.Server is
 
    procedure Stop (L : in out Listener);
 
+   type Transport_Listener_Acc is access all Transport.Listener;
+   function Get_Transport (L : aliased in out Listener)
+     return Transport_Listener_Acc;
+
    Server_Error : exception;
 
 private
 
    type Listener is limited record
-      Trans         : Transport.Listener;
+      Trans         : aliased Transport.Listener;
       Buf           : RFLX.RFLX_Types.Bytes_Ptr := null;
       Inbound_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;
       Outgoing_Buf  : RFLX.RFLX_Types.Bytes_Ptr := null;

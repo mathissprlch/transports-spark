@@ -35,6 +35,12 @@ package body Http2_Core.Server is
       end if;
    end Stop;
 
+   function Get_Transport (L : aliased in out Listener)
+     return Transport_Listener_Acc is
+   begin
+      return L.Trans'Unchecked_Access;
+   end Get_Transport;
+
    procedure Attach_Buffers
      (L            : in out Listener;
       Buf          : in out RFLX.RFLX_Types.Bytes_Ptr;

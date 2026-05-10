@@ -1,0 +1,22 @@
+with "http2_core.gpr";
+with "grpc_core.gpr";
+with "tls_core.gpr";
+with "../tls_transport/tls_transport.gpr";
+with "gnatcoll";
+
+project Examples_Tls is
+
+   for Source_Dirs use ("src_tls", "src", "generated");
+   for Object_Dir use "obj_tls";
+   for Exec_Dir use "bin";
+   for Create_Missing_Dirs use "True";
+   for Main use ("greeter_server_tls.adb",
+                 "greeter_client_tls.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022", "-g", "-O0", "-gnatwa", "-gnatVa",
+         "-gnatyM120", "-gnata");
+   end Compiler;
+
+end Examples_Tls;

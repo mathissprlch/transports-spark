@@ -1,17 +1,17 @@
 with "rflx_runtime.gpr";
+with "../tls_transport/tls_transport.gpr";
 
 library project Mqtt_Core is
 
    --  Transport implementation: tcp (default — GNAT.Sockets,
-   --  hosted Linux/Darwin) or bare (stub for bare-metal builds;
-   --  real Cortex-M / Cortex-R / Zynq Transport bodies will
-   --  replace `src/transport_bare/mqtt_core-transport.adb` once
-   --  the runtime + driver layer is in place).
+   --  hosted Linux/Darwin), bare (stub for bare-metal builds),
+   --  or tls (TLS 1.3 via tls_transport).
    --
-   --  Set via -XTRANSPORT=bare on the gprbuild / alr build
-   --  command line. The two transport_* subdirectories are
-   --  mutually exclusive — only one is added to Source_Dirs.
-   type Transport_Kind is ("tcp", "bare");
+   --  Set via -XTRANSPORT=bare or -XTRANSPORT=tls on the
+   --  gprbuild / alr build command line. The transport_*
+   --  subdirectories are mutually exclusive — only one is
+   --  added to Source_Dirs.
+   type Transport_Kind is ("tcp", "bare", "tls");
    Transport : Transport_Kind := external ("TRANSPORT", "tcp");
 
    for Library_Name use "mqtt_core";
@@ -31,10 +31,11 @@ library project Mqtt_Core is
             for Default_Switches ("Ada") use
               ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
                "-gnata");
+         when "tls" =>
+            for Default_Switches ("Ada") use
+              ("-gnat2022", "-g", "-O0", "-gnatwa", "-gnatVa",
+               "-gnatyM120", "-gnata");
          when "bare" =>
-            --  Bare-metal: assertions off, optimization on, no
-            --  debug info — fit Cortex-M flash budgets. See
-            --  http2_core.gpr's matching note.
             for Default_Switches ("Ada") use
               ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
                "-ffunction-sections", "-fdata-sections");

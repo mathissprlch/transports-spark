@@ -9,6 +9,7 @@
 --  The per-crate transport_tls/ wrapper delegates to this crate
 --  and adds protocol-specific config (ALPN, SNI).
 
+with GNAT.Sockets;
 with Tls_Core;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Tls13_Driver;
@@ -61,6 +62,15 @@ is
       Success : out Boolean)
    with Pre => Is_Open (Chan);
 
+   function Has_Pending (Chan : Channel) return Boolean
+   with Pre => Is_Open (Chan);
+
+   procedure Wait_For_Data
+     (Chan     : Channel;
+      Timeout  : Duration;
+      Got_Data : out Boolean)
+   with Pre => Is_Open (Chan);
+
    procedure Close (Chan : in out Channel)
    with
      Pre  => Is_Open (Chan),
@@ -93,12 +103,19 @@ is
 
 private
 
+   Pt_Buf_Size : constant := 16640;
+
    type Channel is limited record
-      Tcp     : Tls_Core.Tcp_Transport.Channel;
-      Driver  : Tls_Core.Tls13_Driver.Driver;
-      App_In  : Tls_Core.Aead_Channel.Direction;
-      App_Out : Tls_Core.Aead_Channel.Direction;
-      Open    : Boolean := False;
+      Tcp      : Tls_Core.Tcp_Transport.Channel;
+      Driver   : Tls_Core.Tls13_Driver.Driver;
+      App_In   : Tls_Core.Aead_Channel.Direction;
+      App_Out  : Tls_Core.Aead_Channel.Direction;
+      Selector : GNAT.Sockets.Selector_Type;
+      Sel_Open : Boolean := False;
+      Open     : Boolean := False;
+      Pending  : Tls_Core.Octet_Array (1 .. Pt_Buf_Size) := (others => 0);
+      Pend_First : Natural := 1;
+      Pend_Last  : Natural := 0;
    end record;
 
    type Listener is limited record

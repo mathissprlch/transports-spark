@@ -215,4 +215,7 @@ is
       L.Listening := False;
    end Stop;
 
+   function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type is
+     (Chan.Socket);
+
 end Tls_Core.Tcp_Transport;

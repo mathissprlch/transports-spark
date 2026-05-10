@@ -22,7 +22,7 @@
 --  itself is consumed from SPARK-friendly code but its body lives
 --  outside the verified perimeter (same arrangement as Channel).
 
-private with GNAT.Sockets;
+with GNAT.Sockets;
 
 package Tls_Core.Tcp_Transport
 with SPARK_Mode => Off
@@ -93,6 +93,9 @@ is
    with
      Pre  => Is_Listening (L),
      Post => not Is_Listening (L);
+
+   function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type
+   with Pre => Is_Open (Chan);
 
    Connect_Error : exception;
    Send_Error    : exception;

@@ -1384,4 +1384,10 @@ package body Http2_Core.Connection is
       C.Outgoing_Buf := null;
    end Detach_Buffers;
 
+   function Get_Transport (C : aliased in out Connection)
+     return Transport_Channel_Acc is
+   begin
+      return C.Trans'Unchecked_Access;
+   end Get_Transport;
+
 end Http2_Core.Connection;

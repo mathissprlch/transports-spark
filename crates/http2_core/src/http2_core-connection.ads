@@ -153,6 +153,10 @@ package Http2_Core.Connection is
       Response_Headers      : in out Hpack.Header_Block;
       Response_Headers_Last : out Natural);
 
+   type Transport_Channel_Acc is access all Transport.Channel;
+   function Get_Transport (C : aliased in out Connection)
+     return Transport_Channel_Acc;
+
    Connect_Error : exception;
    RPC_Error     : exception;
 
@@ -164,7 +168,7 @@ private
    Buffer_Capacity : constant := 16 * 1024 + 64;  -- 16KB + frame overhead
 
    type Connection is limited record
-      Trans          : Transport.Channel;
+      Trans          : aliased Transport.Channel;
       Buf            : RFLX.RFLX_Types.Bytes_Ptr := null;
       Inbound_Buf    : RFLX.RFLX_Types.Bytes_Ptr := null;
       Outgoing_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;

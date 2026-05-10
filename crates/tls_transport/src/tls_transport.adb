@@ -1,3 +1,4 @@
+with Ada.Streams;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Suites;
@@ -8,6 +9,7 @@ package body Tls_Transport is
 
    use type Tls_Core.Octet;
    use type Tls_Core.Tls13_Driver.State;
+   use type GNAT.Sockets.Selector_Status;
 
    Ecdhe_Seed : constant Tls_Core.Octet_Array (1 .. 32) :=
      (16#A1#, 16#B2#, 16#C3#, 16#D4#, 16#E5#, 16#F6#, 16#07#, 16#18#,
@@ -42,6 +44,56 @@ package body Tls_Transport is
       end;
    end Read_One_Record;
 
+   procedure Read_Flight
+     (Tcp    : Tls_Core.Tcp_Transport.Channel;
+      Buf    : out Tls_Core.Octet_Array;
+      Last   : out Natural;
+      OK     : out Boolean)
+   is
+      use Tls_Core;
+      Cursor : Natural := Buf'First;
+      Rec_Last : Natural;
+      Rec_OK   : Boolean;
+   begin
+      Last := 0;
+      OK := False;
+      Read_One_Record (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK);
+      if not Rec_OK then return; end if;
+      Cursor := Rec_Last + 1;
+      loop
+         exit when Cursor + 5 > Buf'Last;
+         declare
+            use Ada.Streams;
+            Peek     : Stream_Element_Array (1 .. 1);
+            Peek_Sel : GNAT.Sockets.Selector_Type;
+            R_Set    : GNAT.Sockets.Socket_Set_Type;
+            W_Set    : GNAT.Sockets.Socket_Set_Type;
+            Status   : GNAT.Sockets.Selector_Status;
+            Sock     : constant GNAT.Sockets.Socket_Type :=
+              Tcp_Transport.Native_Socket (Tcp);
+         begin
+            GNAT.Sockets.Create_Selector (Peek_Sel);
+            GNAT.Sockets.Empty (R_Set);
+            GNAT.Sockets.Empty (W_Set);
+            GNAT.Sockets.Set (R_Set, Sock);
+            GNAT.Sockets.Check_Selector
+              (Peek_Sel, R_Set, W_Set, Status, Timeout => 0.001);
+            GNAT.Sockets.Close_Selector (Peek_Sel);
+            if Status /= GNAT.Sockets.Completed
+              or else not GNAT.Sockets.Is_Set (R_Set, Sock)
+            then
+               exit;
+            end if;
+         end;
+         Read_One_Record
+           (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK);
+         exit when not Rec_OK;
+         Cursor := Rec_Last + 1;
+      end loop;
+      Last := Cursor - 1;
+      OK := True;
+   end Read_Flight;
+
    procedure Handshake_Loop
      (Chan : in out Channel)
    is
@@ -57,7 +109,11 @@ package body Tls_Transport is
          exit when Tls13_Driver.Current_State (Chan.Driver) = Done
            or else Tls13_Driver.Current_State (Chan.Driver) = Failed;
 
-         Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK);
+         if Current_State (Chan.Driver) = Awaiting_SF then
+            Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK);
+         else
+            Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK);
+         end if;
          if not In_OK then
             raise Connect_Error with "TLS: EOF during handshake";
          end if;
@@ -134,12 +190,64 @@ package body Tls_Transport is
       end if;
 
       Handshake_Loop (Chan);
+
+      GNAT.Sockets.Create_Selector (Chan.Selector);
+      Chan.Sel_Open := True;
    end Connect;
 
    function Is_Open (Chan : Channel) return Boolean is
    begin
       return Chan.Open;
    end Is_Open;
+
+   procedure Poll_Internal
+     (Chan    : Channel;
+      Timeout : Duration;
+      Ready   : out Boolean)
+   is
+      use GNAT.Sockets;
+      Read_Set  : Socket_Set_Type;
+      Write_Set : Socket_Set_Type;
+      Status    : Selector_Status;
+      Sock      : constant Socket_Type :=
+        Tls_Core.Tcp_Transport.Native_Socket (Chan.Tcp);
+   begin
+      Ready := False;
+      if not Chan.Sel_Open then
+         return;
+      end if;
+      Empty (Read_Set);
+      Empty (Write_Set);
+      Set (Read_Set, Sock);
+      Check_Selector
+        (Chan.Selector, Read_Set, Write_Set, Status,
+         Timeout => Timeout);
+      Ready :=
+        Status = Completed
+          and then Is_Set (Read_Set, Sock);
+   exception
+      when others =>
+         Ready := False;
+   end Poll_Internal;
+
+   function Has_Pending (Chan : Channel) return Boolean is
+      Ready : Boolean;
+   begin
+      if Chan.Pend_First <= Chan.Pend_Last then
+         return True;
+      end if;
+      Poll_Internal (Chan, 0.0, Ready);
+      return Ready;
+   end Has_Pending;
+
+   procedure Wait_For_Data
+     (Chan     : Channel;
+      Timeout  : Duration;
+      Got_Data : out Boolean)
+   is
+   begin
+      Poll_Internal (Chan, Timeout, Got_Data);
+   end Wait_For_Data;
 
    procedure Send
      (Chan : in out Channel;
@@ -156,25 +264,18 @@ package body Tls_Transport is
       Tcp_Transport.Send_All (Chan.Tcp, Rec (1 .. Rec_Last));
    end Send;
 
-   procedure Receive
-     (Chan    : in out Channel;
-      Buffer  : out Tls_Core.Octet_Array;
-      Last    : out Natural;
-      Success : out Boolean)
+   procedure Refill_Pending (Chan : in out Channel; OK : out Boolean)
    is
       use Tls_Core;
-      Rec_Buf : Octet_Array (1 .. 16640 + 256) := (others => 0);
-      Rec_Last : Natural;
-      Rec_OK   : Boolean;
-      Pt_Buf   : Octet_Array (1 .. 16640) := (others => 0);
-      Pt_Last  : Natural;
+      Rec_Buf    : Octet_Array (1 .. Pt_Buf_Size + 256) := (others => 0);
+      Rec_Last   : Natural;
+      Rec_OK     : Boolean;
+      Pt_Buf     : Octet_Array (1 .. Pt_Buf_Size) := (others => 0);
+      Pt_Last    : Natural;
       Inner_Type : Octet;
-      Aead_OK : Boolean;
+      Aead_OK    : Boolean;
    begin
-      Buffer := (others => 0);
-      Last := Buffer'First - 1;
-      Success := False;
-
+      OK := False;
       Read_One_Record (Chan.Tcp, Rec_Buf, Rec_Last, Rec_OK);
       if not Rec_OK then return; end if;
 
@@ -185,20 +286,56 @@ package body Tls_Transport is
       if Inner_Type /= Aead_Channel.Inner_Type_Application_Data then
          return;
       end if;
+      if Pt_Last >= 1 then
+         Chan.Pending (1 .. Pt_Last) := Pt_Buf (1 .. Pt_Last);
+         Chan.Pend_First := 1;
+         Chan.Pend_Last := Pt_Last;
+         OK := True;
+      end if;
+   end Refill_Pending;
 
-      declare
-         Copy_Len : constant Natural :=
-           Natural'Min (Pt_Last, Buffer'Length);
-      begin
-         Buffer (Buffer'First .. Buffer'First + Copy_Len - 1) :=
-           Pt_Buf (1 .. Copy_Len);
-         Last := Buffer'First + Copy_Len - 1;
-         Success := True;
-      end;
+   procedure Receive
+     (Chan    : in out Channel;
+      Buffer  : out Tls_Core.Octet_Array;
+      Last    : out Natural;
+      Success : out Boolean)
+   is
+      use Tls_Core;
+      Avail    : Natural;
+      Copy_Len : Natural;
+   begin
+      Buffer := (others => 0);
+      Last := Buffer'First - 1;
+      Success := False;
+
+      if Chan.Pend_First > Chan.Pend_Last then
+         declare
+            Refill_OK : Boolean;
+         begin
+            Refill_Pending (Chan, Refill_OK);
+            if not Refill_OK then return; end if;
+         end;
+      end if;
+
+      Avail := Chan.Pend_Last - Chan.Pend_First + 1;
+      Copy_Len := Natural'Min (Avail, Buffer'Length);
+      Buffer (Buffer'First .. Buffer'First + Copy_Len - 1) :=
+        Chan.Pending (Chan.Pend_First .. Chan.Pend_First + Copy_Len - 1);
+      Chan.Pend_First := Chan.Pend_First + Copy_Len;
+      Last := Buffer'First + Copy_Len - 1;
+      Success := True;
    end Receive;
 
    procedure Close (Chan : in out Channel) is
    begin
+      if Chan.Sel_Open then
+         begin
+            GNAT.Sockets.Close_Selector (Chan.Selector);
+         exception
+            when others => null;
+         end;
+         Chan.Sel_Open := False;
+      end if;
       if Tls_Core.Tcp_Transport.Is_Open (Chan.Tcp) then
          Tls_Core.Tcp_Transport.Close (Chan.Tcp);
       end if;
@@ -273,6 +410,9 @@ package body Tls_Transport is
       end;
 
       Handshake_Loop (Chan);
+
+      GNAT.Sockets.Create_Selector (Chan.Selector);
+      Chan.Sel_Open := True;
    end Accept_One;
 
    procedure Stop (L : in out Listener) is
