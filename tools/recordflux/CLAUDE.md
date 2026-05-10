@@ -409,7 +409,63 @@ they don't bite again.
 
 ---
 
-## 6. Audit process
+## 6. RFLX + ghost-spec platinum pattern
+
+**This is the path to platinum for wire parsers.** RFLX validates
+structure (Silver-level: content-type enums, length bounds, fragment
+size consistency). Direct byte reads with ghost specs prove functional
+correctness (Platinum-level: "the decoded value matches the spec
+function over the raw bytes").
+
+The pattern:
+
+1. **RFLX spec** defines the message structure per RFC §X.Y.
+2. **RFLX `Verify_Message` / `Well_Formed_Message`** at the transport
+   boundary validates every inbound record/packet structurally. This
+   is the Silver proof — no malformed message passes.
+3. **Hand-written SPARK wrapper** with ghost spec reads fields from
+   the validated buffer using direct byte indexing. The Post
+   references a `Spec_Decode` ghost function that computes the
+   expected output from the raw bytes. This is the Platinum proof —
+   functional correctness tied to the RFC.
+
+Example (TLS record layer):
+
+```
+-- RFLX: Record_Layer.Plaintext validates content_type ∈ {0,20..23},
+--   length ∈ 0..16640, fragment_size = length * 8.
+-- Ghost spec: Spec_Record_Content_Type(Buf) = Buf(1)
+--             Spec_Record_Length(Buf) = Buf(4)*256 + Buf(5)
+-- Post: Content_Type = Spec_Record_Content_Type(Buf)
+--   and Length = Spec_Record_Length(Buf)
+```
+
+**Why both layers:** RFLX alone gives structural Silver (no AoRTE
+violations, valid field boundaries). Ghost specs alone give
+functional correctness but don't guarantee the parser handles all
+wire-format edge cases. Together: the RFLX-validated buffer is the
+input to the ghost-spec-proven decoder. The structural proof from
+RFLX removes the "what if the buffer is malformed?" question that
+would otherwise require defensive checks in every ghost lemma.
+
+### Current RFLX usage inventory
+
+| Crate | RFLX specs | What RFLX validates | Platinum layer |
+|---|---|---|---|
+| mqtt_core | 16 message specs + 5 session FSMs | All 14 MQTT control packets, session state transitions | FSM-driven client dispatch |
+| http2_core | frame.rflx, settings.rflx, etc. | HTTP/2 frame headers, SETTINGS params | Hand-written HPACK (proven at level=4) |
+| tls_core | record_layer, client_hello, server_hello, handshake_layer, key_share, pre_shared_key, tls_extensions, certificate, certificate_verify, new_session_ticket, hkdf | TLS record envelope, handshake envelope, extension structure, key share entries, PSK fields | Hand-written crypto + driver (platinum on all primitives) |
+| tls_transport | Uses tls_core Record_Layer.Plaintext | Every TLS record read validated via message context | Structural validation at transport boundary |
+
+**RFLX is the default wire parser.** For any new binary wire-format
+code (parsing or emitting bytes with length-prefixed / enum-typed /
+variable-length structure), start with an RFLX spec. Hand-written
+parsers are the fallback for formats RFLX doesn't handle well (DER/
+ASN.1 walkers, ABNF/text protocols, protobuf varints).
+
+---
+
+## 7. Audit process (per-crate, end of track)
 
 1. Open the source doc (RFC, OASIS) and `coverage.md` side by side.
 2. Walk every section. For each:
