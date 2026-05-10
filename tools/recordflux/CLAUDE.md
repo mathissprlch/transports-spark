@@ -1,61 +1,151 @@
-# RecordFlux specs — authoring & audit conventions
+# RecordFlux — spec authoring, Ada integration, and operational rules
 
-Working notes for everyone writing `.rflx` specs in this repo. Not
-committed (matched by `CLAUDE.md` in `.git/info/exclude`).
+Working notes for everyone writing `.rflx` specs and integrating
+generated SPARK into this repo.
 
-## North star
+**Read this entire file before writing or modifying any RFLX spec or
+Ada integration code.** Every section contains at least one rule that
+was learned from a real debugging session. Skipping ahead and building
+first has cost hours multiple times.
 
-Every `.rflx` file is **traceable to a public, versioned, dated source
-document** — an RFC, OASIS standard, IEEE spec. The traceability is
-how someone (you, me, an auditor) confirms the spec actually
-implements what it claims to implement, without re-deriving the
-protocol from scratch.
+---
 
-This matters because:
+## 1. Hard operational rules (from real mistakes)
 
-- Verification claims ("first SPARK-verified MQTT") only mean
-  something if the spec being verified is the standard one.
-- The DACH-aerospace audience (Airbus, Rheinmetall, Thales, TTTech)
-  works with DO-178C / IEC 61508 traceability requirements daily —
-  a spec without source provenance is unauditable.
-- We will eventually need to walk the source doc section-by-section
-  and confirm each normative requirement (MUST / SHOULD / MAY) is
-  either implemented or documented as out-of-scope. That audit
-  must be possible to do quickly.
+These override everything else. If a rule here conflicts with "faster"
+or "simpler," the rule wins.
 
-## Convention
+### 1a — Read all rules first, then build
 
-### Source of truth per spec package
+Before writing any RFLX spec, session machine, or Ada integration
+code: read this entire file. The walls, anti-patterns, and Opaque
+semantics documented below were each discovered through multi-hour
+debugging sessions. Reading takes 5 minutes; re-discovering takes
+hours.
 
-Each `crates/<core>/specs/` directory has a `README.md` that:
+### 1b — No heap allocations per operation
 
-- Names the source document with **full citation**: title, version,
-  organisation, publication date, retrieval URL.
-- Lists which sections are in scope, which are deferred, which are
-  intentionally out of scope (and why).
-- Lists the source doc's normative-language counts (MUST / SHOULD /
-  MAY) when feasible — this is the audit baseline.
+The project targets bare-metal and DO-178C contexts. **Zero per-
+operation heap traffic** is a hard requirement.
 
-Example header for `crates/mqtt_core/specs/README.md`:
+For **session machines**: use `External_IO_Buffers: True` in a `.rfi`
+integration file. This generates `Add_Buffer` / `Remove_Buffer` /
+`Buffer_Accessible` instead of `Bytes_Ptr` ownership transfer at
+`Initialize`. The buffer lives in `.bss`, on the stack, or in a
+custom pool — never `new` per call.
 
-```markdown
-# MQTT 3.1.1 RecordFlux specs
+For **message contexts** (standalone `Verify_Message` validation):
+allocate the `Bytes_Ptr` **once** at connection setup (e.g.
+`Connect` / `Accept_One` / `Open`), store it in the owning record,
+reuse it across all operations via `Initialize → Take_Buffer` cycles,
+and free it in `Close`. This is the MQTT `Mqtt_Core.Client.Buf`
+pattern and the TLS `Tls_Transport.Channel.Rflx_Buf` pattern.
 
-Source: **MQTT Version 3.1.1**, OASIS Standard, 29 October 2014.
-URL: https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html
-Retrieved: 2026-02-01.
+**Never** call `new RFLX_Types.Bytes'(...)` inside a per-record,
+per-packet, or per-message procedure. The only `new` calls are at
+connection-lifecycle boundaries.
 
-In scope: §2 (control packet format), §3 (all 14 control packets),
-§4 (session state, QoS 0/1/2 client side).
+### 1c — Generated code is NOT committed
 
-Out of scope: §5 (security — TLS handled separately), §6 (server
-conformance — we ship a client only), retained messages and Will
-messages from §3.1 (deferred).
+Generated SPARK files in `crates/<core>/generated/` are build
+artifacts. **Do not commit them.** They should be in `.gitignore`
+(or `.git/info/exclude`). Regenerate from the `.rflx` specs as
+part of the build.
+
+Why: committing generated code creates the illusion of hand-written
+code, hides spec drift (the `.rflx` says one thing, the committed
+`.ads` says another), and causes merge conflicts on regeneration.
+
+Regenerate frequently — after every spec change and before every
+build. This catches spec drift immediately:
+
+```sh
+scripts/rflx generate -n -d crates/<core>/generated \
+  crates/<core>/specs/*.rflx
 ```
 
-### File header in every `.rflx`
+If regeneration changes files you didn't expect, your spec drifted.
 
-Every `.rflx` opens with a header comment block:
+### 1d — Always pass `--no-library` (`-n`) when generating
+
+When multiple `*_core` crates share a `rflx_runtime` crate, each
+`rflx generate` emits its own RFLX runtime files. Without `-n`,
+gprbuild rejects the binary: "unit X cannot belong to several
+projects." The shared `rflx_runtime` crate holds the canonical
+runtime; `-n` tells the generator to skip runtime files.
+
+If runtime files slip through (you forgot `-n`), delete them:
+
+```sh
+cd crates/<core>/generated
+rm -f rflx.ads rflx-rflx_arithmetic.* rflx-rflx_builtin_types* \
+      rflx-rflx_generic_types* rflx-rflx_message_sequence.* \
+      rflx-rflx_scalar_sequence.* rflx-rflx_types*
+```
+
+### 1e — Opaque fields use `Well_Formed_Message`, not `Valid_Message`
+
+**This is a recurring wall.** RFLX sets Opaque (variable-length
+byte-array) fields to `S_Well_Formed` state, not `S_Valid`.
+`Valid_Message` requires ALL fields to be `S_Valid`. Therefore
+`Valid_Message` always returns False for any message containing an
+Opaque field, even when the message is structurally correct.
+
+**Use `Well_Formed_Message` instead.** This checks that all fields
+are at least `S_Well_Formed`, which is the correct semantic for
+messages with Opaque payloads (TLS record Fragment, MQTT payload,
+HTTP/2 frame body, etc.).
+
+This was discovered three times independently. The symptom is always
+the same: `Verify_Message` completes without exception, individual
+fields show `Valid = TRUE` for all typed fields, but `Valid_Message`
+returns False. The fix is always `Well_Formed_Message`.
+
+### 1f — `rflx check` before `rflx generate`
+
+Always validate specs before generating:
+
+```sh
+scripts/rflx check crates/<core>/specs/<package>.rflx
+```
+
+`rflx check` is fast (sub-second) and catches structural errors,
+missing transitions, unnecessary exception clauses, and type
+mismatches before you wait for code generation + compilation.
+
+### 1g — Regenerate all specs in a directory together
+
+RecordFlux rejects partial regeneration:
+
+```
+error: partial update of generated files
+```
+
+Always regenerate all `.rflx` files in a crate together:
+
+```sh
+scripts/rflx generate -n -d crates/<core>/generated \
+  crates/<core>/specs/*.rflx
+```
+
+After removing or renaming a machine in a `.rflx` spec, manually
+delete stale generated files:
+
+```sh
+rm crates/<core>/generated/rflx-<pkg>-<old_name>*
+```
+
+---
+
+## 2. Spec authoring conventions
+
+### 2a — Traceability: every spec traces to a source document
+
+Every `.rflx` file is traceable to a public, versioned, dated source
+document (RFC, OASIS standard, IEEE spec). This is how an auditor
+confirms correctness without re-deriving the protocol.
+
+**File header** (required on every `.rflx`):
 
 ```rflx
 --  <Package>: <one-line description>.
@@ -70,172 +160,66 @@ package <Name> is
    ...
 ```
 
-### Per-construct references
-
-For every type, message, sequence, or session: a one-line comment
-naming the §X.Y where it's defined, and figure/table reference if
-applicable. Keep short — link, don't restate.
+**Per-construct references** — one-line comment citing §X.Y for
+every type, message, sequence, or session state:
 
 ```rflx
-   --  §2.2.1 — MQTT Control Packet type. Table 2.1.
-   type Control_Packet_Type is
-      (CONNECT     =>  1,
-       CONNACK     =>  2,
-       ...
+   --  §5.1 — TLSPlaintext record envelope.
+   type Plaintext is
+      message
+         ...
 ```
 
-### Inline notes for non-obvious encoding
-
-When a field's encoding has a quirk that's not obvious from the type
-declaration, comment it. Examples:
-
-- Bit positions that don't match natural byte boundaries.
-- Magic values (e.g. MQTT protocol-name string `"MQTT"`).
-- Conditional fields (present iff some flag bit is set).
-- Cross-field invariants (e.g. `Remaining_Length` covers everything
-  after the fixed header).
-
-Inline comments cite §X.Y where the rule lives.
-
-### Out-of-scope markers
-
-If a §X.Y is intentionally not implemented, leave a comment in the
-nearest related construct rather than silent omission:
+**Out-of-scope markers** — if a §X.Y is intentionally not
+implemented, comment it rather than silently omitting:
 
 ```rflx
-   --  Note: §3.1.2.4 (Will Flag) and §3.1.2.5 (Will QoS) are deferred.
-   --  CONNECT_Flags below treats them as RFU bits.
+   --  Note: §3.1.2.4 (Will Flag) deferred.
 ```
 
-This is what makes the audit step feasible.
-
-## File / folder organisation
-
-Per `crates/<core>/specs/`:
+### 2b — File / folder organisation
 
 ```
-specs/
-├── README.md           # source citation + scope + audit baseline
+crates/<core>/specs/
+├── README.md           # full source citation + scope + audit baseline
 ├── coverage.md         # section-by-section status table
 ├── <package>.rflx      # one .rflx per logical chunk
-└── <package>.rflx
+├── <package>.rfi       # External_IO_Buffers config per session machine
+└── ...
 ```
 
-For MQTT 3.1.1, the proposed layout (flat — RecordFlux's `with`
-imports work cleanly across files in one dir):
+Filenames are flat lowercase. §X.Y references live in the header
+comment, not the filename.
 
-```
-crates/mqtt_core/specs/
-├── README.md
-├── coverage.md
-├── control_packet.rflx   # §2 — fixed header, packet types
-├── connect.rflx          # §3.1
-├── connack.rflx          # §3.2
-├── publish.rflx          # §3.3
-├── puback.rflx           # §3.4
-├── pubrec.rflx           # §3.5
-├── pubrel.rflx           # §3.6
-├── pubcomp.rflx          # §3.7
-├── subscribe.rflx        # §3.8
-├── suback.rflx           # §3.9
-├── unsubscribe.rflx      # §3.10
-├── unsuback.rflx         # §3.11
-├── pingreq.rflx          # §3.12
-├── pingresp.rflx         # §3.13
-├── disconnect.rflx       # §3.14
-└── session.rflx          # §4 — RecordFlux session FSM
-```
+### 2c — Coverage tracking
 
-Filenames are flat lowercase (RecordFlux maps `with "Foo";` to
-`foo.rflx`); the §X.Y trace lives in the header comment, not the
-filename.
+`coverage.md` mirrors the source doc's table of contents with per-
+section status: ✅ implemented · 🔶 partial · ❌ deferred · ⛔ out of
+scope. Update when status changes. The audit walk is this file vs.
+actual `.rflx` content.
 
-## Coverage tracking
+---
 
-`crates/<core>/specs/coverage.md` is a flat checklist mirroring the
-source doc's table of contents, with status per section:
+## 3. Session machines
 
-```markdown
-| § | Topic | Status | Notes |
-|---|---|---|---|
-| 2.1 | Fixed header structure | ✅ implemented | control_packet.rflx |
-| 2.2.1 | Control Packet type | ✅ implemented | Table 2.1 |
-| 2.2.2 | Flags | ✅ implemented | per-packet in connect.rflx etc. |
-| 2.2.3 | Remaining Length | ✅ implemented | varint encoder |
-| 3.1 | CONNECT | 🔶 partial | Will fields deferred |
-| 3.1.2.4 | Will Flag | ❌ deferred | tracked: GH issue #N |
-| 3.1.2.5 | Will QoS | ❌ deferred | tracked: GH issue #N |
-| ... | ... | ... | ... |
-| 4.4 | Message delivery retry | ✅ implemented | session.rflx |
-| 5 | Security | ⛔ out of scope | TLS handled outside RecordFlux |
-| 6 | Conformance | ⛔ out of scope | client-only |
-```
+### 3a — When session machines are worth it
 
-Status legend: ✅ implemented · 🔶 partial · ❌ deferred · ⛔ out of scope.
-
-Update this file when a section's status changes. The audit walk is
-this file vs. the actual `.rflx` content.
-
-## Audit process (end of MQTT track)
-
-1. Open the OASIS doc PDF and `coverage.md` side by side.
-2. Walk every section of the source doc. For each:
-   - Confirm `coverage.md` matches reality (status + scope).
-   - For ✅ rows: open the cited `.rflx`, find the §X.Y comment, read
-     the construct, confirm it matches the source doc's statement.
-   - For 🔶 rows: confirm the partial scope is what was actually
-     intended, not silent skipping.
-   - For ❌ / ⛔ rows: confirm the rationale (deferred-with-issue or
-     out-of-scope-with-reason) holds.
-3. Spot-check normative language: pick 10 random MUST clauses from
-   the source doc, find them in the spec, confirm they're enforced.
-4. Run `rflx check` — RecordFlux's structural validator.
-5. Record audit date + reviewer in `coverage.md`'s footer.
-
-## Generation pipeline
-
-Source flow:
-
-```
-source RFC/OASIS  →  .rflx specs (this convention)  →  rflx generate  →  generated SPARK
-                                                                          ↓
-                                                                          gnatprove  →  proof obligations
-```
-
-`scripts/rflx generate -d crates/<core>/generated crates/<core>/specs/*.rflx`
-emits SPARK Ada from the specs. Generated code is checked in so the
-host build doesn't depend on RecordFlux.
-
-## Session machines — runtime adoption
-
-Beyond byte-format specs, RecordFlux session machines (`machine X is
-... begin ... end X;`) generate driver-loop FSMs that the Ada client
-can adopt as the runtime, replacing hand-written request-response
-loops. Doing so is what gives the verification dividend its teeth:
-the dispatch logic is exhaustively checked at `rflx check`, not at
-runtime.
-
-### When session machines are worth it
-
-- Any state that does `Channel'Read` + dispatches on packet type.
-  RecordFlux forces every transition to be declared; "forgot a
-  packet type" is a spec error, not a runtime bug.
+- Any state that reads from a channel and dispatches on type/field.
+  RFLX forces every transition to be declared; "forgot a case" is a
+  spec error, not a runtime bug.
 - Multi-step request-response protocols where intermediate states
   matter (handshakes, ACKed publishes, subscribe→suback).
+- Skip the FSM for fire-and-forget (no reply, no dispatch) — it adds
+  cost with zero verification dividend.
 
-Skip the FSM for fire-and-forget operations (no reply, no dispatch)
-— it adds spec/build cost with zero verification dividend.
+### 3b — The Loading → Sending → Awaiting → Forwarding template
 
-### The Loading → Sending → Awaiting → Forwarding template
-
-For request-response protocols, this is the consistent shape:
-
-```
+```rflx
 machine X is
    Outgoing : <RequestType>;
-   Inbound  : Control_Packet::Incoming_Packet;  -- meta-shape, dispatch
+   Inbound  : <ResponseType>;
 begin
-   state Loading is               -- caller hands in pre-encoded bytes
+   state Loading is
       App_Outbox'Read (Outgoing);
    transition
       goto Sending if Outgoing'Valid
@@ -243,68 +227,63 @@ begin
    exception goto null
    end Loading;
 
-   state Sending is               -- forward to broker
+   state Sending is
       Network'Write (Outgoing);
    transition goto Awaiting_Reply
    end Sending;
 
-   state Awaiting_Reply is        -- read inbound, dispatch by type
+   state Awaiting_Reply is
       Network'Read (Inbound);
    transition
-      goto Forwarding_Reply        if Inbound'Valid and Inbound.Packet_Type = <ExpectedReply>
-      goto Forwarding_Inbound      if Inbound'Valid and Inbound.Packet_Type = <UnrelatedPublish>
-      goto Awaiting_Reply          if Inbound'Valid and (other_legal_inband_traffic)
-      goto null                                  -- protocol violation
+      goto Forwarding_Reply if Inbound'Valid and <expected>
+      goto Forwarding_Inbound if Inbound'Valid and <side-traffic>
+      goto null
    exception goto null
    end Awaiting_Reply;
 
-   state Forwarding_Inbound is    -- queue unrelated PUBLISH for caller
+   state Forwarding_Inbound is
       App_Pending'Write (Inbound);
    transition goto Awaiting_Reply
    end Forwarding_Inbound;
 
-   state Forwarding_Reply is      -- emit the expected reply for caller
+   state Forwarding_Reply is
       App_Pending'Write (Inbound);
    transition goto null
    end Forwarding_Reply;
 end X;
 ```
 
-For receive-only flows (no outbox), drop Loading + Sending and start
-at the Awaiting state.
+For receive-only flows, drop Loading + Sending and start at
+Awaiting. Pre-feed Network data before the first Run — empty
+buffers cause immediate S_Final.
 
-### Channel use convention
+### 3c — Channel convention
 
-- `Network` (Readable+Writable) — TCP socket, bidirectional with peer
-- `App_Outbox` (Readable from FSM) — caller hands in pre-encoded
-  outgoing bytes; the FSM reads them as the typed request message
-- `App_Pending` (Writable from FSM) — FSM emits inbound bytes the
-  caller needs to drain (queued PUBLISHes + the expected reply)
+- `Network` (Readable+Writable) — TCP socket, bidirectional
+- `App_Outbox` (Readable from FSM) — caller feeds pre-encoded bytes
+- `App_Pending` (Writable from FSM) — FSM emits bytes for caller
 
-### Generated FSM API
+### 3d — Generated FSM API
 
-Per machine, the `RFLX.<Pkg>.<Machine>.FSM` package exposes:
+Per machine, `RFLX.<Pkg>.<Machine>.FSM` exposes:
 
-- `type Channel is (...)` — enum of declared channels
-- `type State is (...)` — enum of state names + `S_Final`
-- `type Context is private`
+- `type Channel is (C_Network, C_App_Outbox, ...)` — channel enum
+- `type State is (S_Loading, ..., S_Final)` — state enum
 - `Initialize`, `Finalize` — lifecycle
 - `Run`, `Tick`, `Active`, `Next_State`, `In_IO_State` — stepping
-- `Has_Data (Ctx, Chan)`, `Read (Ctx, Chan, Buffer, Offset)` — drain
-- `Needs_Data (Ctx, Chan)`, `Write (Ctx, Chan, Buffer, Offset)` — feed
-- `Read_Buffer_Size`, `Write_Buffer_Size` — sizing
+- `Has_Data`, `Read`, `Read_Buffer_Size` — drain output channels
+- `Needs_Data`, `Write`, `Write_Buffer_Size` — feed input channels
 
-### Driver loop pattern in Ada
+### 3e — Driver loop pattern in Ada
 
 ```ada
 FSM.Initialize (Ctx);
---  Pre-feed App_Outbox so first Run has data to consume.
 if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
    FSM.Write (Ctx, FSM.C_App_Outbox, Encoded_Bytes);
 end if;
 
 loop
-   FSM.Run (Ctx);                    -- advance until next IO state
+   FSM.Run (Ctx);
    exit when not FSM.Active (Ctx);
 
    if FSM.Has_Data (Ctx, FSM.C_Network) then
@@ -314,7 +293,7 @@ loop
 
    if FSM.Has_Data (Ctx, FSM.C_App_Pending) then
       FSM.Read (Ctx, FSM.C_App_Pending, View);
-      classify_and_route (View);     -- expected reply OR queued PUBLISH
+      classify_and_route (View);
    end if;
 
    if FSM.Needs_Data (Ctx, FSM.C_Network) then
@@ -325,97 +304,7 @@ end loop;
 FSM.Finalize (Ctx);
 ```
 
-For receive-only FSMs (no Loading state), pre-feed Network data
-**before** the first Run — Reading state's `Verify_Message` fails on
-empty buffer and the FSM transitions straight to S_Final.
-
-### Walls hit and worked around (recorded once so it doesn't bite again)
-
-1. **Function return types must be definite.** `with function
-   Build_Outgoing return Publish::Packet;` is rejected because
-   `Publish::Packet` has variable-length fields. Fix: caller pre-
-   encodes via the per-packet wire encoder, then writes bytes to
-   `App_Outbox`; FSM reads them as the typed message.
-2. **Channel'IO can't mix with other actions in one state.** Split
-   into two states: one assigns/transforms, the next does the
-   read or write.
-3. **`Network'Read` consumes bytes — can't re-read.** Don't model
-   "re-decode the inbound bytes as a more specific type" by
-   re-reading the channel. Forward the bytes via `App_Pending` and
-   let the Ada caller decode.
-4. **No success/error distinction in `Next_State`.** Both terminal
-   paths reach `S_Final`. Track success in the Ada driver via
-   "did App_Pending emit the expected reply?" or via what was
-   queued.
-5. **Naming overlap between machine and package.** `Session::Subscribe`
-   and `Subscribe::Packet` collide in generated code. Rename the
-   machine (`Subscribing`, `Unsubscribing`). `Connect_Handshake`,
-   `Publish_Qos1`, `Receive` are safe.
-6. **Partial-update error on regenerate after spec rename.** Stale
-   files for the old machine name have to be removed manually:
-   `rm crates/<core>/generated/rflx-<pkg>-<old_name>*`.
-
-### RFC traceability for FSM specs
-
-Per-state comments cite §X.Y just like wire specs. The dispatch
-table in `Awaiting_*` enumerates "legal Server→Client packet types
-per §2.2.1 Table 2.1 (Direction column)" — that enumeration is the
-spec-grounded part. The sequential single-thread model of the FSM
-is an *implementation choice*, not RFC-mandated; protocols are
-fundamentally async and a multi-threaded client could be shaped
-differently.
-
-### Anti-patterns to avoid (FSM-specific)
-
-- **Drop-on-PUBLISH while waiting for a non-PUBLISH reply.** §3.3.4
-  obligates Clients to deliver subscribed PUBLISHes. Forward via
-  `App_Pending` so the application's Receive_Publish path drains
-  them.
-- **Re-reading the same channel in two states.** Channels are FIFO
-  byte streams; once consumed, the bytes are gone. Restructure to
-  emit on `App_Pending` instead.
-- **Mixing protocol-level logic into the FSM that the RFC doesn't
-  mandate.** Application timeouts, retry policies, keep-alive
-  scheduling — those go in Ada code above the FSM.
-
-## Future protocols
-
-When `crates/http2_core/specs/` and `crates/hpack_core/specs/` come
-online: same convention, same `README.md` + `coverage.md` structure,
-sources will be RFC 7540 (HTTP/2) and RFC 7541 (HPACK).
-
-Re-use this CLAUDE.md unchanged — it's protocol-agnostic.
-
-## Anti-patterns to avoid
-
-- **Spec written from memory or "reverse-engineered from a working
-  client".** No traceability, no audit possible.
-- **Silent omission.** A field that exists in the source doc but not
-  in the `.rflx` with no comment explaining why.
-- **Stale `coverage.md`.** Either keep it updated or delete it.
-- **Inline comments restating the §X.Y text.** Cite, don't paraphrase
-  — paraphrases drift from source.
-- **Filename §-prefix tricks.** Section numbers belong in the
-  header comment, not the filename (and RecordFlux's `with` resolver
-  doesn't handle special characters).
-
-
-## Buffer ownership: heap vs. caller-supplied
-
-**Default RecordFlux generation uses `Bytes_Ptr` (access-to-
-unconstrained-array) with move semantics.** `Initialize` takes the
-buffer in via `Buffer : in out Bytes_Ptr` with `Pre Buffer /= null`
-and `Post Buffer = null`; `Take_Buffer` returns ownership the same
-way. The standard caller pattern is `new Bytes'(...)` once, then
-move-pass around. AdaCore's own RSP tutorial uses `new` explicitly.
-
-For mission-critical / DO-178C / bare-metal targets where heap is
-forbidden, this is unacceptable.
-
-### State machines: use `External_IO_Buffers` (officially supported)
-
-For every `machine X is ... end X` declaration, write a `.rfi`
-integration file at `crates/<core>/specs/<basename>.rfi`:
+### 3f — `.rfi` for External_IO_Buffers (REQUIRED for every machine)
 
 ```yaml
 Machine:
@@ -423,100 +312,127 @@ Machine:
     External_IO_Buffers: True
     Buffer_Size:
       Default: 4096
-      <Per-channel overrides if needed>:
 ```
 
-When the generator sees this, it emits `Add_Buffer` /
-`Remove_Buffer` / `Buffer_Accessible` / `Has_Data` /
-`Needs_Data` instead of taking ownership of `Bytes_Ptr` at
-`Initialize`. The buffer is the caller's responsibility from
-declaration to teardown — it can live in `.bss` (a library-level
-`aliased Bytes` array), on the stack, or come from a custom pool.
-The state machine never calls `new`.
+Place at `crates/<core>/specs/<basename>.rfi`. Pass
+`--integration-files-dir crates/<core>/specs/` to `rflx generate`.
 
-Generator invocation: pass `--integration-files-dir
-crates/<core>/specs/` to `rflx generate` so the `.rfi` files are
-picked up alongside the `.rflx` specs.
+**Do NOT add a session machine without the `.rfi`.** The generated
+API differs between Bytes_Ptr-ownership and External_IO_Buffers
+modes; retrofitting callers later is more work.
 
-Caller-side discipline (NOT enforced by SPARK contracts):
+---
 
-- Only modify a buffer when `Needs_Data (Ctx, B_X)` is True
-- Only call `Add_Buffer` when `Buffer_Accessible (Next_State (Ctx),
-  B_X)` is True
-- Pass `Written_Last (Ctx, B_X)` as the `Written_Last` parameter
-  when re-attaching unchanged data; pass the actual written index
-  when you wrote new data
+## 4. Message-context validation (standalone, no session machine)
 
-### Message-context API: no equivalent flag exists
+When you only need structural validation of a single message (e.g.
+validating a TLS record header), use the message context directly:
 
-`RFLX.<Pkg>.<Msg>.Packet.Initialize` for individual message types
-(used outside any state machine, e.g. by the standalone
-`Mqtt_Core.Wire.Encode_Connect` style of API) has NO
-`External_IO_Buffers` equivalent in current RecordFlux. Confirmed
-via upstream research:
-
-- The `.rfi` schema only declares keys under `Machine:`. There is
-  no `Message:` section.
-- `rflx generate --help` shows no allocation-related CLI flag.
-- AdaCore's published examples (RSP tutorial, DCCP walkthrough)
-  all use `new RFLX_Types.Bytes'(...)` for the message-context
-  buffer.
-- Componolit/RecordFlux issue #911 addresses bare-metal compat
-  but at the function-return / secondary-stack level, not buffer
-  ownership.
-- No public discussion (GitHub issues, RFCs, conference talks)
-  of an external-IO-buffer mode for messages.
-
-**Workaround: wrap standalone messages in a trivial state machine.**
-
-If a message needs to be parsed or serialised in a no-heap context,
-declare a one-state machine in `.rflx` that does the IO over
-channels, enable `External_IO_Buffers: True` in its `.rfi`, and
-treat the resulting `Add_Buffer`/`Remove_Buffer`/`Run` cycle as the
-"encode" or "decode" call. Adds plumbing but uses an officially-
-supported pattern.
-
-For mqtt_core / http2_core specifically, the protocols ARE
-session machines; standalone-message use is an artifact of how
-`Mqtt_Core.Wire.Encode_X` is currently written (it calls
-`Packet.Initialize` directly with a `Bytes_Ptr`). Refactoring those
-encoders to drive trivial state machines is the path; tracked
-in CLAUDE.md (not this file) under the bare-metal track.
-
-### What this means for new specs
-
-When you add a new session machine:
-
-1. Write the `.rflx` spec under `crates/<core>/specs/`
-2. Immediately write a matching `<basename>.rfi` at the same path
-   with `External_IO_Buffers: True` for every machine
-3. Make sure `scripts/rflx` (or whichever wrapper invokes
-   `rflx generate`) passes `--integration-files-dir`
-
-Do NOT add a session machine without the `.rfi` and assume
-"we'll add it later" — the API of generated code differs between
-the two modes, and refactoring callers later is more work than
-getting the `.rfi` right at the start.
-
-### Generate flags to always use
-
-When generating code that will live alongside a shared
-`rflx_runtime` crate (i.e. when multiple `*_core` crates use
-RecordFlux), **always** pass `--no-library` (`-n`):
-
-```sh
-scripts/rflx generate -n -d crates/<core>/generated \
-  crates/<core>/specs/*.rflx
+```ada
+declare
+   Ctx : RFLX.<Pkg>.<Msg>.Context;
+begin
+   RFLX.<Pkg>.<Msg>.Initialize
+     (Ctx, Buf_Ptr, Written_Last => W_Last);
+   RFLX.<Pkg>.<Msg>.Verify_Message (Ctx);
+   if RFLX.<Pkg>.<Msg>.Well_Formed_Message (Ctx) then  -- NOT Valid_Message!
+      --  record is structurally valid
+   end if;
+   RFLX.<Pkg>.<Msg>.Take_Buffer (Ctx, Buf_Ptr);
+end;
 ```
 
-Without `-n`, each `rflx generate` emits its own copy of the RFLX
-runtime files (`rflx-rflx_types.ads`, `rflx-rflx_arithmetic.*`,
-`rflx-rflx_builtin_types.*`, etc.). If two crates both include
-these in their Source_Dirs, gprbuild rejects the binary with
-"unit X cannot belong to several projects." The shared
-`rflx_runtime` crate (`crates/rflx_runtime/`) holds the canonical
-copy; `--no-library` tells the generator to emit only the
-message-specific files.
+Key points:
 
-For single-crate use (no shared runtime), omit `-n` — the
-generator will include everything needed.
+- **`Well_Formed_Message`** not `Valid_Message` (see §1e)
+- **`Written_Last`** must be set to the actual data boundary —
+  `To_Last_Bit_Index (Length (byte_count))` — not left at 0
+- **`Initialize` sets `Buf_Ptr := null`**; `Take_Buffer` restores it.
+  The buffer is borrowed, not consumed.
+- **No per-message `new`** — reuse a persistent `Bytes_Ptr` (see §1b)
+- There is no `External_IO_Buffers` equivalent for message contexts.
+  If you need no-heap message parsing, wrap in a trivial session
+  machine.
+
+---
+
+## 5. Walls hit and worked around
+
+These were each discovered in real debugging sessions. Recorded so
+they don't bite again.
+
+1. **Opaque = Well_Formed, not Valid** (§1e). Causes `Valid_Message`
+   to return False on structurally correct messages. Symptom: all
+   typed fields show Valid=TRUE but the overall message is INVALID.
+   Fix: `Well_Formed_Message`.
+
+2. **Function return types must be definite.** RFLX rejects
+   `with function Build return Publish::Packet` because Packet has
+   variable-length fields. Fix: caller pre-encodes, writes bytes to
+   channel; FSM reads as typed message.
+
+3. **Channel IO can't mix with other actions in one state.** Split
+   into two states: one computes/assigns, the next does the read
+   or write.
+
+4. **`Network'Read` consumes bytes — can't re-read.** Forward via
+   `App_Pending` and let the Ada caller decode the specific type.
+
+5. **No success/error distinction in `Next_State`.** Both terminal
+   paths reach `S_Final`. Track success in Ada via what was emitted
+   on `App_Pending`.
+
+6. **Naming overlap between machine and package.** `Session::Subscribe`
+   and `Subscribe::Packet` collide. Rename the machine:
+   `Subscribing`, `Unsubscribing`.
+
+7. **Partial-update error on regenerate after spec rename.** Stale
+   files for old machine names must be removed manually.
+
+8. **`Written_Last` must match actual data, not buffer capacity.**
+   If `Written_Last = 0`, the buffer is treated as empty and
+   `Verify_Message` produces no valid fields. Set it to
+   `To_Last_Bit_Index(Length(actual_byte_count))`.
+
+9. **Unnecessary exception transitions.** `rflx check` rejects
+   exception clauses on states that can't throw (e.g. `Write`-only
+   states). Only add `exception goto null` on states with
+   `Channel'Read`.
+
+10. **Generated runtime files conflict with shared rflx_runtime.**
+    Always use `-n` flag (§1d). If files slip through, delete them.
+
+11. **`RFLX_Types.Byte` is `mod 2**8`; `Tls_Core.Octet` is
+    `Interfaces.Unsigned_8`.** Both are 8-bit modular but distinct
+    types. Explicit conversion required at the boundary:
+    `RFLX_Types.Byte(Octet_Value)` and vice versa.
+
+---
+
+## 6. Audit process
+
+1. Open the source doc (RFC, OASIS) and `coverage.md` side by side.
+2. Walk every section. For each:
+   - ✅: open the cited `.rflx`, confirm the construct matches.
+   - 🔶: confirm partial scope is intentional.
+   - ❌ / ⛔: confirm rationale holds.
+3. Spot-check: pick 10 random MUST clauses, find them in the spec.
+4. Run `rflx check` on all specs.
+5. Record audit date + reviewer in `coverage.md`'s footer.
+
+---
+
+## 7. Anti-patterns to avoid
+
+- **Spec from memory.** No traceability, no audit.
+- **Silent omission.** A field in the source doc but not in the
+  `.rflx` with no comment.
+- **`Valid_Message` on messages with Opaque fields.** Always wrong.
+- **`new Bytes'(...)` inside per-record procedures.** Heap per call.
+- **Committing generated code.** Hides spec drift.
+- **`rflx generate` without `-n`.** Runtime file conflicts.
+- **Adding a session machine without `.rfi`.** API mismatch later.
+- **Paraphrasing the source doc.** Cite §X.Y, don't restate.
+- **Skipping `rflx check` before `rflx generate`.** Catches errors
+  faster than a full compilation cycle.
+- **Building before reading this file.** See §1a.
