@@ -1109,4 +1109,10 @@ package body Mqtt_Core.Client is
       Outgoing_Buf := C.Outgoing_Buf; C.Outgoing_Buf := null;
    end Detach_Buffers;
 
+   function Get_Transport (C : aliased in out Client)
+     return Transport_Channel_Acc is
+   begin
+      return C.Trans'Unchecked_Access;
+   end Get_Transport;
+
 end Mqtt_Core.Client;

@@ -150,6 +150,10 @@ package Mqtt_Core.Client is
    --  set Will_Topic on Open.
    procedure Drop (C : in out Client);
 
+   type Transport_Channel_Acc is access all Transport.Channel;
+   function Get_Transport (C : aliased in out Client)
+     return Transport_Channel_Acc;
+
    Connect_Failure     : exception;
    Subscribe_Failure   : exception;
    Unsubscribe_Failure : exception;
@@ -161,8 +165,6 @@ private
    Buffer_Capacity      : constant := 256;
    Max_Queued_Publishes : constant := 4;
 
-   --  One slot for a queued inbound PUBLISH packet. Stored as raw
-   --  Incoming_Packet bytes; Receive_Publish decodes when draining.
    type Pending_Slot is record
       Buf    : RFLX.RFLX_Types.Bytes (1 .. Buffer_Capacity) :=
         (others => 0);
@@ -174,7 +176,7 @@ private
      array (1 .. Max_Queued_Publishes) of Pending_Slot;
 
    type Client is limited record
-      Trans          : Transport.Channel;
+      Trans          : aliased Transport.Channel;
       Buf            : RFLX.RFLX_Types.Bytes_Ptr := null;
       --  Inbound + Outgoing buffers required by the External_IO_
       --  Buffers state-machine API (.rfi files set this on every

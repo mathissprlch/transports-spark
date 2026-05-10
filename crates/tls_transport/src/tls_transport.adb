@@ -21,6 +21,10 @@ package body Tls_Transport is
 
    Rflx_Rec_Max : constant := 16896;
 
+   Ccs_Type : constant Tls_Core.Octet :=
+     Tls_Core.Octet (RFLX.Record_Layer.To_Base_Integer
+       (RFLX.Record_Layer.Change_Cipher_Spec));
+
    procedure Read_One_Record
      (Tcp      : Tls_Core.Tcp_Transport.Channel;
       Buf      : out Tls_Core.Octet_Array;
@@ -94,8 +98,11 @@ package body Tls_Transport is
    begin
       Last := 0;
       OK := False;
-      Read_One_Record (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK, Rflx_Ptr);
-      if not Rec_OK then return; end if;
+      loop
+         Read_One_Record (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK, Rflx_Ptr);
+         if not Rec_OK then return; end if;
+         exit when Buf (Cursor) /= Ccs_Type;
+      end loop;
       Cursor := Rec_Last + 1;
       loop
          exit when Cursor + 5 > Buf'Last;
@@ -125,7 +132,9 @@ package body Tls_Transport is
          Read_One_Record
            (Tcp, Buf (Cursor .. Buf'Last), Rec_Last, Rec_OK, Rflx_Ptr);
          exit when not Rec_OK;
-         Cursor := Rec_Last + 1;
+         if Buf (Cursor) /= Ccs_Type then
+            Cursor := Rec_Last + 1;
+         end if;
       end loop;
       Last := Cursor - 1;
       OK := True;
@@ -156,9 +165,7 @@ package body Tls_Transport is
                raise Connect_Error with "TLS: EOF during handshake";
             end if;
             exit when In_Last < 1
-              or else In_Buf (In_Buf'First) /=
-                Tls_Core.Octet (RFLX.Record_Layer.To_Base_Integer
-                  (RFLX.Record_Layer.Change_Cipher_Spec));
+              or else In_Buf (In_Buf'First) /= Ccs_Type;
          end loop;
 
          Step (Chan.Driver, In_Buf (1 .. In_Last), Out_Buf, Out_Last);

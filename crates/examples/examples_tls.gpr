@@ -1,4 +1,5 @@
 with "http2_core.gpr";
+with "mqtt_core.gpr";
 with "grpc_core.gpr";
 with "tls_core.gpr";
 with "../tls_transport/tls_transport.gpr";
@@ -11,7 +12,8 @@ project Examples_Tls is
    for Exec_Dir use "bin";
    for Create_Missing_Dirs use "True";
    for Main use ("greeter_server_tls.adb",
-                 "greeter_client_tls.adb");
+                 "greeter_client_tls.adb",
+                 "mqtt_demo_tls.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use
