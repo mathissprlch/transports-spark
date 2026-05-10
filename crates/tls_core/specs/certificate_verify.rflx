@@ -1,0 +1,20 @@
+--  CertificateVerify: RFC 8446 §4.4.3.
+--
+--  struct {
+--      SignatureScheme algorithm;        -- u16
+--      opaque signature<0..2^16-1>;
+--  } CertificateVerify;
+
+package Certificate_Verify is
+
+   type Sig_Scheme is unsigned 16;
+   type Sig_Length is unsigned 16;
+
+   type Message is
+      message
+         Algorithm : Sig_Scheme;
+         Sig_Len   : Sig_Length;
+         Signature : Opaque with Size => Sig_Len * 8;
+      end message;
+
+end Certificate_Verify;

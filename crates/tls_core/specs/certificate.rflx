@@ -1,0 +1,38 @@
+--  Certificate: RFC 8446 §4.4.2.
+--
+--  struct {
+--      opaque cert_data<1..2^24-1>;
+--      Extension extensions<0..2^16-1>;
+--  } CertificateEntry;
+--
+--  struct {
+--      opaque certificate_request_context<0..2^8-1>;
+--      CertificateEntry certificate_list<0..2^24-1>;
+--  } Certificate;
+
+package Certificate is
+
+   type Context_Length is unsigned 8;
+   type List_Length is unsigned 24;
+   type Cert_Data_Length is unsigned 24;
+   type Extensions_Length is unsigned 16;
+
+   type Cert_Entry is
+      message
+         Cert_Data_Len : Cert_Data_Length;
+         Cert_Data     : Opaque with Size => Cert_Data_Len * 8;
+         Ext_Len       : Extensions_Length;
+         Extensions    : Opaque with Size => Ext_Len * 8;
+      end message;
+
+   type Cert_Entry_List is sequence of Cert_Entry;
+
+   type Message is
+      message
+         Context_Len    : Context_Length;
+         Context        : Opaque with Size => Context_Len * 8;
+         Cert_List_Len  : List_Length;
+         Cert_List      : Cert_Entry_List with Size => Cert_List_Len * 8;
+      end message;
+
+end Certificate;
