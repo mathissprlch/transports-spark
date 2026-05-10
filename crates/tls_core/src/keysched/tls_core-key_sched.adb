@@ -186,12 +186,10 @@ is
       Ctx_256 : in out Tls_Core.Transcript.Accumulator;
       Ctx_384 : in out Tls_Core.Transcript_Sha384.Accumulator;
       Message : Octet_Array) is
+      pragma Unreferenced (Suite);
    begin
-      if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
-         Tls_Core.Transcript_Sha384.Append (Ctx_384, Message);
-      else
-         Tls_Core.Transcript.Append (Ctx_256, Message);
-      end if;
+      Tls_Core.Transcript.Append (Ctx_256, Message);
+      Tls_Core.Transcript_Sha384.Append (Ctx_384, Message);
    end Transcript_Append;
 
    procedure Transcript_Snapshot

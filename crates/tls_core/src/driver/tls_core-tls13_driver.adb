@@ -40,6 +40,7 @@ is
       D.My_Role := Server;
       D.Cur_State := Awaiting_CH;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
+      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
       D.PSK := (others => 0);
       D.PSK := PSK;
       D.Identity := (others => 0);
@@ -91,6 +92,7 @@ is
       D.My_Role := Server;
       D.Cur_State := Awaiting_CH;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
+      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
       D.PSK := (others => 0);
       D.Identity := (others => 0);
       D.Identity_Len := 0;
@@ -135,6 +137,7 @@ is
       D.My_Role := Client;
       D.Cur_State := Idle;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
+      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
       D.PSK := (others => 0);
       D.PSK := PSK;
       D.Identity := (others => 0);
@@ -180,6 +183,7 @@ is
       D.My_Role := Client;
       D.Cur_State := Idle;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
+      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
       D.PSK := (others => 0);
       D.Identity := (others => 0);
       D.Identity_Len := 0;
@@ -925,6 +929,7 @@ is
       D.My_Role := Client;
       D.Cur_State := Idle;
       Tls_Core.Transcript.Init (D.Hash_Ctx);
+      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
       D.PSK := Derived_Psk (1 .. 32);
       D.Identity := (others => 0);
       D.Identity_Len := Slot.Ticket_Len;
