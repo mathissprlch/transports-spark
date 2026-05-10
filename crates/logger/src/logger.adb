@@ -4,6 +4,9 @@ package body Logger is
 
    procedure Log (L : Level; Msg : String) is
    begin
+      if not Enable_Logging then
+         return;
+      end if;
       if L >= Current_Level then
          case L is
             when Debug => Ada.Text_IO.Put_Line ("  [D] " & Msg);

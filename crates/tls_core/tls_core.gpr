@@ -1,4 +1,5 @@
 with "../rflx_runtime/rflx_runtime.gpr";
+with "../logger/logger.gpr";
 
 library project Tls_Core is
 

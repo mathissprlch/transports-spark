@@ -1,4 +1,4 @@
-with Ada.Text_IO;
+with Logger;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
 with Tls_Core.Cert_Chain;
@@ -148,8 +148,7 @@ is
          --  Step 2: cert-mode key schedule (PSK = 0).
          Tls_Core.Key_Sched.Transcript_Snapshot
            (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sh);
-         Ada.Text_IO.Put_Line
-           ("  [D] sf_cert: suite=" &
+         Logger.Log (Logger.Debug, "sf_cert: suite=" &
             Tls_Core.Suites.Cipher_Suite_Id'Image (D.Suite) &
             " th(1..4)=" &
             Octet'Image (Th_After_Sh (1)) &
@@ -193,8 +192,8 @@ is
          begin
             Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
             if Cursor <= In_Bytes'Last then
-               Ada.Text_IO.Put_Line
-                 ("  [D] sf_cert: encrypted start ct=" &
+               Logger.Log (Logger.Debug,
+                  "sf_cert: encrypted start ct=" &
                   Tls_Core.Octet'Image (In_Bytes (Cursor)) &
                   " cursor=" & Natural'Image (Cursor) &
                   " last=" & Natural'Image (In_Bytes'Last));
@@ -216,8 +215,8 @@ is
                Rec_Len := Natural (In_Bytes (Cursor + 3)) * 256
                           + Natural (In_Bytes (Cursor + 4));
                Rec_End := Cursor + 5 + Rec_Len - 1;
-               Ada.Text_IO.Put_Line
-                 ("  [D] sf_cert: aead rec len=" &
+               Logger.Log (Logger.Debug,
+                  "sf_cert: aead rec len=" &
                   Natural'Image (Rec_Len) &
                   " sub=" & Sub_State'Image (Sub));
                if Rec_End > In_Bytes'Last then
@@ -229,8 +228,8 @@ is
                Tls_Core.Aead_Channel.Receive
                  (D.Hs_In_Dir, In_Bytes (Cursor .. Rec_End),
                   Pt_Buf, Pt_Last, Inner_Type, Aead_OK);
-               Ada.Text_IO.Put_Line
-                 ("  [D] sf_cert: aead_ok=" &
+               Logger.Log (Logger.Debug,
+                  "sf_cert: aead_ok=" &
                   Boolean'Image (Aead_OK) &
                   " pt_last=" & Natural'Image (Pt_Last));
                if not Aead_OK then
@@ -379,6 +378,11 @@ is
                            Tls_Core.Cert_Verify.Decode_Body
                              (Body_Bytes,
                               OK, Sig_Scheme, Sig_F, Sig_L);
+                           Logger.Log (Logger.Debug,
+                             "sf_cert: cv decode ok=" &
+                             Boolean'Image (OK) &
+                             " sig_scheme=" &
+                             Interfaces.Unsigned_16'Image (Sig_Scheme));
                            if not OK
                              or else Sig_Scheme /= 16#0403#
                            then
@@ -440,6 +444,16 @@ is
                                         .Entries (I).Last
                                       + Leaf_Len);
                               end loop;
+                              Logger.Log (Logger.Debug,
+                                "sf_cert: cv verify leaf_len=" &
+                                Natural'Image (Leaf_Len) &
+                                " trust_len=" &
+                                Natural'Image (D.Trust_Anchor_Len) &
+                                " sni_len=" &
+                                Natural'Image (D.Sni_Len) &
+                                " th_len=" &
+                                Natural'Image (Tls_Core.Key_Sched
+                                  .Hash_Len (D.Suite)));
                               Tls_Core.Cert_Chain
                                 .Authenticate_Server
                                   (All_Certs       => All_Certs,
@@ -453,8 +467,14 @@ is
                                      Body_Bytes
                                        (Sig_F .. Sig_L),
                                    Transcript_Hash =>
-                                     Th_After_Cert (1 .. 32),
+                                     Th_After_Cert
+                                       (1 .. Tls_Core.Key_Sched
+                                               .Hash_Len (D.Suite)),
                                    Result          => Result);
+                              Logger.Log (Logger.Debug,
+                                "sf_cert: cv auth result=" &
+                                Tls_Core.Cert_Chain
+                                  .Validation_Result'Image (Result));
                               if not Tls_Core.Cert_Chain
                                        ."=" (Result, Tls_Core
                                                        .Cert_Chain
@@ -477,7 +497,8 @@ is
                         Sub := Expect_SF;
 
                      when Expect_SF =>
-                        if Msg_Last /= 4 + 32
+                        if Msg_Last /=
+                          4 + Tls_Core.Key_Sched.Hash_Len (D.Suite)
                           or else Msg_Buf (1) /=
                                     Hs_Type_Finished
                         then
@@ -495,7 +516,7 @@ is
                           Tls_Core.Key_Sched.Hash_Len (D.Suite)
                         loop
                            pragma Loop_Invariant
-                             (I in 1 .. 32);
+                             (I in 1 .. 48);
                            Diff := Diff or
                              (Msg_Buf (4 + I)
                               xor Expected_Sf (I));

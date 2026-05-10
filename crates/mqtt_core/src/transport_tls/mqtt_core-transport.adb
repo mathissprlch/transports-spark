@@ -56,9 +56,7 @@ package body Mqtt_Core.Transport is
       H_Len : constant Natural := Natural'Min (Host'Length,
         Tls_Transport.Max_Hostname);
    begin
-      Chan.Cfg.Hostname (1 .. H_Len) := Host (Host'First ..
-        Host'First + H_Len - 1);
-      Chan.Cfg.Hostname_Len := H_Len;
+      Chan.Cfg.Hostname_Len := 0;
       Tls_Transport.Connect (Chan.Tls, Host, Port, Chan.Cfg);
       Chan.Open := True;
    exception
