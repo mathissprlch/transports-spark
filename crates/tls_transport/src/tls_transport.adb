@@ -340,16 +340,19 @@ package body Tls_Transport is
       Aead_OK    : Boolean;
    begin
       OK := False;
-      Read_One_Record (Chan.Tcp, Rec_Buf, Rec_Last, Rec_OK, Chan.Rflx_Buf);
-      if not Rec_OK then return; end if;
+      loop
+         Read_One_Record (Chan.Tcp, Rec_Buf, Rec_Last, Rec_OK, Chan.Rflx_Buf);
+         if not Rec_OK then return; end if;
 
-      Aead_Channel.Receive
-        (Chan.App_In, Rec_Buf (1 .. Rec_Last),
-         Pt_Buf, Pt_Last, Inner_Type, Aead_OK);
-      if not Aead_OK then return; end if;
-      if Inner_Type /= Aead_Channel.Inner_Type_Application_Data then
-         return;
-      end if;
+         Aead_Channel.Receive
+           (Chan.App_In, Rec_Buf (1 .. Rec_Last),
+            Pt_Buf, Pt_Last, Inner_Type, Aead_OK);
+         if not Aead_OK then return; end if;
+         exit when Inner_Type = Aead_Channel.Inner_Type_Application_Data;
+         Logger.Log (Logger.Debug,
+           "tls recv: skipped post-hs record type=" &
+           Tls_Core.Octet'Image (Inner_Type));
+      end loop;
       if Pt_Last >= 1 then
          Chan.Pending (1 .. Pt_Last) := Pt_Buf (1 .. Pt_Last);
          Chan.Pend_First := 1;
