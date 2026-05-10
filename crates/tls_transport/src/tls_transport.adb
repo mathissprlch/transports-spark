@@ -156,7 +156,9 @@ package body Tls_Transport is
                raise Connect_Error with "TLS: EOF during handshake";
             end if;
             exit when In_Last < 1
-              or else In_Buf (In_Buf'First) /= 16#14#;
+              or else In_Buf (In_Buf'First) /=
+                Tls_Core.Octet (RFLX.Record_Layer.To_Base_Integer
+                  (RFLX.Record_Layer.Change_Cipher_Spec));
          end loop;
 
          Step (Chan.Driver, In_Buf (1 .. In_Last), Out_Buf, Out_Last);
