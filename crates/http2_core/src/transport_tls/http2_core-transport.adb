@@ -7,6 +7,16 @@ package body Http2_Core.Transport is
 
    type Tls_Chan_Acc is access all Tls_Transport.Channel;
 
+   function Is_Ip_Literal (Host : String) return Boolean is
+   begin
+      for C of Host loop
+         if C /= '.' and then (C < '0' or else C > '9') then
+            return False;
+         end if;
+      end loop;
+      return Host'Length > 0;
+   end Is_Ip_Literal;
+
    function To_Octets
      (B : RFLX.RFLX_Types.Bytes) return Tls_Core.Octet_Array
    is
@@ -45,7 +55,9 @@ package body Http2_Core.Transport is
       Chan.Cfg.Mode := Tls_Transport.Cert_Ec;
       Chan.Cfg.Trust_Der (1 .. Len) := To_Octets (Der);
       Chan.Cfg.Trust_Der_Len := Len;
-      null; -- ALPN deferred
+      Chan.Cfg.Alpn (1) := Character'Val (2);
+      Chan.Cfg.Alpn (2 .. 3) := "h2";
+      Chan.Cfg.Alpn_Len := 3;
       Chan.Cfg_Set := True;
    end Set_Trust_Anchor;
 
@@ -57,8 +69,16 @@ package body Http2_Core.Transport is
       H_Len : constant Natural := Natural'Min (Host'Length,
         Tls_Transport.Max_Hostname);
    begin
-      Chan.Cfg.Hostname_Len := 0;
-      null; -- ALPN deferred
+      if not Is_Ip_Literal (Host) then
+         Chan.Cfg.Hostname (1 .. H_Len) := Host (Host'First ..
+           Host'First + H_Len - 1);
+         Chan.Cfg.Hostname_Len := H_Len;
+      else
+         Chan.Cfg.Hostname_Len := 0;
+      end if;
+      Chan.Cfg.Alpn (1) := Character'Val (2);
+      Chan.Cfg.Alpn (2 .. 3) := "h2";
+      Chan.Cfg.Alpn_Len := 3;
       Tls_Transport.Connect (Chan.Tls, Host, Port, Chan.Cfg);
       Chan.Open := True;
    exception
@@ -183,7 +203,9 @@ package body Http2_Core.Transport is
          L.Srv_Cfg.Key_Raw (1 .. K_Len) := To_Octets (Key_Raw);
          L.Srv_Cfg.Key_Raw_Len := K_Len;
       end if;
-      null; -- ALPN deferred
+      L.Srv_Cfg.Alpn (1) := Character'Val (2);
+      L.Srv_Cfg.Alpn (2 .. 3) := "h2";
+      L.Srv_Cfg.Alpn_Len := 3;
       L.Srv_Set := True;
    end Set_Server_Identity;
 

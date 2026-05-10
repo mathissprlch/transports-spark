@@ -232,15 +232,35 @@ is
          Out_Buf (1 .. Sh_Rec_Last) := Sh_Rec (1 .. Sh_Rec_Last);
          Out_Cursor := Sh_Rec_Last;
 
-         --  EE
+         --  EE — RFC 8446 §4.3.1. Include ALPN if selected.
          declare
-            Ee_Body : constant Octet_Array (1 .. 2) :=
-              (16#00#, 16#00#);
-            Ee_Hs   : Octet_Array (1 .. 6) := (others => 0);
+            Alpn_N   : constant Natural := D.Selected_Alpn_Len;
+            Ee_Ext_Len : constant Natural :=
+              (if Alpn_N > 0 then 4 + 2 + 1 + Alpn_N else 0);
+            Ext_List_Len : constant Natural := Ee_Ext_Len;
+            Ee_Body  : Octet_Array (1 .. 2 + Ext_List_Len) := (others => 0);
+            Ee_Hs    : Octet_Array (1 .. 6 + Ext_List_Len) := (others => 0);
             Ee_Hs_Last : Natural;
-            Ee_Rec  : Octet_Array (1 .. 256) := (others => 0);
+            Ee_Rec   : Octet_Array (1 .. 256) := (others => 0);
             Ee_Rec_Last : Natural;
          begin
+            Ee_Body (1) := Octet (Ext_List_Len / 256);
+            Ee_Body (2) := Octet (Ext_List_Len mod 256);
+            if Alpn_N > 0 then
+               declare
+                  List_Len : constant Natural := 1 + Alpn_N;
+               begin
+                  Ee_Body (3) := 16#00#;
+                  Ee_Body (4) := 16#10#;
+                  Ee_Body (5) := Octet ((2 + List_Len) / 256);
+                  Ee_Body (6) := Octet ((2 + List_Len) mod 256);
+                  Ee_Body (7) := Octet (List_Len / 256);
+                  Ee_Body (8) := Octet (List_Len mod 256);
+                  Ee_Body (9) := Octet (Alpn_N);
+                  Ee_Body (10 .. 9 + Alpn_N) :=
+                    D.Selected_Alpn (1 .. Alpn_N);
+               end;
+            end if;
             Encode_Hs_Message
               (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append

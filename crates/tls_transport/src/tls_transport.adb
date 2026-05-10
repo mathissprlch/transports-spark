@@ -448,6 +448,20 @@ package body Tls_Transport is
                     Config.Alpn (I)));
                end loop;
                Tls13_Driver.Set_Alpn_Offers (Chan.Driver, Alpn_Bytes);
+               if Alpn_Bytes'Length >= 2
+                 and then Natural (Alpn_Bytes (Alpn_Bytes'First)) + 1
+                          <= Alpn_Bytes'Length
+               then
+                  declare
+                     N_Len : constant Natural :=
+                       Natural (Alpn_Bytes (Alpn_Bytes'First));
+                     Name  : Octet_Array (1 .. N_Len);
+                  begin
+                     Name := Alpn_Bytes (Alpn_Bytes'First + 1 ..
+                                         Alpn_Bytes'First + N_Len);
+                     Tls13_Driver.Set_Selected_Alpn (Chan.Driver, Name);
+                  end;
+               end if;
             end;
          end if;
       end;
