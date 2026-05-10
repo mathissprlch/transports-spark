@@ -492,3 +492,16 @@ ASN.1 walkers, ABNF/text protocols, protobuf varints).
 - **Skipping `rflx check` before `rflx generate`.** Catches errors
   faster than a full compilation cycle.
 - **Building before reading this file.** See §1a.
+
+---
+
+## 9. RFLX refactor backlog
+
+Hand-written wire code to lift to RFLX when touched next:
+
+| Location | What | RFLX target |
+|---|---|---|
+| `tls_transport.adb` Handshake_Loop CCS skip | Content-type dispatch + CCS discard loop | `tls_record_reader.rflx` session machine: add `Skip_CCS` state that loops back to `Await_Record` when `Record_Msg.Type_Field = Change_Cipher_Spec` |
+| `tls_transport.adb` Read_One_Record + Read_Flight | Hand-written 5-byte header parse + body read + flight polling | Replace with RFLX session machine driver loop (full channel I/O) |
+| `tls_core` Hello.Encode_*/Decode_* | Hand-written CH/SH extension walks | Lift to RFLX Extension_List sequence parser (partially done via ext_walk_rflx) |
+| `tls_core` Cert_Verify.Encode_Body_* / Decode_Body_* | Hand-written DER-like body parser | Candidate if RFLX can model the structure; DER walks don't fit RFLX cleanly |
