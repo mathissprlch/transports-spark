@@ -146,14 +146,18 @@ package body Tls_Transport is
          exit when Tls13_Driver.Current_State (Chan.Driver) = Done
            or else Tls13_Driver.Current_State (Chan.Driver) = Failed;
 
-         if Current_State (Chan.Driver) = Awaiting_SF then
-            Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
-         else
-            Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
-         end if;
-         if not In_OK then
-            raise Connect_Error with "TLS: EOF during handshake";
-         end if;
+         loop
+            if Current_State (Chan.Driver) = Awaiting_SF then
+               Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
+            else
+               Read_One_Record (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
+            end if;
+            if not In_OK then
+               raise Connect_Error with "TLS: EOF during handshake";
+            end if;
+            exit when In_Last < 1
+              or else In_Buf (In_Buf'First) /= 16#14#;
+         end loop;
 
          Step (Chan.Driver, In_Buf (1 .. In_Last), Out_Buf, Out_Last);
 
