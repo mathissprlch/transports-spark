@@ -68,6 +68,7 @@ help:
 	@echo '    tls-perf         Run tls_perf_bench'
 	@echo '    tls-prove        gnatprove --level=$(PROVE_LEVEL)'
 	@echo '    tls-prove-l3     gnatprove --level=3 (slower)'
+	@echo '    tls-prove-report per-package proof breakdown from last run'
 	@echo '    tls-soak         Run tls_core_tests SOAK_ITERS=$(SOAK_ITERS) times'
 	@echo '    tls-soak-quick   $(SOAK_QUICK_ITERS)-iter quick soak'
 	@echo '    tls-audit        Static §0d audit (no SPARK_Mode Off / pragma Assume etc.)'
@@ -143,6 +144,45 @@ tls-prove: tls-audit
 
 tls-prove-l3:
 	@$(MAKE) tls-prove PROVE_LEVEL=3
+
+tls-prove-report:
+	@echo "=== tls_core proof breakdown (from last gnatprove run) ==="
+	@echo ""
+	@OUTF=crates/tls_core/obj/gnatprove/gnatprove.out; \
+	if [ ! -f "$$OUTF" ]; then echo "No gnatprove.out — run 'make tls-prove' first."; exit 1; fi; \
+	TLS_PROVED=$$(grep -E '^\s+Tls_Core\.' "$$OUTF" | grep -oE 'proved \([0-9]+ checks\)' | grep -oE '[0-9]+' | awk '{s+=$$1} END {print s+0}'); \
+	TLS_UNPROVED=$$(grep -E '^\s+Tls_Core\.' "$$OUTF" | grep -c "not proved"); \
+	TLS_UNITS_OK=$$(grep -E '^\s+Tls_Core\.' "$$OUTF" | grep "0 errors" | grep -v "not proved" | grep 'proved ([1-9]' | sed 's/at .*//' | awk '{print $$1}' | sort -u | wc -l | tr -d ' '); \
+	TLS_UNITS_BAD=$$(grep -E '^\s+Tls_Core\.' "$$OUTF" | grep "not proved" | sed 's/at .*//' | awk '{print $$1}' | sort -u | wc -l | tr -d ' '); \
+	RFLX_PROVED=$$(grep -E '^\s+RFLX\.' "$$OUTF" | grep -oE 'proved \([0-9]+ checks\)' | grep -oE '[0-9]+' | awk '{s+=$$1} END {print s+0}'); \
+	RFLX_UNPROVED=$$(grep -E '^\s+RFLX\.' "$$OUTF" | grep -c "not proved"); \
+	SPARK_OFF=$$(grep -rnE 'SPARK_Mode\s*(\(\s*Off|=>\s*Off)' crates/tls_core/src/ | grep -v '\-\-.*SPARK_Mode' | wc -l | tr -d ' '); \
+	ASSUMES=$$(grep -rn 'pragma Assume' crates/tls_core/src/ | grep -v '\-\-.*pragma Assume' | grep -v '^\s*--' | wc -l | tr -d ' '); \
+	echo "Tls_Core (hand-written):"; \
+	echo "  Proved checks:   $$TLS_PROVED"; \
+	echo "  Unproved VCs:    $$TLS_UNPROVED"; \
+	TLS_TOTAL=$$((TLS_PROVED + TLS_UNPROVED)); \
+	if [ "$$TLS_TOTAL" -gt 0 ]; then echo "  Proof rate:      $$((TLS_PROVED * 100 / TLS_TOTAL))%"; fi; \
+	echo "  Units fully proven: $$TLS_UNITS_OK"; \
+	echo "  Units with gaps:    $$TLS_UNITS_BAD"; \
+	echo ""; \
+	echo "RFLX (generated):"; \
+	echo "  Proved checks:   $$RFLX_PROVED"; \
+	echo "  Unproved VCs:    $$RFLX_UNPROVED"; \
+	RFLX_TOTAL=$$((RFLX_PROVED + RFLX_UNPROVED)); \
+	if [ "$$RFLX_TOTAL" -gt 0 ]; then echo "  Proof rate:      $$((RFLX_PROVED * 100 / RFLX_TOTAL))%"; fi; \
+	echo ""; \
+	echo "Audit:"; \
+	echo "  SPARK_Mode(Off) bodies: $$SPARK_OFF (expect 2: Tcp_Transport + Transport)"; \
+	echo "  pragma Assume:          $$ASSUMES (expect 0)"; \
+	echo ""; \
+	echo "Headline:"; \
+	grep "^Total" "$$OUTF"; \
+	echo ""; \
+	if [ "$$TLS_UNPROVED" -gt 0 ]; then \
+	  echo "Tls_Core units with unproved VCs:"; \
+	  grep -E '^\s+Tls_Core\.' "$$OUTF" | grep "not proved" | sed 's/at .*//' | awk '{print $$1}' | sort -u | sed 's/^/  /'; \
+	fi
 
 tls-soak: tls-test
 	@cd crates/tls_core/tests && pass=0; fail=0; \
