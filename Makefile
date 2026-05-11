@@ -136,11 +136,16 @@ tls-perf: tls-build
 
 OPT_LEVEL ?= 2
 
+BENCH_RUNS ?= 5
+
 tls-bench: tls-bench-build
-	@$(TLS_INTEROP) --bench --bench-runs 5
+	@$(TLS_INTEROP) --bench --bench-runs $(BENCH_RUNS)
 
 tls-bench-quick: tls-bench-build
 	@$(TLS_INTEROP) --bench --bench-runs 3 --quick
+
+tls-bench-peer: tls-bench-build
+	@$(TLS_INTEROP) --bench --bench-runs $(BENCH_RUNS) --peer $(PEER)
 
 tls-bench-build:
 	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_core build
