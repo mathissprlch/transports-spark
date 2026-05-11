@@ -184,14 +184,56 @@ package body Tls_Interop_Bench is
                                     All_Pass := False;
                                  else
                                     delay 0.3;
-                                    Run_Handshake_C2S
-                                      (P, M, C, Bp, IR, El, I_Note);
-                                    Kill_And_Wait (Pid);
-                                    if IR /= Tls_Interop_Inline.Pass then
-                                       All_Pass := False;
-                                    else
-                                       Times (I) := Float (El);
-                                    end if;
+                                    declare
+                                       Timed_Out : Boolean := False;
+                                       task Hs is
+                                          entry Done;
+                                       end Hs;
+                                       task body Hs is
+                                       begin
+                                          Run_Handshake_C2S
+                                            (P, M, C, Bp,
+                                             IR, El, I_Note);
+                                          accept Done;
+                                       exception
+                                          when others =>
+                                             begin accept Done;
+                                             exception
+                                                when others => null;
+                                             end;
+                                       end Hs;
+                                    begin
+                                       select
+                                          Hs.Done;
+                                       or
+                                          delay 1.0;
+                                          Timed_Out := True;
+                                          Kill (Pid,
+                                                Hard_Kill => True);
+                                          Hs.Done;
+                                       end select;
+                                       if not Timed_Out then
+                                          Kill_And_Wait (Pid);
+                                       else
+                                          declare
+                                             Rp : Process_Id;
+                                             Ok : Boolean;
+                                          begin
+                                             Wait_Process (Rp, Ok);
+                                          exception
+                                             when others => null;
+                                          end;
+                                       end if;
+                                       if Timed_Out
+                                         or else IR /=
+                                                   Tls_Interop_Inline
+                                                     .Pass
+                                       then
+                                          All_Pass := False;
+                                       else
+                                          Times (I) := Float (El);
+                                       end if;
+                                    end;
                                  end if;
                               else
                                  --  s2c: open Ada listener BEFORE
@@ -213,19 +255,75 @@ package body Tls_Interop_Bench is
                                           Tls_Core.Tcp_Transport.Stop
                                             (L);
                                        else
-                                          Run_Handshake_S2C
-                                            (L, P, M, C,
-                                             IR, El, I_Note);
-                                          Kill_And_Wait (Pid);
-                                          Tls_Core.Tcp_Transport.Stop
-                                            (L);
-                                          if IR /= Tls_Interop_Inline
-                                                     .Pass
-                                          then
-                                             All_Pass := False;
-                                          else
-                                             Times (I) := Float (El);
-                                          end if;
+                                          delay 0.3;
+                                          declare
+                                             Timed_Out : Boolean
+                                               := False;
+                                             task Hs is
+                                                entry Done;
+                                             end Hs;
+                                             task body Hs is
+                                             begin
+                                                Run_Handshake_S2C
+                                                  (L, P, M, C,
+                                                   IR, El, I_Note);
+                                                accept Done;
+                                             exception
+                                                when others =>
+                                                   begin accept Done;
+                                                   exception
+                                                      when others =>
+                                                         null;
+                                                   end;
+                                             end Hs;
+                                          begin
+                                             select
+                                                Hs.Done;
+                                             or
+                                                delay 1.0;
+                                                Timed_Out := True;
+                                                Kill (Pid,
+                                                  Hard_Kill => True);
+                                                begin
+                                                   Tls_Core
+                                                     .Tcp_Transport
+                                                     .Stop (L);
+                                                exception
+                                                   when others =>
+                                                      null;
+                                                end;
+                                                Hs.Done;
+                                             end select;
+                                             if not Timed_Out then
+                                                Kill_And_Wait (Pid);
+                                                Tls_Core
+                                                  .Tcp_Transport
+                                                  .Stop (L);
+                                             else
+                                                declare
+                                                   Rp : Process_Id;
+                                                   Ok : Boolean;
+                                                begin
+                                                   Wait_Process
+                                                     (Rp, Ok);
+                                                exception
+                                                   when others =>
+                                                      null;
+                                                end;
+                                                --  listener already
+                                                --  stopped above
+                                             end if;
+                                             if Timed_Out
+                                               or else IR /=
+                                                       Tls_Interop_Inline
+                                                         .Pass
+                                             then
+                                                All_Pass := False;
+                                             else
+                                                Times (I) :=
+                                                  Float (El);
+                                             end if;
+                                          end;
                                        end if;
                                     end if;
                                  end;
@@ -399,16 +497,54 @@ package body Tls_Interop_Bench is
                            All_Pass := False;
                         else
                            delay 0.3;
-                           Run_Throughput_C2S
-                             (P, M, C, Bp, Bytes, IR, El, I_Note);
-                           Kill_And_Wait (Pid);
-                           if IR = Tls_Interop_Inline.Pass
-                             and then El > 0.0
-                           then
-                              Tputs (I) := Mib / Float (El);
-                           else
-                              All_Pass := False;
-                           end if;
+                           declare
+                              Timed_Out : Boolean := False;
+                              task Tp is
+                                 entry Done;
+                              end Tp;
+                              task body Tp is
+                              begin
+                                 Run_Throughput_C2S
+                                   (P, M, C, Bp, Bytes,
+                                    IR, El, I_Note);
+                                 accept Done;
+                              exception
+                                 when others =>
+                                    begin accept Done;
+                                    exception
+                                       when others => null;
+                                    end;
+                              end Tp;
+                           begin
+                              select
+                                 Tp.Done;
+                              or
+                                 delay 1.0;
+                                 Timed_Out := True;
+                                 Kill (Pid, Hard_Kill => True);
+                                 Tp.Done;
+                              end select;
+                              if not Timed_Out then
+                                 Kill_And_Wait (Pid);
+                              else
+                                 declare
+                                    Rp : Process_Id;
+                                    Ok : Boolean;
+                                 begin
+                                    Wait_Process (Rp, Ok);
+                                 exception
+                                    when others => null;
+                                 end;
+                              end if;
+                              if not Timed_Out
+                                and then IR = Tls_Interop_Inline.Pass
+                                and then El > 0.0
+                              then
+                                 Tputs (I) := Mib / Float (El);
+                              else
+                                 All_Pass := False;
+                              end if;
+                           end;
                         end if;
                      end;
                      exit when not All_Pass;
