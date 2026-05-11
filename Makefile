@@ -134,6 +134,19 @@ tls-perf: tls-build
 	@$(ALR_ENV) alr -C crates/tls_core/tests build
 	@cd crates/tls_core/tests && $(ALR_ENV) ./bin/tls_perf_bench
 
+OPT_LEVEL ?= 2
+
+tls-bench: tls-bench-build
+	@scripts/tls-bench.sh --opt $(OPT_LEVEL)
+
+tls-bench-quick: tls-bench-build
+	@scripts/tls-bench.sh --quick --opt $(OPT_LEVEL)
+
+tls-bench-build:
+	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_core build
+	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_core/tests build
+	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/examples build
+
 tls-prove: tls-audit
 	@$(ALR_ENV) $(GNATPROVE) -P crates/tls_core/tls_core.gpr \
 	  --level=$(PROVE_LEVEL) -j0 2>&1 | tail -25

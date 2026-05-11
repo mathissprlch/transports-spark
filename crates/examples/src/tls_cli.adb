@@ -49,6 +49,7 @@
 --  no SPARK_Mode (Off) outside Tcp_Transport, no pragma Assume,
 --  no Pre/Post bypass.
 
+with Ada.Calendar;
 with Ada.Command_Line;
 with Ada.Exceptions;
 with Ada.Strings.Fixed;

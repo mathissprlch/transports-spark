@@ -5,6 +5,8 @@ library project Tls_Core is
 
    type Build_Mode_Kind is ("debug", "release");
    Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");
+   type Opt_Kind is ("0", "1", "2", "3");
+   Opt : Opt_Kind := external ("OPT_LEVEL", "2");
 
    for Library_Name use "tls_core";
    for Library_Kind use "static";
@@ -17,7 +19,7 @@ library project Tls_Core is
       case Build_Mode is
          when "release" =>
             for Default_Switches ("Ada") use
-              ("-g", "-O2", "-gnatn", "-gnatp",
+              ("-g", "-O" & Opt, "-gnatn", "-gnatp",
                "-gnat2022", "-gnatwa", "-gnatyM100");
          when "debug" =>
             for Default_Switches ("Ada") use
