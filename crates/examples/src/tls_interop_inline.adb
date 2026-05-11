@@ -2,6 +2,7 @@ with Ada.Calendar;
 with Ada.Streams.Stream_IO;
 with Tls_Core;
 with Tls_Core.Cert_Chain;
+with Tls_Core.Suites;
 with Tls_Core.Tcp_Transport;
 with Tls_Core.Tls13_Driver;
 
@@ -235,5 +236,136 @@ package body Tls_Interop_Inline is
          Elapsed := Clock - T0;
          Note := To_Unbounded_String ("exception during handshake");
    end Run_Handshake_C2S;
+
+   procedure Run_Handshake_S2C
+     (Peer    : Peer_Kind;
+      Mode    : Mode_Kind;
+      Cipher  : Cipher_Kind;
+      Port    : Natural;
+      Result  : out Inline_Result;
+      Elapsed : out Duration;
+      Note    : out Unbounded_String)
+   is
+      pragma Unreferenced (Peer, Cipher);
+      L    : Tls_Core.Tcp_Transport.Listener;
+      Sock : Tls_Core.Tcp_Transport.Channel;
+      D    : Tls_Core.Tls13_Driver.Driver;
+
+      Priv_Key : constant Octet_Array (1 .. 32) := (others => 16#42#);
+      Cert_Buf : Octet_Array (1 .. 4096) := (others => 0);
+      Cert_Len : Natural;
+      Key_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+      Key_Len  : Natural;
+      Psk      : constant Octet_Array (1 .. 32) := (others => 16#AA#);
+      Psk_Id   : constant Octet_Array := (Character'Pos ('T'),
+        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
+
+      EC_Dir : constant String :=
+        "crates/tls_core/tests/fixtures/interop/ec";
+
+      T0 : Time;
+   begin
+      Result  := Fail;
+      Elapsed := 0.0;
+      Note    := Null_Unbounded_String;
+
+      case Mode is
+         when Cert_Ec =>
+            Read_File (EC_Dir & "/leaf.der", Cert_Buf, Cert_Len);
+            Read_File (EC_Dir & "/leaf.priv", Key_Buf, Key_Len);
+            if Cert_Len = 0 or else Key_Len /= 32 then
+               Note := To_Unbounded_String ("cannot read cert/key");
+               return;
+            end if;
+            declare
+               CS : Tls_Core.Cert_Chain.Chain;
+            begin
+               CS.Count := 1;
+               CS.Entries (1) := (First => 1, Last => Cert_Len);
+               Tls_Core.Tls13_Driver.Init_Cert_Server
+                 (D, Cert_Buf (1 .. Cert_Len), CS,
+                  Key_Buf (1 .. 32),
+                  Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256,
+                  Priv_Key);
+            end;
+         when Psk_Dhe_Ke =>
+            Tls_Core.Tls13_Driver.Init_Psk_Server
+              (D, Psk, Psk_Id, Priv_Key);
+         when others =>
+            Note := To_Unbounded_String ("unsupported mode for inline");
+            return;
+      end case;
+
+      begin
+         Tls_Core.Tcp_Transport.Listen (L, "127.0.0.1", Port);
+      exception
+         when others =>
+            Note := To_Unbounded_String ("TCP listen failed");
+            return;
+      end;
+
+      Tls_Core.Tcp_Transport.Accept_One (L, Sock);
+      T0 := Clock;
+
+      declare
+         In_Buf   : Octet_Array (1 .. 16640 + 5) := (others => 0);
+         In_Last  : Natural;
+         OK       : Boolean;
+         Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+         Out_Last : Natural;
+      begin
+         Read_Flight (Sock, 1, In_Buf, In_Last, OK);
+         if not OK or else In_Last = 0 then
+            Note := To_Unbounded_String ("no CH received");
+            Tls_Core.Tcp_Transport.Close (Sock);
+            Tls_Core.Tcp_Transport.Stop (L);
+            return;
+         end if;
+         Tls_Core.Tls13_Driver.Step
+           (D, In_Bytes => In_Buf (1 .. In_Last),
+            Out_Buf => Out_Buf, Out_Last => Out_Last);
+         if Tls_Core.Tls13_Driver.Current_State (D)
+              /= Tls_Core.Tls13_Driver.Awaiting_Cf
+         then
+            Note := To_Unbounded_String
+              ("not Awaiting_Cf: " & Tls_Core.Tls13_Driver.State'Image
+                 (Tls_Core.Tls13_Driver.Current_State (D)));
+            Tls_Core.Tcp_Transport.Close (Sock);
+            Tls_Core.Tcp_Transport.Stop (L);
+            return;
+         end if;
+         Tls_Core.Tcp_Transport.Send_All (Sock, Out_Buf (1 .. Out_Last));
+
+         Read_Flight (Sock, 1, In_Buf, In_Last, OK);
+         if not OK then
+            Note := To_Unbounded_String ("no CF received");
+            Tls_Core.Tcp_Transport.Close (Sock);
+            Tls_Core.Tcp_Transport.Stop (L);
+            return;
+         end if;
+         Tls_Core.Tls13_Driver.Step
+           (D, In_Bytes => In_Buf (1 .. In_Last),
+            Out_Buf => Out_Buf, Out_Last => Out_Last);
+         if Tls_Core.Tls13_Driver.Current_State (D)
+              /= Tls_Core.Tls13_Driver.Done
+         then
+            Note := To_Unbounded_String
+              ("not Done: " & Tls_Core.Tls13_Driver.State'Image
+                 (Tls_Core.Tls13_Driver.Current_State (D)));
+            Tls_Core.Tcp_Transport.Close (Sock);
+            Tls_Core.Tcp_Transport.Stop (L);
+            return;
+         end if;
+      end;
+
+      Elapsed := Clock - T0;
+      Result := Pass;
+      Tls_Core.Tcp_Transport.Close (Sock);
+      Tls_Core.Tcp_Transport.Stop (L);
+   exception
+      when others =>
+         Elapsed := Clock - T0;
+         Note := To_Unbounded_String ("exception during s2c handshake");
+   end Run_Handshake_S2C;
 
 end Tls_Interop_Inline;

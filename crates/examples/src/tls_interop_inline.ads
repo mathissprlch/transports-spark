@@ -14,4 +14,13 @@ package Tls_Interop_Inline is
       Elapsed : out Duration;
       Note    : out Unbounded_String);
 
+   procedure Run_Handshake_S2C
+     (Peer    : Peer_Kind;
+      Mode    : Mode_Kind;
+      Cipher  : Cipher_Kind;
+      Port    : Natural;
+      Result  : out Inline_Result;
+      Elapsed : out Duration;
+      Note    : out Unbounded_String);
+
 end Tls_Interop_Inline;
