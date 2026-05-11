@@ -155,6 +155,23 @@ is
           and then Suites_First = CH_Suites_First (In_Bytes)
           and then Suites_Last =
             CH_Suites_First (In_Bytes)
-              + CH_Suites_Len (In_Bytes) - 1);
+              + CH_Suites_Len (In_Bytes) - 1
+          --  Index bounds: every "First/Last" output, when not
+          --  signalling "absent" (= 0), lies within In_Bytes'Range.
+          --  Lets downstream callers prove `Field_F + Off` doesn't
+          --  overflow when offsetting into the parent record.
+          and then Sid_First in 0 .. In_Bytes'Last
+          and then Sid_Last in 0 .. In_Bytes'Last
+          and then (if Sid_First > 0 then
+                      Sid_Last >= Sid_First - 1
+                      and then Sid_Last - Sid_First + 1 <= 32)
+          and then Sig_Algs_First in 0 .. In_Bytes'Last
+          and then Sig_Algs_Last in 0 .. In_Bytes'Last
+          and then Key_Share_First in 0 .. In_Bytes'Last
+          and then Key_Share_Last in 0 .. In_Bytes'Last
+          and then (if Key_Share_First > 0 then
+                      Key_Share_Last >= Key_Share_First
+                      and then Key_Share_Last - Key_Share_First + 1
+                              = 32));
 
 end Tls_Core.Client_Hello_Rflx;

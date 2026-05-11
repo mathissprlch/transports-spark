@@ -71,6 +71,15 @@ is
                D.Cur_State := Failed;
                return;
             end if;
+            --  CH minimum 42 bytes per RFC 8446 §4.1.2: legacy
+            --  version (2) + random (32) + sid_len (1) + suites_len
+            --  (2) + at least one suite (2) + compression (2) +
+            --  ext_len (2) ≥ 43 with empty extensions.  Reject
+            --  shorter inputs below the decoder Pre.
+            if Hs_Body_L - Hs_Body_F + 1 < 42 then
+               D.Cur_State := Failed;
+               return;
+            end if;
             declare
                CH_Len : constant Natural :=
                  Hs_Body_L - Hs_Body_F + 1;

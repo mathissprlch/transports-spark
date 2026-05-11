@@ -367,6 +367,20 @@ is
          return;
       end if;
 
+      --  Defensive Sid bounds.  Decode_Client_Hello_Fields doesn't
+      --  propagate Sid bounds via its Post; validate here so callers
+      --  can rely on the Post we expose.
+      if Sid_First > In_Bytes'Last
+        or else Sid_Last > In_Bytes'Last
+        or else (Sid_First > 0
+                 and then
+                   (Sid_Last < Sid_First - 1
+                    or else Sid_Last - Sid_First + 1 > 32))
+      then
+         OK := False;
+         return;
+      end if;
+
       declare
          Ext_Len  : constant Natural := El - Ef + 1;
       begin
