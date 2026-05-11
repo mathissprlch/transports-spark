@@ -66,12 +66,23 @@ is
                  Ext.Field_First (Ext_Ctx, Ext.F_Data);
                DL_Val : constant Natural :=
                  Natural (Ext.Get_Length (Ext_Ctx));
+               Byte_Off : Natural;
             begin
-               pragma Assert (FF >= 1);
-               Data_First := Natural (FF) / 8 + 1;
-               pragma Assert (Data_First >= 1);
-               Data_Len := DL_Val;
-               Found := True;
+               if FF < RFLX.RFLX_Types.Bit_Index'Last - 8
+                 and then Natural (FF) / 8 < Natural'Last
+               then
+                  Byte_Off := Natural (FF) / 8 + 1;
+                  if Byte_Off >= 1
+                    and then DL_Val <= Ext_Bytes'Length
+                    and then Byte_Off <= Ext_Bytes'Length
+                    and then Byte_Off - 1 <=
+                             Ext_Bytes'Length - DL_Val
+                  then
+                     Data_First := Byte_Off;
+                     Data_Len := DL_Val;
+                     Found := True;
+                  end if;
+               end if;
             end;
          end if;
          EL.Update (Seq_Ctx, Ext_Ctx);
@@ -97,6 +108,7 @@ is
       Walk_Find (Ext_Bytes, 51, Df, Dl, Buf, Ext_Found);
       if not Ext_Found or else Dl < 6 or else Buf = null
         or else Df < 1
+        or else Df > Natural'Last - Dl
         or else Df + Dl - 1 > Ext_Bytes'Length
         or else Df + 1 > Natural'Last / 2
       then
@@ -107,6 +119,12 @@ is
       pragma Assert (Df + Dl - 1 <= Ext_Bytes'Length);
       pragma Assert (Dl >= 6);
       pragma Assert (Df + 1 <= Ext_Bytes'Length);
+      if RFLX.RFLX_Types.Index (Df) > Buf'Last
+        or else RFLX.RFLX_Types.Index (Df + 1) > Buf'Last
+      then
+         RFLX.RFLX_Types.Free (Buf);
+         return;
+      end if;
       declare
          Ks_Len : constant Natural :=
            Natural (Buf (RFLX.RFLX_Types.Index (Df))) * 256
@@ -125,6 +143,9 @@ is
                   and then Ks_Cur <= Ks_End
                   and then Ks_End <= Ext_Bytes'Length
                   and then Ks_Cur + 3 <= Ext_Bytes'Length);
+               if RFLX.RFLX_Types.Index (Ks_Cur + 3) > Buf'Last then
+                  exit;
+               end if;
                declare
                   Grp : constant Natural :=
                     Natural (Buf (RFLX.RFLX_Types.Index (Ks_Cur)))
@@ -207,6 +228,7 @@ is
       if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
       if not Ext_Found or else Dl < 4
         or else Df < 1
+        or else Df > Natural'Last - Dl
         or else Df + Dl - 1 > Ext_Bytes'Length
         or else Df + 1 > Natural'Last / 2
       then return; end if;
@@ -245,6 +267,7 @@ is
       if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
       if not Ext_Found or else Dl < 9
         or else Df < 1
+        or else Df > Natural'Last - Dl
         or else Df + Dl - 1 > Ext_Bytes'Length
         or else Df + 1 > Natural'Last / 2
       then return; end if;

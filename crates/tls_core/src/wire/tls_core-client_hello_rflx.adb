@@ -16,27 +16,28 @@ is
    with Pre => In_Bytes'First = 1 and then In_Bytes'Length >= 42
    is
       package CH renames RFLX.Client_Hello.Message;
+      Last_Idx : constant RFLX.RFLX_Types.Index :=
+        RFLX.RFLX_Types.Index (In_Bytes'Length);
       Buf : RFLX.RFLX_Types.Bytes_Ptr :=
-        new RFLX.RFLX_Types.Bytes'
-          (1 .. RFLX.RFLX_Types.Index (In_Bytes'Length) => 0);
+        new RFLX.RFLX_Types.Bytes'(1 .. Last_Idx => 0);
       Ctx    : CH.Context;
       WL     : constant RFLX.RFLX_Types.Bit_Length :=
         RFLX.RFLX_Types.Bit_Length (In_Bytes'Length) * 8;
-      J      : RFLX.RFLX_Types.Index := 1;
       Result : Boolean;
    begin
-      for I in In_Bytes'Range loop
-         Buf (J) := RFLX.RFLX_Types.Byte (In_Bytes (I));
-         J := J + 1;
+      for K in 1 .. Last_Idx loop
+         pragma Loop_Invariant (K in 1 .. Last_Idx);
+         Buf (K) := RFLX.RFLX_Types.Byte (In_Bytes (Natural (K)));
       end loop;
+      if Last_Idx >= RFLX.RFLX_Types.Index'Last then
+         RFLX.RFLX_Types.Free (Buf);
+         return False;
+      end if;
       CH.Initialize (Ctx, Buf, Written_Last => WL);
       CH.Verify_Message (Ctx);
       Result := CH.Well_Formed_Message (Ctx);
       CH.Take_Buffer (Ctx, Buf);
       RFLX.RFLX_Types.Free (Buf);
-      if not Result then
-         return True;
-      end if;
       return Result;
    end Rflx_Validate_Ch;
 
@@ -169,6 +170,16 @@ is
       Out_Buf (S_Off + 1) := S_Lo;
       J := S_Off + 2;
       for I in Suites'Range loop
+         pragma Loop_Invariant (J in 38 .. 37 + S_Len);
+         pragma Loop_Invariant
+           (J = S_Off + 2
+            + Natural (I - Suites'First));
+         pragma Loop_Invariant (Out_Buf (1) = 16#03#);
+         pragma Loop_Invariant (Out_Buf (2) = 16#03#);
+         pragma Loop_Invariant (Out_Buf (3 .. 34) = Random);
+         pragma Loop_Invariant (Out_Buf (35) = 0);
+         pragma Loop_Invariant (Out_Buf (36) = S_Hi);
+         pragma Loop_Invariant (Out_Buf (37) = S_Lo);
          Out_Buf (J) := Suites (I);
          J := J + 1;
       end loop;
@@ -247,39 +258,74 @@ is
         (In_Bytes, Random, Sid_First, Sid_Last,
          Suites_First, Suites_Last, Ef, El, Fields_OK);
 
-      if not Fields_OK or else Ef = 0 then
+      if not Fields_OK or else Ef = 0 or else El < Ef then
+         OK := False;
+         return;
+      end if;
+
+      if El > In_Bytes'Last or else Ef < 1 then
          OK := False;
          return;
       end if;
 
       declare
          Ext_Len  : constant Natural := El - Ef + 1;
-         Ext_Blob : Octet_Array (1 .. Ext_Len) :=
-           In_Bytes (Ef .. El);
-         Ks_F, Ks_L : Natural;
-         Ks_Found   : Boolean;
-         Psk_Id_F, Psk_Id_L : Natural;
-         Psk_Bf, Psk_Bl     : Natural;
-         Psk_TL              : Natural;
-         Psk_Found           : Boolean;
       begin
-         Ext_Walk_Rflx.Find_Key_Share_X25519
-           (Ext_Blob, Ks_F, Ks_L, Ks_Found);
-         Ext_Walk_Rflx.Find_Psk_Fields
-           (Ext_Blob, Psk_Id_F, Psk_Id_L,
-            Psk_Bf, Psk_Bl, Psk_TL, Psk_Found);
+         if Ext_Len < 4 then
+            OK := False;
+            return;
+         end if;
+         if Ef > Natural'Last - Ext_Len then
+            OK := False;
+            return;
+         end if;
+         declare
+            Ext_Blob : Octet_Array (1 .. Ext_Len) :=
+              In_Bytes (Ef .. El);
+            Ks_F, Ks_L : Natural;
+            Ks_Found   : Boolean;
+            Psk_Id_F, Psk_Id_L : Natural;
+            Psk_Bf, Psk_Bl     : Natural;
+            Psk_TL              : Natural;
+            Psk_Found           : Boolean;
+         begin
+            Ext_Walk_Rflx.Find_Key_Share_X25519
+              (Ext_Blob, Ks_F, Ks_L, Ks_Found);
+            Ext_Walk_Rflx.Find_Psk_Fields
+              (Ext_Blob, Psk_Id_F, Psk_Id_L,
+               Psk_Bf, Psk_Bl, Psk_TL, Psk_Found);
 
-         if Ks_Found then
-            Key_Share_First := Ef + Ks_F - 1;
-            Key_Share_Last  := Ef + Ks_L - 1;
-         end if;
-         if Psk_Found then
-            Identity_First := Ef + Psk_Id_F - 1;
-            Identity_Last  := Ef + Psk_Id_L - 1;
-            Binder_First   := Ef + Psk_Bf - 1;
-            Binder_Last    := Ef + Psk_Bl - 1;
-            Truncated_Last := Ef + Psk_TL - 1;
-         end if;
+            if Ks_Found
+              and then Ks_F >= 1 and then Ks_L >= 1
+              and then Ks_F <= Ext_Len and then Ks_L <= Ext_Len
+              and then Ef - 1 <= Natural'Last - Ks_F
+              and then Ef - 1 <= Natural'Last - Ks_L
+            then
+               Key_Share_First := Ef + Ks_F - 1;
+               Key_Share_Last  := Ef + Ks_L - 1;
+            end if;
+            if Psk_Found
+              and then Psk_Id_F >= 1 and then Psk_Id_L >= 1
+              and then Psk_Bf >= 1 and then Psk_Bl >= 1
+              and then Psk_TL >= 1
+              and then Psk_Id_F <= Ext_Len
+              and then Psk_Id_L <= Ext_Len
+              and then Psk_Bf <= Ext_Len
+              and then Psk_Bl <= Ext_Len
+              and then Psk_TL <= Ext_Len
+              and then Ef - 1 <= Natural'Last - Psk_Id_F
+              and then Ef - 1 <= Natural'Last - Psk_Id_L
+              and then Ef - 1 <= Natural'Last - Psk_Bf
+              and then Ef - 1 <= Natural'Last - Psk_Bl
+              and then Ef - 1 <= Natural'Last - Psk_TL
+            then
+               Identity_First := Ef + Psk_Id_F - 1;
+               Identity_Last  := Ef + Psk_Id_L - 1;
+               Binder_First   := Ef + Psk_Bf - 1;
+               Binder_Last    := Ef + Psk_Bl - 1;
+               Truncated_Last := Ef + Psk_TL - 1;
+            end if;
+         end;
       end;
 
       OK := Key_Share_First > 0 and then Identity_First > 0
@@ -311,33 +357,59 @@ is
         (In_Bytes, Random, Sid_First, Sid_Last,
          Suites_First, Suites_Last, Ef, El, Fields_OK);
 
-      if not Fields_OK or else Ef = 0 then
+      if not Fields_OK or else Ef = 0 or else El < Ef then
+         OK := False;
+         return;
+      end if;
+
+      if El > In_Bytes'Last or else Ef < 1 then
          OK := False;
          return;
       end if;
 
       declare
          Ext_Len  : constant Natural := El - Ef + 1;
-         Ext_Blob : Octet_Array (1 .. Ext_Len) :=
-           In_Bytes (Ef .. El);
-         Ks_F, Ks_L : Natural;
-         Ks_Found   : Boolean;
-         Sa_F, Sa_L : Natural;
-         Sa_Found   : Boolean;
       begin
-         Ext_Walk_Rflx.Find_Key_Share_X25519
-           (Ext_Blob, Ks_F, Ks_L, Ks_Found);
-         Ext_Walk_Rflx.Find_Sig_Algs
-           (Ext_Blob, Sa_F, Sa_L, Sa_Found);
+         if Ext_Len < 4 then
+            OK := False;
+            return;
+         end if;
+         if Ef > Natural'Last - Ext_Len then
+            OK := False;
+            return;
+         end if;
+         declare
+            Ext_Blob : Octet_Array (1 .. Ext_Len) :=
+              In_Bytes (Ef .. El);
+            Ks_F, Ks_L : Natural;
+            Ks_Found   : Boolean;
+            Sa_F, Sa_L : Natural;
+            Sa_Found   : Boolean;
+         begin
+            Ext_Walk_Rflx.Find_Key_Share_X25519
+              (Ext_Blob, Ks_F, Ks_L, Ks_Found);
+            Ext_Walk_Rflx.Find_Sig_Algs
+              (Ext_Blob, Sa_F, Sa_L, Sa_Found);
 
-         if Ks_Found then
-            Key_Share_First := Ef + Ks_F - 1;
-            Key_Share_Last  := Ef + Ks_L - 1;
-         end if;
-         if Sa_Found then
-            Sig_Algs_First := Ef + Sa_F - 1;
-            Sig_Algs_Last  := Ef + Sa_L - 1;
-         end if;
+            if Ks_Found
+              and then Ks_F >= 1 and then Ks_L >= 1
+              and then Ks_F <= Ext_Len and then Ks_L <= Ext_Len
+              and then Ef - 1 <= Natural'Last - Ks_F
+              and then Ef - 1 <= Natural'Last - Ks_L
+            then
+               Key_Share_First := Ef + Ks_F - 1;
+               Key_Share_Last  := Ef + Ks_L - 1;
+            end if;
+            if Sa_Found
+              and then Sa_F >= 1 and then Sa_L >= 1
+              and then Sa_F <= Ext_Len and then Sa_L <= Ext_Len
+              and then Ef - 1 <= Natural'Last - Sa_F
+              and then Ef - 1 <= Natural'Last - Sa_L
+            then
+               Sig_Algs_First := Ef + Sa_F - 1;
+               Sig_Algs_Last  := Ef + Sa_L - 1;
+            end if;
+         end;
       end;
 
       OK := Key_Share_First > 0 and then Sig_Algs_First > 0;

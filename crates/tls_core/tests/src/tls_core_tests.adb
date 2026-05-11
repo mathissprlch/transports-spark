@@ -14,6 +14,7 @@ with Tls_Core.Record_Layer;
 with Tls_Core.Sha256;
 with Tls_Core.Hmac_Sha256;
 with Tls_Core.Hkdf_Sha256;
+with Tls_Core.Key_Sched;
 with Tls_Core.Key_Schedule;
 with Tls_Core.Chacha20;
 with Tls_Core.Poly1305;
@@ -3239,17 +3240,17 @@ procedure Tls_Core_Tests is
 
       function Run_Handshake
         (Cli_Priv : Tls_Core.Octet_Array)
-         return Tls_Core.Key_Schedule.Secret;
+         return Tls_Core.Key_Sched.Max_Secret;
 
       function Run_Handshake
         (Cli_Priv : Tls_Core.Octet_Array)
-         return Tls_Core.Key_Schedule.Secret
+         return Tls_Core.Key_Sched.Max_Secret
       is
          C, S : Tls_Core.Tls13_Driver.Driver;
          Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
          Buf_Last : Natural := 0;
          Out_Cli, In_Cli : Tls_Core.Aead_Channel.Direction;
-         Out_Sec, In_Sec : Tls_Core.Key_Schedule.Secret;
+         Out_Sec, In_Sec : Tls_Core.Key_Sched.Max_Secret;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
          Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Cli_Priv);
@@ -3300,9 +3301,9 @@ procedure Tls_Core_Tests is
          return Out_Sec;
       end Run_Handshake;
 
-      Sec_A : constant Tls_Core.Key_Schedule.Secret :=
+      Sec_A : constant Tls_Core.Key_Sched.Max_Secret :=
         Run_Handshake (Client_Priv_A);
-      Sec_B : constant Tls_Core.Key_Schedule.Secret :=
+      Sec_B : constant Tls_Core.Key_Sched.Max_Secret :=
         Run_Handshake (Client_Priv_B);
 
       All_Equal : Boolean := True;
@@ -3325,7 +3326,7 @@ procedure Tls_Core_Tests is
       --  Sanity: re-running with the same priv scalar should give the
       --  identical secret (driver is deterministic on test inputs).
       declare
-         Sec_A2 : constant Tls_Core.Key_Schedule.Secret :=
+         Sec_A2 : constant Tls_Core.Key_Sched.Max_Secret :=
            Run_Handshake (Client_Priv_A);
          All_Match : Boolean := True;
       begin
@@ -3469,8 +3470,8 @@ procedure Tls_Core_Tests is
 
       Out_Cli, In_Cli, Out_Srv, In_Srv :
         Tls_Core.Aead_Channel.Direction;
-      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Schedule.Secret;
-      Sec_Srv_Out, Sec_Srv_In : Tls_Core.Key_Schedule.Secret;
+      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Sched.Max_Secret;
+      Sec_Srv_Out, Sec_Srv_In : Tls_Core.Key_Sched.Max_Secret;
    begin
       Put_Line ("scenario 30c — KeyUpdate end-to-end rotation");
 
@@ -3558,7 +3559,7 @@ procedure Tls_Core_Tests is
       declare
          Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
          Wire_Last : Natural;
-         Sec_Cli_Out_Before : constant Tls_Core.Key_Schedule.Secret :=
+         Sec_Cli_Out_Before : constant Tls_Core.Key_Sched.Max_Secret :=
            Sec_Cli_Out;
       begin
          Tls_Core.Tls13_Driver.Send_Key_Update
@@ -3584,7 +3585,7 @@ procedure Tls_Core_Tests is
             OK : Boolean;
             Want_Reply : Boolean;
             Process_OK : Boolean;
-            Sec_Srv_In_Before : constant Tls_Core.Key_Schedule.Secret :=
+            Sec_Srv_In_Before : constant Tls_Core.Key_Sched.Max_Secret :=
               Sec_Srv_In;
          begin
             Tls_Core.Aead_Channel.Receive
@@ -3615,7 +3616,7 @@ procedure Tls_Core_Tests is
       declare
          Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
          Wire_Last : Natural;
-         Sec_Srv_Out_Before : constant Tls_Core.Key_Schedule.Secret :=
+         Sec_Srv_Out_Before : constant Tls_Core.Key_Sched.Max_Secret :=
            Sec_Srv_Out;
       begin
          Tls_Core.Tls13_Driver.Send_Key_Update
@@ -3638,7 +3639,7 @@ procedure Tls_Core_Tests is
             OK : Boolean;
             Want_Reply : Boolean;
             Process_OK : Boolean;
-            Sec_Cli_In_Before : constant Tls_Core.Key_Schedule.Secret :=
+            Sec_Cli_In_Before : constant Tls_Core.Key_Sched.Max_Secret :=
               Sec_Cli_In;
          begin
             Tls_Core.Aead_Channel.Receive
@@ -6671,8 +6672,8 @@ procedure Tls_Core_Tests is
 
       Out_Cli, In_Cli, Out_Srv, In_Srv :
         Tls_Core.Aead_Channel.Direction;
-      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Schedule.Secret;
-      Sec_Srv_Out, Sec_Srv_In : Tls_Core.Key_Schedule.Secret;
+      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Sched.Max_Secret;
+      Sec_Srv_Out, Sec_Srv_In : Tls_Core.Key_Sched.Max_Secret;
 
       Cache : Tls_Core.Session_Cache.Cache;
 
@@ -7052,7 +7053,7 @@ procedure Tls_Core_Tests is
       Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
       Buf_Last : Natural;
       Out_Cli, In_Cli : Tls_Core.Aead_Channel.Direction;
-      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Schedule.Secret;
+      Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Sched.Max_Secret;
       Cache : Tls_Core.Session_Cache.Cache;
    begin
       Put_Line ("scenario — Process_Post_Handshake_Plaintext demux");

@@ -16,19 +16,23 @@ is
       package SH renames RFLX.Server_Hello.Message;
       use RFLX.RFLX_Builtin_Types;
 
+      Last_Idx : constant RFLX.RFLX_Types.Index :=
+        RFLX.RFLX_Types.Index (In_Bytes'Length);
       Buf : RFLX.RFLX_Types.Bytes_Ptr :=
-        new RFLX.RFLX_Types.Bytes'
-          (1 .. RFLX.RFLX_Types.Index (In_Bytes'Length) => 0);
+        new RFLX.RFLX_Types.Bytes'(1 .. Last_Idx => 0);
       Ctx     : SH.Context;
       WL      : constant RFLX.RFLX_Types.Bit_Length :=
         RFLX.RFLX_Types.Bit_Length (In_Bytes'Length) * 8;
-      J       : RFLX.RFLX_Types.Index := 1;
       Result  : Boolean;
    begin
-      for I in In_Bytes'Range loop
-         Buf (J) := RFLX.RFLX_Types.Byte (In_Bytes (I));
-         J := J + 1;
+      for K in 1 .. Last_Idx loop
+         pragma Loop_Invariant (K in 1 .. Last_Idx);
+         Buf (K) := RFLX.RFLX_Types.Byte (In_Bytes (Natural (K)));
       end loop;
+      if Last_Idx >= RFLX.RFLX_Types.Index'Last then
+         RFLX.RFLX_Types.Free (Buf);
+         return False;
+      end if;
       SH.Initialize (Ctx, Buf, Written_Last => WL);
       SH.Verify_Message (Ctx);
       Result := SH.Well_Formed_Message (Ctx);
@@ -228,28 +232,46 @@ is
          Decode_Server_Hello_Fields
            (Local, Rnd, Suite, Sf, Sl, Ef, El, Fields_OK);
 
-         if not Fields_OK or else Ef = 0
-           or else El < Ef + 3
-         then
+         if not Fields_OK or else Ef = 0 or else El < Ef then
+            return;
+         end if;
+         if El > Local'Last or else Ef < 1 then
             return;
          end if;
 
          declare
             Ext_Len : constant Natural := El - Ef + 1;
-            Ext_Copy : Octet_Array (1 .. Ext_Len) :=
-              Local (Ef .. El);
-            Ks_Ef, Ks_El : Natural;
-            Ks_Found : Boolean;
          begin
-            Tls_Core.Ext_Walk_Rflx.Find_Key_Share_X25519_Sh
-              (Ext_Copy, Ks_Ef, Ks_El, Ks_Found);
-            if Ks_Found then
-               Key_Share_First :=
-                 In_Bytes'First + (Ef - 1) + Ks_Ef - 1;
-               Key_Share_Last :=
-                 In_Bytes'First + (Ef - 1) + Ks_El - 1;
-               OK := True;
+            if Ext_Len < 4 then
+               return;
             end if;
+            declare
+               Ext_Copy : Octet_Array (1 .. Ext_Len) :=
+                 Local (Ef .. El);
+               Ks_Ef, Ks_El : Natural;
+               Ks_Found : Boolean;
+            begin
+               Tls_Core.Ext_Walk_Rflx.Find_Key_Share_X25519_Sh
+                 (Ext_Copy, Ks_Ef, Ks_El, Ks_Found);
+               if Ks_Found
+                 and then Ks_Ef >= 1 and then Ks_El >= 1
+                 and then Ks_Ef <= Ext_Len
+                 and then Ks_El <= Ext_Len
+                 and then In_Bytes'First <= Natural'Last - Ext_Len
+                 and then Ef - 1 <= Natural'Last - Ks_Ef
+                 and then Ef - 1 <= Natural'Last - Ks_El
+                 and then In_Bytes'First + (Ef - 1) <=
+                          Natural'Last - Ks_Ef
+                 and then In_Bytes'First + (Ef - 1) <=
+                          Natural'Last - Ks_El
+               then
+                  Key_Share_First :=
+                    In_Bytes'First + (Ef - 1) + Ks_Ef - 1;
+                  Key_Share_Last :=
+                    In_Bytes'First + (Ef - 1) + Ks_El - 1;
+                  OK := True;
+               end if;
+            end;
          end;
       end;
    end Decode_Server_Hello_Key_Share;

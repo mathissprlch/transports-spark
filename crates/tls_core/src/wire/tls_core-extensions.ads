@@ -37,6 +37,7 @@ is
    with
      Pre =>
        Host_Name'Length in 1 .. Max_Host_Name
+       and then Host_Name'Last < Integer'Last
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 5 + Host_Name'Length,
      Post =>
@@ -74,6 +75,7 @@ is
    with
      Pre =>
        Names_Buf'Length in 2 .. 65535
+       and then Names_Buf'Last < Integer'Last
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 2 + Names_Buf'Length,
      Post =>

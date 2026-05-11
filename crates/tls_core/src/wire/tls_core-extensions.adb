@@ -45,8 +45,9 @@ is
       Cursor := Cursor + 1;
       --  host_name length + bytes.
       Put_U16 (Out_Buf, Cursor, Unsigned_16 (Host_Name'Length));
-      for I in 1 .. Host_Name'Length loop
-         Out_Buf (Cursor + I) := Host_Name (Host_Name'First + I - 1);
+      for I in 0 .. Host_Name'Length - 1 loop
+         Out_Buf (Cursor + 1 + I) :=
+           Host_Name (Host_Name'First + I);
       end loop;
       Cursor := Cursor + Host_Name'Length;
       Out_Last := Cursor;
