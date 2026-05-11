@@ -9,9 +9,11 @@
 --    build flag. The pragma Inline + constant boolean lets the
 --    compiler dead-code-eliminate the call + string concatenation.
 
+with Logger_Config;
+
 package Logger is
 
-   Enable_Logging : constant Boolean := True;
+   Enable_Logging : constant Boolean := Logger_Config.Enable_Logging;
 
    type Level is (Debug, Info, Warn, Error);
 

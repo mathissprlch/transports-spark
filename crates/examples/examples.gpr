@@ -29,14 +29,20 @@ project Examples is
                  "tls_cli.adb",
                  "tls_interop.adb");
 
+   type Build_Mode_Kind is ("debug", "release");
+   Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");
+
    package Compiler is
-      for Default_Switches ("Ada") use
-        ("-g",
-         "-O0",
-         "-gnatwa",
-         "-gnatVa",
-         "-gnatyM100",
-         "-gnata");
+      case Build_Mode is
+         when "release" =>
+            for Default_Switches ("Ada") use
+              ("-g", "-O2", "-gnatn",
+               "-gnatwa", "-gnatyM100");
+         when "debug" =>
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnatwa", "-gnatVa",
+               "-gnatyM100", "-gnata");
+      end case;
    end Compiler;
 
 end Examples;

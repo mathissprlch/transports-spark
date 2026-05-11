@@ -80,7 +80,8 @@ procedure Tls_Cli is
    type Role_Kind is (R_Client, R_Server, R_None);
    type Mode_Kind is (M_Psk_Dhe_Ke, M_Cert_Ec, M_Cert_Rsa, M_Psk_Resume,
                       M_None);
-   type App_Action is (A_None, A_Send_Recv, A_Echo);
+   type App_Action is (A_None, A_Send_Recv, A_Echo,
+                       A_Bench_Handshake, A_Bench_Throughput);
 
    Role        : Role_Kind := R_None;
    Mode        : Mode_Kind := M_None;
@@ -101,6 +102,8 @@ procedure Tls_Cli is
    Recv_Len    : Natural := 0;
    Action      : App_Action := A_None;
    Quiet       : Boolean := False;
+   Bench_Iters : Positive := 100;
+   Bench_Bytes : Natural := 1_048_576;
 
    Exit_Code : Integer := 0;
    Aborted   : Boolean := False;
@@ -337,6 +340,18 @@ procedure Tls_Cli is
                  Natural'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--echo" then
                Action := A_Echo;
+            elsif Arg = "--bench-handshake" then
+               Action := A_Bench_Handshake;
+            elsif Arg = "--bench-throughput" then
+               Action := A_Bench_Throughput;
+            elsif Arg = "--bench-iters" then
+               A := A + 1;
+               Bench_Iters :=
+                 Positive'Value (Ada.Command_Line.Argument (A));
+            elsif Arg = "--bench-bytes" then
+               A := A + 1;
+               Bench_Bytes :=
+                 Natural'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--quiet" then
                Quiet := True;
             else
@@ -864,6 +879,47 @@ procedure Tls_Cli is
                   Tls_Core.Aead_Channel.Inner_Type_Application_Data,
                   Wire, Wire_Last);
                Tls_Core.Tcp_Transport.Send_All (Sock, Wire (1 .. Wire_Last));
+            end;
+         when A_Bench_Handshake =>
+            null;
+         when A_Bench_Throughput =>
+            declare
+               use Ada.Calendar;
+               Chunk   : constant Natural := 4096;
+               Payload : constant Octet_Array (1 .. Chunk) :=
+                 (others => 16#42#);
+               Wire    : Octet_Array (1 .. Chunk + 256) := (others => 0);
+               W_Last  : Natural;
+               Sent    : Natural := 0;
+               T0      : constant Time := Clock;
+            begin
+               while Sent < Bench_Bytes loop
+                  declare
+                     This : constant Natural :=
+                       Natural'Min (Chunk, Bench_Bytes - Sent);
+                  begin
+                     Tls_Core.Aead_Channel.Send
+                       (Out_Dir, Payload (1 .. This),
+                        Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+                        Wire, W_Last);
+                     Tls_Core.Tcp_Transport.Send_All
+                       (Sock, Wire (1 .. W_Last));
+                     Sent := Sent + This;
+                  end;
+               end loop;
+               declare
+                  Elapsed : constant Duration := Clock - T0;
+                  Mib     : constant Float :=
+                    Float (Sent) / 1_048_576.0;
+                  Mib_S   : constant Float :=
+                    Mib / Float'Max (Float (Elapsed), 1.0e-9);
+               begin
+                  Ada.Text_IO.Put_Line
+                    ("BENCH_THROUGHPUT:"
+                     & Natural'Image (Sent) & " B in"
+                     & Duration'Image (Elapsed) & " s ="
+                     & Integer'Image (Integer (Mib_S)) & " MiB/s");
+               end;
             end;
          when A_None =>
             null;
