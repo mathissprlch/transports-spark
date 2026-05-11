@@ -238,17 +238,29 @@ package body Tls_Interop_Inline is
          Note := To_Unbounded_String ("exception during handshake");
    end Run_Handshake_C2S;
 
+   procedure Open_S2C_Listener
+     (Port : Natural;
+      L    : out Tls_Core.Tcp_Transport.Listener;
+      OK   : out Boolean) is
+   begin
+      OK := False;
+      Tls_Core.Tcp_Transport.Listen (L, "127.0.0.1", Port);
+      OK := True;
+   exception
+      when others =>
+         OK := False;
+   end Open_S2C_Listener;
+
    procedure Run_Handshake_S2C
-     (Peer    : Peer_Kind;
+     (L       : in out Tls_Core.Tcp_Transport.Listener;
+      Peer    : Peer_Kind;
       Mode    : Mode_Kind;
       Cipher  : Cipher_Kind;
-      Port    : Natural;
       Result  : out Inline_Result;
       Elapsed : out Duration;
       Note    : out Unbounded_String)
    is
       pragma Unreferenced (Peer, Cipher);
-      L    : Tls_Core.Tcp_Transport.Listener;
       Sock : Tls_Core.Tcp_Transport.Channel;
       D    : Tls_Core.Tls13_Driver.Driver;
 
@@ -297,14 +309,6 @@ package body Tls_Interop_Inline is
             return;
       end case;
 
-      begin
-         Tls_Core.Tcp_Transport.Listen (L, "127.0.0.1", Port);
-      exception
-         when others =>
-            Note := To_Unbounded_String ("TCP listen failed");
-            return;
-      end;
-
       Tls_Core.Tcp_Transport.Accept_One (L, Sock);
       T0 := Clock;
 
@@ -319,7 +323,6 @@ package body Tls_Interop_Inline is
          if not OK or else In_Last = 0 then
             Note := To_Unbounded_String ("no CH received");
             Tls_Core.Tcp_Transport.Close (Sock);
-            Tls_Core.Tcp_Transport.Stop (L);
             return;
          end if;
          Tls_Core.Tls13_Driver.Step
@@ -332,7 +335,6 @@ package body Tls_Interop_Inline is
               ("not Awaiting_Cf: " & Tls_Core.Tls13_Driver.State'Image
                  (Tls_Core.Tls13_Driver.Current_State (D)));
             Tls_Core.Tcp_Transport.Close (Sock);
-            Tls_Core.Tcp_Transport.Stop (L);
             return;
          end if;
          Tls_Core.Tcp_Transport.Send_All (Sock, Out_Buf (1 .. Out_Last));
@@ -341,7 +343,6 @@ package body Tls_Interop_Inline is
          if not OK then
             Note := To_Unbounded_String ("no CF received");
             Tls_Core.Tcp_Transport.Close (Sock);
-            Tls_Core.Tcp_Transport.Stop (L);
             return;
          end if;
          Tls_Core.Tls13_Driver.Step
@@ -354,7 +355,6 @@ package body Tls_Interop_Inline is
               ("not Done: " & Tls_Core.Tls13_Driver.State'Image
                  (Tls_Core.Tls13_Driver.Current_State (D)));
             Tls_Core.Tcp_Transport.Close (Sock);
-            Tls_Core.Tcp_Transport.Stop (L);
             return;
          end if;
       end;

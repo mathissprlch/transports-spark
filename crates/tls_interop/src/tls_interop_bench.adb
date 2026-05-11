@@ -4,6 +4,7 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with GNAT.OS_Lib;           use GNAT.OS_Lib;
+with Tls_Core.Tcp_Transport;
 with Tls_Interop_Inline;
 with Tls_Interop_Output;
 
@@ -60,26 +61,23 @@ package body Tls_Interop_Bench is
       Mean, Sd, Min_V, Max_V : Float := 0.0;
    end record;
 
-   function Compute_Stats
-     (Arr : in out Float;
-      N   : Positive) return Stats
-   is
-      type Floats is array (Positive range <>) of Float;
-      Vals : Floats (1 .. N);
-      for Vals'Address use Arr'Address;
+   type Float_Vector is array (Positive range <>) of Float;
+
+   function Compute_Stats (Vals : Float_Vector) return Stats is
+      N : constant Positive := Vals'Length;
       S : Stats;
       Sum, Ssq : Float := 0.0;
    begin
       S.Min_V := Float'Last;
-      for I in 1 .. N loop
-         Sum := Sum + Vals (I);
-         if Vals (I) < S.Min_V then S.Min_V := Vals (I); end if;
-         if Vals (I) > S.Max_V then S.Max_V := Vals (I); end if;
+      for V of Vals loop
+         Sum := Sum + V;
+         if V < S.Min_V then S.Min_V := V; end if;
+         if V > S.Max_V then S.Max_V := V; end if;
       end loop;
       S.Mean := Sum / Float (N);
-      for I in 1 .. N loop
+      for V of Vals loop
          declare
-            D : constant Float := Vals (I) - S.Mean;
+            D : constant Float := V - S.Mean;
          begin
             Ssq := Ssq + D * D;
          end;
@@ -131,7 +129,6 @@ package body Tls_Interop_Bench is
       Psk_Id      : String)
    is
       use Tls_Interop_Output;
-      Max_Runs : constant Positive := Runs;
    begin
       Put_Line ("");
       Put_Line ("## Performance Benchmark ("
@@ -160,8 +157,8 @@ package body Tls_Interop_Bench is
                      declare
                         Dir_S    : constant String :=
                           (if Dir_Idx = 1 then "c2s" else "s2c");
-                        type Time_Arr is array (1 .. Max_Runs) of Float;
-                        Times    : Time_Arr := (others => 0.0);
+                        Times    : Float_Vector (1 .. Runs) :=
+                          (others => 0.0);
                         All_Pass : Boolean := True;
                      begin
                         for I in 1 .. Runs loop
@@ -181,24 +178,57 @@ package body Tls_Interop_Bench is
                               Sup    : Boolean;
                               El     : Duration;
                            begin
-                              Spawn_And_Reap (PC, Pid, Sup);
-                              if not Sup then
-                                 All_Pass := False;
-                              else
-                                 delay 0.3;
-                                 if Dir_S = "c2s" then
-                                    Run_Handshake_C2S
-                                      (P, M, C, Bp, IR, El, I_Note);
-                                 else
-                                    Run_Handshake_S2C
-                                      (P, M, C, Bp, IR, El, I_Note);
-                                 end if;
-                                 Kill_And_Wait (Pid);
-                                 if IR /= Tls_Interop_Inline.Pass then
+                              if Dir_S = "c2s" then
+                                 Spawn_And_Reap (PC, Pid, Sup);
+                                 if not Sup then
                                     All_Pass := False;
                                  else
-                                    Times (I) := Float (El);
+                                    delay 0.3;
+                                    Run_Handshake_C2S
+                                      (P, M, C, Bp, IR, El, I_Note);
+                                    Kill_And_Wait (Pid);
+                                    if IR /= Tls_Interop_Inline.Pass then
+                                       All_Pass := False;
+                                    else
+                                       Times (I) := Float (El);
+                                    end if;
                                  end if;
+                              else
+                                 --  s2c: open Ada listener BEFORE
+                                 --  spawning the peer client so the
+                                 --  peer's connect() finds a queued
+                                 --  socket (avoids Accept_One hangs
+                                 --  on lost-race connect refused).
+                                 declare
+                                    L : Tls_Core.Tcp_Transport.Listener;
+                                    L_OK : Boolean;
+                                 begin
+                                    Open_S2C_Listener (Bp, L, L_OK);
+                                    if not L_OK then
+                                       All_Pass := False;
+                                    else
+                                       Spawn_And_Reap (PC, Pid, Sup);
+                                       if not Sup then
+                                          All_Pass := False;
+                                          Tls_Core.Tcp_Transport.Stop
+                                            (L);
+                                       else
+                                          Run_Handshake_S2C
+                                            (L, P, M, C,
+                                             IR, El, I_Note);
+                                          Kill_And_Wait (Pid);
+                                          Tls_Core.Tcp_Transport.Stop
+                                            (L);
+                                          if IR /= Tls_Interop_Inline
+                                                     .Pass
+                                          then
+                                             All_Pass := False;
+                                          else
+                                             Times (I) := Float (El);
+                                          end if;
+                                       end if;
+                                    end if;
+                                 end;
                               end if;
                            end;
                            exit when not All_Pass;
@@ -206,7 +236,7 @@ package body Tls_Interop_Bench is
                         if All_Pass then
                            declare
                               S : constant Stats :=
-                                Compute_Stats (Times (1), Runs);
+                                Compute_Stats (Times);
                               Runs_S : Unbounded_String;
                            begin
                               if Runs <= 5 then
@@ -268,8 +298,7 @@ package body Tls_Interop_Bench is
             Srv_Args, Cli_Args : Argument_List_Access;
             Srv_Sup, Cli_Sup : Boolean;
             Srv_R, Cli_R : Unbounded_String;
-            type Dur_Arr is array (1 .. Runs) of Float;
-            Ts : Dur_Arr := (others => 0.0);
+            Ts : Float_Vector (1 .. Runs) := (others => 0.0);
             Ok : Boolean := True;
          begin
             Cli.Role := Client;
@@ -297,7 +326,7 @@ package body Tls_Interop_Bench is
                if Ok then
                   declare
                      S : constant Stats :=
-                       Compute_Stats (Ts (1), Runs);
+                       Compute_Stats (Ts);
                   begin
                      Put_Line
                        ("| " & Image (RP) & "->" & Image (RP)
@@ -348,8 +377,7 @@ package body Tls_Interop_Bench is
                declare
                   M : Mode_Kind;
                   C : Cipher_Kind;
-                  type Tput_Arr is array (1 .. Runs) of Float;
-                  Tputs    : Tput_Arr := (others => 0.0);
+                  Tputs    : Float_Vector (1 .. Runs) := (others => 0.0);
                   All_Pass : Boolean := True;
                begin
                   Feature_To_Cell (F, M, C);
@@ -388,7 +416,7 @@ package body Tls_Interop_Bench is
                   if All_Pass then
                      declare
                         S : constant Stats :=
-                          Compute_Stats (Tputs (1), Runs);
+                          Compute_Stats (Tputs);
                      begin
                         Put_Line
                           ("| " & Image (P)
