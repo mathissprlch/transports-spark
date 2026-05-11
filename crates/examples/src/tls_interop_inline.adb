@@ -368,4 +368,70 @@ package body Tls_Interop_Inline is
          Note := To_Unbounded_String ("exception during s2c handshake");
    end Run_Handshake_S2C;
 
+   procedure Run_Peer_Vs_Peer
+     (Server_Bin  : String;
+      Server_Args : GNAT.OS_Lib.Argument_List;
+      Client_Bin  : String;
+      Client_Args : GNAT.OS_Lib.Argument_List;
+      Result      : out Inline_Result;
+      Elapsed     : out Duration;
+      Note        : out Unbounded_String)
+   is
+      use GNAT.OS_Lib;
+      Server_Pid, Client_Pid : Process_Id;
+      T0 : Time;
+   begin
+      Result  := Fail;
+      Elapsed := 0.0;
+      Note    := Null_Unbounded_String;
+
+      Server_Pid := Non_Blocking_Spawn
+        (Server_Bin, Server_Args, "/dev/null", True);
+      if Server_Pid = Invalid_Pid then
+         Note := To_Unbounded_String ("peer server spawn failed");
+         return;
+      end if;
+      delay 0.5;
+
+      T0 := Clock;
+      Client_Pid := Non_Blocking_Spawn
+        (Client_Bin, Client_Args, "/dev/null", True);
+      if Client_Pid = Invalid_Pid then
+         Kill (Server_Pid, Hard_Kill => True);
+         declare
+            Rp : Process_Id; Ok : Boolean;
+         begin
+            Wait_Process (Rp, Ok);
+         exception when others => null;
+         end;
+         Note := To_Unbounded_String ("peer client spawn failed");
+         return;
+      end if;
+
+      declare
+         Rp : Process_Id;
+         Ok : Boolean;
+      begin
+         Wait_Process (Rp, Ok);
+         Elapsed := Clock - T0;
+         if Ok then
+            Result := Pass;
+         else
+            Note := To_Unbounded_String ("peer client exited non-zero");
+         end if;
+      exception
+         when others =>
+            Elapsed := Clock - T0;
+            Note := To_Unbounded_String ("wait failed");
+      end;
+
+      Kill (Server_Pid, Hard_Kill => True);
+      declare
+         Rp : Process_Id; Ok : Boolean;
+      begin
+         Wait_Process (Rp, Ok);
+      exception when others => null;
+      end;
+   end Run_Peer_Vs_Peer;
+
 end Tls_Interop_Inline;

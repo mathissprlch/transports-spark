@@ -1181,6 +1181,105 @@ begin
          end loop;
       end;
       Put_Line ("");
+      Put_Line ("### Peer-vs-Peer Reference (cert-ec, client→server)");
+      Put_Line ("");
+      Put_Line ("| Matchup | Mean (s) | Std Dev (s) | Min (s) | Max (s) |");
+      Put_Line ("|---------|----------|-------------|---------|---------|");
+      declare
+         Ref_Peers : constant array (1 .. 4) of Peer_Kind :=
+           (Openssl, Go_Lang, Mbedtls, Gnutls);
+      begin
+         for RP of Ref_Peers loop
+            if Peer_Matches_Filter (RP) then
+               declare
+                  Bp : constant Natural := Alloc_Port;
+                  Srv_Cell, Cli_Cell : Cell_Spec := (others => <>);
+                  Srv_Bin, Cli_Bin : Unbounded_String;
+                  Srv_Args, Cli_Args : Argument_List_Access;
+                  Srv_Sup, Cli_Sup : Boolean;
+                  Srv_R, Cli_R : Unbounded_String;
+                  type Dur_Arr is array (1 .. Bench_Runs) of Duration;
+                  Ts : Dur_Arr := (others => 0.0);
+                  Sum_D : Duration := 0.0;
+                  Mean_F, Sd_F : Float;
+                  Min_D : Duration := Duration'Last;
+                  Max_D : Duration := 0.0;
+                  Ok : Boolean := True;
+               begin
+                  Srv_Cell.Peer := RP;  Srv_Cell.Role := Server;
+                  Srv_Cell.Mode := Cert_Ec; Srv_Cell.Cipher := Auto;
+                  Srv_Cell.Port := Bp;
+                  Srv_Cell.Host := To_Unbounded_String ("127.0.0.1");
+                  Srv_Cell.Cert_Pem :=
+                    To_Unbounded_String (EC_Dir & "/leaf.pem");
+                  Srv_Cell.Key_Pem :=
+                    To_Unbounded_String (EC_Dir & "/leaf.key");
+                  Srv_Cell.Trust_Pem :=
+                    To_Unbounded_String (EC_Dir & "/root.pem");
+                  Cli_Cell := Srv_Cell;
+                  Cli_Cell.Role := Client;
+                  Cli_Cell.Hostname :=
+                    To_Unbounded_String ("localhost");
+                  Build_Command (Srv_Cell, Srv_Bin, Srv_Args,
+                                 Srv_Sup, Srv_R);
+                  Build_Command (Cli_Cell, Cli_Bin, Cli_Args,
+                                 Cli_Sup, Cli_R);
+                  if Srv_Sup and then Cli_Sup then
+                     for I in 1 .. Bench_Runs loop
+                        declare
+                           use Tls_Interop_Inline;
+                           IR : Inline_Result;
+                           I_Note : Unbounded_String;
+                        begin
+                           Run_Peer_Vs_Peer
+                             (To_String (Srv_Bin), Srv_Args.all,
+                              To_String (Cli_Bin), Cli_Args.all,
+                              IR, Ts (I), I_Note);
+                           if IR /= Tls_Interop_Inline.Pass then
+                              Ok := False; exit;
+                           end if;
+                           Sum_D := Sum_D + Ts (I);
+                           if Ts (I) < Min_D then
+                              Min_D := Ts (I);
+                           end if;
+                           if Ts (I) > Max_D then
+                              Max_D := Ts (I);
+                           end if;
+                        end;
+                     end loop;
+                     if Ok then
+                        Mean_F := Float (Sum_D) / Float (Bench_Runs);
+                        declare
+                           Ssq : Duration := 0.0;
+                        begin
+                           for I in 1 .. Bench_Runs loop
+                              declare
+                                 Df : constant Float :=
+                                   Float (Ts (I)) - Mean_F;
+                              begin
+                                 Ssq := Ssq + Duration (Df * Df);
+                              end;
+                           end loop;
+                           Sd_F := (if Bench_Runs > 1 then
+                             Ada.Numerics.Elementary_Functions.Sqrt
+                               (Float (Ssq) / Float (Bench_Runs))
+                             else 0.0);
+                        end;
+                        Put_Line
+                          ("| " & Image (RP) & "→" & Image (RP)
+                           & " | "
+                           & Image_Time (Duration (Mean_F)) & " | "
+                           & Image_Time (Duration (Sd_F)) & " | "
+                           & Image_Time (Min_D) & " | "
+                           & Image_Time (Max_D) & " |");
+                     end if;
+                  end if;
+                  Free (Srv_Args); Free (Cli_Args);
+               end;
+            end if;
+         end loop;
+      end;
+      Put_Line ("");
    end if;
 
    case Format is
