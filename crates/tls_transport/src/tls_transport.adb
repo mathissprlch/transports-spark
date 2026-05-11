@@ -206,7 +206,7 @@ package body Tls_Transport is
       Config : Tls_Config)
    is
       use Tls_Core;
-      Out_Buf  : Octet_Array (1 .. 2048) := (others => 0);
+      Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
       Out_Last : Natural;
    begin
       Tcp_Transport.Connect (Chan.Tcp, Host, Port);

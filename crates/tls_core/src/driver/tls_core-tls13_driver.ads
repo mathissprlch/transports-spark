@@ -362,8 +362,10 @@ is
       Out_Last  : out Natural)
    with
      Pre  =>
-       Out_Buf'First = 1
-       and then Out_Buf'Length >= 1024,
+       In_Bytes'First = 1
+       and then In_Bytes'Length <= 16640 + 5
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= 4096,
      Post =>
        Out_Last in 0 .. Out_Buf'Last;
 
