@@ -23,6 +23,7 @@ with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Exceptions;
 with Ada.Numerics.Discrete_Random;
+with Ada.Numerics.Elementary_Functions;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO;
@@ -40,6 +41,8 @@ procedure Tls_Interop is
 
    Format       : Format_Kind := Markdown;
    Quick        : Boolean := False;
+   Bench        : Boolean := False;
+   Bench_Runs   : Positive := 5;
    Peers_Filter : Unbounded_String := Null_Unbounded_String;  -- empty = all
    Show_Help    : Boolean := False;
 
@@ -76,6 +79,12 @@ procedure Tls_Interop is
                return;
             elsif Arg = "--quick" then
                Quick := True;
+            elsif Arg = "--bench" then
+               Bench := True;
+            elsif Arg = "--bench-runs" then
+               A := A + 1;
+               Bench_Runs :=
+                 Positive'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--peer" then
                A := A + 1;
                Peers_Filter := To_Unbounded_String
@@ -894,6 +903,137 @@ begin
          end if;
       end loop;
    end;
+
+   if Bench and then Format = Markdown then
+      Put_Line ("");
+      Put_Line ("## Performance Benchmark (" &
+                Ada.Strings.Fixed.Trim
+                  (Positive'Image (Bench_Runs), Ada.Strings.Both)
+                & " runs per cell)");
+      Put_Line ("");
+      Put_Line ("| Peer | Feature | Dir | " &
+                (if Bench_Runs <= 5
+                 then "Runs (s) | "
+                 else "") &
+                "Mean (s) | Std Dev (s) | Min (s) | Max (s) |");
+      Put_Line ("|------|---------|-----|" &
+                (if Bench_Runs <= 5
+                 then "----------|"
+                 else "") &
+                "----------|-------------|---------|---------|");
+      declare
+         Peers_Arr : constant array (1 .. 7) of Peer_Kind :=
+           (Openssl, Boringssl, Go_Lang, Rustls,
+            Gnutls, Mbedtls, Wolfssl);
+      begin
+         for P of Peers_Arr loop
+            exit when not Peer_Matches_Filter (P);
+            if Peer_Matches_Filter (P) then
+               for F in Feature_Kind'Range loop
+                  exit when Quick and then F > Cert_Ecdsa_P256_Sha256;
+                  if Ada_Supports (F) and then Peer_Supports (P, F)
+                    and then F /= Psk_Resumption
+                  then
+                     declare
+                        M : Mode_Kind;
+                        C : Cipher_Kind;
+                     begin
+                        Feature_To_Cell (F, M, C);
+                        for Dir_Idx in 1 .. 2 loop
+                           declare
+                              Dir_S : constant String :=
+                                (if Dir_Idx = 1 then "c2s" else "s2c");
+                              type Time_Arr is
+                                array (1 .. Bench_Runs) of Duration;
+                              Times : Time_Arr := (others => 0.0);
+                              R     : Cell_Result;
+                              N     : Unbounded_String;
+                              Sum, Sumsq : Duration := 0.0;
+                              Mean_V, Sd_V : Float;
+                              Min_V : Duration := Duration'Last;
+                              Max_V : Duration := 0.0;
+                              All_Pass : Boolean := True;
+                           begin
+                              for I in 1 .. Bench_Runs loop
+                                 Run_Cell (P, M, C, Dir_S,
+                                           Image (F), R, N,
+                                           Times (I));
+                                 if R /= Pass then
+                                    All_Pass := False;
+                                    exit;
+                                 end if;
+                                 Sum := Sum + Times (I);
+                                 if Times (I) < Min_V then
+                                    Min_V := Times (I);
+                                 end if;
+                                 if Times (I) > Max_V then
+                                    Max_V := Times (I);
+                                 end if;
+                              end loop;
+                              if All_Pass then
+                                 Mean_V := Float (Sum) /
+                                           Float (Bench_Runs);
+                                 for I in 1 .. Bench_Runs loop
+                                    declare
+                                       D : constant Float :=
+                                         Float (Times (I)) - Mean_V;
+                                    begin
+                                       Sumsq := Sumsq +
+                                         Duration (D * D);
+                                    end;
+                                 end loop;
+                                 declare
+                                    Variance : constant Float :=
+                                      Float (Sumsq) /
+                                        Float (Bench_Runs);
+                                 begin
+                                    Sd_V := (if Bench_Runs > 1
+                                             and then Variance > 0.0
+                                             then Ada.Numerics
+                                               .Elementary_Functions
+                                               .Sqrt (Variance)
+                                             else 0.0);
+                                 end;
+                                 declare
+                                    Runs_S : Unbounded_String :=
+                                      Null_Unbounded_String;
+                                 begin
+                                    if Bench_Runs <= 5 then
+                                       for I in 1 .. Bench_Runs loop
+                                          if I > 1 then
+                                             Append (Runs_S, ", ");
+                                          end if;
+                                          Append
+                                            (Runs_S,
+                                             Image_Time (Times (I)));
+                                       end loop;
+                                    end if;
+                                    Put_Line
+                                      ("| " & Image (P)
+                                       & " | " & Image (F)
+                                       & " | " & Dir_S & " | "
+                                       & (if Bench_Runs <= 5
+                                          then To_String (Runs_S)
+                                               & " | "
+                                          else "")
+                                       & Image_Time (Duration (Mean_V))
+                                       & " | "
+                                       & Image_Time (Duration (Sd_V))
+                                       & " | "
+                                       & Image_Time (Min_V) & " | "
+                                       & Image_Time (Max_V) & " |");
+                                 end;
+                              end if;
+                           end;
+                        end loop;
+                     end;
+                  end if;
+               end loop;
+            end if;
+         end loop;
+      end;
+      Put_Line ("");
+   end if;
 
    case Format is
       when Markdown =>

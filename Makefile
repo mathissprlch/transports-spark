@@ -137,10 +137,10 @@ tls-perf: tls-build
 OPT_LEVEL ?= 2
 
 tls-bench: tls-bench-build
-	@scripts/tls-bench.sh --opt $(OPT_LEVEL)
+	@$(TLS_INTEROP) --bench --bench-runs 5
 
 tls-bench-quick: tls-bench-build
-	@scripts/tls-bench.sh --quick --opt $(OPT_LEVEL)
+	@$(TLS_INTEROP) --bench --bench-runs 3 --quick
 
 tls-bench-build:
 	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_core build
