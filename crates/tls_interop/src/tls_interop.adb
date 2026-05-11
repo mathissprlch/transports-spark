@@ -602,6 +602,7 @@ begin
    if Bench and then Format = Markdown then
       declare
          use Tls_Interop_Bench;
+         use GNATCOLL.JSON;
          Filtered : Peer_Array (1 .. 7);
          N : Natural := 0;
          All_Feat : Feature_Array (1 .. Feature_Kind'Pos (Feature_Kind'Last) + 1);
@@ -617,6 +618,17 @@ begin
            (Openssl, Go_Lang, Mbedtls, Gnutls);
          Ref_Filtered : Peer_Array (1 .. 4);
          NR : Natural := 0;
+
+         Hs_Rows  : JSON_Array := Empty_Array;
+         Pvp_Rows : JSON_Array := Empty_Array;
+         Tp_Rows  : JSON_Array := Empty_Array;
+
+         --  Bench results land in Log_Dir/bench.json — full numeric
+         --  table for downstream parsing (CI, dashboards, regression
+         --  trackers).  Stdout gets one terse progress line per row.
+         --  See CLAUDE.md §15.
+         Bench_Json_Path : constant String :=
+           To_String (Log_Dir) & "/bench.json";
       begin
          for P of Peers loop
             if Peer_Matches_Filter (P) then
@@ -636,16 +648,48 @@ begin
 
          Run_Handshake_Bench
            (Filtered (1 .. N), All_Feat (1 .. NF), Bench_Runs,
-            To_String (Log_Dir), EC_Dir, Psk_Hex_Str, Psk_Identity);
+            To_String (Log_Dir), EC_Dir, Psk_Hex_Str, Psk_Identity,
+            Hs_Rows);
 
          Run_Peer_Vs_Peer_Bench
-           (Ref_Filtered (1 .. NR), Bench_Runs, EC_Dir);
+           (Ref_Filtered (1 .. NR), Bench_Runs, EC_Dir,
+            Pvp_Rows);
 
          Run_Throughput_Bench
            (Filtered (1 .. N), Tput_Feat, Bench_Runs, Bench_Bytes,
-            To_String (Log_Dir), EC_Dir, Psk_Hex_Str, Psk_Identity);
+            To_String (Log_Dir), EC_Dir, Psk_Hex_Str, Psk_Identity,
+            Tp_Rows);
+
+         declare
+            Top : constant JSON_Value := Create_Object;
+            Cfg : constant JSON_Value := Create_Object;
+            F   : Ada.Text_IO.File_Type;
+         begin
+            Cfg.Set_Field ("runs",       Bench_Runs);
+            Cfg.Set_Field ("bytes",      Bench_Bytes);
+            Cfg.Set_Field ("quick",      Quick);
+            Top.Set_Field ("schema",      "tls-bench-v1");
+            Top.Set_Field ("log_dir",     To_String (Log_Dir));
+            Top.Set_Field ("config",      Cfg);
+            Top.Set_Field ("handshake",   Hs_Rows);
+            Top.Set_Field ("peer_vs_peer", Pvp_Rows);
+            Top.Set_Field ("throughput",  Tp_Rows);
+            Ada.Text_IO.Create
+              (F, Ada.Text_IO.Out_File, Bench_Json_Path);
+            Ada.Text_IO.Put_Line (F, Top.Write (Compact => False));
+            Ada.Text_IO.Close (F);
+            Put_Line ("");
+            Put_Line ("Bench results: " & Bench_Json_Path);
+         exception
+            when others =>
+               if Ada.Text_IO.Is_Open (F) then
+                  Ada.Text_IO.Close (F);
+               end if;
+               Put_Line
+                 (Standard_Error,
+                  "tls_interop: failed to write " & Bench_Json_Path);
+         end;
       end;
-      Put_Line ("");
    end if;
 
    case Format is

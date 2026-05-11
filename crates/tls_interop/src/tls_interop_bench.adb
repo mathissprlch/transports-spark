@@ -4,13 +4,19 @@ with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with GNAT.OS_Lib;           use GNAT.OS_Lib;
+with GNATCOLL.JSON;         use GNATCOLL.JSON;
 with Tls_Core.Tcp_Transport;
 with Tls_Interop_Inline;
-with Tls_Interop_Output;
 
 package body Tls_Interop_Bench is
 
    use Ada.Text_IO;
+
+   function Img_Int (X : Integer) return String is
+     (Ada.Strings.Fixed.Trim (Integer'Image (X), Ada.Strings.Both));
+
+   function Img_Ms (Sec : Float) return String is
+     (Img_Int (Integer (Sec * 1000.0)) & "ms");
 
    subtype Port_Range is Natural range 20000 .. 59999;
    package Port_Random is new Ada.Numerics.Discrete_Random (Port_Range);
@@ -126,23 +132,12 @@ package body Tls_Interop_Bench is
       Log_Dir     : String;
       EC_Dir      : String;
       Psk_Hex     : String;
-      Psk_Id      : String)
+      Psk_Id      : String;
+      Json_Out    : in out GNATCOLL.JSON.JSON_Array)
    is
-      use Tls_Interop_Output;
    begin
-      Put_Line ("");
-      Put_Line ("## Performance Benchmark ("
-                & Ada.Strings.Fixed.Trim
-                    (Positive'Image (Runs), Ada.Strings.Both)
-                & " runs per cell)");
-      Put_Line ("");
-      Put_Line ("| Peer | Feature | Dir | "
-                & (if Runs <= 5 then "Runs (s) | " else "")
-                & "Mean (s) | Std Dev (s) | Min (s) | Max (s) |");
-      Put_Line ("|------|---------|-----|"
-                & (if Runs <= 5 then "----------|" else "")
-                & "----------|-------------|---------|---------|");
-
+      Put_Line (Standard_Error,
+                "[bench] handshake: " & Img_Int (Runs) & " runs/cell");
       for P of Peers loop
          for F of Features loop
             if Ada_Supports (F) and then Peer_Supports (P, F)
@@ -335,33 +330,36 @@ package body Tls_Interop_Bench is
                            declare
                               S : constant Stats :=
                                 Compute_Stats (Times);
-                              Runs_S : Unbounded_String;
+                              Row : constant JSON_Value :=
+                                Create_Object;
+                              Runs_Json : JSON_Array := Empty_Array;
                            begin
-                              if Runs <= 5 then
-                                 for I in 1 .. Runs loop
-                                    if I > 1 then
-                                       Append (Runs_S, ", ");
-                                    end if;
-                                    Append (Runs_S,
-                                      Image_Time (Duration (Times (I))));
-                                 end loop;
-                              end if;
-                              Put_Line
-                                ("| " & Image (P)
-                                 & " | " & Image (F)
-                                 & " | " & Dir_S & " | "
-                                 & (if Runs <= 5
-                                    then To_String (Runs_S) & " | "
-                                    else "")
-                                 & Image_Time (Duration (S.Mean))
-                                 & " | "
-                                 & Image_Time (Duration (S.Sd))
-                                 & " | "
-                                 & Image_Time (Duration (S.Min_V))
-                                 & " | "
-                                 & Image_Time (Duration (S.Max_V))
-                                 & " |");
+                              for I in 1 .. Runs loop
+                                 Append
+                                   (Runs_Json,
+                                    Create (Float (Times (I))));
+                              end loop;
+                              Row.Set_Field ("peer",      Image (P));
+                              Row.Set_Field ("feature",   Image (F));
+                              Row.Set_Field ("direction", Dir_S);
+                              Row.Set_Field ("runs_s",    Runs_Json);
+                              Row.Set_Field ("mean_s",    Float (S.Mean));
+                              Row.Set_Field ("sd_s",      Float (S.Sd));
+                              Row.Set_Field ("min_s",     Float (S.Min_V));
+                              Row.Set_Field ("max_s",     Float (S.Max_V));
+                              Append (Json_Out, Row);
+                              Put_Line (Standard_Error,
+                                "[bench] hs " & Image (P)
+                                & " " & Image (F)
+                                & " " & Dir_S
+                                & " mean=" & Img_Ms (S.Mean)
+                                & " sd="   & Img_Ms (S.Sd));
                            end;
+                        else
+                           Put_Line (Standard_Error,
+                             "[bench] hs " & Image (P)
+                             & " " & Image (F)
+                             & " " & Dir_S & " SKIP");
                         end if;
                      end;
                   end loop;
@@ -372,19 +370,13 @@ package body Tls_Interop_Bench is
    end Run_Handshake_Bench;
 
    procedure Run_Peer_Vs_Peer_Bench
-     (Peers  : Peer_Array;
-      Runs   : Positive;
-      EC_Dir : String)
+     (Peers    : Peer_Array;
+      Runs     : Positive;
+      EC_Dir   : String;
+      Json_Out : in out GNATCOLL.JSON.JSON_Array)
    is
-      use Tls_Interop_Output;
    begin
-      Put_Line ("");
-      Put_Line ("### Peer-vs-Peer Reference (cert-ec, client->server)");
-      Put_Line ("");
-      Put_Line ("| Matchup | Mean (s) | Std Dev (s)"
-                & " | Min (s) | Max (s) |");
-      Put_Line ("|---------|----------|-------------|"
-                & "---------|---------|");
+      Put_Line (Standard_Error, "[bench] peer-vs-peer (cert-ec)");
       for RP of Peers loop
          declare
             Bp : constant Natural := Alloc_Port;
@@ -425,15 +417,29 @@ package body Tls_Interop_Bench is
                   declare
                      S : constant Stats :=
                        Compute_Stats (Ts);
+                     Row : constant JSON_Value := Create_Object;
+                     Runs_Json : JSON_Array := Empty_Array;
                   begin
-                     Put_Line
-                       ("| " & Image (RP) & "->" & Image (RP)
-                        & " | "
-                        & Image_Time (Duration (S.Mean)) & " | "
-                        & Image_Time (Duration (S.Sd)) & " | "
-                        & Image_Time (Duration (S.Min_V)) & " | "
-                        & Image_Time (Duration (S.Max_V)) & " |");
+                     for I in 1 .. Runs loop
+                        Append (Runs_Json, Create (Float (Ts (I))));
+                     end loop;
+                     Row.Set_Field
+                       ("matchup", Image (RP) & "->" & Image (RP));
+                     Row.Set_Field ("runs_s", Runs_Json);
+                     Row.Set_Field ("mean_s", Float (S.Mean));
+                     Row.Set_Field ("sd_s",   Float (S.Sd));
+                     Row.Set_Field ("min_s",  Float (S.Min_V));
+                     Row.Set_Field ("max_s",  Float (S.Max_V));
+                     Append (Json_Out, Row);
+                     Put_Line (Standard_Error,
+                       "[bench] pvp " & Image (RP) & "->" & Image (RP)
+                       & " mean=" & Img_Ms (S.Mean)
+                       & " sd="   & Img_Ms (S.Sd));
                   end;
+               else
+                  Put_Line (Standard_Error,
+                    "[bench] pvp " & Image (RP) & "->" & Image (RP)
+                    & " SKIP");
                end if;
             end if;
             Free (Srv_Args); Free (Cli_Args);
@@ -449,26 +455,14 @@ package body Tls_Interop_Bench is
       Log_Dir     : String;
       EC_Dir      : String;
       Psk_Hex     : String;
-      Psk_Id      : String)
+      Psk_Id      : String;
+      Json_Out    : in out GNATCOLL.JSON.JSON_Array)
    is
       Mib : constant Float := Float (Bytes) / 1_048_576.0;
    begin
-      Put_Line ("");
-      Put_Line ("### Throughput Benchmark (c2s, "
-                & Ada.Strings.Fixed.Trim
-                    (Natural'Image (Bytes / 1024), Ada.Strings.Both)
-                & " KiB, "
-                & Ada.Strings.Fixed.Trim
-                    (Positive'Image (Runs), Ada.Strings.Both)
-                & " runs)");
-      Put_Line ("");
-      Put_Line
-        ("| Peer | Cipher | Mean (MiB/s) | Std Dev |"
-         & " Min (MiB/s) | Max (MiB/s) |");
-      Put_Line
-        ("|------|--------|--------------|---------|"
-         & "-------------|-------------|");
-
+      Put_Line (Standard_Error,
+                "[bench] throughput: " & Img_Int (Bytes / 1024)
+                & " KiB, " & Img_Int (Runs) & " runs/cell");
       for P of Peers loop
          for F of Features loop
             if Ada_Supports (F) and then Peer_Supports (P, F) then
@@ -553,34 +547,38 @@ package body Tls_Interop_Bench is
                      declare
                         S : constant Stats :=
                           Compute_Stats (Tputs);
+                        Row : constant JSON_Value := Create_Object;
+                        Runs_Json : JSON_Array := Empty_Array;
                      begin
-                        Put_Line
-                          ("| " & Image (P)
-                           & " | " & Image (F)
-                           & " | "
-                           & Ada.Strings.Fixed.Trim
-                               (Integer'Image (Integer (S.Mean)),
-                                Ada.Strings.Both)
-                           & " | "
-                           & Ada.Strings.Fixed.Trim
-                               (Integer'Image (Integer (S.Sd)),
-                                Ada.Strings.Both)
-                           & " | "
-                           & Ada.Strings.Fixed.Trim
-                               (Integer'Image (Integer (S.Min_V)),
-                                Ada.Strings.Both)
-                           & " | "
-                           & Ada.Strings.Fixed.Trim
-                               (Integer'Image (Integer (S.Max_V)),
-                                Ada.Strings.Both)
-                           & " |");
+                        for I in 1 .. Runs loop
+                           Append
+                             (Runs_Json, Create (Float (Tputs (I))));
+                        end loop;
+                        Row.Set_Field ("peer",    Image (P));
+                        Row.Set_Field ("feature", Image (F));
+                        Row.Set_Field ("bytes",   Bytes);
+                        Row.Set_Field ("runs_mibps", Runs_Json);
+                        Row.Set_Field ("mean_mibps", Float (S.Mean));
+                        Row.Set_Field ("sd_mibps",   Float (S.Sd));
+                        Row.Set_Field ("min_mibps",  Float (S.Min_V));
+                        Row.Set_Field ("max_mibps",  Float (S.Max_V));
+                        Append (Json_Out, Row);
+                        Put_Line (Standard_Error,
+                          "[bench] tp " & Image (P)
+                          & " " & Image (F)
+                          & " mean=" & Img_Int (Integer (S.Mean))
+                          & "MiB/s sd="
+                          & Img_Int (Integer (S.Sd)));
                      end;
+                  else
+                     Put_Line (Standard_Error,
+                       "[bench] tp " & Image (P)
+                       & " " & Image (F) & " SKIP");
                   end if;
                end;
             end if;
          end loop;
       end loop;
-      Put_Line ("");
    end Run_Throughput_Bench;
 
 end Tls_Interop_Bench;
