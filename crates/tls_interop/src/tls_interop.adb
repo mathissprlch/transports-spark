@@ -44,6 +44,7 @@ procedure Tls_Interop is
    Quick        : Boolean := False;
    Bench        : Boolean := False;
    Bench_Runs   : Positive := 5;
+   Bench_Bytes  : Natural := 1_048_576;
    Peers_Filter : Unbounded_String := Null_Unbounded_String;  -- empty = all
    Show_Help    : Boolean := False;
 
@@ -86,6 +87,10 @@ procedure Tls_Interop is
                A := A + 1;
                Bench_Runs :=
                  Positive'Value (Ada.Command_Line.Argument (A));
+            elsif Arg = "--bench-bytes" then
+               A := A + 1;
+               Bench_Bytes :=
+                 Natural'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--peer" then
                A := A + 1;
                Peers_Filter := To_Unbounded_String
@@ -1276,6 +1281,188 @@ begin
                   end if;
                   Free (Srv_Args); Free (Cli_Args);
                end;
+            end if;
+         end loop;
+      end;
+      Put_Line ("");
+      Put_Line ("### Throughput Benchmark (c2s, "
+                & Ada.Strings.Fixed.Trim
+                    (Natural'Image (Bench_Bytes / 1024),
+                     Ada.Strings.Both)
+                & " KiB, "
+                & Ada.Strings.Fixed.Trim
+                    (Positive'Image (Bench_Runs), Ada.Strings.Both)
+                & " runs)");
+      Put_Line ("");
+      Put_Line
+        ("| Peer | Cipher | Mean (MiB/s) | Std Dev |"
+         & " Min (MiB/s) | Max (MiB/s) |");
+      Put_Line
+        ("|------|--------|--------------|---------|"
+         & "-------------|-------------|");
+      declare
+         Tput_Peers : constant array (1 .. 7) of Peer_Kind :=
+           (Openssl, Boringssl, Go_Lang, Rustls,
+            Gnutls, Mbedtls, Wolfssl);
+         Tput_Features : constant array (1 .. 4) of Feature_Kind :=
+           (Cert_Ecdsa_P256_Sha256,
+            Psk_External_Chacha20,
+            Psk_External_Aes128,
+            Psk_External_Aes256);
+         Mib : constant Float := Float (Bench_Bytes) / 1_048_576.0;
+      begin
+         for P of Tput_Peers loop
+            exit when not Peer_Matches_Filter (P);
+            if Peer_Matches_Filter (P) then
+               for F of Tput_Features loop
+                  if Ada_Supports (F) and then Peer_Supports (P, F) then
+                     declare
+                        M : Mode_Kind;
+                        C : Cipher_Kind;
+                        type Tput_Arr is
+                          array (1 .. Bench_Runs) of Float;
+                        Tputs    : Tput_Arr := (others => 0.0);
+                        All_Pass : Boolean := True;
+                     begin
+                        Feature_To_Cell (F, M, C);
+                        for I in 1 .. Bench_Runs loop
+                           declare
+                              use Tls_Interop_Inline;
+                              IR : Inline_Result;
+                              I_Note : Unbounded_String;
+                              Bp : constant Natural := Alloc_Port;
+                              PC : Cell_Spec := (others => <>);
+                              Pb : Unbounded_String;
+                              Pa : Argument_List_Access;
+                              Ps : Boolean;
+                              Pr : Unbounded_String;
+                              Peer_Pid : Process_Id;
+                              El : Duration;
+                           begin
+                              PC.Peer := P;
+                              PC.Role := Server;
+                              PC.Mode := M;
+                              PC.Cipher := C;
+                              PC.Port := Bp;
+                              PC.Host :=
+                                To_Unbounded_String ("127.0.0.1");
+                              PC.Psk_Hex :=
+                                To_Unbounded_String (Psk_Hex_Str);
+                              PC.Psk_Identity :=
+                                To_Unbounded_String (Psk_Identity);
+                              PC.Psk_File :=
+                                Log_Dir & "/psk32.bin";
+                              if M = Cert_Ec then
+                                 PC.Cert_Pem :=
+                                   To_Unbounded_String
+                                     (EC_Dir & "/leaf.pem");
+                                 PC.Key_Pem :=
+                                   To_Unbounded_String
+                                     (EC_Dir & "/leaf.key");
+                                 PC.Trust_Pem :=
+                                   To_Unbounded_String
+                                     (EC_Dir & "/root.pem");
+                              end if;
+                              Build_Command
+                                (PC, Pb, Pa, Ps, Pr);
+                              if Ps then
+                                 Peer_Pid := Non_Blocking_Spawn
+                                   (To_String (Pb), Pa.all,
+                                    "/dev/null", True);
+                                 delay 0.3;
+                                 Run_Throughput_C2S
+                                   (P, M, C, Bp, Bench_Bytes,
+                                    IR, El, I_Note);
+                                 Kill (Peer_Pid, Hard_Kill => True);
+                                 declare
+                                    Rp : Process_Id;
+                                    Ok : Boolean;
+                                 begin
+                                    Wait_Process (Rp, Ok);
+                                 exception
+                                    when others => null;
+                                 end;
+                                 if IR = Tls_Interop_Inline.Pass
+                                   and then El > 0.0
+                                 then
+                                    Tputs (I) :=
+                                      Mib / Float (El);
+                                 else
+                                    All_Pass := False;
+                                 end if;
+                              else
+                                 All_Pass := False;
+                              end if;
+                              Free (Pa);
+                           end;
+                           exit when not All_Pass;
+                        end loop;
+                        if All_Pass then
+                           declare
+                              Sum : Float := 0.0;
+                              Mean_V, Sd_V : Float;
+                              Min_V : Float := Float'Last;
+                              Max_V : Float := 0.0;
+                           begin
+                              for I in 1 .. Bench_Runs loop
+                                 Sum := Sum + Tputs (I);
+                                 if Tputs (I) < Min_V then
+                                    Min_V := Tputs (I);
+                                 end if;
+                                 if Tputs (I) > Max_V then
+                                    Max_V := Tputs (I);
+                                 end if;
+                              end loop;
+                              Mean_V :=
+                                Sum / Float (Bench_Runs);
+                              declare
+                                 Ssq : Float := 0.0;
+                              begin
+                                 for I in 1 .. Bench_Runs loop
+                                    declare
+                                       Df : constant Float :=
+                                         Tputs (I) - Mean_V;
+                                    begin
+                                       Ssq := Ssq + Df * Df;
+                                    end;
+                                 end loop;
+                                 Sd_V :=
+                                   (if Bench_Runs > 1
+                                    then Ada.Numerics
+                                      .Elementary_Functions
+                                      .Sqrt
+                                        (Ssq / Float (Bench_Runs))
+                                    else 0.0);
+                              end;
+                              Put_Line
+                                ("| " & Image (P)
+                                 & " | " & Image (F)
+                                 & " | "
+                                 & Ada.Strings.Fixed.Trim
+                                     (Integer'Image
+                                        (Integer (Mean_V)),
+                                      Ada.Strings.Both)
+                                 & " | "
+                                 & Ada.Strings.Fixed.Trim
+                                     (Integer'Image
+                                        (Integer (Sd_V)),
+                                      Ada.Strings.Both)
+                                 & " | "
+                                 & Ada.Strings.Fixed.Trim
+                                     (Integer'Image
+                                        (Integer (Min_V)),
+                                      Ada.Strings.Both)
+                                 & " | "
+                                 & Ada.Strings.Fixed.Trim
+                                     (Integer'Image
+                                        (Integer (Max_V)),
+                                      Ada.Strings.Both)
+                                 & " |");
+                           end;
+                        end if;
+                     end;
+                  end if;
+               end loop;
             end if;
          end loop;
       end;

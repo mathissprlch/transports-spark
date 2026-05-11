@@ -1,6 +1,7 @@
 with Ada.Calendar;
 with Ada.Streams.Stream_IO;
 with Tls_Core;
+with Tls_Core.Aead_Channel;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Suites;
 with Tls_Core.Tcp_Transport;
@@ -130,7 +131,7 @@ package body Tls_Interop_Inline is
       Priv_Key : constant Octet_Array (1 .. 32) := (others => 16#42#);
       Trust_Buf : Octet_Array (1 .. 4096) := (others => 0);
       Trust_Len : Natural;
-      Psk       : constant Octet_Array (1 .. 32) := (others => 16#AA#);
+      Psk       : constant Octet_Array (1 .. 32) := (others => 16#42#);
       Psk_Id    : constant Octet_Array := (Character'Pos ('T'),
         Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
 
@@ -167,7 +168,7 @@ package body Tls_Interop_Inline is
          when Psk_Dhe_Ke =>
             Tls_Core.Tls13_Driver.Init_Psk_Client
               (D, Psk, Psk_Id, Priv_Key);
-            Server_Records := 2;
+            Server_Records := 3;
          when others =>
             Note := To_Unbounded_String ("unsupported mode for inline");
             return;
@@ -256,7 +257,7 @@ package body Tls_Interop_Inline is
       Cert_Len : Natural;
       Key_Buf  : Octet_Array (1 .. 4096) := (others => 0);
       Key_Len  : Natural;
-      Psk      : constant Octet_Array (1 .. 32) := (others => 16#AA#);
+      Psk      : constant Octet_Array (1 .. 32) := (others => 16#42#);
       Psk_Id   : constant Octet_Array := (Character'Pos ('T'),
         Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
 
@@ -367,6 +368,153 @@ package body Tls_Interop_Inline is
          Elapsed := Clock - T0;
          Note := To_Unbounded_String ("exception during s2c handshake");
    end Run_Handshake_S2C;
+
+   procedure Run_Throughput_C2S
+     (Peer    : Peer_Kind;
+      Mode    : Mode_Kind;
+      Cipher  : Cipher_Kind;
+      Port    : Natural;
+      Bytes   : Natural;
+      Result  : out Inline_Result;
+      Elapsed : out Duration;
+      Note    : out Unbounded_String)
+   is
+      pragma Unreferenced (Peer, Cipher);
+      Sock : Tls_Core.Tcp_Transport.Channel;
+      D    : Tls_Core.Tls13_Driver.Driver;
+
+      Priv_Key : constant Octet_Array (1 .. 32) := (others => 16#42#);
+      Trust_Buf : Octet_Array (1 .. 4096) := (others => 0);
+      Trust_Len : Natural;
+      Psk       : constant Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk_Id    : constant Octet_Array := (Character'Pos ('T'),
+        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
+
+      EC_Dir : constant String :=
+        "crates/tls_core/tests/fixtures/interop/ec";
+      Hostname : constant Octet_Array := (
+        Character'Pos ('l'), Character'Pos ('o'), Character'Pos ('c'),
+        Character'Pos ('a'), Character'Pos ('l'), Character'Pos ('h'),
+        Character'Pos ('o'), Character'Pos ('s'), Character'Pos ('t'));
+
+      Server_Records : Positive := 5;
+   begin
+      Result  := Fail;
+      Elapsed := 0.0;
+      Note    := Null_Unbounded_String;
+
+      case Mode is
+         when Cert_Ec =>
+            Read_File (EC_Dir & "/root.der", Trust_Buf, Trust_Len);
+            if Trust_Len = 0 then
+               Note := To_Unbounded_String ("cannot read trust anchor");
+               return;
+            end if;
+            declare
+               TS : Tls_Core.Cert_Chain.Trust_Store;
+            begin
+               TS.Count := 1;
+               TS.Entries (1) := (First => 1, Last => Trust_Len);
+               Tls_Core.Tls13_Driver.Init_Cert_Client
+                 (D, Trust_Buf (1 .. Trust_Len), TS,
+                  Hostname, Priv_Key);
+            end;
+         when Psk_Dhe_Ke =>
+            Tls_Core.Tls13_Driver.Init_Psk_Client
+              (D, Psk, Psk_Id, Priv_Key);
+            Server_Records := 3;
+         when others =>
+            Note := To_Unbounded_String ("unsupported mode for inline");
+            return;
+      end case;
+
+      begin
+         Tls_Core.Tcp_Transport.Connect (Sock, "127.0.0.1", Port);
+      exception
+         when others =>
+            Note := To_Unbounded_String ("TCP connect failed");
+            return;
+      end;
+
+      declare
+         Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+         Out_Last : Natural;
+         Empty    : constant Octet_Array (1 .. 0) := (others => 0);
+      begin
+         Tls_Core.Tls13_Driver.Step
+           (D, In_Bytes => Empty,
+            Out_Buf => Out_Buf, Out_Last => Out_Last);
+         if Out_Last = 0 then
+            Note := To_Unbounded_String ("no CH produced");
+            Tls_Core.Tcp_Transport.Close (Sock);
+            return;
+         end if;
+         Tls_Core.Tcp_Transport.Send_All (Sock, Out_Buf (1 .. Out_Last));
+
+         declare
+            In_Buf  : Octet_Array (1 .. 16640 * 5 + 64) := (others => 0);
+            In_Last : Natural;
+            OK      : Boolean;
+            CF_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+            CF_Last : Natural;
+         begin
+            Read_Flight (Sock, Server_Records, In_Buf, In_Last, OK);
+            if not OK then
+               Note := To_Unbounded_String ("read server flight failed");
+               Tls_Core.Tcp_Transport.Close (Sock);
+               return;
+            end if;
+            Tls_Core.Tls13_Driver.Step
+              (D, In_Bytes => In_Buf (1 .. In_Last),
+               Out_Buf => CF_Buf, Out_Last => CF_Last);
+            if Tls_Core.Tls13_Driver.Current_State (D)
+                 /= Tls_Core.Tls13_Driver.Done
+            then
+               Note := To_Unbounded_String
+                 ("not Done: " & Tls_Core.Tls13_Driver.State'Image
+                    (Tls_Core.Tls13_Driver.Current_State (D)));
+               Tls_Core.Tcp_Transport.Close (Sock);
+               return;
+            end if;
+            Tls_Core.Tcp_Transport.Send_All
+              (Sock, CF_Buf (1 .. CF_Last));
+         end;
+      end;
+
+      declare
+         Out_Dir, In_Dir : Tls_Core.Aead_Channel.Direction;
+         Chunk   : constant Natural := 4096;
+         Payload : constant Octet_Array (1 .. Chunk) := (others => 16#42#);
+         Wire    : Octet_Array (1 .. Chunk + 256) := (others => 0);
+         W_Last  : Natural;
+         Sent    : Natural := 0;
+         T0      : Time;
+      begin
+         Tls_Core.Tls13_Driver.Open_App_Directions (D, Out_Dir, In_Dir);
+         T0 := Clock;
+         while Sent < Bytes loop
+            declare
+               This : constant Natural :=
+                 Natural'Min (Chunk, Bytes - Sent);
+            begin
+               Tls_Core.Aead_Channel.Send
+                 (Out_Dir, Payload (1 .. This),
+                  Tls_Core.Aead_Channel.Inner_Type_Application_Data,
+                  Wire, W_Last);
+               Tls_Core.Tcp_Transport.Send_All
+                 (Sock, Wire (1 .. W_Last));
+               Sent := Sent + This;
+            end;
+         end loop;
+         Elapsed := Clock - T0;
+      end;
+
+      Result := Pass;
+      Tls_Core.Tcp_Transport.Close (Sock);
+   exception
+      when others =>
+         Note := To_Unbounded_String ("exception during throughput");
+   end Run_Throughput_C2S;
 
    procedure Run_Peer_Vs_Peer
      (Server_Bin  : String;

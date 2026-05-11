@@ -24,6 +24,16 @@ package Tls_Interop_Inline is
       Elapsed : out Duration;
       Note    : out Unbounded_String);
 
+   procedure Run_Throughput_C2S
+     (Peer    : Peer_Kind;
+      Mode    : Mode_Kind;
+      Cipher  : Cipher_Kind;
+      Port    : Natural;
+      Bytes   : Natural;
+      Result  : out Inline_Result;
+      Elapsed : out Duration;
+      Note    : out Unbounded_String);
+
    procedure Run_Peer_Vs_Peer
      (Server_Bin  : String;
       Server_Args : GNAT.OS_Lib.Argument_List;
