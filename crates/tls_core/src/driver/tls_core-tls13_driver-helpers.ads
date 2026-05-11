@@ -81,7 +81,9 @@ is
      Pre =>
        Out_Buf'First = 1
        and then Body_Bytes'Length <= Natural'Last - 4
-       and then Out_Buf'Length >= 4 + Body_Bytes'Length;
+       and then Out_Buf'Length >= 4 + Body_Bytes'Length,
+     Post =>
+       Out_Last = 4 + Body_Bytes'Length;
 
    procedure Wrap_Tls_Plaintext
      (Hs_Bytes : Octet_Array;
@@ -91,7 +93,9 @@ is
      Pre =>
        Out_Buf'First = 1
        and then Hs_Bytes'Length <= Natural'Last - 5
-       and then Out_Buf'Length >= 5 + Hs_Bytes'Length;
+       and then Out_Buf'Length >= 5 + Hs_Bytes'Length,
+     Post =>
+       Out_Last = 5 + Hs_Bytes'Length;
 
    procedure Ensure_App_Out_Dir (D : in out Driver)
    with

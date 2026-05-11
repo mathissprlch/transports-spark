@@ -104,6 +104,9 @@ is
                      end if;
                      Suites_F     := Suites_F + Off;
                      Suites_L     := Suites_L + Off;
+                     if Suites_L > In_Bytes'Last then
+                        Decode_OK := False;
+                     end if;
                      Sig_Algs_F   := Sig_Algs_F + Off;
                      Sig_Algs_L   := Sig_Algs_L + Off;
                      Ks_F         := Ks_F + Off;
@@ -138,6 +141,7 @@ is
                  (D.My_Ecdhe_Priv, Peer_Pub, Shared);
                D.Ecdhe_Shared := Shared;
             end;
+            pragma Assert (Suites_L <= In_Bytes'Last);
             declare
                use type Tls_Core.Suites.U16;
                Found : Boolean := False;
@@ -146,7 +150,8 @@ is
             begin
                while Q + 1 <= Suites_L loop
                   pragma Loop_Invariant
-                    (Q in Suites_F .. Suites_L + 1);
+                    (Q in Suites_F .. Suites_L
+                     and then Suites_L <= In_Bytes'Last);
                   Code :=
                     Tls_Core.Suites.U16 (In_Bytes (Q)) * 256
                     + Tls_Core.Suites.U16 (In_Bytes (Q + 1));
@@ -439,6 +444,7 @@ is
                        Out_Cursor + Fin_Rec_Last) :=
               Fin_Rec (1 .. Fin_Rec_Last);
             Out_Last := Out_Cursor + Fin_Rec_Last;
+            pragma Assert (Out_Last in 0 .. Out_Buf'Last);
          end;
 
          --  App secrets + expected client Finished
@@ -462,6 +468,7 @@ is
          end;
 
          D.Cur_State := Awaiting_Cf;
+         pragma Assert (Out_Last <= Out_Buf'Last);
       end;
    end Handle;
 

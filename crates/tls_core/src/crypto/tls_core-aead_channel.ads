@@ -142,7 +142,15 @@ is
                      < Tls_Core.Record_Layer.Seq_Number'Last),
         Post =>
           Out_Last in 0 .. 5 + Plaintext'Length + 1 + 16
-          and then D.Suite = D.Suite'Old;
+          and then D.Suite = D.Suite'Old
+          and then (case D.Suite is
+            when Chacha20_Poly1305_Sha256 => True,
+            when Aes_128_Gcm_Sha256 =>
+              Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream) =
+                Tls_Core.Record_Layer.Seq_Of (D'Old.Aes128.Stream) + 1,
+            when Aes_256_Gcm_Sha384 =>
+              Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream) =
+                Tls_Core.Record_Layer.Seq_Of (D'Old.Aes256.Stream) + 1);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Decrypt one record. Dispatches on D.Suite.
