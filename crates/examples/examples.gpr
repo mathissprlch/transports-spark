@@ -26,8 +26,7 @@ project Examples is
                  "mqtt_retained_demo.adb",
                  "mqtt_will_demo.adb",
                  "mqtt_session_demo.adb",
-                 "tls_cli.adb",
-                 "tls_interop.adb");
+                 "tls_cli.adb");
 
    type Build_Mode_Kind is ("debug", "release");
    Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");

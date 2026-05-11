@@ -150,6 +150,7 @@ tls-bench-peer: tls-bench-build
 tls-bench-build:
 	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_core build
 	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_core/tests build
+	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/tls_interop build
 	@$(ALR_ENV) BUILD_MODE=release OPT_LEVEL=$(OPT_LEVEL) alr -C crates/examples build
 
 tls-prove: tls-audit
@@ -240,6 +241,7 @@ tls-ci: tls-audit tls-test tls-prove
 # binary (tls_cli) handles both client and server, all modes,
 # all extensions — driven by CLI flags.  Per CLAUDE.md §10a.
 tls-interop-build: tls-build tls-interop-go-helpers
+	@$(ALR_ENV) alr -C crates/tls_interop build
 	@$(ALR_ENV) alr -C crates/examples build
 
 # Pre-compile Go peer helpers; `go run` is too slow to start within
@@ -253,7 +255,7 @@ tls-interop-go-helpers:
 	@command -v go >/dev/null && go build -o crates/examples/bin/go_peer_server \
 	    scripts/interop/peers/go-helpers/server.go || true
 
-TLS_INTEROP := ./crates/examples/bin/tls_interop
+TLS_INTEROP := ./crates/tls_interop/bin/tls_interop
 
 tls-interop: tls-interop-build
 	@$(TLS_INTEROP)
