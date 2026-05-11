@@ -373,7 +373,7 @@ is
       Ku_Msg : Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
         (others => 0);
       Ku_Last : Natural;
-      Next_Secret : Tls_Core.Key_Sched.Max_Secret;
+      Next_Secret : Tls_Core.Key_Sched.Max_Secret := (others => 0);
    begin
       Out_Buf := (others => 0);
       Out_Last := 0;
@@ -418,7 +418,7 @@ is
       pragma Unreferenced (D);
       Request_Update : Octet;
       Decode_OK : Boolean;
-      Next_Secret : Tls_Core.Key_Sched.Max_Secret;
+      Next_Secret : Tls_Core.Key_Sched.Max_Secret := (others => 0);
    begin
       Want_Reply := False;
       OK := False;
