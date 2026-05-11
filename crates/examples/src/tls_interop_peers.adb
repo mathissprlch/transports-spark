@@ -818,6 +818,16 @@ package body Tls_Interop_Peers is
       end case;
    end Ada_Supports;
 
+   function Ada_Can_Attempt (F : Feature_Kind) return Boolean is
+   begin
+      case F is
+         when Cert_Rsa_Pss_Sha256 => return False;
+         when Psk_External_Aes256 => return True;
+         when Zero_Rtt            => return False;
+         when others              => return True;
+      end case;
+   end Ada_Can_Attempt;
+
    function Ada_Unblock_Link (F : Feature_Kind) return String is
    begin
       case F is

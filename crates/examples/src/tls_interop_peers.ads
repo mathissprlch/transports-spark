@@ -147,8 +147,15 @@ package Tls_Interop_Peers is
    --  Ada_Unblock_Link below.
    function Ada_Supports (F : Feature_Kind) return Boolean;
 
-   --  Work-item identifier for a NOT_IMPL_ADA cell.  Points to a
-   --  row in docs/v0.5-not-impl.md.  Empty when Ada_Supports = True.
+   --  Can the test meaningfully attempt to run this feature, even if
+   --  Ada_Supports is False?  True = the test will run and fail
+   --  (reclassified to XFAIL).  False = the test can't run at all
+   --  (e.g. no signing key, no early-data CLI flag) — shown as XFAIL
+   --  without spawning processes.
+   function Ada_Can_Attempt (F : Feature_Kind) return Boolean;
+
+   --  Work-item identifier for an XFAIL cell.  Points to a row in
+   --  docs/v0.5-not-impl.md.  Empty when Ada_Supports = True.
    function Ada_Unblock_Link (F : Feature_Kind) return String;
 
    --  Short label for the feature in the matrix table.

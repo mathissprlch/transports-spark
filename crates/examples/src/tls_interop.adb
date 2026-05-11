@@ -193,15 +193,15 @@ procedure Tls_Interop is
    --                     field carries a v0.5-not-impl.md anchor.
    --    NOT_IMPL_3P    — Ada has it; peer's CLI doesn't expose it
    --                     (or peer lib doesn't have it at all)
-   type Cell_Result is (Pass, Fail, Not_Impl_Ada, Not_Impl_3P);
+   type Cell_Result is (Pass, Fail, Xfail_Ada, Not_Impl_3P);
 
    function Image (R : Cell_Result) return String is
    begin
       case R is
-         when Pass         => return "PASS";
-         when Fail         => return "FAIL";
-         when Not_Impl_Ada => return "NOT_IMPL_ADA";
-         when Not_Impl_3P  => return "NOT_IMPL_3P";
+         when Pass       => return "PASS";
+         when Fail       => return "FAIL";
+         when Xfail_Ada  => return "XFAIL";
+         when Not_Impl_3P => return "NOT_IMPL_3P";
       end case;
    end Image;
 
@@ -530,12 +530,13 @@ procedure Tls_Interop is
       end Pad;
       function Cell (R : Cell_Result; T : Duration) return String is
         ((case R is
-            when Pass         => "PASS",
-            when Fail         => "FAIL",
-            when Not_Impl_Ada => "NI-Ada",
-            when Not_Impl_3P  => "NI-3P")
+            when Pass       => "PASS",
+            when Fail       => "FAIL",
+            when Xfail_Ada  => "XFAIL",
+            when Not_Impl_3P => "NI-3P")
          & " "
-         & (if R = Pass or R = Fail then Image_Time (T) else "       -"));
+         & (if R in Pass | Fail | Xfail_Ada
+            then Image_Time (T) else "       -"));
    begin
       Put_Line
         ("| " & Pad (Feature_Lbl, 29)
@@ -677,14 +678,15 @@ procedure Tls_Interop is
       C2S_Time,   S2C_Time   : Duration := 0.0;
       Note : Unbounded_String;
    begin
-      --  NOT_IMPL_ADA short-circuit: peer supports it but our
-      --  driver doesn't.  No subprocess spawn; result + work-item
-      --  link emitted directly.
-      if not Ada_Supports (Feat) then
-         C2S_Result := Not_Impl_Ada;
-         S2C_Result := Not_Impl_Ada;
+      --  XFAIL short-circuit: Ada driver doesn't support this
+      --  feature yet, and the test can't meaningfully run (e.g.
+      --  0-RTT requires early-data CLI plumbing that doesn't exist).
+      --  We still report it as XFAIL so it's visible in the matrix.
+      if not Ada_Supports (Feat) and then not Ada_Can_Attempt (Feat) then
+         C2S_Result := Xfail_Ada;
+         S2C_Result := Xfail_Ada;
          Note := To_Unbounded_String
-           ("see " & Ada_Unblock_Link (Feat));
+           ("XFAIL: see " & Ada_Unblock_Link (Feat));
       --  NOT_IMPL_3P short-circuit: peer's CLI / lib doesn't
       --  expose this feature.
       elsif not Peer_Supports (Peer, Feat) then
@@ -697,7 +699,7 @@ procedure Tls_Interop is
          --  to scripts/test-psk-resumption.sh <peer>.
          --  c2s only; s2c (Ada server accepting external
          --  resumption) is not yet wired.
-         S2C_Result := Not_Impl_Ada;
+         S2C_Result := Xfail_Ada;
          S2C_Note   := To_Unbounded_String
            ("Ada server resumption-accept not wired");
          declare
@@ -807,12 +809,30 @@ procedure Tls_Interop is
          elsif C2S_Result = Pass and then S2C_Result = Pass then
             Note := To_Unbounded_String (To_String (Log_Dir));
          else
-            --  One side ran (PASS or FAIL), the other was
-            --  short-circuited.  Carry whichever side's note is
-            --  populated.
             Note := (if C2S_Note /= Null_Unbounded_String
                      then C2S_Note else S2C_Note);
          end if;
+      end if;
+
+      --  Reclassify: if a feature is known-unimplemented in Ada and
+      --  the test failed, mark as XFAIL with the reason annotation.
+      if not Ada_Supports (Feat) then
+         declare
+            Link : constant String := Ada_Unblock_Link (Feat);
+            Ann  : constant Unbounded_String :=
+              To_Unbounded_String
+                ((if Link'Length > 0 then "XFAIL: see " & Link
+                  else "XFAIL: Ada driver gap"));
+         begin
+            if C2S_Result = Fail then
+               C2S_Result := Xfail_Ada;
+               Note := Ann;
+            end if;
+            if S2C_Result = Fail then
+               S2C_Result := Xfail_Ada;
+               Note := Ann;
+            end if;
+         end;
       end if;
       case Format is
          when Markdown =>
@@ -845,7 +865,7 @@ begin
          Put_Line ("Log directory: `" & To_String (Log_Dir) & "`");
          Put_Line ("");
          Put_Line ("Result classes: PASS, FAIL (Ada bug), "
-                   & "NI-Ada (Ada driver gap, link), NI-3P (peer-CLI gap)");
+                   & "XFAIL (expected fail, Ada gap), NI-3P (peer-CLI gap)");
          Put_Line ("");
          if Quick then
             Put_Line ("Mode: `--quick` (cert-ecdsa-p256-sha256 only)");
