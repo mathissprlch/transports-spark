@@ -327,7 +327,8 @@ is
          Tls_Core.Key_Sched.Transcript_Snapshot
               (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Cert);
          declare
-            Signed_Buf : Octet_Array (1 .. 64 + 33 + 1 + 32) :=
+            Signed_Buf : Octet_Array
+              (1 .. 64 + 33 + 1 + Tls_Core.Key_Sched.Max_Hash_Len) :=
               (others => 0);
             Signed_Last : Natural;
             K_Bytes : Tls_Core.Ecdsa_P256.Component;
@@ -346,7 +347,9 @@ is
          begin
             Tls_Core.Cert_Verify.Build_Signed_Content
               (Side            => Tls_Core.Cert_Verify.Server,
-               Transcript_Hash => Th_After_Cert (1 .. 32),
+               Transcript_Hash =>
+                 Th_After_Cert
+                   (1 .. Tls_Core.Key_Sched.Hash_Len (D.Suite)),
                Out_Buf         => Signed_Buf,
                Out_Last        => Signed_Last);
             Tls_Core.Ecdsa_P256.Derive_K_Rfc6979
