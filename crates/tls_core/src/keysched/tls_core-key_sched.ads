@@ -1,4 +1,5 @@
 with Tls_Core.Aead_Channel;
+with Tls_Core.Record_Layer;
 with Tls_Core.Suites;
 with Tls_Core.Transcript;
 with Tls_Core.Transcript_Sha384;
@@ -6,6 +7,8 @@ with Tls_Core.Transcript_Sha384;
 package Tls_Core.Key_Sched
 with SPARK_Mode
 is
+   use type Tls_Core.Suites.Cipher_Suite_Id;
+   use type Tls_Core.Record_Layer.Seq_Number;
 
    Max_Hash_Len : constant := 48;
    subtype Hash_Len_Range is Positive range 32 .. Max_Hash_Len;
@@ -70,6 +73,14 @@ is
      (Suite  : Tls_Core.Suites.Cipher_Suite_Id;
       Dir    : out Tls_Core.Aead_Channel.Direction;
       Secret : Max_Secret)
-   with Pre => not Dir'Constrained;
+   with Pre => not Dir'Constrained,
+        Post =>
+          Dir.Suite = Suite
+          and then (case Suite is
+            when Tls_Core.Suites.Chacha20_Poly1305_Sha256 => True,
+            when Tls_Core.Suites.Aes_128_Gcm_Sha256 =>
+              Tls_Core.Record_Layer.Seq_Of (Dir.Aes128.Stream) = 0,
+            when Tls_Core.Suites.Aes_256_Gcm_Sha384 =>
+              Tls_Core.Record_Layer.Seq_Of (Dir.Aes256.Stream) = 0);
 
 end Tls_Core.Key_Sched;

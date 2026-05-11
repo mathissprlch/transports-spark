@@ -139,7 +139,10 @@ is
                      < Tls_Core.Record_Layer.Seq_Number'Last,
                  when Aes_256_Gcm_Sha384 =>
                    Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
-                     < Tls_Core.Record_Layer.Seq_Number'Last);
+                     < Tls_Core.Record_Layer.Seq_Number'Last),
+        Post =>
+          Out_Last in 0 .. 5 + Plaintext'Length + 1 + 16
+          and then D.Suite = D.Suite'Old;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Decrypt one record. Dispatches on D.Suite.

@@ -996,7 +996,7 @@ private
       Alpn_Offers     : Octet_Array (1 .. 256) := (others => 0);
       Alpn_Offers_Len : Natural := 0;
       Selected_Alpn     : Octet_Array (1 .. 64) := (others => 0);
-      Selected_Alpn_Len : Natural := 0;
+      Selected_Alpn_Len : Natural range 0 .. 64 := 0;
 
       --  RFC 8446 §4.4.2 / §4.4.3 cert-mode state.  Default is
       --  Psk_Mode; Init_Cert_{Server,Client} flips this to Cert_Mode
