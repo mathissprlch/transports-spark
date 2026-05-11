@@ -29,6 +29,7 @@ with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with GNAT.OS_Lib;           use GNAT.OS_Lib;
 with GNATCOLL.JSON;
+with Tls_Interop_Inline;
 with Tls_Interop_Peers;      use Tls_Interop_Peers;
 
 procedure Tls_Interop is
@@ -955,13 +956,90 @@ begin
                               All_Pass : Boolean := True;
                            begin
                               for I in 1 .. Bench_Runs loop
-                                 Run_Cell (P, M, C, Dir_S,
-                                           Image (F), R, N,
-                                           Times (I));
-                                 if R /= Pass then
-                                    All_Pass := False;
-                                    exit;
+                                 if Dir_S = "c2s" then
+                                    declare
+                                       use Tls_Interop_Inline;
+                                       IR : Inline_Result;
+                                       I_Note : Unbounded_String;
+                                       Bp : constant Natural :=
+                                         Alloc_Port;
+                                       Peer_Cell : Cell_Spec :=
+                                         (others => <>);
+                                       Pb : Unbounded_String;
+                                       Pa : Argument_List_Access;
+                                       Ps, Dummy_B : Boolean;
+                                       Pr : Unbounded_String;
+                                       Peer_Pid : Process_Id;
+                                    begin
+                                       Peer_Cell.Peer := P;
+                                       Peer_Cell.Role := Server;
+                                       Peer_Cell.Mode := M;
+                                       Peer_Cell.Cipher := C;
+                                       Peer_Cell.Port := Bp;
+                                       Peer_Cell.Host :=
+                                         To_Unbounded_String
+                                           ("127.0.0.1");
+                                       Peer_Cell.Psk_Hex :=
+                                         To_Unbounded_String
+                                           (Psk_Hex_Str);
+                                       Peer_Cell.Psk_Identity :=
+                                         To_Unbounded_String
+                                           (Psk_Identity);
+                                       Peer_Cell.Psk_File :=
+                                         Log_Dir & "/psk32.bin";
+                                       if M = Cert_Ec then
+                                          Peer_Cell.Cert_Pem :=
+                                            To_Unbounded_String
+                                              (EC_Dir & "/leaf.pem");
+                                          Peer_Cell.Key_Pem :=
+                                            To_Unbounded_String
+                                              (EC_Dir & "/leaf.key");
+                                          Peer_Cell.Trust_Pem :=
+                                            To_Unbounded_String
+                                              (EC_Dir & "/root.pem");
+                                       end if;
+                                       Build_Command
+                                         (Peer_Cell, Pb, Pa,
+                                          Ps, Pr);
+                                       if Ps then
+                                          Peer_Pid :=
+                                            Non_Blocking_Spawn
+                                              (To_String (Pb),
+                                               Pa.all,
+                                               "/dev/null", True);
+                                          delay 0.3;
+                                          Run_Handshake_C2S
+                                            (P, M, C, Bp,
+                                             IR, Times (I), I_Note);
+                                          Kill (Peer_Pid,
+                                                Hard_Kill => True);
+                                          declare
+                                             Rp : Process_Id;
+                                             Ok : Boolean;
+                                          begin
+                                             Wait_Process (Rp, Ok);
+                                          exception
+                                             when others => null;
+                                          end;
+                                          if IR /= Tls_Interop_Inline
+                                                      .Pass
+                                          then
+                                             All_Pass := False;
+                                          end if;
+                                       else
+                                          All_Pass := False;
+                                       end if;
+                                       Free (Pa);
+                                    end;
+                                 else
+                                    Run_Cell (P, M, C, Dir_S,
+                                              Image (F), R, N,
+                                              Times (I));
+                                    if R /= Pass then
+                                       All_Pass := False;
+                                    end if;
                                  end if;
+                                 exit when not All_Pass;
                                  Sum := Sum + Times (I);
                                  if Times (I) < Min_V then
                                     Min_V := Times (I);
