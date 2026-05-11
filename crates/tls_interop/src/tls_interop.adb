@@ -579,7 +579,7 @@ begin
          Put_Line ("");
          if Quick then
             Put_Line ("Mode: `--quick` "
-                      & "(cert-ecdsa-p256-sha256 only)");
+                      & "(cert-ec across all 3 AEAD ciphers)");
             Put_Line ("");
          end if;
       when Json => null;
@@ -593,7 +593,7 @@ begin
          end if;
          for F in Feature_Kind'Range loop
             exit when Quick
-              and then F > Cert_Ecdsa_P256_Sha256;
+              and then F > Cert_Ec_Aes256;
             Run_Peer_Feature (P, F);
          end loop;
       end if;
@@ -607,7 +607,9 @@ begin
          All_Feat : Feature_Array (1 .. Feature_Kind'Pos (Feature_Kind'Last) + 1);
          NF : Natural := 0;
          Tput_Feat : constant Feature_Array :=
-           (Cert_Ecdsa_P256_Sha256,
+           (Cert_Ec_Chacha20,
+            Cert_Ec_Aes128,
+            Cert_Ec_Aes256,
             Psk_External_Chacha20,
             Psk_External_Aes128,
             Psk_External_Aes256);
@@ -623,7 +625,7 @@ begin
          end loop;
          for F in Feature_Kind'Range loop
             exit when Quick
-              and then F > Cert_Ecdsa_P256_Sha256;
+              and then F > Cert_Ec_Aes256;
             NF := NF + 1; All_Feat (NF) := F;
          end loop;
          for P of Ref_Peers loop

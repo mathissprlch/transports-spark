@@ -763,7 +763,7 @@ package body Tls_Interop_Peers is
    is
    begin
       case F is
-         when Cert_Ecdsa_P256_Sha256 =>
+         when Cert_Ec_Chacha20 | Cert_Ec_Aes128 | Cert_Ec_Aes256 =>
             return P /= Ada_Native;  --  every TLS 1.3 peer supports it
 
          when Cert_Rsa_Pss_Sha256 =>
@@ -802,7 +802,9 @@ package body Tls_Interop_Peers is
    function Ada_Supports (F : Feature_Kind) return Boolean is
    begin
       case F is
-         when Cert_Ecdsa_P256_Sha256 => return True;
+         when Cert_Ec_Chacha20       => return True;
+         when Cert_Ec_Aes128         => return True;
+         when Cert_Ec_Aes256         => return True;
          when Cert_Rsa_Pss_Sha256    => return False;  --  v0.5: verify
                                                        --  only, no sign
          when Psk_External_Chacha20  => return True;
@@ -842,7 +844,9 @@ package body Tls_Interop_Peers is
    function Image (F : Feature_Kind) return String is
    begin
       case F is
-         when Cert_Ecdsa_P256_Sha256 => return "cert-ecdsa-p256-sha256";
+         when Cert_Ec_Chacha20       => return "cert-ec-chacha20";
+         when Cert_Ec_Aes128         => return "cert-ec-aes128";
+         when Cert_Ec_Aes256         => return "cert-ec-aes256";
          when Cert_Rsa_Pss_Sha256    => return "cert-rsa-pss-sha256";
          when Psk_External_Chacha20  => return "psk-external-chacha20";
          when Psk_External_Aes128    => return "psk-external-aes128";
@@ -886,8 +890,12 @@ package body Tls_Interop_Peers is
    is
    begin
       case F is
-         when Cert_Ecdsa_P256_Sha256 =>
-            M := Cert_Ec; C := Auto;
+         when Cert_Ec_Chacha20 =>
+            M := Cert_Ec; C := Chacha20_Poly1305_Sha256;
+         when Cert_Ec_Aes128 =>
+            M := Cert_Ec; C := Aes128_Gcm_Sha256;
+         when Cert_Ec_Aes256 =>
+            M := Cert_Ec; C := Aes256_Gcm_Sha384;
          when Cert_Rsa_Pss_Sha256 =>
             M := Cert_Rsa; C := Auto;
          when Psk_External_Chacha20 =>

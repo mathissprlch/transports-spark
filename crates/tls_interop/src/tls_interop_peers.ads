@@ -99,8 +99,17 @@ package Tls_Interop_Peers is
    ---------------------------------------------------------------------
 
    type Feature_Kind is
-     (Cert_Ecdsa_P256_Sha256,
-      --  ECDSA-P256 cert chain, ecdsa_secp256r1_sha256 sign+verify.
+     (Cert_Ec_Chacha20,
+      --  ECDSA-P256 cert chain + TLS_CHACHA20_POLY1305_SHA256.
+
+      Cert_Ec_Aes128,
+      --  ECDSA-P256 cert chain + TLS_AES_128_GCM_SHA256.
+
+      Cert_Ec_Aes256,
+      --  ECDSA-P256 cert chain + TLS_AES_256_GCM_SHA384.  Exercises
+      --  the SHA-384 transcript-hash path; pinning the cipher via
+      --  openssl's -ciphersuites flag makes peer-driven coverage
+      --  deterministic across machines.
 
       Cert_Rsa_Pss_Sha256,
       --  RSA cert chain, rsa_pss_rsae_sha256.  Ada verifies but the
