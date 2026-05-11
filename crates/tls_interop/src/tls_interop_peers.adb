@@ -869,4 +869,44 @@ package body Tls_Interop_Peers is
       return To_String (Result);
    end All_Features;
 
+   function Image (R : Cell_Result) return String is
+   begin
+      case R is
+         when Pass       => return "PASS";
+         when Fail       => return "FAIL";
+         when Xfail_Ada  => return "XFAIL";
+         when Not_Impl_3P => return "NOT_IMPL_3P";
+      end case;
+   end Image;
+
+   procedure Feature_To_Cell
+     (F : Feature_Kind;
+      M : out Mode_Kind;
+      C : out Cipher_Kind)
+   is
+   begin
+      case F is
+         when Cert_Ecdsa_P256_Sha256 =>
+            M := Cert_Ec; C := Auto;
+         when Cert_Rsa_Pss_Sha256 =>
+            M := Cert_Rsa; C := Auto;
+         when Psk_External_Chacha20 =>
+            M := Psk_Dhe_Ke; C := Chacha20_Poly1305_Sha256;
+         when Psk_External_Aes128 =>
+            M := Psk_Dhe_Ke; C := Aes128_Gcm_Sha256;
+         when Psk_External_Aes256 =>
+            M := Psk_Dhe_Ke; C := Aes256_Gcm_Sha384;
+         when Psk_Resumption =>
+            M := Cert_Ec; C := Auto;
+         when Hello_Retry_Request =>
+            M := Cert_Ec; C := Auto;
+         when Sni_Alpn =>
+            M := Cert_Ec; C := Auto;
+         when Zero_Rtt =>
+            M := Cert_Ec; C := Auto;
+         when Key_Update =>
+            M := Cert_Ec; C := Auto;
+      end case;
+   end Feature_To_Cell;
+
 end Tls_Interop_Peers;

@@ -1,42 +1,21 @@
---  tls_interop — Tier D multi-peer interop matrix orchestrator.
---
---  Replaces the bash run_matrix.sh + per-peer .sh scripts with a
---  typed Ada binary.  Spawns peer binaries via GNAT.OS_Lib and the
---  Ada side via our own tls_cli.  Per CLAUDE.md §10a/b/d.
---
---  Usage:
---    tls_interop [--peer NAME[,NAME...]] [--quick] [--format md|json]
---    tls_interop --help
---
---  Default: all peers (Openssl, Gnutls, Mbedtls, Rustls, Go,
---  Boringssl), all cells (psk-chacha20 + psk-aes128 + cert-ec).
---
---  --quick limits to psk-chacha20 only.
---
---  Output: Markdown table on stdout by default; --format json
---  emits a JSON array suitable for CI ingestion.  Per-cell logs
---  land under /tmp/spark-tls-interop/<timestamp>/.
-
 with Ada.Calendar.Formatting;
 with Ada.Calendar;
 with Ada.Command_Line;
 with Ada.Directories;
 with Ada.Exceptions;
 with Ada.Numerics.Discrete_Random;
-with Ada.Numerics.Elementary_Functions;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Ada.Text_IO;
 with GNAT.OS_Lib;           use GNAT.OS_Lib;
 with GNATCOLL.JSON;
-with Tls_Interop_Inline;
+with Tls_Interop_Bench;
+with Tls_Interop_Output;
 with Tls_Interop_Peers;      use Tls_Interop_Peers;
 
 procedure Tls_Interop is
 
    use Ada.Text_IO;
-
-   --  ===== CLI flags ============================================
 
    type Format_Kind is (Markdown, Json);
 
@@ -45,7 +24,7 @@ procedure Tls_Interop is
    Bench        : Boolean := False;
    Bench_Runs   : Positive := 5;
    Bench_Bytes  : Natural := 1_048_576;
-   Peers_Filter : Unbounded_String := Null_Unbounded_String;  -- empty = all
+   Peers_Filter : Unbounded_String := Null_Unbounded_String;
    Show_Help    : Boolean := False;
 
    procedure Print_Help is
@@ -56,18 +35,8 @@ procedure Tls_Interop is
       Put_Line ("  tls_interop [--peer NAME[,NAME...]] [--quick]");
       Put_Line ("             [--format md|json] [--help]");
       Put_Line ("");
-      Put_Line ("Peers (case-insensitive):");
-      Put_Line ("  openssl gnutls mbedtls rustls go boringssl");
-      Put_Line ("");
-      Put_Line ("Modes (test cells):");
-      Put_Line ("  psk-chacha20 — RFC 8446 PSK + chacha20-poly1305 (default)");
-      Put_Line ("  psk-aes128   — RFC 8446 PSK + AES-128-GCM (skipped --quick)");
-      Put_Line ("  cert-ec      — ECDSA-P256 certificate-mode (skipped --quick)");
-      Put_Line ("");
-      Put_Line ("Per-cell logs:  /tmp/spark-tls-interop/<timestamp>/");
+      Put_Line ("Peers: openssl gnutls mbedtls rustls go boringssl");
    end Print_Help;
-
-   --  ===== Argument parsing =====================================
 
    procedure Parse_Args is
       A : Natural := 1;
@@ -77,8 +46,7 @@ procedure Tls_Interop is
             Arg : constant String := Ada.Command_Line.Argument (A);
          begin
             if Arg = "--help" or else Arg = "-h" then
-               Show_Help := True;
-               return;
+               Show_Help := True; return;
             elsif Arg = "--quick" then
                Quick := True;
             elsif Arg = "--bench" then
@@ -107,32 +75,23 @@ procedure Tls_Interop is
                   else
                      Put_Line ("tls_interop: unknown format: " & F);
                      Ada.Command_Line.Set_Exit_Status (2);
-                     Show_Help := True;
-                     return;
+                     Show_Help := True; return;
                   end if;
                end;
             else
                Put_Line ("tls_interop: unknown arg: " & Arg);
                Ada.Command_Line.Set_Exit_Status (2);
-               Show_Help := True;
-               return;
+               Show_Help := True; return;
             end if;
          end;
          A := A + 1;
       end loop;
    end Parse_Args;
 
-   --  ===== Peer-filter matching =================================
-   --
-   --  Returns True iff Peer is in the user-supplied filter list (or
-   --  filter is empty = all peers).
-
    function Peer_Matches_Filter (P : Peer_Kind) return Boolean is
       F : constant String := To_String (Peers_Filter);
    begin
-      if F = "" then
-         return True;
-      end if;
+      if F = "" then return True; end if;
       declare
          Name : constant String := Image (P);
          Tok_Start : Positive := 1;
@@ -142,9 +101,8 @@ procedure Tls_Interop is
                declare
                   Tok_End : constant Natural :=
                     (if F (I) = ',' then I - 1 else I);
-                  Tok : constant String := F (Tok_Start .. Tok_End);
                begin
-                  if Tok = Name then
+                  if F (Tok_Start .. Tok_End) = Name then
                      return True;
                   end if;
                   Tok_Start := I + 1;
@@ -155,90 +113,49 @@ procedure Tls_Interop is
       return False;
    end Peer_Matches_Filter;
 
-   --  ===== Test fixtures (paths under crates/tls_core/tests) ====
-
    function Repo_Root return String is
       use Ada.Directories;
-      Cwd : constant String := Current_Directory;
+      Path : Unbounded_String :=
+        To_Unbounded_String (Current_Directory);
    begin
-      --  Heuristic: walk up until we find Makefile + crates/.
-      declare
-         Path : Unbounded_String := To_Unbounded_String (Cwd);
-      begin
-         loop
-            declare
-               P : constant String := To_String (Path);
-            begin
-               if Exists (P & "/Makefile")
-                 and then Exists (P & "/crates")
-               then
-                  return P;
-               end if;
-               exit when Containing_Directory (P) = P;
-               Path := To_Unbounded_String (Containing_Directory (P));
-            end;
-         end loop;
-      end;
-      return Cwd;
+      loop
+         declare
+            P : constant String := To_String (Path);
+         begin
+            if Exists (P & "/Makefile")
+              and then Exists (P & "/crates")
+            then
+               return P;
+            end if;
+            exit when Containing_Directory (P) = P;
+            Path := To_Unbounded_String (Containing_Directory (P));
+         end;
+      end loop;
+      return Ada.Directories.Current_Directory;
    end Repo_Root;
 
    Repo : constant String := Repo_Root;
    EC_Dir : constant String :=
      Repo & "/crates/tls_core/tests/fixtures/interop/ec";
-   --  PSK is constant 32 bytes of 0x42, identity "Test".  Same as
-   --  the v0.5 demo fixtures.
    Psk_Hex_Str  : constant String :=
      "4242424242424242424242424242424242424242424242424242424242424242";
    Psk_Identity : constant String := "Test";
 
    Log_Dir : Unbounded_String;
 
-   --  Per-cell wall-clock budget.  Any cell taking longer is killed
-   --  + classified as `timeout`.  10 s is comfortable for
-   --  handshake-only cells (which complete in tens of ms locally).
    Cell_Timeout : constant Duration := 10.0;
 
-   --  ===== Cell run ============================================
-
-   --  Cell outcome — four buckets per the v0.5 reporting format:
-   --    PASS           — both sides have it; ran green
-   --    FAIL           — both sides have it; ran but produced wrong
-   --                     result (deviation we can fix)
-   --    NOT_IMPL_ADA   — peer has it; Ada driver doesn't yet.  Note
-   --                     field carries a v0.5-not-impl.md anchor.
-   --    NOT_IMPL_3P    — Ada has it; peer's CLI doesn't expose it
-   --                     (or peer lib doesn't have it at all)
-   type Cell_Result is (Pass, Fail, Xfail_Ada, Not_Impl_3P);
-
-   function Image (R : Cell_Result) return String is
-   begin
-      case R is
-         when Pass       => return "PASS";
-         when Fail       => return "FAIL";
-         when Xfail_Ada  => return "XFAIL";
-         when Not_Impl_3P => return "NOT_IMPL_3P";
-      end case;
-   end Image;
-
-   --  Allocate a port for a cell.  We use a random pick from a
-   --  20 000-port window so that back-to-back matrix runs don't
-   --  collide on TIME_WAIT (~30 s on macOS).  SO_REUSEADDR on the
-   --  Ada listener mitigates this further; randomization is the
-   --  belt-and-braces step.  Per CLAUDE.md §12: cheap fix, big
-   --  stability win.
    subtype Port_Range is Natural range 20000 .. 59999;
    package Port_Random is new Ada.Numerics.Discrete_Random (Port_Range);
    Port_Rng : Port_Random.Generator;
+
    function Alloc_Port return Natural is
-      P : constant Port_Range := Port_Random.Random (Port_Rng);
    begin
-      return P;
+      return Port_Random.Random (Port_Rng);
    end Alloc_Port;
 
-   --  Capture output paths for a cell.
    procedure Cell_Logs
-     (Peer_Name, Cell_Name : String;
-      Direction : String;            -- "c2s" or "s2c"
+     (Peer_Name, Cell_Name, Direction : String;
       Server_Log, Client_Log : out Unbounded_String)
    is
    begin
@@ -248,8 +165,6 @@ procedure Tls_Interop is
                               & "-" & Direction & "-cli.log";
    end Cell_Logs;
 
-   --  Run one cell.  Two sub-cases: either (Peer is server, Ada is
-   --  client = c2s) or (Peer is client, Ada is server = s2c).
    procedure Run_Cell
      (Peer        : Peer_Kind;
       Mode        : Mode_Kind;
@@ -273,14 +188,11 @@ procedure Tls_Interop is
       Psk_File : constant String :=
         To_String (Log_Dir) & "/psk32.bin";
 
-      --  Build the Ada-side spec depending on which side we play.
       function Make_Ada_Cell (As_Role : Role_Kind) return Cell_Spec is
          C : Cell_Spec;
       begin
-         C.Peer := Ada_Native;
-         C.Role := As_Role;
-         C.Mode := Mode;
-         C.Cipher := Cipher;
+         C.Peer := Ada_Native; C.Role := As_Role;
+         C.Mode := Mode; C.Cipher := Cipher;
          C.Port := Port;
          C.Host := To_Unbounded_String ("127.0.0.1");
          C.Psk_Hex := To_Unbounded_String (Psk_Hex_Str);
@@ -303,14 +215,11 @@ procedure Tls_Interop is
       end Make_Peer_Cell;
 
    begin
-      Cell_Logs (Image (Peer), Cell_Name, Direction, Server_Log, Client_Log);
-      Result := Fail;
-      Note := Null_Unbounded_String;
-      Elapsed := 0.0;
+      Cell_Logs (Image (Peer), Cell_Name, Direction,
+                 Server_Log, Client_Log);
+      Result := Fail; Note := Null_Unbounded_String; Elapsed := 0.0;
 
-      --  ---- Build commands ----
       if Direction = "c2s" then
-         --  Peer is server, Ada is client.
          Server_Cell := Make_Peer_Cell (Server);
          Client_Cell := Make_Ada_Cell  (Client);
       else
@@ -323,66 +232,38 @@ procedure Tls_Interop is
       Build_Command (Client_Cell, Client_Bin, Client_Args,
                      Client_Sup, Client_Reason);
 
-      --  ---- Decide NOT_IMPL_3P early ----
-      --  Build_Command's Supported = False means peer's CLI / lib
-      --  doesn't expose this feature.  (Distinct from NOT_IMPL_ADA,
-      --  which the orchestrator decides upstream from
-      --  Tls_Interop_Peers.Ada_Supports.)
       if not Server_Sup or else not Client_Sup then
          Result := Not_Impl_3P;
-         if not Server_Sup then
-            Note := Server_Reason;
-         else
-            Note := Client_Reason;
-         end if;
-         Free (Server_Args);
-         Free (Client_Args);
-         Elapsed := 0.0;
+         Note := (if not Server_Sup then Server_Reason
+                  else Client_Reason);
+         Free (Server_Args); Free (Client_Args);
          return;
       end if;
 
-      --  ---- Spawn server in background ----
       declare
          Server_Pid : Process_Id;
       begin
          Server_Pid := Non_Blocking_Spawn
-           (Program_Name => To_String (Server_Bin),
-            Args         => Server_Args.all,
-            Output_File  => To_String (Server_Log),
-            Err_To_Out   => True);
+           (To_String (Server_Bin), Server_Args.all,
+            To_String (Server_Log), True);
          if Server_Pid = Invalid_Pid then
             Result := Fail;
             Note := To_Unbounded_String ("could not spawn server");
-            Free (Server_Args);
-            Free (Client_Args);
-            Elapsed := 0.0;
+            Free (Server_Args); Free (Client_Args);
             return;
          end if;
-         delay 0.8;  --  let server bind + listen
+         delay 0.8;
 
-         --  ---- Run client with a hard wall-clock deadline ----
-         --
-         --  Bounded-time guarantee: any cell completes within
-         --  Cell_Timeout (default 10 s) regardless of peer-CLI
-         --  pathologies (rustls --http stuck on shutdown, bssl
-         --  half-RTT-NST coalescing waiting for a client ACK that
-         --  never comes, etc.).  When the deadline fires we kill
-         --  the client process group and mark the cell as a
-         --  timeout — the matrix proceeds to the next peer.
          declare
             Client_Pid : Process_Id;
             Timed_Out  : Boolean := False;
-
             task Wait_Client is
                entry Done;
             end Wait_Client;
-
             task body Wait_Client is
                P  : Process_Id;
                OK : Boolean;
             begin
-               --  Wait_Process blocks for ANY child; loop until
-               --  we see our client PID (or Invalid_Pid on error).
                loop
                   Wait_Process (P, OK);
                   exit when P = Client_Pid or else P = Invalid_Pid;
@@ -390,14 +271,13 @@ procedure Tls_Interop is
                accept Done;
             exception
                when others =>
-                  begin accept Done; exception when others => null; end;
+                  begin accept Done;
+                  exception when others => null; end;
             end Wait_Client;
          begin
             Client_Pid := Non_Blocking_Spawn
-              (Program_Name => To_String (Client_Bin),
-               Args         => Client_Args.all,
-               Output_File  => To_String (Client_Log),
-               Err_To_Out   => True);
+              (To_String (Client_Bin), Client_Args.all,
+               To_String (Client_Log), True);
             if Client_Pid = Invalid_Pid then
                Result := Fail;
                Note := To_Unbounded_String ("could not spawn client");
@@ -408,7 +288,7 @@ procedure Tls_Interop is
                   delay Cell_Timeout;
                   Timed_Out := True;
                   Kill (Client_Pid, Hard_Kill => True);
-                  Wait_Client.Done;  --  reap after Kill
+                  Wait_Client.Done;
                end select;
             end if;
             if Timed_Out then
@@ -416,31 +296,22 @@ procedure Tls_Interop is
                Note := To_Unbounded_String
                  ("timeout (>"
                   & Ada.Strings.Fixed.Trim
-                      (Duration'Image (Cell_Timeout), Ada.Strings.Both)
-                  & "s) — peer-CLI hung");
+                      (Duration'Image (Cell_Timeout),
+                       Ada.Strings.Both)
+                  & "s)");
             end if;
          end;
 
-         --  ---- Reap server ----
          Kill (Server_Pid, Hard_Kill => True);
          declare
-            Reaped : Process_Id;
-            Ok     : Boolean;
+            Reaped : Process_Id; Ok : Boolean;
          begin
             Wait_Process (Reaped, Ok);
-            pragma Unreferenced (Reaped, Ok);
-         exception
-            when others => null;
+         exception when others => null;
          end;
       end;
+      Free (Server_Args); Free (Client_Args);
 
-      Free (Server_Args);
-      Free (Client_Args);
-
-      --  ---- Decide PASS / FAIL ----
-      --  Direction-specific success criterion:
-      --    c2s — Ada client must exit 0 (it prints "tls_cli: OK").
-      --    s2c — Ada server log must contain "tls_cli: OK".
       declare
          Ok : Boolean := False;
          F  : Ada.Text_IO.File_Type;
@@ -458,15 +329,14 @@ procedure Tls_Interop is
                if Last >= 11
                  and then L (1 .. 11) = "tls_cli: OK"
                then
-                  Ok := True;
-                  exit;
+                  Ok := True; exit;
                end if;
-               --  First diagnostic line we see for the Note.
                if Note = Null_Unbounded_String
-                 and then Ada.Strings.Fixed.Index (L (1 .. Last), "ERROR") /= 0
+                 and then Ada.Strings.Fixed.Index
+                            (L (1 .. Last), "ERROR") /= 0
                then
                   Note := To_Unbounded_String
-                            (L (1 .. Natural'Min (Last, 100)));
+                    (L (1 .. Natural'Min (Last, 100)));
                end if;
             end loop;
             Ada.Text_IO.Close (F);
@@ -479,7 +349,7 @@ procedure Tls_Interop is
          if Ok then
             Result := Pass;
             Note := To_Unbounded_String (Probe);
-         else
+         elsif Result /= Fail then
             Result := Fail;
             if Note = Null_Unbounded_String then
                Note := To_Unbounded_String ("see " & Probe);
@@ -489,202 +359,8 @@ procedure Tls_Interop is
       Elapsed := Clock - Cell_Start;
    end Run_Cell;
 
-   --  ===== Output helpers =======================================
-
-   --  Pretty-print a Duration as "1.234 s" with millisecond
-   --  precision, padded to 8 chars wide.
-   function Image_Time (D : Duration) return String is
-      Ms : constant Integer := Integer (D * 1000.0);
-      function Pad (S : String) return String is
-      begin
-         if S'Length >= 8 then return S (S'First .. S'First + 7); end if;
-         return (1 .. 8 - S'Length => ' ') & S;
-      end Pad;
-   begin
-      if Ms = 0 then
-         return "       -";
-      end if;
-      declare
-         Whole : constant Integer := Ms / 1000;
-         Frac  : constant Integer := Ms mod 1000;
-         W_Img : constant String := Ada.Strings.Fixed.Trim
-                   (Integer'Image (Whole), Ada.Strings.Both);
-         F_Img : constant String := (if Frac < 10 then "00"
-                                     elsif Frac < 100 then "0" else "")
-                   & Ada.Strings.Fixed.Trim
-                       (Integer'Image (Frac), Ada.Strings.Both);
-      begin
-         return Pad (W_Img & "." & F_Img & " s");
-      end;
-   end Image_Time;
-
-   procedure Md_Peer_Header (Peer : Peer_Kind) is
-   begin
-      Put_Line ("");
-      Put_Line ("### " & Image (Peer));
-      Put_Line ("");
-      Put_Line
-        ("| Feature                       | c2s            | s2c            | Notes |");
-      Put_Line
-        ("|-------------------------------|----------------|----------------|-------|");
-   end Md_Peer_Header;
-
-   --  One row in a per-peer table covers BOTH directions (c2s + s2c).
-   procedure Md_Feature_Row
-     (Feature_Lbl : String;
-      C2S_Result, S2C_Result : Cell_Result;
-      C2S_Time,   S2C_Time   : Duration;
-      Note : String)
-   is
-      function Pad (S : String; W : Natural) return String is
-      begin
-         if S'Length >= W then
-            return S (S'First .. S'First + W - 1);
-         end if;
-         return S & (1 .. W - S'Length => ' ');
-      end Pad;
-      function Cell (R : Cell_Result; T : Duration) return String is
-        ((case R is
-            when Pass       => "PASS",
-            when Fail       => "FAIL",
-            when Xfail_Ada  => "XFAIL",
-            when Not_Impl_3P => "NI-3P")
-         & " "
-         & (if R in Pass | Fail | Xfail_Ada
-            then Image_Time (T) else "       -"));
-   begin
-      Put_Line
-        ("| " & Pad (Feature_Lbl, 29)
-         & " | " & Pad (Cell (C2S_Result, C2S_Time), 14)
-         & " | " & Pad (Cell (S2C_Result, S2C_Time), 14)
-         & " | " & Note & " |");
-   end Md_Feature_Row;
-
-   --  JSON output: array of {peer, feature, c2s:{result,time,note}, s2c:{...}}.
-   Json_Rows : GNATCOLL.JSON.JSON_Array := GNATCOLL.JSON.Empty_Array;
-
-   procedure Json_Peer_Feature
-     (Peer : Peer_Kind;
-      Feat : Feature_Kind;
-      C2S_Result, S2C_Result : Cell_Result;
-      C2S_Time,   S2C_Time   : Duration;
-      Note : String)
-   is
-      use GNATCOLL.JSON;
-      Row : constant JSON_Value := Create_Object;
-      function Make_Side
-        (R : Cell_Result; T : Duration) return JSON_Value
-      is
-         V : constant JSON_Value := Create_Object;
-      begin
-         V.Set_Field ("result", Image (R));
-         V.Set_Field ("time_ms", Integer (T * 1000.0));
-         return V;
-      end Make_Side;
-   begin
-      Row.Set_Field ("peer",    Image (Peer));
-      Row.Set_Field ("feature", Image (Feat));
-      Row.Set_Field ("c2s",     Make_Side (C2S_Result, C2S_Time));
-      Row.Set_Field ("s2c",     Make_Side (S2C_Result, S2C_Time));
-      Row.Set_Field ("note",    Note);
-      Append (Json_Rows, Row);
-   end Json_Peer_Feature;
-
-   --  ===== Init log dir + PSK file ===============================
-
-   procedure Init_Run is
-      use Ada.Calendar;
-      Now : constant Time := Clock;
-      TS  : constant String := Ada.Calendar.Formatting.Image (Now);
-      --  Compress yyyy-mm-dd hh:mm:ss → yyyymmdd-hhmmss
-      function Compress (S : String) return String is
-         R : String (1 .. S'Length);
-         L : Natural := 0;
-      begin
-         for C of S loop
-            if C /= '-' and C /= ':' and C /= ' ' then
-               L := L + 1;
-               R (L) := C;
-            elsif C = ' ' then
-               L := L + 1;
-               R (L) := '-';
-            end if;
-         end loop;
-         return R (1 .. L);
-      end Compress;
-   begin
-      Log_Dir := To_Unbounded_String
-        ("/tmp/spark-tls-interop/" & Compress (TS));
-      Ada.Directories.Create_Path (To_String (Log_Dir));
-
-      --  Reset the port RNG with a clock-based seed so each run
-      --  picks an independent port window.
-      Port_Random.Reset (Port_Rng);
-
-      --  Materialise the PSK file once (32 bytes of 0x42).
-      declare
-         F : Ada.Text_IO.File_Type;
-         pragma Unreferenced (F);
-         use GNAT.OS_Lib;
-         Path : constant String := To_String (Log_Dir) & "/psk32.bin";
-         FD   : File_Descriptor;
-         Buf  : array (1 .. 32) of Character := (others => Character'Val (16#42#));
-         N    : Integer;
-      begin
-         FD := Create_File (Path, Binary);
-         if FD /= Invalid_FD then
-            N := Write (FD, Buf'Address, 32);
-            pragma Unreferenced (N);
-            Close (FD);
-         end if;
-      end;
-   end Init_Run;
-
-   --  ===== Main ==================================================
-
-   --  Map a Feature_Kind to (Mode_Kind, Cipher_Kind) suitable for
-   --  Build_Command.  Some features run additional setup (e.g.,
-   --  resumption-PSK chains a cert-mode handshake first); for v0.5
-   --  this matrix records the inner-handshake cell only — the
-   --  chained variant is exercised separately via tls_cli flags.
-   procedure Feature_To_Cell
-     (F : Feature_Kind;
-      M : out Mode_Kind;
-      C : out Cipher_Kind)
-   is
-   begin
-      case F is
-         when Cert_Ecdsa_P256_Sha256 =>
-            M := Cert_Ec; C := Auto;
-         when Cert_Rsa_Pss_Sha256 =>
-            M := Cert_Rsa; C := Auto;
-         when Psk_External_Chacha20 =>
-            M := Psk_Dhe_Ke; C := Chacha20_Poly1305_Sha256;
-         when Psk_External_Aes128 =>
-            M := Psk_Dhe_Ke; C := Aes128_Gcm_Sha256;
-         when Psk_External_Aes256 =>
-            M := Psk_Dhe_Ke; C := Aes256_Gcm_Sha384;
-         when Psk_Resumption =>
-            --  Resumption is handled as a two-phase special case
-            --  in Run_Peer_Feature; this branch is not reached.
-            M := Cert_Ec; C := Auto;
-         when Hello_Retry_Request =>
-            M := Cert_Ec; C := Auto;
-         when Sni_Alpn =>
-            M := Cert_Ec; C := Auto;
-         when Zero_Rtt =>
-            M := Cert_Ec; C := Auto;
-         when Key_Update =>
-            M := Cert_Ec; C := Auto;
-      end case;
-   end Feature_To_Cell;
-
-   --  Run the (peer, feature) entry — iterates both directions.
-   --  Returns the row-summary directly through the output sink
-   --  for the current --format.
    procedure Run_Peer_Feature
-     (Peer : Peer_Kind;
-      Feat : Feature_Kind)
+     (Peer : Peer_Kind; Feat : Feature_Kind)
    is
       M : Mode_Kind;
       C : Cipher_Kind;
@@ -693,29 +369,18 @@ procedure Tls_Interop is
       C2S_Time,   S2C_Time   : Duration := 0.0;
       Note : Unbounded_String;
    begin
-      --  XFAIL short-circuit: Ada driver doesn't support this
-      --  feature yet, and the test can't meaningfully run (e.g.
-      --  0-RTT requires early-data CLI plumbing that doesn't exist).
-      --  We still report it as XFAIL so it's visible in the matrix.
-      if not Ada_Supports (Feat) and then not Ada_Can_Attempt (Feat) then
-         C2S_Result := Xfail_Ada;
-         S2C_Result := Xfail_Ada;
+      if not Ada_Supports (Feat)
+        and then not Ada_Can_Attempt (Feat)
+      then
+         C2S_Result := Xfail_Ada; S2C_Result := Xfail_Ada;
          Note := To_Unbounded_String
            ("XFAIL: see " & Ada_Unblock_Link (Feat));
-      --  NOT_IMPL_3P short-circuit: peer's CLI / lib doesn't
-      --  expose this feature.
       elsif not Peer_Supports (Peer, Feat) then
-         C2S_Result := Not_Impl_3P;
-         S2C_Result := Not_Impl_3P;
+         C2S_Result := Not_Impl_3P; S2C_Result := Not_Impl_3P;
          Note := To_Unbounded_String ("peer-CLI gap");
       elsif Feat = Psk_Resumption then
-         --  Two-phase cell: cert-ec → save ticket → psk-resume
-         --  with ticket, against the same peer server. Delegates
-         --  to scripts/test-psk-resumption.sh <peer>.
-         --  c2s only; s2c (Ada server accepting external
-         --  resumption) is not yet wired.
          S2C_Result := Xfail_Ada;
-         S2C_Note   := To_Unbounded_String
+         S2C_Note := To_Unbounded_String
            ("Ada server resumption-accept not wired");
          declare
             use Ada.Calendar;
@@ -732,7 +397,6 @@ procedure Tls_Interop is
               new Argument_List'
                 (new String'(Script_Path),
                  new String'(Peer_Str));
-            Ret : Boolean;
             Pid : Process_Id;
          begin
             if Script = null then
@@ -740,10 +404,7 @@ procedure Tls_Interop is
                C2S_Note := To_Unbounded_String ("bash not found");
             else
                Pid := Non_Blocking_Spawn
-                 (Program_Name => Script.all,
-                  Args         => Args.all,
-                  Output_File  => Log_File,
-                  Err_To_Out   => True);
+                 (Script.all, Args.all, Log_File, True);
                Free (Script);
                if Pid = Invalid_Pid then
                   C2S_Result := Fail;
@@ -751,8 +412,7 @@ procedure Tls_Interop is
                     ("could not spawn resumption script");
                else
                   declare
-                     Reaped : Process_Id;
-                     Ok     : Boolean;
+                     Reaped : Process_Id; Ok : Boolean;
                   begin
                      loop
                         Wait_Process (Reaped, Ok);
@@ -761,11 +421,10 @@ procedure Tls_Interop is
                      end loop;
                   end;
                   declare
-                     F  : Ada.Text_IO.File_Type;
-                     L  : String (1 .. 256);
+                     F : Ada.Text_IO.File_Type;
+                     L : String (1 .. 256);
                      Last : Natural;
-                     Found_Pass : Boolean := False;
-                     Found_Skip : Boolean := False;
+                     Found_Pass, Found_Skip : Boolean := False;
                   begin
                      Ada.Text_IO.Open
                        (F, Ada.Text_IO.In_File, Log_File);
@@ -817,10 +476,9 @@ procedure Tls_Interop is
                    C2S_Result, C2S_Note, C2S_Time);
          Run_Cell (Peer, M, C, "s2c", Image (Feat),
                    S2C_Result, S2C_Note, S2C_Time);
-         --  Compose a single short note.  Prefer FAIL note over
-         --  PASS log path; if both PASS, point at log dir only.
          if C2S_Result = Fail or else S2C_Result = Fail then
-            Note := (if C2S_Result = Fail then C2S_Note else S2C_Note);
+            Note := (if C2S_Result = Fail then C2S_Note
+                     else S2C_Note);
          elsif C2S_Result = Pass and then S2C_Result = Pass then
             Note := To_Unbounded_String (To_String (Log_Dir));
          else
@@ -829,8 +487,6 @@ procedure Tls_Interop is
          end if;
       end if;
 
-      --  Reclassify: if a feature is known-unimplemented in Ada and
-      --  the test failed, mark as XFAIL with the reason annotation.
       if not Ada_Supports (Feat) then
          declare
             Link : constant String := Ada_Unblock_Link (Feat);
@@ -840,35 +496,73 @@ procedure Tls_Interop is
                   else "XFAIL: Ada driver gap"));
          begin
             if C2S_Result = Fail then
-               C2S_Result := Xfail_Ada;
-               Note := Ann;
+               C2S_Result := Xfail_Ada; Note := Ann;
             end if;
             if S2C_Result = Fail then
-               S2C_Result := Xfail_Ada;
-               Note := Ann;
+               S2C_Result := Xfail_Ada; Note := Ann;
             end if;
          end;
       end if;
+
       case Format is
          when Markdown =>
-            Md_Feature_Row (Image (Feat),
-                            C2S_Result, S2C_Result,
-                            C2S_Time, S2C_Time,
-                            To_String (Note));
+            Tls_Interop_Output.Md_Feature_Row
+              (Image (Feat), C2S_Result, S2C_Result,
+               C2S_Time, S2C_Time, To_String (Note));
          when Json =>
-            Json_Peer_Feature (Peer, Feat,
-                               C2S_Result, S2C_Result,
-                               C2S_Time, S2C_Time,
-                               To_String (Note));
+            Tls_Interop_Output.Json_Peer_Feature
+              (Peer, Feat, C2S_Result, S2C_Result,
+               C2S_Time, S2C_Time, To_String (Note));
       end case;
    end Run_Peer_Feature;
 
+   procedure Init_Run is
+      use Ada.Calendar;
+      TS : constant String :=
+        Ada.Calendar.Formatting.Image (Clock);
+      function Compress (S : String) return String is
+         R : String (1 .. S'Length);
+         L : Natural := 0;
+      begin
+         for C of S loop
+            if C /= '-' and C /= ':' and C /= ' ' then
+               L := L + 1; R (L) := C;
+            elsif C = ' ' then
+               L := L + 1; R (L) := '-';
+            end if;
+         end loop;
+         return R (1 .. L);
+      end Compress;
+   begin
+      Log_Dir := To_Unbounded_String
+        ("/tmp/spark-tls-interop/" & Compress (TS));
+      Ada.Directories.Create_Path (To_String (Log_Dir));
+      Port_Random.Reset (Port_Rng);
+
+      declare
+         Path : constant String :=
+           To_String (Log_Dir) & "/psk32.bin";
+         FD : File_Descriptor;
+         Buf : array (1 .. 32) of Character :=
+           (others => Character'Val (16#42#));
+         N : Integer;
+      begin
+         FD := Create_File (Path, Binary);
+         if FD /= Invalid_FD then
+            N := Write (FD, Buf'Address, 32);
+            pragma Unreferenced (N);
+            Close (FD);
+         end if;
+      end;
+   end Init_Run;
+
+   Peers : constant array (1 .. 7) of Peer_Kind :=
+     (Openssl, Boringssl, Go_Lang, Rustls,
+      Gnutls, Mbedtls, Wolfssl);
+
 begin
    Parse_Args;
-   if Show_Help then
-      Print_Help;
-      return;
-   end if;
+   if Show_Help then Print_Help; return; end if;
 
    Init_Run;
 
@@ -880,591 +574,74 @@ begin
          Put_Line ("Log directory: `" & To_String (Log_Dir) & "`");
          Put_Line ("");
          Put_Line ("Result classes: PASS, FAIL (Ada bug), "
-                   & "XFAIL (expected fail, Ada gap), NI-3P (peer-CLI gap)");
+                   & "XFAIL (expected fail, Ada gap), "
+                   & "NI-3P (peer-CLI gap)");
          Put_Line ("");
          if Quick then
-            Put_Line ("Mode: `--quick` (cert-ecdsa-p256-sha256 only)");
+            Put_Line ("Mode: `--quick` "
+                      & "(cert-ecdsa-p256-sha256 only)");
             Put_Line ("");
          end if;
-      when Json =>
-         null;  --  JSON written at end via GNATCOLL.JSON
+      when Json => null;
    end case;
 
-   --  Per-peer iteration — peers ordered by production prevalence.
-   declare
-      Peers : constant array (1 .. 7) of Peer_Kind :=
-        (Openssl, Boringssl, Go_Lang, Rustls, Gnutls, Mbedtls, Wolfssl);
-   begin
-      for P of Peers loop
-         exit when not Peer_Matches_Filter (P);
-         if Peer_Matches_Filter (P) then
-            if Format = Markdown then
-               Md_Peer_Header (P);
-            end if;
-            for F in Feature_Kind'Range loop
-               --  --quick = first feature only (cert-ec).
-               exit when Quick and then F > Cert_Ecdsa_P256_Sha256;
-               Run_Peer_Feature (P, F);
-            end loop;
+   for P of Peers loop
+      exit when not Peer_Matches_Filter (P);
+      if Peer_Matches_Filter (P) then
+         if Format = Markdown then
+            Tls_Interop_Output.Md_Peer_Header (P);
          end if;
-      end loop;
-   end;
+         for F in Feature_Kind'Range loop
+            exit when Quick
+              and then F > Cert_Ecdsa_P256_Sha256;
+            Run_Peer_Feature (P, F);
+         end loop;
+      end if;
+   end loop;
 
    if Bench and then Format = Markdown then
-      Put_Line ("");
-      Put_Line ("## Performance Benchmark (" &
-                Ada.Strings.Fixed.Trim
-                  (Positive'Image (Bench_Runs), Ada.Strings.Both)
-                & " runs per cell)");
-      Put_Line ("");
-      Put_Line ("| Peer | Feature | Dir | " &
-                (if Bench_Runs <= 5
-                 then "Runs (s) | "
-                 else "") &
-                "Mean (s) | Std Dev (s) | Min (s) | Max (s) |");
-      Put_Line ("|------|---------|-----|" &
-                (if Bench_Runs <= 5
-                 then "----------|"
-                 else "") &
-                "----------|-------------|---------|---------|");
       declare
-         Peers_Arr : constant array (1 .. 7) of Peer_Kind :=
-           (Openssl, Boringssl, Go_Lang, Rustls,
-            Gnutls, Mbedtls, Wolfssl);
-      begin
-         for P of Peers_Arr loop
-            exit when not Peer_Matches_Filter (P);
-            if Peer_Matches_Filter (P) then
-               for F in Feature_Kind'Range loop
-                  exit when Quick and then F > Cert_Ecdsa_P256_Sha256;
-                  if Ada_Supports (F) and then Peer_Supports (P, F)
-                    and then F /= Psk_Resumption
-                  then
-                     declare
-                        M : Mode_Kind;
-                        C : Cipher_Kind;
-                     begin
-                        Feature_To_Cell (F, M, C);
-                        for Dir_Idx in 1 .. 2 loop
-                           declare
-                              Dir_S : constant String :=
-                                (if Dir_Idx = 1 then "c2s" else "s2c");
-                              type Time_Arr is
-                                array (1 .. Bench_Runs) of Duration;
-                              Times : Time_Arr := (others => 0.0);
-                              R     : Cell_Result;
-                              N     : Unbounded_String;
-                              Sum, Sumsq : Duration := 0.0;
-                              Mean_V, Sd_V : Float;
-                              Min_V : Duration := Duration'Last;
-                              Max_V : Duration := 0.0;
-                              All_Pass : Boolean := True;
-                           begin
-                              for I in 1 .. Bench_Runs loop
-                                 if Dir_S = "c2s" then
-                                    declare
-                                       use Tls_Interop_Inline;
-                                       IR : Inline_Result;
-                                       I_Note : Unbounded_String;
-                                       Bp : constant Natural :=
-                                         Alloc_Port;
-                                       Peer_Cell : Cell_Spec :=
-                                         (others => <>);
-                                       Pb : Unbounded_String;
-                                       Pa : Argument_List_Access;
-                                       Ps, Dummy_B : Boolean;
-                                       Pr : Unbounded_String;
-                                       Peer_Pid : Process_Id;
-                                    begin
-                                       Peer_Cell.Peer := P;
-                                       Peer_Cell.Role := Server;
-                                       Peer_Cell.Mode := M;
-                                       Peer_Cell.Cipher := C;
-                                       Peer_Cell.Port := Bp;
-                                       Peer_Cell.Host :=
-                                         To_Unbounded_String
-                                           ("127.0.0.1");
-                                       Peer_Cell.Psk_Hex :=
-                                         To_Unbounded_String
-                                           (Psk_Hex_Str);
-                                       Peer_Cell.Psk_Identity :=
-                                         To_Unbounded_String
-                                           (Psk_Identity);
-                                       Peer_Cell.Psk_File :=
-                                         Log_Dir & "/psk32.bin";
-                                       if M = Cert_Ec then
-                                          Peer_Cell.Cert_Pem :=
-                                            To_Unbounded_String
-                                              (EC_Dir & "/leaf.pem");
-                                          Peer_Cell.Key_Pem :=
-                                            To_Unbounded_String
-                                              (EC_Dir & "/leaf.key");
-                                          Peer_Cell.Trust_Pem :=
-                                            To_Unbounded_String
-                                              (EC_Dir & "/root.pem");
-                                       end if;
-                                       Build_Command
-                                         (Peer_Cell, Pb, Pa,
-                                          Ps, Pr);
-                                       if Ps then
-                                          Peer_Pid :=
-                                            Non_Blocking_Spawn
-                                              (To_String (Pb),
-                                               Pa.all,
-                                               "/dev/null", True);
-                                          delay 0.3;
-                                          Run_Handshake_C2S
-                                            (P, M, C, Bp,
-                                             IR, Times (I), I_Note);
-                                          Kill (Peer_Pid,
-                                                Hard_Kill => True);
-                                          declare
-                                             Rp : Process_Id;
-                                             Ok : Boolean;
-                                          begin
-                                             Wait_Process (Rp, Ok);
-                                          exception
-                                             when others => null;
-                                          end;
-                                          if IR /= Tls_Interop_Inline
-                                                      .Pass
-                                          then
-                                             All_Pass := False;
-                                          end if;
-                                       else
-                                          All_Pass := False;
-                                       end if;
-                                       Free (Pa);
-                                    end;
-                                 else
-                                    declare
-                                       use Tls_Interop_Inline;
-                                       IR : Inline_Result;
-                                       I_Note : Unbounded_String;
-                                       Bp : constant Natural :=
-                                         Alloc_Port;
-                                       Peer_Cell : Cell_Spec :=
-                                         (others => <>);
-                                       Pb : Unbounded_String;
-                                       Pa : Argument_List_Access;
-                                       Ps, Dummy_B : Boolean;
-                                       Pr : Unbounded_String;
-                                       Peer_Pid : Process_Id;
-                                    begin
-                                       Peer_Cell.Peer := P;
-                                       Peer_Cell.Role := Client;
-                                       Peer_Cell.Mode := M;
-                                       Peer_Cell.Cipher := C;
-                                       Peer_Cell.Port := Bp;
-                                       Peer_Cell.Host :=
-                                         To_Unbounded_String
-                                           ("127.0.0.1");
-                                       Peer_Cell.Psk_Hex :=
-                                         To_Unbounded_String
-                                           (Psk_Hex_Str);
-                                       Peer_Cell.Psk_Identity :=
-                                         To_Unbounded_String
-                                           (Psk_Identity);
-                                       Peer_Cell.Psk_File :=
-                                         Log_Dir & "/psk32.bin";
-                                       if M = Cert_Ec then
-                                          Peer_Cell.Cert_Pem :=
-                                            To_Unbounded_String
-                                              (EC_Dir & "/leaf.pem");
-                                          Peer_Cell.Key_Pem :=
-                                            To_Unbounded_String
-                                              (EC_Dir & "/leaf.key");
-                                          Peer_Cell.Trust_Pem :=
-                                            To_Unbounded_String
-                                              (EC_Dir & "/root.pem");
-                                          Peer_Cell.Hostname :=
-                                            To_Unbounded_String
-                                              ("localhost");
-                                       end if;
-                                       Build_Command
-                                         (Peer_Cell, Pb, Pa,
-                                          Ps, Pr);
-                                       if Ps then
-                                          Peer_Pid :=
-                                            Non_Blocking_Spawn
-                                              (To_String (Pb),
-                                               Pa.all,
-                                               "/dev/null", True);
-                                          Run_Handshake_S2C
-                                            (P, M, C, Bp,
-                                             IR, Times (I), I_Note);
-                                          Kill (Peer_Pid,
-                                                Hard_Kill => True);
-                                          declare
-                                             Rp : Process_Id;
-                                             Ok : Boolean;
-                                          begin
-                                             Wait_Process (Rp, Ok);
-                                          exception
-                                             when others => null;
-                                          end;
-                                          if IR /= Tls_Interop_Inline
-                                                      .Pass
-                                          then
-                                             All_Pass := False;
-                                          end if;
-                                       else
-                                          All_Pass := False;
-                                       end if;
-                                       Free (Pa);
-                                    end;
-                                 end if;
-                                 exit when not All_Pass;
-                                 Sum := Sum + Times (I);
-                                 if Times (I) < Min_V then
-                                    Min_V := Times (I);
-                                 end if;
-                                 if Times (I) > Max_V then
-                                    Max_V := Times (I);
-                                 end if;
-                              end loop;
-                              if All_Pass then
-                                 Mean_V := Float (Sum) /
-                                           Float (Bench_Runs);
-                                 for I in 1 .. Bench_Runs loop
-                                    declare
-                                       D : constant Float :=
-                                         Float (Times (I)) - Mean_V;
-                                    begin
-                                       Sumsq := Sumsq +
-                                         Duration (D * D);
-                                    end;
-                                 end loop;
-                                 declare
-                                    Variance : constant Float :=
-                                      Float (Sumsq) /
-                                        Float (Bench_Runs);
-                                 begin
-                                    Sd_V := (if Bench_Runs > 1
-                                             and then Variance > 0.0
-                                             then Ada.Numerics
-                                               .Elementary_Functions
-                                               .Sqrt (Variance)
-                                             else 0.0);
-                                 end;
-                                 declare
-                                    Runs_S : Unbounded_String :=
-                                      Null_Unbounded_String;
-                                 begin
-                                    if Bench_Runs <= 5 then
-                                       for I in 1 .. Bench_Runs loop
-                                          if I > 1 then
-                                             Append (Runs_S, ", ");
-                                          end if;
-                                          Append
-                                            (Runs_S,
-                                             Image_Time (Times (I)));
-                                       end loop;
-                                    end if;
-                                    Put_Line
-                                      ("| " & Image (P)
-                                       & " | " & Image (F)
-                                       & " | " & Dir_S & " | "
-                                       & (if Bench_Runs <= 5
-                                          then To_String (Runs_S)
-                                               & " | "
-                                          else "")
-                                       & Image_Time (Duration (Mean_V))
-                                       & " | "
-                                       & Image_Time (Duration (Sd_V))
-                                       & " | "
-                                       & Image_Time (Min_V) & " | "
-                                       & Image_Time (Max_V) & " |");
-                                 end;
-                              end if;
-                           end;
-                        end loop;
-                     end;
-                  end if;
-               end loop;
-            end if;
-         end loop;
-      end;
-      Put_Line ("");
-      Put_Line ("### Peer-vs-Peer Reference (cert-ec, client→server)");
-      Put_Line ("");
-      Put_Line ("| Matchup | Mean (s) | Std Dev (s) | Min (s) | Max (s) |");
-      Put_Line ("|---------|----------|-------------|---------|---------|");
-      declare
-         Ref_Peers : constant array (1 .. 4) of Peer_Kind :=
-           (Openssl, Go_Lang, Mbedtls, Gnutls);
-      begin
-         for RP of Ref_Peers loop
-            if Peer_Matches_Filter (RP) then
-               declare
-                  Bp : constant Natural := Alloc_Port;
-                  Srv_Cell, Cli_Cell : Cell_Spec := (others => <>);
-                  Srv_Bin, Cli_Bin : Unbounded_String;
-                  Srv_Args, Cli_Args : Argument_List_Access;
-                  Srv_Sup, Cli_Sup : Boolean;
-                  Srv_R, Cli_R : Unbounded_String;
-                  type Dur_Arr is array (1 .. Bench_Runs) of Duration;
-                  Ts : Dur_Arr := (others => 0.0);
-                  Sum_D : Duration := 0.0;
-                  Mean_F, Sd_F : Float;
-                  Min_D : Duration := Duration'Last;
-                  Max_D : Duration := 0.0;
-                  Ok : Boolean := True;
-               begin
-                  Srv_Cell.Peer := RP;  Srv_Cell.Role := Server;
-                  Srv_Cell.Mode := Cert_Ec; Srv_Cell.Cipher := Auto;
-                  Srv_Cell.Port := Bp;
-                  Srv_Cell.Host := To_Unbounded_String ("127.0.0.1");
-                  Srv_Cell.Cert_Pem :=
-                    To_Unbounded_String (EC_Dir & "/leaf.pem");
-                  Srv_Cell.Key_Pem :=
-                    To_Unbounded_String (EC_Dir & "/leaf.key");
-                  Srv_Cell.Trust_Pem :=
-                    To_Unbounded_String (EC_Dir & "/root.pem");
-                  Cli_Cell := Srv_Cell;
-                  Cli_Cell.Role := Client;
-                  Cli_Cell.Hostname :=
-                    To_Unbounded_String ("localhost");
-                  Build_Command (Srv_Cell, Srv_Bin, Srv_Args,
-                                 Srv_Sup, Srv_R);
-                  Build_Command (Cli_Cell, Cli_Bin, Cli_Args,
-                                 Cli_Sup, Cli_R);
-                  if Srv_Sup and then Cli_Sup then
-                     for I in 1 .. Bench_Runs loop
-                        declare
-                           use Tls_Interop_Inline;
-                           IR : Inline_Result;
-                           I_Note : Unbounded_String;
-                        begin
-                           Run_Peer_Vs_Peer
-                             (To_String (Srv_Bin), Srv_Args.all,
-                              To_String (Cli_Bin), Cli_Args.all,
-                              IR, Ts (I), I_Note);
-                           if IR /= Tls_Interop_Inline.Pass then
-                              Ok := False; exit;
-                           end if;
-                           Sum_D := Sum_D + Ts (I);
-                           if Ts (I) < Min_D then
-                              Min_D := Ts (I);
-                           end if;
-                           if Ts (I) > Max_D then
-                              Max_D := Ts (I);
-                           end if;
-                        end;
-                     end loop;
-                     if Ok then
-                        Mean_F := Float (Sum_D) / Float (Bench_Runs);
-                        declare
-                           Ssq : Duration := 0.0;
-                        begin
-                           for I in 1 .. Bench_Runs loop
-                              declare
-                                 Df : constant Float :=
-                                   Float (Ts (I)) - Mean_F;
-                              begin
-                                 Ssq := Ssq + Duration (Df * Df);
-                              end;
-                           end loop;
-                           Sd_F := (if Bench_Runs > 1 then
-                             Ada.Numerics.Elementary_Functions.Sqrt
-                               (Float (Ssq) / Float (Bench_Runs))
-                             else 0.0);
-                        end;
-                        Put_Line
-                          ("| " & Image (RP) & "→" & Image (RP)
-                           & " | "
-                           & Image_Time (Duration (Mean_F)) & " | "
-                           & Image_Time (Duration (Sd_F)) & " | "
-                           & Image_Time (Min_D) & " | "
-                           & Image_Time (Max_D) & " |");
-                     end if;
-                  end if;
-                  Free (Srv_Args); Free (Cli_Args);
-               end;
-            end if;
-         end loop;
-      end;
-      Put_Line ("");
-      Put_Line ("### Throughput Benchmark (c2s, "
-                & Ada.Strings.Fixed.Trim
-                    (Natural'Image (Bench_Bytes / 1024),
-                     Ada.Strings.Both)
-                & " KiB, "
-                & Ada.Strings.Fixed.Trim
-                    (Positive'Image (Bench_Runs), Ada.Strings.Both)
-                & " runs)");
-      Put_Line ("");
-      Put_Line
-        ("| Peer | Cipher | Mean (MiB/s) | Std Dev |"
-         & " Min (MiB/s) | Max (MiB/s) |");
-      Put_Line
-        ("|------|--------|--------------|---------|"
-         & "-------------|-------------|");
-      declare
-         Tput_Peers : constant array (1 .. 7) of Peer_Kind :=
-           (Openssl, Boringssl, Go_Lang, Rustls,
-            Gnutls, Mbedtls, Wolfssl);
-         Tput_Features : constant array (1 .. 4) of Feature_Kind :=
+         use Tls_Interop_Bench;
+         Filtered : Peer_Array (1 .. 7);
+         N : Natural := 0;
+         All_Feat : Feature_Array (1 .. Feature_Kind'Pos (Feature_Kind'Last) + 1);
+         NF : Natural := 0;
+         Tput_Feat : constant Feature_Array :=
            (Cert_Ecdsa_P256_Sha256,
             Psk_External_Chacha20,
             Psk_External_Aes128,
             Psk_External_Aes256);
-         Mib : constant Float := Float (Bench_Bytes) / 1_048_576.0;
+         Ref_Peers : constant Peer_Array :=
+           (Openssl, Go_Lang, Mbedtls, Gnutls);
+         Ref_Filtered : Peer_Array (1 .. 4);
+         NR : Natural := 0;
       begin
-         for P of Tput_Peers loop
-            exit when not Peer_Matches_Filter (P);
+         for P of Peers loop
             if Peer_Matches_Filter (P) then
-               for F of Tput_Features loop
-                  if Ada_Supports (F) and then Peer_Supports (P, F) then
-                     declare
-                        M : Mode_Kind;
-                        C : Cipher_Kind;
-                        type Tput_Arr is
-                          array (1 .. Bench_Runs) of Float;
-                        Tputs    : Tput_Arr := (others => 0.0);
-                        All_Pass : Boolean := True;
-                     begin
-                        Feature_To_Cell (F, M, C);
-                        for I in 1 .. Bench_Runs loop
-                           declare
-                              use Tls_Interop_Inline;
-                              IR : Inline_Result;
-                              I_Note : Unbounded_String;
-                              Bp : constant Natural := Alloc_Port;
-                              PC : Cell_Spec := (others => <>);
-                              Pb : Unbounded_String;
-                              Pa : Argument_List_Access;
-                              Ps : Boolean;
-                              Pr : Unbounded_String;
-                              Peer_Pid : Process_Id;
-                              El : Duration;
-                           begin
-                              PC.Peer := P;
-                              PC.Role := Server;
-                              PC.Mode := M;
-                              PC.Cipher := C;
-                              PC.Port := Bp;
-                              PC.Host :=
-                                To_Unbounded_String ("127.0.0.1");
-                              PC.Psk_Hex :=
-                                To_Unbounded_String (Psk_Hex_Str);
-                              PC.Psk_Identity :=
-                                To_Unbounded_String (Psk_Identity);
-                              PC.Psk_File :=
-                                Log_Dir & "/psk32.bin";
-                              if M = Cert_Ec then
-                                 PC.Cert_Pem :=
-                                   To_Unbounded_String
-                                     (EC_Dir & "/leaf.pem");
-                                 PC.Key_Pem :=
-                                   To_Unbounded_String
-                                     (EC_Dir & "/leaf.key");
-                                 PC.Trust_Pem :=
-                                   To_Unbounded_String
-                                     (EC_Dir & "/root.pem");
-                              end if;
-                              Build_Command
-                                (PC, Pb, Pa, Ps, Pr);
-                              if Ps then
-                                 Peer_Pid := Non_Blocking_Spawn
-                                   (To_String (Pb), Pa.all,
-                                    "/dev/null", True);
-                                 delay 0.3;
-                                 Run_Throughput_C2S
-                                   (P, M, C, Bp, Bench_Bytes,
-                                    IR, El, I_Note);
-                                 Kill (Peer_Pid, Hard_Kill => True);
-                                 declare
-                                    Rp : Process_Id;
-                                    Ok : Boolean;
-                                 begin
-                                    Wait_Process (Rp, Ok);
-                                 exception
-                                    when others => null;
-                                 end;
-                                 if IR = Tls_Interop_Inline.Pass
-                                   and then El > 0.0
-                                 then
-                                    Tputs (I) :=
-                                      Mib / Float (El);
-                                 else
-                                    All_Pass := False;
-                                 end if;
-                              else
-                                 All_Pass := False;
-                              end if;
-                              Free (Pa);
-                           end;
-                           exit when not All_Pass;
-                        end loop;
-                        if All_Pass then
-                           declare
-                              Sum : Float := 0.0;
-                              Mean_V, Sd_V : Float;
-                              Min_V : Float := Float'Last;
-                              Max_V : Float := 0.0;
-                           begin
-                              for I in 1 .. Bench_Runs loop
-                                 Sum := Sum + Tputs (I);
-                                 if Tputs (I) < Min_V then
-                                    Min_V := Tputs (I);
-                                 end if;
-                                 if Tputs (I) > Max_V then
-                                    Max_V := Tputs (I);
-                                 end if;
-                              end loop;
-                              Mean_V :=
-                                Sum / Float (Bench_Runs);
-                              declare
-                                 Ssq : Float := 0.0;
-                              begin
-                                 for I in 1 .. Bench_Runs loop
-                                    declare
-                                       Df : constant Float :=
-                                         Tputs (I) - Mean_V;
-                                    begin
-                                       Ssq := Ssq + Df * Df;
-                                    end;
-                                 end loop;
-                                 Sd_V :=
-                                   (if Bench_Runs > 1
-                                    then Ada.Numerics
-                                      .Elementary_Functions
-                                      .Sqrt
-                                        (Ssq / Float (Bench_Runs))
-                                    else 0.0);
-                              end;
-                              Put_Line
-                                ("| " & Image (P)
-                                 & " | " & Image (F)
-                                 & " | "
-                                 & Ada.Strings.Fixed.Trim
-                                     (Integer'Image
-                                        (Integer (Mean_V)),
-                                      Ada.Strings.Both)
-                                 & " | "
-                                 & Ada.Strings.Fixed.Trim
-                                     (Integer'Image
-                                        (Integer (Sd_V)),
-                                      Ada.Strings.Both)
-                                 & " | "
-                                 & Ada.Strings.Fixed.Trim
-                                     (Integer'Image
-                                        (Integer (Min_V)),
-                                      Ada.Strings.Both)
-                                 & " | "
-                                 & Ada.Strings.Fixed.Trim
-                                     (Integer'Image
-                                        (Integer (Max_V)),
-                                      Ada.Strings.Both)
-                                 & " |");
-                           end;
-                        end if;
-                     end;
-                  end if;
-               end loop;
+               N := N + 1; Filtered (N) := P;
             end if;
          end loop;
+         for F in Feature_Kind'Range loop
+            exit when Quick
+              and then F > Cert_Ecdsa_P256_Sha256;
+            NF := NF + 1; All_Feat (NF) := F;
+         end loop;
+         for P of Ref_Peers loop
+            if Peer_Matches_Filter (P) then
+               NR := NR + 1; Ref_Filtered (NR) := P;
+            end if;
+         end loop;
+
+         Run_Handshake_Bench
+           (Filtered (1 .. N), All_Feat (1 .. NF), Bench_Runs,
+            To_String (Log_Dir), EC_Dir, Psk_Hex_Str, Psk_Identity);
+
+         Run_Peer_Vs_Peer_Bench
+           (Ref_Filtered (1 .. NR), Bench_Runs, EC_Dir);
+
+         Run_Throughput_Bench
+           (Filtered (1 .. N), Tput_Feat, Bench_Runs, Bench_Bytes,
+            To_String (Log_Dir), EC_Dir, Psk_Hex_Str, Psk_Identity);
       end;
       Put_Line ("");
    end if;
@@ -1476,7 +653,8 @@ begin
       when Json =>
          declare
             use GNATCOLL.JSON;
-            Top : constant JSON_Value := Create (Json_Rows);
+            Top : constant JSON_Value :=
+              Create (Tls_Interop_Output.Json_Rows);
          begin
             Put_Line (Top.Write (Compact => False));
          end;

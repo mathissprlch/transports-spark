@@ -163,8 +163,13 @@ package Tls_Interop_Peers is
 
    --  All non-deprecated features the v0.5 matrix iterates over.
    function All_Features return String;
-   --  Returns a comma-joined list — used by the help text + JSON
-   --  output.  Concrete iteration in the orchestrator uses
-   --  Feature_Kind'Range.
+
+   type Cell_Result is (Pass, Fail, Xfail_Ada, Not_Impl_3P);
+   function Image (R : Cell_Result) return String;
+
+   procedure Feature_To_Cell
+     (F : Feature_Kind;
+      M : out Mode_Kind;
+      C : out Cipher_Kind);
 
 end Tls_Interop_Peers;
