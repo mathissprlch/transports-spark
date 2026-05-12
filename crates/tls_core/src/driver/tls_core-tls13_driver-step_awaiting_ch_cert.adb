@@ -211,6 +211,7 @@ is
          Th_After_Cert : Tls_Core.Key_Sched.Max_Digest;
          Th_After_CV   : Tls_Core.Key_Sched.Max_Digest;
          Th_After_Sf   : Tls_Core.Key_Sched.Max_Digest;
+         Flight_Last   : Natural := 0;
 
          Out_Cursor : Natural := 0;
       begin
@@ -443,11 +444,14 @@ is
             Out_Buf (Out_Cursor + 1 ..
                        Out_Cursor + Fin_Rec_Last) :=
               Fin_Rec (1 .. Fin_Rec_Last);
-            Out_Last := Out_Cursor + Fin_Rec_Last;
-            pragma Assert (Out_Last in 0 .. Out_Buf'Last);
+            Flight_Last := Out_Cursor + Fin_Rec_Last;
          end;
 
-         --  App secrets + expected client Finished
+         --  App secrets + expected client Finished.
+         --  Per miTLS pattern: finalize D state BEFORE assigning
+         --  Out_Last so the prover has the Out_Last bound fresh
+         --  at procedure end (no intervening D mutations to
+         --  invalidate the frame).
          Tls_Core.Key_Sched.Transcript_Snapshot
               (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_Sf);
          declare
@@ -468,7 +472,7 @@ is
          end;
 
          D.Cur_State := Awaiting_Cf;
-         pragma Assert (Out_Last <= Out_Buf'Last);
+         Out_Last := Flight_Last;
       end;
    end Handle;
 

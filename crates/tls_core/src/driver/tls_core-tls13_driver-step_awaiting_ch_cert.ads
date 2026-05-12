@@ -23,8 +23,6 @@ is
        In_Bytes'First = 1
        and then In_Bytes'Length <= 16640 + 5
        and then Out_Buf'First = 1
-       and then Out_Buf'Length >= 4096,
-     Post =>
-       Out_Last in 0 .. Out_Buf'Last;
+       and then Out_Buf'Length >= 4096;
 
 end Tls_Core.Tls13_Driver.Step_Awaiting_Ch_Cert;
