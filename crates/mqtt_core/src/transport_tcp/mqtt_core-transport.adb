@@ -221,4 +221,17 @@ package body Mqtt_Core.Transport is
    function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type is
      (Chan.Socket);
 
+   procedure Set_Trust_Anchor
+     (Chan : in out Channel;
+      Der  : RFLX.RFLX_Types.Bytes) is
+      pragma Unreferenced (Chan, Der);
+   begin null; end Set_Trust_Anchor;
+
+   procedure Set_Server_Identity
+     (Chan     : in out Channel;
+      Cert_Der : RFLX.RFLX_Types.Bytes;
+      Key_Raw  : RFLX.RFLX_Types.Bytes) is
+      pragma Unreferenced (Chan, Cert_Der, Key_Raw);
+   begin null; end Set_Server_Identity;
+
 end Mqtt_Core.Transport;

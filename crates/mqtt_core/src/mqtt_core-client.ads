@@ -66,6 +66,10 @@ package Mqtt_Core.Client is
       Inbound_Buf  : out RFLX.RFLX_Types.Bytes_Ptr;
       Outgoing_Buf : out RFLX.RFLX_Types.Bytes_Ptr);
 
+   procedure Configure_Tls_Client
+     (C         : in out Client;
+      Trust_Der : RFLX.RFLX_Types.Bytes);
+
    procedure Open
      (C             : in out Client;
       Host          : String;

@@ -123,6 +123,13 @@ package body Mqtt_Core.Client is
       end if;
    end Puback_If_Qos1;
 
+   procedure Configure_Tls_Client
+     (C         : in out Client;
+      Trust_Der : RFLX.RFLX_Types.Bytes) is
+   begin
+      Transport.Set_Trust_Anchor (C.Trans, Trust_Der);
+   end Configure_Tls_Client;
+
    ---------------------------------------------------------------------
    --  Open — drive Connect_Handshake FSM.
    ---------------------------------------------------------------------

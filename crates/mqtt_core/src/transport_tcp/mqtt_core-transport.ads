@@ -84,6 +84,16 @@ package Mqtt_Core.Transport is
    function Native_Socket (L : Listener) return GNAT.Sockets.Socket_Type;
    function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type;
 
+   --  TLS config no-ops — present so Client.Configure_Tls compiles
+   --  for all TRANSPORT variants. Only the tls variant does real work.
+   procedure Set_Trust_Anchor
+     (Chan : in out Channel;
+      Der  : RFLX.RFLX_Types.Bytes);
+   procedure Set_Server_Identity
+     (Chan     : in out Channel;
+      Cert_Der : RFLX.RFLX_Types.Bytes;
+      Key_Raw  : RFLX.RFLX_Types.Bytes);
+
    Connect_Error : exception;
    Send_Error    : exception;
 
