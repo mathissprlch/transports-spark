@@ -98,6 +98,14 @@ package Http2_Core.Transport is
      Pre  => Is_Listening (L),
      Post => not Is_Listening (L);
 
+   procedure Set_Trust_Anchor
+     (Chan : in out Channel;
+      Der  : RFLX.RFLX_Types.Bytes);
+   procedure Set_Server_Identity
+     (Chan     : in out Channel;
+      Cert_Der : RFLX.RFLX_Types.Bytes;
+      Key_Raw  : RFLX.RFLX_Types.Bytes);
+
    Connect_Error : exception;
    Send_Error    : exception;
 

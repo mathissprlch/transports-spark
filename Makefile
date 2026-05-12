@@ -362,6 +362,32 @@ examples-build:
 	@$(ALR_ENV) alr -C crates/examples build
 
 # ============================================================
+# TLS stack integration demos (§10d)
+# ============================================================
+
+EC_DIR := crates/tls_core/tests/fixtures/interop/ec
+
+mqtt-tls-demo:
+	@$(ALR_ENV) TRANSPORT=tls alr -C crates/examples exec -- \
+	  gprbuild -P examples.gpr -j8 mqtt_tls_demo.adb -p -q
+	@echo "--- start mosquitto with TLS on :8883 first ---"
+	@echo "docker run --rm -d -p 8883:8883 \\"
+	@echo "  -v \$$PWD/$(EC_DIR):/certs:ro --name mqtt-tls \\"
+	@echo "  eclipse-mosquitto sh -c 'printf \"listener 8883\\n\\"
+	@echo "  cafile /certs/root.pem\\ncertfile /certs/leaf.pem\\n\\"
+	@echo "  keyfile /certs/leaf.key\\nallow_anonymous true\\n\" \\"
+	@echo "  > /mosquitto/config/mosquitto.conf && \\"
+	@echo "  mosquitto -c /mosquitto/config/mosquitto.conf'"
+	@echo "--- then: ./crates/examples/bin/mqtt_tls_demo ---"
+
+grpc-tls-demo:
+	@$(ALR_ENV) TRANSPORT=tls alr -C crates/examples exec -- \
+	  gprbuild -P examples.gpr -j8 grpc_tls_demo.adb -p -q
+	@echo "--- start nghttpd on :4443 first ---"
+	@echo "nghttpd 4443 $(EC_DIR)/leaf.key $(EC_DIR)/leaf.pem -d /tmp &"
+	@echo "--- then: ./crates/examples/bin/grpc_tls_demo ---"
+
+# ============================================================
 # Backward-compat aliases (legacy target names)
 # ============================================================
 

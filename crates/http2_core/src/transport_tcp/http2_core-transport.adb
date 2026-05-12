@@ -281,4 +281,17 @@ package body Http2_Core.Transport is
       L.Listening := False;
    end Stop;
 
+   procedure Set_Trust_Anchor
+     (Chan : in out Channel;
+      Der  : RFLX.RFLX_Types.Bytes) is
+      pragma Unreferenced (Chan, Der);
+   begin null; end Set_Trust_Anchor;
+
+   procedure Set_Server_Identity
+     (Chan     : in out Channel;
+      Cert_Der : RFLX.RFLX_Types.Bytes;
+      Key_Raw  : RFLX.RFLX_Types.Bytes) is
+      pragma Unreferenced (Chan, Cert_Der, Key_Raw);
+   begin null; end Set_Server_Identity;
+
 end Http2_Core.Transport;

@@ -113,6 +113,13 @@ package body Http2_Core.Connection is
       end;
    end Read_Frame;
 
+   procedure Configure_Tls_Client
+     (C         : in out Connection;
+      Trust_Der : RFLX.RFLX_Types.Bytes) is
+   begin
+      Transport.Set_Trust_Anchor (C.Trans, Trust_Der);
+   end Configure_Tls_Client;
+
    ---------------------------------------------------------------------
    --  Open
    ---------------------------------------------------------------------

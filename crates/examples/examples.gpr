@@ -27,6 +27,7 @@ project Examples is
                  "mqtt_will_demo.adb",
                  "mqtt_session_demo.adb",
                  "mqtt_tls_demo.adb",
+                 "grpc_tls_demo.adb",
                  "tls_cli.adb");
 
    type Build_Mode_Kind is ("debug", "release");

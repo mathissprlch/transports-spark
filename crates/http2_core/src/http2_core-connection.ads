@@ -63,6 +63,10 @@ package Http2_Core.Connection is
       Inbound_Buf  : out RFLX.RFLX_Types.Bytes_Ptr;
       Outgoing_Buf : out RFLX.RFLX_Types.Bytes_Ptr);
 
+   procedure Configure_Tls_Client
+     (C         : in out Connection;
+      Trust_Der : RFLX.RFLX_Types.Bytes);
+
    --  Open a connection to host:port and complete the §3.4 preface +
    --  §6.5.3 SETTINGS handshake. Raises Connect_Error on socket
    --  failure or if the peer sends a malformed initial SETTINGS.
