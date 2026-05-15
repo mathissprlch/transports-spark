@@ -18,7 +18,7 @@
 --
 --  v0.5 simplification: the extensions list we EMIT is empty (the
 --  only extension RFC 8446 defines for NST is early_data, which is
---  out of scope per CLAUDE.md §0a). Decode tolerates and skips any
+--  out of scope per docs/conventions.md §0a). Decode tolerates and skips any
 --  extensions block that fits in the bounded body buffer.
 --
 --  Resumption-PSK derivation (RFC 8446 §4.6.1):
@@ -33,17 +33,17 @@
 --          Derive-Secret (Master_Secret, "res master",
 --                         ClientHello ... client Finished)
 --
---  v0.5 scope (per CLAUDE.md §0a — ship only paths in production
+--  v0.5 scope (per docs/conventions.md §0a — ship only paths in production
 --  use): the SHA-256-based suite path is implemented end-to-end
 --  here. The SHA-384 resumption path is left for the same wave that
 --  ports the SHA-384 internal key schedule into Tls13_Driver (see
 --  the wall-hit note in tls_core-tls13_driver.ads).
 --
---  Spec mirror (CLAUDE.md §0c): miTLS
+--  Spec mirror (docs/conventions.md §0c): miTLS
 --    src/tls/MiTLS.HandshakeMessages.fst : newSessionTicket type
 --    src/tls/MiTLS.KS.fst                : resume_psk_secret
 --
---  Tag policy (CLAUDE.md §4): all entry points carry a [VERIFIED —
+--  Tag policy (docs/conventions.md §4): all entry points carry a [VERIFIED —
 --  AoRTE] tag — the wire encode / decode and the HKDF-Expand-Label
 --  composition do not have a portable computational spec to mirror
 --  from HACL\* the way the primitive does (HKDF-Expand-Label is

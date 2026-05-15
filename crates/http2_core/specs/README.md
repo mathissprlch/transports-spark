@@ -76,4 +76,4 @@ package <Name> is
 
 Per-construct comments cite §X.Y where the field/message is defined,
 following the same convention as `crates/mqtt_core/specs/`. See
-`tools/recordflux/CLAUDE.md` for full authoring conventions.
+`tools/recordflux/conventions.md` for full authoring conventions.

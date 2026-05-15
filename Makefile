@@ -1,6 +1,6 @@
 # transports-spark — top-level Makefile.
 #
-# This is the public test-discovery surface (CLAUDE.md §10d).
+# This is the public test-discovery surface (docs/conventions.md §10d).
 # Every long-running operation worth running again has a target here.
 #
 # Layout (runnable, not aspirational):
@@ -160,7 +160,7 @@ tls-prove: tls-audit
 	@$(MAKE) -s tls-audit
 	@echo
 	@echo "Reminder: a green prove headline alone is not platinum."
-	@echo "  See CLAUDE.md §0d. The audit above must also be clean."
+	@echo "  See docs/conventions.md §0d. The audit above must also be clean."
 
 tls-prove-l3:
 	@$(MAKE) tls-prove PROVE_LEVEL=3
@@ -240,7 +240,7 @@ tls-ci: tls-audit tls-test tls-prove
 
 # Build the harness binary the interop runner uses.  Single
 # binary (tls_cli) handles both client and server, all modes,
-# all extensions — driven by CLI flags.  Per CLAUDE.md §10a.
+# all extensions — driven by CLI flags.  Per docs/conventions.md §10a.
 tls-interop-build: tls-build tls-interop-go-helpers
 	@$(ALR_ENV) alr -C crates/tls_interop build
 	@$(ALR_ENV) alr -C crates/examples build

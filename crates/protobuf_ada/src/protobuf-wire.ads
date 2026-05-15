@@ -232,6 +232,44 @@ is
       Buffer : Protobuf.IO.Octet_Array;
       Value  : out Interfaces.Integer_64);
 
+   procedure Decode_UInt32_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Unsigned_32);
+
+   procedure Decode_UInt64_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.Unsigned_64);
+
+   procedure Decode_Bytes_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Protobuf.IO.Octet_Array;
+      Last   : out Protobuf.IO.Octet_Offset);
+
+   procedure Encode_Float_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Interfaces.IEEE_Float_32);
+
+   procedure Decode_Float_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.IEEE_Float_32);
+
+   procedure Encode_Double_Field
+     (C      : in out Protobuf.IO.Write_Cursor;
+      Buffer : in out Protobuf.IO.Octet_Array;
+      Number : Field_Number;
+      Value  : Interfaces.IEEE_Float_64);
+
+   procedure Decode_Double_Value
+     (C      : in out Protobuf.IO.Read_Cursor;
+      Buffer : Protobuf.IO.Octet_Array;
+      Value  : out Interfaces.IEEE_Float_64);
+
    --  Errors -----------------------------------------------------------
 
    Wire_Format_Error : exception;

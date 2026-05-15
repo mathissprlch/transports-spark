@@ -7489,9 +7489,15 @@ procedure Tls_Core_Tests is
          --  pre_shared_key (0x0029) MUST NOT be present
          Check ("Cert CH: pre_shared_key (0x0029) ABSENT",
                 not Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#29#));
-         --  psk_key_exchange_modes (0x002D) MUST NOT be present
-         Check ("Cert CH: psk_key_exchange_modes (0x002D) ABSENT",
-                not Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#2D#));
+         --  psk_key_exchange_modes (0x002D) — RFC 8446 §4.2.9 says
+         --  "MUST be included when offering PSK", so technically
+         --  optional in cert-mode.  Every production TLS 1.3 client
+         --  (openssl, BoringSSL, gnutls-cli, Go, Chromium) emits it
+         --  unconditionally, and docs/conventions.md §0a "production-only scope"
+         --  obligates us to match the production CH shape.  Hence
+         --  we now emit it in cert-mode too — assert PRESENCE.
+         Check ("Cert CH: psk_key_exchange_modes (0x002D) PRESENT",
+                Find_Pair (Out_Buf (1 .. Out_Last), 16#00#, 16#2D#));
          --  X25519 client key (32 bytes 0x6D) appears
          declare
             Pat : constant Tls_Core.Octet_Array (1 .. 32) :=

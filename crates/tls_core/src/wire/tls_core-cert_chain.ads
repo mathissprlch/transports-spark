@@ -6,7 +6,7 @@
 --  topmost cert is signed by a trusted root cert held in the
 --  caller-supplied trust store.
 --
---  v0.5 scope (production-default per CLAUDE.md §0a):
+--  v0.5 scope (production-default per docs/conventions.md §0a):
 --    * Signature algorithms recognised:
 --        ecdsa-with-SHA256       (RFC 5480 §2.1.2)
 --        rsassaPss with SHA-256  (RFC 8017 §A.2.3 — rsa_pss_rsae_sha256

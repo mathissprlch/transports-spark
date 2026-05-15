@@ -57,7 +57,7 @@ implementation status table.
 
 ## Files
 
-Layout per `tools/recordflux/CLAUDE.md`: flat directory, lowercase,
+Layout per `tools/recordflux/conventions.md`: flat directory, lowercase,
 section numbers in file headers (not filenames). RecordFlux's `with`
 resolver works cleanly across files in one directory.
 

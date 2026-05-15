@@ -639,7 +639,7 @@ is
 
       --  psk_key_exchange_modes = [psk_dhe_ke (1)]. RFC 8446 §4.2.9.
       --  Mode 0 (psk_ke) is RFC-discouraged + production-rejected;
-      --  v0.5 advertises mode 1 only (CLAUDE.md §0a).
+      --  v0.5 advertises mode 1 only (docs/conventions.md §0a).
       declare
          Body_Bytes : constant Octet_Array (1 .. 2) :=
            (1 => 16#01#, 2 => 16#01#);  --  modes_len = 1, mode = 1 (psk_dhe_ke)
@@ -1266,6 +1266,29 @@ is
       begin
          Encode_Extension
            (Out_Buf, Cursor, Ext_Signature_Algorithms, Body_Bytes);
+      end;
+
+      --  psk_key_exchange_modes = [psk_dhe_ke (1)]. RFC 8446 §4.2.9.
+      --
+      --  Strictly conditional in §4.2.9 ("MUST be included when
+      --  offering PSK"), so omitting it in a cert-mode CH is
+      --  RFC-conformant.  However: every production TLS 1.3 client
+      --  (openssl s_client, BoringSSL bssl client, gnutls-cli,
+      --  Go crypto/tls, Chromium net stack) emits this extension
+      --  unconditionally — it's part of the production CH shape per
+      --  docs/conventions.md §0a "production-only scope" rule.  BoringSSL's
+      --  `bssl server` example tool refuses to flush its server
+      --  flight without it (TCP send queue stays empty despite the
+      --  internal state machine reaching send_server_finished);
+      --  openssl/gnutls/mbedtls/wolfssl are lenient.  Including it
+      --  unconditionally costs 6 bytes and unblocks the bssl c2s
+      --  matrix column.
+      declare
+         Body_Bytes : constant Octet_Array (1 .. 2) :=
+           (1 => 16#01#, 2 => 16#01#);  --  modes_len = 1, mode = 1
+      begin
+         Encode_Extension
+           (Out_Buf, Cursor, Ext_Psk_Key_Exchange_Modes, Body_Bytes);
       end;
 
       --  Patch extensions-block length.

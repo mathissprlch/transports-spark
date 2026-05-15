@@ -19,6 +19,7 @@ with RFLX.RFLX_Builtin_Types;
 
 with Http2_Core.Transport;
 with Http2_Core.Hpack;
+with Http2_Core.Flow_Gate;
 
 package Http2_Core.Server is
 
@@ -150,6 +151,15 @@ private
       --  Decoder dynamic table — survives across all RPCs served
       --  on this listener (one connection at a time).
       Hpack_Decoder : Hpack.Dynamic_Table.Table;
+      --  Outbound flow-control gate (RFC 9113 §6.9). Tracks the
+      --  peer's per-connection and per-stream receive windows; the
+      --  invariant "no DATA emit when window=0" is structural in
+      --  the RFLX session machine — see specs/flow_gate.rflx.
+      Gate          : Flow_Gate.Gate;
+      --  Peer's SETTINGS_INITIAL_WINDOW_SIZE (§6.5.2 + §6.9.2).
+      --  Default 65535 per RFC until peer's SETTINGS frame arrives.
+      --  Used to seed Stream_Window on every new stream.
+      Peer_Initial_Window : Flow_Gate.Window_Bytes := 65535;
    end record;
 
 end Http2_Core.Server;

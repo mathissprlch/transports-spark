@@ -623,7 +623,7 @@ is
    end Aes_Ctr_Pkg;
 
    ------------------------------------------------------------------
-   --  §0b open functional-correctness gaps (CLAUDE.md §0b)
+   --  §0b open functional-correctness gaps (docs/conventions.md §0b)
    ------------------------------------------------------------------
    --
    --  Tag-by-tag inventory:

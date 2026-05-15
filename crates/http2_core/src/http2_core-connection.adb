@@ -23,27 +23,48 @@ package body Http2_Core.Connection is
    --  connections stall when 64 KB of cumulative server→client
    --  DATA has arrived. Round_Trip + the three streaming variants
    --  all need this; the body lives in one place.
-   Refill_At : constant Bit_Len := 32_768;
+   Refill_At : constant Bit_Len := 2 * 1024 * 1024;
+   --  Half the 4 MB initial window we advertise. Fires a WU when
+   --  we've consumed 2 MB of inbound DATA. Responses up to 4 MB
+   --  work; beyond that, multiple WU cycles keep the window open.
+   --  Note: outbound flow control (respecting the *server's* window
+   --  for our request DATA) is NOT implemented — request bodies are
+   --  limited to the server's initial window (~63 KB default).
 
    procedure Account_Inbound_Data
-     (C : in out Connection; Length : Bit_Len);
+     (C : in out Connection; Length : Bit_Len;
+      Stream_Id : Bit_Len := 0);
 
    procedure Account_Inbound_Data
-     (C : in out Connection; Length : Bit_Len) is
+     (C : in out Connection; Length : Bit_Len;
+      Stream_Id : Bit_Len := 0) is
    begin
       C.Conn_Bytes_Owed := C.Conn_Bytes_Owed + Length;
       if C.Conn_Bytes_Owed >= Refill_At then
          declare
+            Wu_Ptr : RFLX.RFLX_Types.Bytes_Ptr :=
+              new RFLX.RFLX_Types.Bytes'(1 .. 26 => 0);
             Wu_Last : RFLX.RFLX_Types.Index;
+            Owed : constant Bit_Len := C.Conn_Bytes_Owed;
          begin
             Wire.Encode_Window_Update
-              (Buffer    => C.Buf,
+              (Buffer    => Wu_Ptr,
                Last      => Wu_Last,
                Stream_Id => 0,
-               Increment => C.Conn_Bytes_Owed);
+               Increment => Owed);
             Transport.Send
-              (C.Trans, C.Buf.all (C.Buf'First .. Wu_Last));
+              (C.Trans, Wu_Ptr.all (Wu_Ptr'First .. Wu_Last));
+            if Stream_Id > 0 then
+               Wire.Encode_Window_Update
+                 (Buffer    => Wu_Ptr,
+                  Last      => Wu_Last,
+                  Stream_Id => Stream_Id,
+                  Increment => Owed);
+               Transport.Send
+                 (C.Trans, Wu_Ptr.all (Wu_Ptr'First .. Wu_Last));
+            end if;
             C.Conn_Bytes_Owed := 0;
+            pragma Unreferenced (Wu_Ptr);
          end;
       end if;
    end Account_Inbound_Data;
@@ -164,16 +185,37 @@ package body Http2_Core.Connection is
 
       --  §6.5 — emit our SETTINGS. v0.2 bounded subset per SCOPE.md.
       declare
-         Params : constant Wire.Settings_List (1 .. 3) :=
+         Params : constant Wire.Settings_List (1 .. 4) :=
            ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
              Value      => 0),
             (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
              Value      => 0),
             (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-             Value      => 1));
+             Value      => 1),
+            (Identifier => RFLX.Http2_Parameters.INITIAL_WINDOW_SIZE,
+             Value      => 4 * 1024 * 1024));
       begin
          Wire.Encode_Settings (C.Buf, Last, Params);
          Transport.Send (C.Trans, C.Buf.all (C.Buf'First .. Last));
+      end;
+
+      --  Bump the connection-level window from the default 65535 to 4MB.
+      --  INITIAL_WINDOW_SIZE only affects streams (§6.9.2); the
+      --  connection window is separate (§6.9.1) and can only grow via
+      --  WINDOW_UPDATE on stream 0.
+      declare
+         Wu_Ptr : RFLX.RFLX_Types.Bytes_Ptr :=
+           new RFLX.RFLX_Types.Bytes'(1 .. 26 => 0);
+         Wu_Last : RFLX.RFLX_Types.Index;
+      begin
+         Wire.Encode_Window_Update
+           (Buffer    => Wu_Ptr,
+            Last      => Wu_Last,
+            Stream_Id => 0,
+            Increment => 4 * 1024 * 1024 - 65_535);
+         Transport.Send
+           (C.Trans, Wu_Ptr.all (Wu_Ptr'First .. Wu_Last));
+         pragma Unreferenced (Wu_Ptr);
       end;
 
       --  §6.5.3 — read until both sides' SETTINGS are exchanged + ACKed.
@@ -334,17 +376,43 @@ package body Http2_Core.Connection is
                Headers_Sent := True;
                if not End_Stream_Out then
                   declare
-                     Data_Last : RFLX.RFLX_Types.Index;
+                     Max_Payload : constant := 16_384;
+                     --  Length (0-based) instead of Index (1-based)
+                     --  so the final subtraction to 0 doesn't fail
+                     --  the range check.
+                     Remaining   : RFLX.RFLX_Types.Length :=
+                       RFLX.RFLX_Types.Length (Request_Body'Length);
+                     Offset      : RFLX.RFLX_Types.Index :=
+                       Request_Body'First;
                   begin
-                     Wire.Encode_Data
-                       (Buffer     => C.Buf,
-                        Last       => Data_Last,
-                        Stream_Id  => Stream_Id,
-                        Payload    => Request_Body,
-                        End_Stream => True);
-                     Transport.Send
-                       (C.Trans,
-                        C.Buf.all (C.Buf'First .. Data_Last));
+                     while Remaining > 0 loop
+                        declare
+                           Chunk : constant RFLX.RFLX_Types.Length :=
+                             RFLX.RFLX_Types.Length'Min
+                               (Remaining, Max_Payload);
+                           Is_Last : constant Boolean :=
+                             Chunk = Remaining;
+                           Data_Last : RFLX.RFLX_Types.Index;
+                        begin
+                           Wire.Encode_Data
+                             (Buffer     => C.Buf,
+                              Last       => Data_Last,
+                              Stream_Id  => Stream_Id,
+                              Payload    =>
+                                Request_Body
+                                  (Offset ..
+                                     Offset
+                                     + RFLX.RFLX_Types.Index (Chunk)
+                                     - 1),
+                              End_Stream => Is_Last);
+                           Transport.Send
+                             (C.Trans,
+                              C.Buf.all (C.Buf'First .. Data_Last));
+                           Offset    := Offset
+                             + RFLX.RFLX_Types.Index (Chunk);
+                           Remaining := Remaining - Chunk;
+                        end;
+                     end loop;
                   end;
                end if;
             end if;
@@ -460,7 +528,7 @@ package body Http2_Core.Connection is
                            end loop;
                         end;
 
-                        Account_Inbound_Data (C, Hdr.Length);
+                        Account_Inbound_Data (C, Hdr.Length, Stream_Id);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
@@ -857,7 +925,7 @@ package body Http2_Core.Connection is
                               On_Message (Msg);
                            end if;
                         end;
-                        Account_Inbound_Data (C, Hdr.Length);
+                        Account_Inbound_Data (C, Hdr.Length, Stream_Id);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
@@ -1088,7 +1156,7 @@ package body Http2_Core.Connection is
                                    + RFLX.RFLX_Types.Index (I));
                            end loop;
                         end;
-                        Account_Inbound_Data (C, Hdr.Length);
+                        Account_Inbound_Data (C, Hdr.Length, Stream_Id);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;
@@ -1291,7 +1359,7 @@ package body Http2_Core.Connection is
                               On_Inbound (Msg);
                            end if;
                         end;
-                        Account_Inbound_Data (C, Hdr.Length);
+                        Account_Inbound_Data (C, Hdr.Length, Stream_Id);
                      end if;
                      if (Hdr.Flags and Wire.Flag_END_STREAM) /= 0 then
                         Stream_Closed := True;

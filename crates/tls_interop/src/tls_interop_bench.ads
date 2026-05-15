@@ -9,7 +9,7 @@ package Tls_Interop_Bench is
    --  All bench procedures append per-row JSON objects to Json_Out
    --  and emit one terse progress line per row to stdout.  The full
    --  numeric table is the JSON artifact, not the terminal.  Caller
-   --  writes the assembled array to a file (see CLAUDE.md §15).
+   --  writes the assembled array to a file (see docs/conventions.md §15).
 
    procedure Run_Handshake_Bench
      (Peers       : Peer_Array;

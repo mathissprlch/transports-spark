@@ -15,7 +15,7 @@ is
    --  gains a portable HACL\* / FIPS 197 functional spec. Until then
    --  this body computes the same value as the imperative procedure
    --  (deterministic by signature: same inputs → same output). It is
-   --  computable, not a stub. See CLAUDE.md §0b.
+   --  computable, not a stub. See docs/conventions.md §0b.
    function Spec_Aes256_Encrypt_Block
      (RK        : Tls_Core.Aes256.Round_Keys;
       Plaintext : Block_16) return Block_16

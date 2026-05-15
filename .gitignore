@@ -22,7 +22,18 @@ vendor/aws/
 # Editor
 .DS_Store
 *.swp
+.#*
 .vscode/
 .idea/
 .claude/
 crates/examples/obj_tls/
+
+# Orphan alr-init scaffolding at repo root (real project lives in crates/)
+/src/
+/transports-spark.gpr
+
+# Local-only assistant contract; published conventions are in docs/conventions.md
+/CLAUDE.md
+
+# Vendored Go reference impls — not part of the SPARK distribution
+/bench/go-grpc/

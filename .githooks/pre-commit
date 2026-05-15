@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#
+# pre-commit hook — rejects staged content that contains
+# tool/assistant attribution per docs/conventions.md §13.
+#
+# Enable with:
+#    git config core.hooksPath .githooks
+#
+# This hook runs scripts/scrub-attribution.sh against the WORKING
+# TREE (staged + unstaged) plus the commit-message file if Git
+# passes one in.  To bypass for a single emergency commit:
+#    git commit --no-verify -m "..."
+# (please don't.)
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCRUB="$REPO_ROOT/scripts/scrub-attribution.sh"
+
+if [ ! -x "$SCRUB" ]; then
+   echo "pre-commit: $SCRUB missing or not executable" >&2
+   exit 1
+fi
+
+# Run scrub against the staged-file working tree.
+if ! "$SCRUB"; then
+   echo "" >&2
+   echo "pre-commit: rejecting commit (see docs/conventions.md §13)." >&2
+   echo "Use 'git commit --no-verify' to bypass; please don't." >&2
+   exit 1
+fi
+
+# Also scan the prepared commit message if Git is using
+# prepare-commit-msg → commit-msg flow.
+if [ -n "${1-}" ] && [ -f "$1" ]; then
+   GIT_COMMIT_MSG_FILE="$1" "$SCRUB" || exit 1
+fi
+
+exit 0

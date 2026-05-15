@@ -9,7 +9,7 @@
 --      T(i) = HMAC-Hash(PRK, T(i-1) || info || octet(i))   for 1<=i<=N
 --      OKM = T(1) || T(2) || ... || T(N) truncated to L octets
 --
---  HACL\* spec porting (CLAUDE.md §0c): the public Expand procedure
+--  HACL\* spec porting (docs/conventions.md §0c): the public Expand procedure
 --  carries `OKM = Spec_HKDF_Expand (PRK, Info, OKM'Length)` where
 --  Spec_HKDF_Expand is a SPARK port of HACL\*'s
 --  `specs/Spec.HKDF.fst` `expand` definition:
@@ -38,7 +38,7 @@ is
    --  HACL* Spec.HKDF port — exposed in the public spec because the
    --  Post on Expand references Spec_HKDF_Expand. Bodies in the
    --  package body. These are real (executable) SPARK functions, not
-   --  ghost stubs (CLAUDE.md §0d clause 4).
+   --  ghost stubs (docs/conventions.md §0d clause 4).
    ---------------------------------------------------------------------
 
    --  Single-block T(i) computation:

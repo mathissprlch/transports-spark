@@ -90,6 +90,14 @@ is
       Output_OK   : out Boolean)
    with Pre => Output'Length >= 1;
 
+   procedure Encode_With_Table
+     (Headers       : Header_Block;
+      Encoder_Table : in out Dynamic_Table.Table;
+      Output        : in out Octet_Array;
+      Output_Last   : out Natural;
+      Output_OK     : out Boolean)
+   with Pre => Output'Length >= 1;
+
    --  Decode an HPACK header block fragment per RFC 7541 §6 into
    --  `Headers`. Acceptance discipline:
    --    * §6.1 with index 1..61 → look up static table.

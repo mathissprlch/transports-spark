@@ -55,6 +55,10 @@ case $PEER in
     echo "SKIP: bssl half-RTT NST coalescing blocks resumption c2s"
     exit 2
     ;;
+  wolfssl)
+    echo "SKIP: wolfssl peer CLI not yet wired for resumption"
+    exit 2
+    ;;
   *)
     echo "Unknown peer: $PEER"; exit 1
     ;;

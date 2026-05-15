@@ -3,8 +3,13 @@ with RFLX.Http2_Parameters;
 with RFLX.Stream.Open.FSM;
 
 with Http2_Core.Wire;
+with Logger;
 
 package body Http2_Core.Server is
+
+   use type Flow_Gate.Window_Bytes;
+   use type Flow_Gate.Decision;
+   use type RFLX.Http2_Parameters.HTTP_2_Settings_Enum;
 
    use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
    use type RFLX.RFLX_Builtin_Types.Bit_Length;
@@ -179,13 +184,15 @@ package body Http2_Core.Server is
       Chan : Transport.Channel)
    is
       Last : RFLX.RFLX_Types.Index;
-      Params : constant Wire.Settings_List (1 .. 3) :=
+      Params : constant Wire.Settings_List (1 .. 4) :=
         ((Identifier => RFLX.Http2_Parameters.HEADER_TABLE_SIZE,
           Value      => 0),
          (Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
           Value      => 0),
          (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-          Value      => 1));
+          Value      => 1),
+         (Identifier => RFLX.Http2_Parameters.INITIAL_WINDOW_SIZE,
+          Value      => 4 * 1024 * 1024));
    begin
       Wire.Encode_Settings (L.Buf, Last, Params);
       Transport.Send (Chan, L.Buf.all (L.Buf'First .. Last));
@@ -236,7 +243,203 @@ package body Http2_Core.Server is
       Transport.Send (Chan, L.Buf.all (L.Buf'First .. Frame_Last));
    end Encode_And_Send_Headers;
 
-   --  Wrap caller's gRPC-framed payload in a DATA frame and emit.
+   --  Process a SETTINGS payload (already body-only) into the gate
+   --  state: extract INITIAL_WINDOW_SIZE if present and stash on the
+   --  Listener for use on the next Init_Stream call. §6.5.2 default
+   --  is 65535 — left untouched if peer didn't override.
+   procedure Process_Peer_Settings_Body
+     (L      : in out Listener;
+      Body_S : RFLX.RFLX_Types.Bytes);
+
+   procedure Process_Peer_Settings_Body
+     (L      : in out Listener;
+      Body_S : RFLX.RFLX_Types.Bytes)
+   is
+      Params      : Wire.Settings_List (1 .. 16);
+      Params_Last : Natural;
+      Valid       : Boolean;
+   begin
+      Wire.Decode_Settings_Payload
+        (Buffer       => Body_S,
+         Valid        => Valid,
+         Params       => Params,
+         Params_Last  => Params_Last);
+      if not Valid then
+         return;
+      end if;
+      for I in Params'First .. Params_Last loop
+         if Params (I).Identifier =
+              RFLX.Http2_Parameters.INITIAL_WINDOW_SIZE
+         then
+            --  §6.9.1: value MUST NOT exceed 2**31-1. The structural
+            --  Window_Bytes range catches overflow at the conversion;
+            --  if the peer sent a violating value Bit_Len > 2**31-1
+            --  we leave Peer_Initial_Window untouched.
+            if Params (I).Value <= 2 ** 31 - 1 then
+               L.Peer_Initial_Window :=
+                 Flow_Gate.Window_Bytes (Params (I).Value);
+               Logger.Log
+                 (Logger.Debug,
+                  "h2srv: peer INITIAL_WINDOW_SIZE="
+                  & Flow_Gate.Window_Bytes'Image
+                      (L.Peer_Initial_Window));
+            end if;
+         end if;
+      end loop;
+   end Process_Peer_Settings_Body;
+
+   --  Process an inbound WINDOW_UPDATE frame into the gate.
+   --  Body_S is the 4-byte payload (header already stripped).
+   --  Stream_Id distinguishes connection-level (0) vs per-stream.
+   --  Returns OK=False on §6.9.1 overflow (caller should fail conn).
+   procedure Process_Inbound_Wu
+     (L         : in out Listener;
+      Stream_Id : Bit_Len;
+      Body_S    : RFLX.RFLX_Types.Bytes;
+      OK        : out Boolean);
+
+   procedure Process_Inbound_Wu
+     (L         : in out Listener;
+      Stream_Id : Bit_Len;
+      Body_S    : RFLX.RFLX_Types.Bytes;
+      OK        : out Boolean)
+   is
+      Increment : Bit_Len;
+      Wu_Valid  : Boolean;
+   begin
+      OK := True;
+      Wire.Decode_Window_Update_Payload
+        (Buffer    => Body_S,
+         Increment => Increment,
+         Valid     => Wu_Valid);
+      if not Wu_Valid or else Increment = 0 then
+         --  §6.9.1: Increment=0 is PROTOCOL_ERROR. Skip the apply;
+         --  surface as flow error so caller decides.
+         OK := False;
+         return;
+      end if;
+      if Stream_Id = 0 then
+         Flow_Gate.Apply_Wu_Conn
+           (L.Gate,
+            Flow_Gate.Window_Bytes (Increment),
+            OK);
+      else
+         Flow_Gate.Apply_Wu_Stream
+           (L.Gate,
+            Flow_Gate.Window_Bytes (Increment),
+            OK);
+      end if;
+      Logger.Log
+        (Logger.Debug,
+         "h2srv: wu stream=" & Bit_Len'Image (Stream_Id)
+         & " inc=" & Bit_Len'Image (Increment)
+         & " ok=" & Boolean'Image (OK));
+   end Process_Inbound_Wu;
+
+   --  Block-read inbound frames until the gate authorizes Bytes
+   --  bytes (i.e., we observe at least one WU large enough to
+   --  unblock). Reads from Chan via L.Buf. ACKs PINGs inline.
+   --  PRECONDITION: caller already received Decision_Deny from the
+   --  gate; this procedure is the wait-loop. POSTCONDITION on
+   --  success (OK=True): a follow-up Request_Send for Bytes will
+   --  return Decision_Allow.
+   procedure Wait_For_Window
+     (L         : in out Listener;
+      Chan      : Transport.Channel;
+      Bytes     : Flow_Gate.Window_Bytes;
+      OK        : out Boolean);
+
+   procedure Wait_For_Window
+     (L         : in out Listener;
+      Chan      : Transport.Channel;
+      Bytes     : Flow_Gate.Window_Bytes;
+      OK        : out Boolean)
+   is
+      Hdr      : Wire.Frame_Header;
+      Last     : RFLX.RFLX_Types.Index;
+      Read_OK  : Boolean;
+   begin
+      OK := False;
+      Logger.Log
+        (Logger.Debug,
+         "h2srv: gate blocked; waiting for WU bytes="
+         & Flow_Gate.Window_Bytes'Image (Bytes));
+      loop
+         Read_Frame (Chan, L.Buf, Hdr, Last, Read_OK);
+         if not Read_OK then
+            return;  --  peer closed; OK stays False
+         end if;
+         case Hdr.Frame_Type_Value is
+            when RFLX.Http2_Parameters.WINDOW_UPDATE =>
+               declare
+                  Body_S : constant RFLX.RFLX_Types.Bytes :=
+                    L.Buf.all (L.Buf'First + 9 .. Last);
+                  Apply_OK : Boolean;
+                  Probe    : Flow_Gate.Decision;
+               begin
+                  Process_Inbound_Wu
+                    (L, Hdr.Stream_Identifier, Body_S, Apply_OK);
+                  if not Apply_OK then
+                     return;  --  flow error
+                  end if;
+                  --  Re-check whether we now have enough credit.
+                  Flow_Gate.Request_Send (L.Gate, Bytes, Probe);
+                  if Probe = Flow_Gate.Decision_Allow then
+                     OK := True;
+                     return;
+                  end if;
+                  --  Still blocked — loop.
+               end;
+            when RFLX.Http2_Parameters.PING =>
+               if (Hdr.Flags and Wire.Flag_ACK) = 0
+                 and Hdr.Length = 8
+               then
+                  declare
+                     Ack_Last : RFLX.RFLX_Types.Index;
+                     Echo     : constant RFLX.RFLX_Types.Bytes :=
+                       L.Buf.all (L.Buf'First + 9 ..
+                                    L.Buf'First + 16);
+                  begin
+                     Wire.Encode_Ping
+                       (Buffer => L.Buf, Last => Ack_Last,
+                        Opaque_Data => Echo, Ack => True);
+                     Transport.Send
+                       (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
+                  end;
+               end if;
+            when RFLX.Http2_Parameters.SETTINGS =>
+               --  Re-settings mid-stream: refresh stream window basis
+               --  for future streams (§6.5.3); doesn't replenish
+               --  current credit.
+               if (Hdr.Flags and Wire.Flag_ACK) = 0 then
+                  declare
+                     Body_S : constant RFLX.RFLX_Types.Bytes :=
+                       L.Buf.all (L.Buf'First + 9 .. Last);
+                     Ack_Last : RFLX.RFLX_Types.Index;
+                  begin
+                     Process_Peer_Settings_Body (L, Body_S);
+                     Wire.Encode_Settings_Ack (L.Buf, Ack_Last);
+                     Transport.Send
+                       (Chan, L.Buf.all (L.Buf'First .. Ack_Last));
+                  end;
+               end if;
+            when RFLX.Http2_Parameters.GOAWAY |
+                 RFLX.Http2_Parameters.RST_STREAM =>
+               --  Peer is tearing down. Stop waiting.
+               return;
+            when others =>
+               --  Other frames while we're stalled are unexpected
+               --  but not fatal. Continue waiting.
+               null;
+         end case;
+      end loop;
+   end Wait_For_Window;
+
+   --  Wrap caller's gRPC-framed payload in DATA frames and emit,
+   --  honouring the §6.9 flow-control window via the gate. Each
+   --  chunk is gated; on Deny we read inbound until a WU
+   --  replenishes credit (or peer disconnects, in which case we
+   --  abandon the response — the caller's stream is dead anyway).
    procedure Send_Data_Frame
      (L          : in out Listener;
       Chan       : Transport.Channel;
@@ -251,13 +454,80 @@ package body Http2_Core.Server is
       Payload    : RFLX.RFLX_Types.Bytes;
       End_Stream : Boolean)
    is
-      Data_Last : RFLX.RFLX_Types.Index;
+      --  RFC 9113 §6.1: DATA frame payload bounded by SETTINGS_MAX_FRAME_SIZE.
+      --  Split into 16384-byte chunks so >16 KB payloads work.
+      --  Length (0-based) so the final Remaining-Chunk to 0 passes
+      --  the range check.
+      Max_Payload : constant := 16_384;
+      Remaining   : RFLX.RFLX_Types.Length :=
+        RFLX.RFLX_Types.Length (Payload'Length);
+      Offset      : RFLX.RFLX_Types.Index := Payload'First;
    begin
-      Wire.Encode_Data
-        (Buffer => L.Buf, Last => Data_Last,
-         Stream_Id => Stream_Id, Payload => Payload,
-         End_Stream => End_Stream);
-      Transport.Send (Chan, L.Buf.all (L.Buf'First .. Data_Last));
+      if Remaining = 0 then
+         declare
+            Data_Last : RFLX.RFLX_Types.Index;
+         begin
+            --  Empty DATA with END_STREAM doesn't consume window.
+            Wire.Encode_Data
+              (Buffer => L.Buf, Last => Data_Last,
+               Stream_Id => Stream_Id,
+               Payload => Payload (Payload'First .. Payload'First - 1),
+               End_Stream => End_Stream);
+            Transport.Send
+              (Chan, L.Buf.all (L.Buf'First .. Data_Last));
+         end;
+         return;
+      end if;
+      while Remaining > 0 loop
+         declare
+            Chunk     : constant RFLX.RFLX_Types.Length :=
+              RFLX.RFLX_Types.Length'Min (Remaining, Max_Payload);
+            Is_Last   : constant Boolean :=
+              Chunk = Remaining and then End_Stream;
+            Data_Last : RFLX.RFLX_Types.Index;
+            Outcome   : Flow_Gate.Decision;
+            Gate_OK   : Boolean;
+         begin
+            --  Gate the emit: structural guarantee that we don't
+            --  exceed peer's window. See specs/flow_gate.rflx.
+            Flow_Gate.Request_Send
+              (L.Gate,
+               Flow_Gate.Window_Bytes (Chunk),
+               Outcome);
+            if Outcome = Flow_Gate.Decision_Deny then
+               Wait_For_Window
+                 (L, Chan,
+                  Flow_Gate.Window_Bytes (Chunk),
+                  Gate_OK);
+               if not Gate_OK then
+                  --  Peer disconnected or flow error — abandon the
+                  --  rest of the response. Caller's stream is dead.
+                  Logger.Log
+                    (Logger.Warn,
+                     "h2srv: gate wait failed; aborting send");
+                  return;
+               end if;
+            elsif Outcome = Flow_Gate.Decision_Flow_Error then
+               Logger.Log
+                 (Logger.Warn, "h2srv: gate flow-error on send");
+               return;
+            end if;
+            --  Either gate Allow on the first try, or Wait_For_Window
+            --  succeeded (which itself called Request_Send and got
+            --  Allow). Either way, credit is debited — emit.
+            Wire.Encode_Data
+              (Buffer => L.Buf, Last => Data_Last,
+               Stream_Id => Stream_Id,
+               Payload => Payload
+                 (Offset ..
+                    Offset + RFLX.RFLX_Types.Index (Chunk) - 1),
+               End_Stream => Is_Last);
+            Transport.Send
+              (Chan, L.Buf.all (L.Buf'First .. Data_Last));
+            Offset    := Offset + RFLX.RFLX_Types.Index (Chunk);
+            Remaining := Remaining - Chunk;
+         end;
+      end loop;
    end Send_Data_Frame;
 
    --  Post-response cleanup. Reads up to 5 client frames; if a
@@ -345,8 +615,37 @@ package body Http2_Core.Server is
 
       Transport.Accept_One (L.Trans, Chan);
 
+      --  RFC 7541 §2.2: HPACK dynamic table is per-connection. Reset
+      --  before each new client so state from the previous connection
+      --  doesn't poison this one's decode.
+      Hpack.Dynamic_Table.Initialize (L.Hpack_Decoder);
+
+      --  RFC 9113 §6.9.1: flow-control gate spans the lifetime of
+      --  the TCP connection. Reset it per-connection so leftover
+      --  state from a previous peer doesn't bleed in.
+      Flow_Gate.Initialize (L.Gate);
+      L.Peer_Initial_Window := 65535;  --  §6.5.2 default
+
       Receive_Preface (Chan);
       Send_Initial_Settings (L, Chan);
+
+      --  RFC 9113 §6.9.1: bump the connection-level receive window to
+      --  4 MB so we can sustain long-running clients (multi-stream).
+      --  Without this, the connection window exhausts after ~64 KB of
+      --  cumulative inbound DATA across all streams.
+      declare
+         Wu_Ptr : RFLX.RFLX_Types.Bytes_Ptr :=
+           new RFLX.RFLX_Types.Bytes'(1 .. 26 => 0);
+         Wu_Last : RFLX.RFLX_Types.Index;
+      begin
+         Wire.Encode_Window_Update
+           (Buffer    => Wu_Ptr,
+            Last      => Wu_Last,
+            Stream_Id => 0,
+            Increment => 2 ** 30);
+         Transport.Send (Chan, Wu_Ptr.all (Wu_Ptr'First .. Wu_Last));
+         pragma Unreferenced (Wu_Ptr);
+      end;
 
       --  Note: we don't run a separate SETTINGS-handshake loop here.
       --  The FSM's Awaiting_Headers state already enumerates SETTINGS
@@ -358,6 +657,12 @@ package body Http2_Core.Server is
       pragma Unreferenced (Got_Peer_Settings);
       pragma Unreferenced (Got_Settings_Ack);
 
+      --  Multi-stream loop: serve sequential RPCs on the same TCP
+      --  connection until the client disconnects. Each iteration spins
+      --  up a fresh Stream::Open FSM; the HPACK decoder dynamic table
+      --  in L.Hpack_Decoder persists across streams (per RFC 7541 §2.2).
+      Stream_Loop :
+      loop
       --  Drive Stream::Open FSM through the request/response cycle.
       declare
          package FSM renames RFLX.Stream.Open.FSM;
@@ -366,7 +671,7 @@ package body Http2_Core.Server is
 
          Request_Headers : Hpack.Header_Block (1 .. 16);
          Request_Headers_Last : Natural;
-         Request_Body  : RFLX.RFLX_Types.Bytes (1 .. 16384) :=
+         Request_Body  : RFLX.RFLX_Types.Bytes (1 .. 1024 * 1024) :=
            (others => 0);
          Request_Body_Cursor : Integer :=
            Integer (Request_Body'First) - 1;
@@ -374,6 +679,11 @@ package body Http2_Core.Server is
       begin
          FSM.Initialize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
          Request_Headers_Last := Request_Headers'First - 1;
+         --  RFC 9113 §6.9.2 — every new stream starts with the
+         --  per-stream send window seeded by peer's
+         --  SETTINGS_INITIAL_WINDOW_SIZE. Connection window
+         --  persists from the previous stream.
+         Flow_Gate.Init_Stream (L.Gate, L.Peer_Initial_Window);
 
          --  Pre-feed: the FSM's first state (Awaiting_Headers) does
          --  Network'Read; if no data has been fed before the first
@@ -387,9 +697,9 @@ package body Http2_Core.Server is
          begin
             Read_Frame (Chan, L.Buf, Frame_Hdr, Frame_Last, Read_OK);
             if not Read_OK then
+               --  Clean client disconnect between RPCs (or before any).
                FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-               Transport.Close (Chan);
-               raise Server_Error with "EOF before first frame";
+               exit Stream_Loop;
             end if;
             if FSM.Needs_Data (Ctx, FSM.C_Network) then
                FSM.Write
@@ -531,8 +841,8 @@ package body Http2_Core.Server is
                      when RFLX.Http2_Parameters.RST_STREAM =>
                         FSM.Finalize
                           (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                        Transport.Close (Chan);
-                        raise Server_Error with "client RST_STREAM";
+                        
+                        exit Stream_Loop;
                      when RFLX.Http2_Parameters.PING =>
                         if (Hdr.Flags and Wire.Flag_ACK) = 0 then
                            declare
@@ -554,7 +864,12 @@ package body Http2_Core.Server is
                         if (Hdr.Flags and Wire.Flag_ACK) = 0 then
                            declare
                               Ack_Last : RFLX.RFLX_Types.Index;
+                              Body_S : constant RFLX.RFLX_Types.Bytes :=
+                                View (View'First + 9 .. View'Last);
                            begin
+                              --  §6.5.2 — parse + apply peer's
+                              --  INITIAL_WINDOW_SIZE before ACKing.
+                              Process_Peer_Settings_Body (L, Body_S);
                               Wire.Encode_Settings_Ack
                                 (L.Buf, Ack_Last);
                               Transport.Send
@@ -563,12 +878,33 @@ package body Http2_Core.Server is
                            end;
                         end if;
                      when RFLX.Http2_Parameters.WINDOW_UPDATE =>
-                        null;
+                        --  §6.9 — feed inbound WU into the gate so
+                        --  Send_Data_Frame can debit its credit.
+                        if Hdr.Length = 4 then
+                           declare
+                              Body_S : constant RFLX.RFLX_Types.Bytes :=
+                                View (View'First + 9 .. View'Last);
+                              Wu_OK : Boolean;
+                           begin
+                              Process_Inbound_Wu
+                                (L,
+                                 Hdr.Stream_Identifier,
+                                 Body_S,
+                                 Wu_OK);
+                              if not Wu_OK then
+                                 Logger.Log
+                                   (Logger.Warn,
+                                    "h2srv: WU flow_error stream="
+                                    & Bit_Len'Image
+                                        (Hdr.Stream_Identifier));
+                              end if;
+                           end;
+                        end if;
                      when RFLX.Http2_Parameters.GOAWAY =>
+                        --  Clean client shutdown.
                         FSM.Finalize
                           (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                        Transport.Close (Chan);
-                        raise Server_Error with "client GOAWAY";
+                        exit Stream_Loop;
                      when others =>
                         null;
                   end case;
@@ -585,8 +921,8 @@ package body Http2_Core.Server is
                   if not Read_OK then
                      FSM.Finalize
                        (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
-                     Transport.Close (Chan);
-                     raise Server_Error with "EOF in request";
+                     
+                     exit Stream_Loop;
                   end if;
                   if FSM.Needs_Data (Ctx, FSM.C_Network) then
                      FSM.Write
@@ -601,7 +937,7 @@ package body Http2_Core.Server is
          declare
             Resp_Hdrs : Hpack.Header_Block (1 .. 16);
             Resp_Hdrs_Last : Natural;
-            Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 16384) :=
+            Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 1024 * 1024) :=
               (others => 0);
             Resp_Body_Last : Natural;
             Trailers : Hpack.Header_Block (1 .. 8);
@@ -659,8 +995,28 @@ package body Http2_Core.Server is
          FSM.Finalize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
          pragma Unreferenced (Got_End_Of_Request);
       end;
+      --  Refill the connection-level inbound window after each stream.
+      --  Without this, the window monotonically shrinks across streams
+      --  on a persistent connection and eventually deadlocks.
+      declare
+         Wu_Ptr : RFLX.RFLX_Types.Bytes_Ptr :=
+           new RFLX.RFLX_Types.Bytes'(1 .. 26 => 0);
+         Wu_Last : RFLX.RFLX_Types.Index;
+      begin
+         Wire.Encode_Window_Update
+           (Buffer    => Wu_Ptr,
+            Last      => Wu_Last,
+            Stream_Id => 0,
+            Increment => 2 ** 20);
+         Transport.Send (Chan, Wu_Ptr.all (Wu_Ptr'First .. Wu_Last));
+         pragma Unreferenced (Wu_Ptr);
+      exception
+         when others => exit Stream_Loop;
+      end;
+      end loop Stream_Loop;
 
       Drain_And_Goodbye (L, Chan, Stream_Id);
+      Flow_Gate.Finalize (L.Gate);
    end Accept_And_Serve;
 
    ---------------------------------------------------------------------
@@ -690,6 +1046,10 @@ package body Http2_Core.Server is
 
       Transport.Accept_One (L.Trans, Chan);
 
+      Hpack.Dynamic_Table.Initialize (L.Hpack_Decoder);
+      Flow_Gate.Initialize (L.Gate);
+      L.Peer_Initial_Window := 65535;
+
       Receive_Preface (Chan);
       Send_Initial_Settings (L, Chan);
 
@@ -712,6 +1072,8 @@ package body Http2_Core.Server is
       begin
          FSM.Initialize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
          Request_Headers_Last := Request_Headers'First - 1;
+         --  RFC 9113 §6.9.2 — seed per-stream send window.
+         Flow_Gate.Init_Stream (L.Gate, L.Peer_Initial_Window);
 
          --  Pre-feed first frame.
          declare
@@ -883,7 +1245,12 @@ package body Http2_Core.Server is
                         if (Hdr.Flags and Wire.Flag_ACK) = 0 then
                            declare
                               Ack_Last : RFLX.RFLX_Types.Index;
+                              Body_S : constant RFLX.RFLX_Types.Bytes :=
+                                View (View'First + 9 .. View'Last);
                            begin
+                              --  §6.5.2 — parse + apply peer's
+                              --  INITIAL_WINDOW_SIZE before ACKing.
+                              Process_Peer_Settings_Body (L, Body_S);
                               Wire.Encode_Settings_Ack
                                 (L.Buf, Ack_Last);
                               Transport.Send
@@ -892,7 +1259,28 @@ package body Http2_Core.Server is
                            end;
                         end if;
                      when RFLX.Http2_Parameters.WINDOW_UPDATE =>
-                        null;
+                        --  §6.9 — feed inbound WU into the gate so
+                        --  Send_Data_Frame can debit its credit.
+                        if Hdr.Length = 4 then
+                           declare
+                              Body_S : constant RFLX.RFLX_Types.Bytes :=
+                                View (View'First + 9 .. View'Last);
+                              Wu_OK : Boolean;
+                           begin
+                              Process_Inbound_Wu
+                                (L,
+                                 Hdr.Stream_Identifier,
+                                 Body_S,
+                                 Wu_OK);
+                              if not Wu_OK then
+                                 Logger.Log
+                                   (Logger.Warn,
+                                    "h2srv: WU flow_error stream="
+                                    & Bit_Len'Image
+                                        (Hdr.Stream_Identifier));
+                              end if;
+                           end;
+                        end if;
                      when RFLX.Http2_Parameters.GOAWAY =>
                         FSM.Finalize
                           (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
@@ -989,6 +1377,7 @@ package body Http2_Core.Server is
       end;
 
       Drain_And_Goodbye (L, Chan, Stream_Id);
+      Flow_Gate.Finalize (L.Gate);
    end Accept_And_Serve_Server_Stream;
 
    ---------------------------------------------------------------------
@@ -1064,6 +1453,8 @@ package body Http2_Core.Server is
       begin
          FSM.Initialize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
          Request_Headers_Last := Request_Headers'First - 1;
+         --  RFC 9113 §6.9.2 — seed per-stream send window.
+         Flow_Gate.Init_Stream (L.Gate, L.Peer_Initial_Window);
 
          declare
             Frame_Last : RFLX.RFLX_Types.Index;
@@ -1208,7 +1599,12 @@ package body Http2_Core.Server is
                         if (Hdr.Flags and Wire.Flag_ACK) = 0 then
                            declare
                               Ack_Last : RFLX.RFLX_Types.Index;
+                              Body_S : constant RFLX.RFLX_Types.Bytes :=
+                                View (View'First + 9 .. View'Last);
                            begin
+                              --  §6.5.2 — parse + apply peer's
+                              --  INITIAL_WINDOW_SIZE before ACKing.
+                              Process_Peer_Settings_Body (L, Body_S);
                               Wire.Encode_Settings_Ack
                                 (L.Buf, Ack_Last);
                               Transport.Send
@@ -1217,7 +1613,28 @@ package body Http2_Core.Server is
                            end;
                         end if;
                      when RFLX.Http2_Parameters.WINDOW_UPDATE =>
-                        null;
+                        --  §6.9 — feed inbound WU into the gate so
+                        --  Send_Data_Frame can debit its credit.
+                        if Hdr.Length = 4 then
+                           declare
+                              Body_S : constant RFLX.RFLX_Types.Bytes :=
+                                View (View'First + 9 .. View'Last);
+                              Wu_OK : Boolean;
+                           begin
+                              Process_Inbound_Wu
+                                (L,
+                                 Hdr.Stream_Identifier,
+                                 Body_S,
+                                 Wu_OK);
+                              if not Wu_OK then
+                                 Logger.Log
+                                   (Logger.Warn,
+                                    "h2srv: WU flow_error stream="
+                                    & Bit_Len'Image
+                                        (Hdr.Stream_Identifier));
+                              end if;
+                           end;
+                        end if;
                      when RFLX.Http2_Parameters.GOAWAY =>
                         FSM.Finalize
                           (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
@@ -1257,7 +1674,7 @@ package body Http2_Core.Server is
          declare
             Resp_Hdrs : Hpack.Header_Block (1 .. 16);
             Resp_Hdrs_Last : Natural;
-            Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 16384) :=
+            Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 1024 * 1024) :=
               (others => 0);
             Resp_Body_Last : Natural;
             Trailers : Hpack.Header_Block (1 .. 8);
@@ -1297,6 +1714,7 @@ package body Http2_Core.Server is
       end;
 
       Drain_And_Goodbye (L, Chan, Stream_Id);
+      Flow_Gate.Finalize (L.Gate);
    end Accept_And_Serve_Client_Stream;
 
    ---------------------------------------------------------------------
@@ -1352,6 +1770,8 @@ package body Http2_Core.Server is
       begin
          FSM.Initialize (Ctx, L.Inbound_Buf, L.Outgoing_Buf);
          Request_Headers_Last := Request_Headers'First - 1;
+         --  RFC 9113 §6.9.2 — seed per-stream send window.
+         Flow_Gate.Init_Stream (L.Gate, L.Peer_Initial_Window);
 
          --  Pre-feed first frame.
          declare
@@ -1658,6 +2078,7 @@ package body Http2_Core.Server is
       end;
 
       Drain_And_Goodbye (L, Chan, Stream_Id);
+      Flow_Gate.Finalize (L.Gate);
    end Accept_And_Serve_Bidi_Stream;
 
 end Http2_Core.Server;

@@ -330,6 +330,19 @@ is
       Last := Buffer'First + 12;
    end Encode_Window_Update;
 
+   procedure Decode_Window_Update_Payload
+     (Buffer    : RFLX.RFLX_Types.Bytes;
+      Increment : out Bit_Len;
+      Valid     : out Boolean)
+   is
+   begin
+      --  §6.9 — clear the high reserved bit then read the 31-bit
+      --  increment big-endian. mod 2**31 mirrors the Stream_Id
+      --  masking pattern in Decode_Frame_Header.
+      Increment := Get_Be32 (Buffer, Buffer'First) mod (2 ** 31);
+      Valid     := Increment > 0;
+   end Decode_Window_Update_Payload;
+
    ---------------------------------------------------------------------
    --  GOAWAY encode
    ---------------------------------------------------------------------

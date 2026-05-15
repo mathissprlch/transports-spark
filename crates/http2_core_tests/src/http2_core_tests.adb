@@ -3,7 +3,7 @@
 --  + string-literal codecs). Lives in its own crate because
 --  http2_core's RFLX-generated runtime files would conflict with
 --  mqtt_core's identical copies if we tried to test from `examples`
---  (open risk #6 in CLAUDE.md).
+--  (open risk #6 in docs/conventions.md).
 --
 --  Not an AUnit suite — straight runnable procedure that prints
 --  ok/FAIL per check. Catches table-aggregate typos, off-by-one

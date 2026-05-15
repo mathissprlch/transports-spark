@@ -5,7 +5,7 @@
 --  parameters: blocksize = 128, hashsize = 48. Test vectors:
 --  RFC 4231 §4.
 --
---  HACL\* spec porting (CLAUDE.md §0c): same shape as Hmac_Sha256 —
+--  HACL\* spec porting (docs/conventions.md §0c): same shape as Hmac_Sha256 —
 --  Spec_HMAC_SHA384 is a SPARK port of HACL\*'s
 --  `specs/Spec.HMAC.fst` `hmac` definition specialised at SHA2_384,
 --  composing Tls_Core.Sha384.Spec_SHA384.

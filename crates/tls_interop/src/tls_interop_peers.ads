@@ -140,7 +140,7 @@ package Tls_Interop_Peers is
 
       Zero_Rtt,
       --  RFC 8446 §4.2.10 / §2.3 0-RTT early data.  NOT_IMPL_ADA;
-      --  v0.6+ scope per CLAUDE.md §0a (production-default rule).
+      --  v0.6+ scope per docs/conventions.md §0a (production-default rule).
 
       Key_Update);
       --  RFC 8446 §4.6.3 post-handshake key rotation.

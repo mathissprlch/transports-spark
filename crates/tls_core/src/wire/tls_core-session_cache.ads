@@ -3,7 +3,7 @@
 --
 --  Source: RFC 8446 §4.6.1 (NewSessionTicket), §2.2 (resumption flow).
 --
---  Design constraints (CLAUDE.md "no per-op heap" pattern, carried
+--  Design constraints (docs/conventions.md "no per-op heap" pattern, carried
 --  over from the MQTT track):
 --
 --    1. Fixed-size cache: 4 slots. No `new`. Suitable for bare-metal.

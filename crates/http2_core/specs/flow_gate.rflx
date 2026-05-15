@@ -1,0 +1,261 @@
+--  Flow_Gate: HTTP/2 outbound flow-control gate (RFC 9113 §6.9).
+--
+--  Source: RFC 9113 — HTTP/2, IETF Standard, June 2022.
+--  Section coverage: §6.9 — Flow Control, §6.9.1 — connection-level
+--  window vs stream-level window, §6.9.2 — INITIAL_WINDOW_SIZE.
+--
+--  All section references in this file refer to the document above
+--  unless otherwise noted.
+--
+--  Verification dividend: the FSM topology enforces the rule "do not
+--  emit a DATA frame whose payload exceeds either remaining window".
+--  Approve_Send is reachable from Check_Send only via the guard
+--      Pending.Bytes <= Conn_Window
+--      and Pending.Bytes <= Stream_Window
+--  and mutates both windows down by Pending.Bytes. Deny_Send is the
+--  only alternative; it transitions back to Idle without an emit.
+--  Therefore a denied request cannot structurally turn into an emit
+--  without first cycling through Apply_Conn or Apply_Stream, which
+--  grow the windows back. The Ada driver is bound to await a
+--  Decision_Packet'Kind = Dec_Allow before writing the DATA bytes
+--  on the network — that is the contract this FSM proves.
+--
+--  Channels:
+--    App_Outbox   — driver → gate (Op_Packet)
+--    App_Decision — gate → driver (Decision_Packet)
+--
+--  Per-state ops are tagged by Op_Kind. Send_Request asks "may I
+--  emit N bytes on the active stream?". Wu_Conn / Wu_Stream apply
+--  peer-sent WINDOW_UPDATE frames (Stream_Id=0 → connection window,
+--  else → per-stream window). Init_Stream is fired once per new
+--  stream after parsing peer's SETTINGS_INITIAL_WINDOW_SIZE
+--  (§6.9.2 — applies to streams only, not to the connection).
+--
+--  Per-stream lifecycle: the Ada driver instantiates one Send_Gate
+--  per TCP connection. Conn_Window persists for the connection's
+--  lifetime; Stream_Window is reset via Op_Init_Stream at the start
+--  of every stream so the per-stream send credit is always exactly
+--  what the peer advertised in SETTINGS_INITIAL_WINDOW_SIZE.
+
+package Flow_Gate is
+
+   --  §6.9.1 — Window. Non-negative 31-bit integer; values above
+   --  2**31-1 are FLOW_CONTROL_ERROR per the RFC. Range encodes the
+   --  protocol invariant directly.
+   type Window_Bytes is range 0 .. 2 ** 31 - 1 with Size => 32;
+
+   --  Driver-to-gate operation kinds.
+   type Op_Kind is
+      (Op_Send_Request => 1,
+       Op_Wu_Conn      => 2,
+       Op_Wu_Stream    => 3,
+       Op_Init_Stream  => 4)
+   with Size => 8;
+
+   --  §6.9 — request from the driver to the gate. For send requests
+   --  Bytes is the DATA payload length the driver wants to emit;
+   --  for WU ops Bytes is the increment from the peer's
+   --  WINDOW_UPDATE frame; for Init_Stream Bytes is peer's
+   --  SETTINGS_INITIAL_WINDOW_SIZE value.
+   type Op_Packet is
+      message
+         Kind  : Op_Kind;
+         Bytes : Window_Bytes;
+      end message;
+
+   --  Gate-to-driver decision kinds. Dec_Allow → emit; Dec_Deny →
+   --  block and read inbound frames; Dec_Flow_Error → peer WU
+   --  overflowed the window, fail the connection per §6.9.1.
+   type Decision_Kind is
+      (Dec_Allow      => 1,
+       Dec_Deny       => 2,
+       Dec_Flow_Error => 3)
+   with Size => 8;
+
+   type Decision_Packet is
+      message
+         Kind  : Decision_Kind;
+         Bytes : Window_Bytes;
+      end message;
+
+   generic
+      App_Outbox   : Channel with Readable;
+      App_Decision : Channel with Writable;
+   machine Send_Gate is
+      --  §6.9.2 — connection-level window default is exactly 65535
+      --  at connection start and is NOT affected by SETTINGS; only
+      --  Op_Wu_Conn grows it. We initialize to that default here.
+      Conn_Window   : Window_Bytes := 65535;
+      --  Stream window default value here is a placeholder; the
+      --  driver MUST send Op_Init_Stream before any Op_Send_Request
+      --  on a new stream so this value reflects the peer's
+      --  SETTINGS_INITIAL_WINDOW_SIZE.
+      Stream_Window : Window_Bytes := 65535;
+      Pending       : Op_Packet;
+      Reply         : Decision_Packet;
+   begin
+
+      --  Idle: pull the next op from the driver.
+      state Idle is
+      begin
+         App_Outbox'Read (Pending);
+      transition
+         goto Dispatch
+            if Pending'Valid
+         goto null
+      exception
+         goto null
+      end Idle;
+
+      --  Dispatch: branch on Op.Kind. Every kind has exactly one
+      --  successor state — the case-exhaustive check is the FSM's
+      --  job, not the Ada driver's.
+      state Dispatch is
+      begin
+      transition
+         goto Check_Send
+            if Pending.Kind = Op_Send_Request
+         goto Apply_Conn
+            if Pending.Kind = Op_Wu_Conn
+         goto Apply_Stream
+            if Pending.Kind = Op_Wu_Stream
+         goto Init_Stream_Window
+            if Pending.Kind = Op_Init_Stream
+         goto null
+      exception
+         goto null
+      end Dispatch;
+
+      ------------------------------------------------------------------
+      --  Send-request path
+      ------------------------------------------------------------------
+
+      --  Check_Send: window-sufficiency check. The guard is the
+      --  load-bearing structural invariant — Approve_Send is
+      --  reachable only when both windows hold enough credit.
+      state Check_Send is
+      begin
+      transition
+         goto Approve_Send
+            if Pending.Bytes <= Conn_Window
+               and Pending.Bytes <= Stream_Window
+         goto Deny_Send
+      exception
+         goto null
+      end Check_Send;
+
+      --  Approve_Send: decrement both windows by the requested size,
+      --  build the Allow decision. The decrements are guarded by
+      --  Check_Send so the subtraction cannot underflow.
+      state Approve_Send is
+      begin
+         Conn_Window   := Conn_Window - Pending.Bytes;
+         Stream_Window := Stream_Window - Pending.Bytes;
+         Reply := Decision_Packet'(Kind  => Dec_Allow,
+                                   Bytes => Pending.Bytes);
+      transition
+         goto Emit_Decision
+      exception
+         goto null
+      end Approve_Send;
+
+      --  Deny_Send: leave windows alone; emit Deny. Driver responds
+      --  by reading peer frames (which will eventually include WU
+      --  ops feeding back into Apply_Conn / Apply_Stream) and
+      --  re-issuing the Send_Request once credit returns.
+      state Deny_Send is
+      begin
+         Reply := Decision_Packet'(Kind  => Dec_Deny,
+                                   Bytes => 0);
+      transition
+         goto Emit_Decision
+      exception
+         goto null
+      end Deny_Send;
+
+      ------------------------------------------------------------------
+      --  Window-update paths
+      ------------------------------------------------------------------
+
+      --  Apply_Conn: peer sent WINDOW_UPDATE on stream 0. Bump the
+      --  connection window, but guard against §6.9.1 overflow.
+      state Apply_Conn is
+      begin
+      transition
+         goto Bump_Conn_OK
+            if Conn_Window + Pending.Bytes <= 2 ** 31 - 1
+         goto Flow_Error
+      exception
+         goto null
+      end Apply_Conn;
+
+      state Bump_Conn_OK is
+      begin
+         Conn_Window := Conn_Window + Pending.Bytes;
+      transition
+         goto Idle
+      exception
+         goto null
+      end Bump_Conn_OK;
+
+      --  Apply_Stream: peer sent WINDOW_UPDATE on a stream != 0.
+      --  Same overflow guard.
+      state Apply_Stream is
+      begin
+      transition
+         goto Bump_Stream_OK
+            if Stream_Window + Pending.Bytes <= 2 ** 31 - 1
+         goto Flow_Error
+      exception
+         goto null
+      end Apply_Stream;
+
+      state Bump_Stream_OK is
+      begin
+         Stream_Window := Stream_Window + Pending.Bytes;
+      transition
+         goto Idle
+      exception
+         goto null
+      end Bump_Stream_OK;
+
+      --  Init_Stream_Window: assignment from SETTINGS_INITIAL_WINDOW_SIZE.
+      --  The peer's value is by spec in range 0..2**31-1 so no
+      --  overflow guard is needed here.
+      state Init_Stream_Window is
+      begin
+         Stream_Window := Pending.Bytes;
+      transition
+         goto Idle
+      exception
+         goto null
+      end Init_Stream_Window;
+
+      ------------------------------------------------------------------
+      --  Error & emit
+      ------------------------------------------------------------------
+
+      --  Flow_Error: a WU pushed a window above 2**31-1. RFC §6.9.1
+      --  obligates closing the connection with FLOW_CONTROL_ERROR.
+      --  Surface to the driver via a Dec_Flow_Error decision.
+      state Flow_Error is
+      begin
+         Reply := Decision_Packet'(Kind  => Dec_Flow_Error,
+                                   Bytes => 0);
+      transition
+         goto Emit_Decision
+      exception
+         goto null
+      end Flow_Error;
+
+      --  Emit_Decision: push the reply back, then resume.
+      state Emit_Decision is
+      begin
+         App_Decision'Write (Reply);
+      transition
+         goto Idle
+      end Emit_Decision;
+
+   end Send_Gate;
+
+end Flow_Gate;

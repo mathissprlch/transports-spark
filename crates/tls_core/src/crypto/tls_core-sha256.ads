@@ -5,7 +5,7 @@
 --  Streaming API: Init / Update* / Finalize. One-shot Hash for
 --  callers that already have the full message in a single buffer.
 --
---  HACL* spec porting (CLAUDE.md §0c): the public one-shot Hash
+--  HACL* spec porting (docs/conventions.md §0c): the public one-shot Hash
 --  procedure carries a functional Post `Output = Spec_SHA256 (Input)`
 --  where Spec_SHA256 is a SPARK port of HACL*'s `Spec.SHA2.fst` for
 --  the SHA2_256 algorithm:
@@ -46,7 +46,7 @@ is
    --  HACL* Spec.SHA2 port — exposed in the public spec because the
    --  Post on Hash references Spec_SHA256. Bodies in the package
    --  body. These are real (executable) SPARK functions, not
-   --  ghost stubs (CLAUDE.md §0d clause 4).
+   --  ghost stubs (docs/conventions.md §0d clause 4).
    ---------------------------------------------------------------------
 
    type Hash_State is array (1 .. 8) of Word;

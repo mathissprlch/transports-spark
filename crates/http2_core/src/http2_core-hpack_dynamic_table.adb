@@ -153,4 +153,40 @@ is
       end;
    end Lookup;
 
+   procedure Find
+     (T           : Table;
+      Name        : String;
+      Value       : String;
+      Found_Index : out Natural;
+      Exact_Match : out Boolean)
+   is
+      Name_Match_Idx : Natural := 0;
+   begin
+      Found_Index := 0;
+      Exact_Match := False;
+      for I in 1 .. T.Item_Count loop
+         declare
+            Slot : constant Slot_Index :=
+              Slot_Index ((T.Newest + Max_Entries - (I - 1))
+                          mod Max_Entries);
+            E : Entry_Type renames T.Entries (Slot);
+         begin
+            if E.Name_Last = Name'Length
+              and then E.Name (1 .. E.Name_Last) = Name
+            then
+               if E.Value_Last = Value'Length
+                 and then E.Value (1 .. E.Value_Last) = Value
+               then
+                  Found_Index := I;
+                  Exact_Match := True;
+                  return;
+               elsif Name_Match_Idx = 0 then
+                  Name_Match_Idx := I;
+               end if;
+            end if;
+         end;
+      end loop;
+      Found_Index := Name_Match_Idx;
+   end Find;
+
 end Http2_Core.Hpack_Dynamic_Table;

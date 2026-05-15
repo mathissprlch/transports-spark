@@ -1,5 +1,6 @@
 with "rflx_runtime.gpr";
 with "../tls_transport/tls_transport.gpr";
+with "../logger/logger.gpr";
 
 library project Http2_Core is
 

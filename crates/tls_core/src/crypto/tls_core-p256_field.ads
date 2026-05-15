@@ -30,15 +30,15 @@
 --  of the inputs, modulo p."
 --
 --  Status (v0.5 platinum push, 2026-05-07):
---    * Ghost layer is real, computable, no `Spec_*` stubs (CLAUDE.md
+--    * Ghost layer is real, computable, no `Spec_*` stubs (docs/conventions.md
 --      §0d clause 4): each ghost spec function has a Big_Integer
 --      body that actually computes the F\* function over its inputs.
---    * Posts are functional (CLAUDE.md §0d clause 5): each one
+--    * Posts are functional (docs/conventions.md §0d clause 5): each one
 --      references real Big_Integer arithmetic, not a tautology.
 --    * The imperative impl's AoRTE checks (overflow on the limb
 --      arithmetic + the §D.1.4 fast-reduction acc-bound proof) and
 --      the functional Post proofs are NOT yet discharged at
---      level=2. They are honest unproven VCs (CLAUDE.md §0d clause
+--      level=2. They are honest unproven VCs (docs/conventions.md §0d clause
 --      1 not yet satisfied) — no SPARK_Mode (Off), no pragma Assume,
 --      no annotation has been used to make them disappear (clause
 --      6). The RFC 6979 §A.2.5 P-256 KAT exercises the chain end-
@@ -142,7 +142,7 @@ is
    --  equation: when A is non-zero mod p, Spec_F_Inv (A) * A ≡ 1
    --  mod p. The body computes the canonical residue via
    --  square-and-multiply on Big_Integer (computable, no stub —
-   --  CLAUDE.md §0d clause 4).
+   --  docs/conventions.md §0d clause 4).
    function Spec_F_Inv (A : Big.Big_Integer) return Big.Big_Integer
    with Ghost, Global => null,
         Post => Big.In_Range

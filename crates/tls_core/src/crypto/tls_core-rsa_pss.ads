@@ -8,7 +8,7 @@
 --      §B.2.1  MGF1 mask generation function
 --      §5.2.2  RSAVP1 (signature verification primitive: m = s^e mod n)
 --
---  Spec mirror (CLAUDE.md §0c, HACL* port):
+--  Spec mirror (docs/conventions.md §0c, HACL* port):
 --      hacl-star/specs/Spec.RSAPSS.fst (commit main, ~438 lines).
 --      Mirrored constructs:
 --        - mgf_hash_f / mgf_hash  (lines 39-68)   → Spec_MGF1_*
@@ -68,7 +68,7 @@ is
    ---------------------------------------------------------------------
    --  HACL* Spec.RSAPSS port — ghost functions referenced by the
    --  Posts on Emsa_Pss_Verify_*. These are real, executable SPARK
-   --  functions (CLAUDE.md §0d clause 4). The bodies MUST compute
+   --  functions (docs/conventions.md §0d clause 4). The bodies MUST compute
    --  the function — no stub returning False.
    ---------------------------------------------------------------------
 
@@ -204,7 +204,7 @@ is
    --              Bignum_2048.Spec_Em_From_Pubkey_Sig (N, E, Signature))
    --  where `Spec_Em_From_Pubkey_Sig` is the canonical RSAVP1 step:
    --  `Big_To_Bigint (Spec_Mod_Exp (Bn_V (Sig), Bn_V (E), Bn_V (N)))`.
-   --  Both ghost components have real, computable bodies (CLAUDE.md
+   --  Both ghost components have real, computable bodies (docs/conventions.md
    --  §0d clauses 4 & 5). The Post is real functional, not a length-
    --  only shape — it pushes the unproven obligation down to (a) the
    --  functional Post of `Bignum_2048.Mod_Exp` (the Montgomery ↔
@@ -286,7 +286,7 @@ is
    --
    --  AoRTE-only (verify path is the v0.5 platinum target; the encode
    --  path is a tests scaffold only and the symmetric Spec_Pss_Encode
-   --  is not yet ported — out of v0.5 scope per CLAUDE.md "verify-only
+   --  is not yet ported — out of v0.5 scope per docs/conventions.md "verify-only
    --  is in v0.5; sign isn't").
    --------------------------------------------------------------------
    procedure Encode_Sha256

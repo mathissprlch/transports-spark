@@ -143,6 +143,20 @@ is
              and then Increment in 1 .. 2 ** 31 - 1,
      Post => Buffer /= null;
 
+   --  Decode a WINDOW_UPDATE payload (§6.9). Buffer is the 4-byte
+   --  body (caller already stripped the 9-byte fixed frame header).
+   --  High bit of the first byte is the §6.9 R reserved bit; we
+   --  ignore it on receive per the RFC. Increment=0 is a
+   --  PROTOCOL_ERROR per §6.9.1 — signalled to caller via
+   --  Valid=False.
+   procedure Decode_Window_Update_Payload
+     (Buffer    : RFLX.RFLX_Types.Bytes;
+      Increment : out Bit_Len;
+      Valid     : out Boolean)
+   with
+     Pre  => Buffer'Length = 4,
+     Post => Increment <= 2 ** 31 - 1;
+
    ---------------------------------------------------------------------
    --  GOAWAY (RFC 9113 §6.8). 8-byte fixed prefix + opaque debug.
    ---------------------------------------------------------------------

@@ -10,6 +10,7 @@ package Codegen.Emit_Message is
    procedure Emit
      (Msg        : Protobuf.Descriptor.Message_Descriptor;
       Pkg_Prefix : String;
-      Files      : in out Plugin.Generated_File_Vectors.Vector);
+      Files      : in out Plugin.Generated_File_Vectors.Vector;
+      Bounded    : Boolean := False);
 
 end Codegen.Emit_Message;

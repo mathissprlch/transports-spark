@@ -79,13 +79,17 @@ package Protobuf.Descriptor is
    ----------------------------------------------------------------
    --  FieldDescriptorProto
 
+   use type Interfaces.Integer_32;
+
    type Field_Descriptor is record
-      Field_Name : Name;
-      Number     : Interfaces.Integer_32 := 0;
-      Label      : Field_Label := Label_Unknown;
-      Field_Kind : Field_Type  := Type_Unknown;
-      Type_Name  : Name;       --  for messages and enums; ".pkg.Type" form
-      Packed     : Boolean := False;
+      Field_Name      : Name;
+      Number          : Interfaces.Integer_32 := 0;
+      Label           : Field_Label := Label_Unknown;
+      Field_Kind      : Field_Type  := Type_Unknown;
+      Type_Name       : Name;       --  for messages and enums; ".pkg.Type" form
+      Packed          : Boolean := False;
+      Oneof_Index     : Interfaces.Integer_32 := -1;
+      Proto3_Optional : Boolean := False;
    end record;
 
    package Field_Vectors is
@@ -111,6 +115,13 @@ package Protobuf.Descriptor is
      new Ada.Containers.Vectors (Positive, Enum_Descriptor);
 
    ----------------------------------------------------------------
+   --  OneofDescriptorProto names (used by Message_Descriptor).
+
+   package Name_Vectors is
+     new Ada.Containers.Vectors
+       (Positive, Name, Ada.Strings.Unbounded."=");
+
+   ----------------------------------------------------------------
    --  DescriptorProto (a message type). Recursive via nested_type.
 
    type Message_Descriptor;
@@ -120,10 +131,11 @@ package Protobuf.Descriptor is
      new Ada.Containers.Vectors (Positive, Message_Descriptor_Access);
 
    type Message_Descriptor is record
-      Message_Name : Name;
-      Fields       : Field_Vectors.Vector;
-      Nested_Types : Message_Vectors.Vector;
-      Enums        : Enum_Vectors.Vector;
+      Message_Name     : Name;
+      Fields           : Field_Vectors.Vector;
+      Nested_Types     : Message_Vectors.Vector;
+      Enums            : Enum_Vectors.Vector;
+      Oneof_Decl_Names : Name_Vectors.Vector;
    end record;
 
    ----------------------------------------------------------------

@@ -4,7 +4,7 @@
 --  §5.3.4 and the digest truncated to the first 384 bits (48 bytes
 --  = the first six 64-bit words of the hash state).
 --
---  HACL* spec porting (CLAUDE.md §0c): the public one-shot Hash
+--  HACL* spec porting (docs/conventions.md §0c): the public one-shot Hash
 --  procedure carries `Output = Spec_SHA384 (Data)`. Spec_SHA384 is
 --  a SPARK port of HACL*'s `Spec.SHA2.fst` for SHA2_384:
 --

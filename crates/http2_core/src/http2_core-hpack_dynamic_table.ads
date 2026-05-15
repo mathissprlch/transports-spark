@@ -69,6 +69,16 @@ is
    with Pre => Name'Length >= Max_Header_Length
                and then Value'Length >= Max_Header_Length;
 
+   procedure Find
+     (T           : Table;
+      Name        : String;
+      Value       : String;
+      Found_Index : out Natural;
+      Exact_Match : out Boolean);
+   --  Search by name+value. Found_Index is 1-based dynamic-table
+   --  index (add 61 to get the wire index). 0 = not found.
+   --  Exact_Match=True when both name and value match.
+
 private
 
    --  Per-entry overhead from §4.1.

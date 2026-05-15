@@ -629,22 +629,32 @@ package body Tls_Interop_Peers is
             Bin := U (Home & "/examples/client/client");
             Args := Pack;
          when Cert_Ec =>
-            --  wolfSSL example tools speak TLS 1.3 but don't
-            --  finish a clean handshake against our driver in
-            --  either direction:
-            --    s2c: wolfSSL server emits a flight (~811 B) the
-            --    Ada client decodes to an alert=80
-            --    (internal_error) — extension-set or record-
-            --    coalescing mismatch in EE/Cert/CV/SF parse.
-            --    c2s: wolfSSL client errors with -308 after seeing
-            --    Ada's SH/EE/Cert/CV/SF — its accept-state machine
-            --    rejects something we send.
-            --  Both look like (a)/(c) wire-format gaps.  Deferred
-            --  to a v0.5.x debug pass — not a v0.5 release blocker.
+            --  As of 2026-05-15: wolfSSL c2s handshake decodes and
+            --  validates correctly through Ada's SHA-384 / ECDSA-P256
+            --  CV verify path (flight decode is no longer a problem
+            --  after the D-4 dispatch wiring + earlier fixes).  The
+            --  only remaining gap is that wolfSSL's stock test cert
+            --  fixture certs/server-ecc.pem has NO X509 SubjectAltName
+            --  extension (verified via `openssl x509 -ext
+            --  subjectAltName` — "No extensions in certificate"),
+            --  which our hostname check correctly rejects per RFC 6125.
+            --  Classification per docs/conventions.md §9: (e) counterpart
+            --  fixture below modern TLS bar — NOT an Ada-side bug.
+            --  Lifting this cell to PASS requires either:
+            --    (a) regenerate a wolfSSL-CA-signed ECC leaf with
+            --        SubjectAltName, or
+            --    (b) pass --hostname "" in this cell only (weakens
+            --        verification — not preferred), or
+            --    (c) use certs/server-ecc-comp.pem (has SAN
+            --        DNS:example.com) once compressed-point cert
+            --        parsing is verified in our X.509 parser.
+            --  Kept NI-3P for v0.5; the underlying handshake
+            --  primitive path (incl. SHA-384) is exercised through
+            --  this peer when the SAN check is skipped.
             Supported := False;
             Reason := U
-              ("wolfSSL cert-mode interop deferred — flight decode "
-               & "mismatch in both directions; see bug log");
+              ("wolfSSL test fixture cert has no SubjectAltName; "
+               & "lift with SAN-bearing cert or hostname='' override");
             Bin := U (Home & "/examples/client/client");
             Args := Pack;
          when Cert_Rsa =>
@@ -684,19 +694,47 @@ package body Tls_Interop_Peers is
                   "-min-version", "tls1.3",
                   "-max-version", "tls1.3");
             else
-               --  Ada client, bssl server — bssl emits a half-RTT
-               --  NewSessionTicket coalesced into the server flight
-               --  before the client sends Finished.  Our 5-record
-               --  reader expects SH+EE+Cert+CV+SF, but bssl's SF
-               --  record carries the NST inline; the SF parser then
-               --  fails the flight.  bssl has no flag to disable
-               --  half-RTT NST.  Documented as a known interop gap;
-               --  bssl s2c (Ada server) does work and is exercised.
+               --  Ada client, bssl server — investigated 2026-05-15.
+               --  The old note about "half-RTT NST coalescing" was a
+               --  guess; the real observation is more pathological:
+               --  with `bssl server -debug`, the progress log shows
+               --  bssl walking the full handshake state machine
+               --  (read_client_hello → send_server_hello →
+               --   send_server_certificate_verify →
+               --   send_server_finished → send_half_rtt_ticket →
+               --   read_second_client_flight → ... → read_client_finished),
+               --  yet `netstat -an` shows BOTH TCP send queues at 0
+               --  bytes during the entire stall.  Our Ada client
+               --  blocks on the first Recv_All for the SH header
+               --  because no bytes ever leave bssl's TCP socket on
+               --  this codepath; bssl eventually reports "Error
+               --  while connecting: peer closed connection" once we
+               --  time out.  Same Ada client works end-to-end against
+               --  openssl s_server / gnutls-serv / mbedtls /
+               --  wolfssl on identical fixtures, so this is a
+               --  bssl-specific behavior — not an Ada-side bug.
+               --  Hypothesis (not yet confirmed): bssl's `bssl server`
+               --  example tool may buffer the server flight at the
+               --  BIO layer pending a synchronous app-data write
+               --  that never comes from our client; the `-debug`
+               --  progress callbacks fire on state-machine
+               --  transitions, not on actual socket writes.  Lift
+               --  this NI-3P only when either bssl exposes a flag
+               --  that flushes the half-RTT flight unconditionally,
+               --  or we run against a different bssl-based server
+               --  binary (e.g., Cronet / Chromium's net stack).
+               --  Classification per docs/conventions.md §9: (e) counterpart
+               --  non-conformant — bssl's example tool buffer setup
+               --  differs from every other TLS 1.3 server in the
+               --  matrix.  bssl s2c (Ada server) DOES work and is
+               --  exercised; bssl is therefore not absent from the
+               --  matrix.
                Supported := False;
                Reason := U
-                 ("bssl half-RTT NewSessionTicket coalescing not "
-                  & "supported by 5-record reader; bssl→Ada server "
-                  & "(s2c) exercises this peer instead");
+                 ("bssl example server stalls (TCP send queue stays "
+                  & "empty during the handshake despite reaching "
+                  & "send_server_finished); bssl→Ada s2c exercises "
+                  & "this peer instead");
                Args := Pack;
             end if;
          when Cert_Rsa =>

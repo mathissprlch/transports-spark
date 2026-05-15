@@ -15,7 +15,7 @@
 --  is LSB) — performance: CIOS Montgomery (RFC 8017 commentary; HACL\*
 --  `Hacl.Spec.Bignum.Montgomery.fst` uses the same algorithm shape).
 --
---  Spec mirror (CLAUDE.md §0c):
+--  Spec mirror (docs/conventions.md §0c):
 --      hacl-star/code/bignum/Hacl.Spec.Bignum.ModExp.fst — square-and-
 --      multiply at the spec layer, regardless of whether the impl uses
 --      Montgomery, Barrett, or schoolbook reduction. The functional
@@ -24,7 +24,7 @@
 --      without altering the spec.
 --
 --  Status (v0.5 platinum push, 2026-05-07):
---    * Ghost layer is real, computable, no `Spec_*` stubs (CLAUDE.md
+--    * Ghost layer is real, computable, no `Spec_*` stubs (docs/conventions.md
 --      §0d clause 4): `Bn_V` walks the 256 bytes and `Spec_Mod_Mul`
 --      / `Spec_Mod_Exp` are square-and-multiply over Big_Integer.
 --    * Posts are functional (clause 5): each one references real
@@ -175,7 +175,7 @@ is
    --  + `nat_to_bytes_be_to_nat_eq` for our specialised 256-byte case.
    --  Honest unproven for now (would need an inductive proof over the
    --  byte loop in Big_To_Bigint vs the recursion in Bn_V); flagged
-   --  per CLAUDE.md §0d clause 1 — clause-6 clean (no annotations).
+   --  per docs/conventions.md §0d clause 1 — clause-6 clean (no annotations).
    procedure Lemma_Bigint_Roundtrip (B : Bigint)
    with Ghost, Global => null,
         Post => Big_To_Bigint (Bn_V (B)) = B;

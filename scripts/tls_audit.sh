@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/tls_audit.sh — CLAUDE.md §0d static audit for tls_core.
+# scripts/tls_audit.sh — docs/conventions.md §0d static audit for tls_core.
 #
 # Reports the four bypass-detection greps the platinum claim checklist
 # requires.  A platinum claim is rejected on the first non-empty result.

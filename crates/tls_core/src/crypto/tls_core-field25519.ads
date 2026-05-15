@@ -17,14 +17,14 @@
 --  spec value of the inputs, modulo p."
 --
 --  Status (v0.5 platinum push, 2026-05-07):
---    * Ghost layer is real, computable, no `Spec_X` stubs (CLAUDE.md
+--    * Ghost layer is real, computable, no `Spec_X` stubs (docs/conventions.md
 --      §0d clause 4).
---    * Posts are functional (CLAUDE.md §0d clause 5): each one
+--    * Posts are functional (docs/conventions.md §0d clause 5): each one
 --      references real Big_Integer arithmetic, not a tautology.
 --    * The imperative impl's AoRTE checks (overflow / range on the
 --      signed-Integer_64 limb arithmetic) and the functional Post
 --      proofs are NOT yet discharged at level=2. They are honest
---      unproven VCs (CLAUDE.md §0d clause 1 not yet satisfied) —
+--      unproven VCs (docs/conventions.md §0d clause 1 not yet satisfied) —
 --      no SPARK_Mode (Off), no pragma Assume, no annotation has
 --      been used to make them disappear. Proving them platinum
 --      requires Felt-bound Pre conditions + per-limb invariants

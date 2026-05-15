@@ -2,7 +2,7 @@
 --  HMAC-SHA-384. Same shape as Tls_Core.Hkdf_Sha256, just with
 --  HashLen = 48.
 --
---  HACL\* spec porting (CLAUDE.md §0c): Spec_HKDF_Expand is a SPARK
+--  HACL\* spec porting (docs/conventions.md §0c): Spec_HKDF_Expand is a SPARK
 --  port of HACL\*'s `specs/Spec.HKDF.fst` `expand` definition
 --  specialised to HMAC-SHA-384.
 

@@ -165,12 +165,12 @@ is
    --  (32 for SHA-256, 48 for SHA-384). RFC 5869 caps the
    --  expanded output at 255 * HashLen.
    --
-   --  HACL\* spec port (CLAUDE.md §0c): the Post on Expand_Label
+   --  HACL\* spec port (docs/conventions.md §0c): the Post on Expand_Label
    --  references Spec_Hmac_Expand, the generic-formal ghost the
    --  caller threads through. For our concrete instantiations
    --  (Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand /
    --   Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand) Spec_Hmac_Expand is a
-   --  real executable HACL* port (see CLAUDE.md §0d clause 4 — no
+   --  real executable HACL* port (see docs/conventions.md §0d clause 4 — no
    --  stub ghosts). Combined with the §7.1 wire-construction Post on
    --  Build_Info_Bytes, the Expand_Label Post is the RFC 8446 §7.1
    --  functional theorem.

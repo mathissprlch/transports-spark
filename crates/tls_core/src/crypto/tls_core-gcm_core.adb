@@ -564,7 +564,7 @@ is
    --  block but still completes in microseconds. The 4-bit table
    --  primitive remains in `Tls_Core.Ghash_Table` and may be
    --  re-routed once the equivalence proof closes (open functional
-   --  correctness gap per CLAUDE.md §0b).
+   --  correctness gap per docs/conventions.md §0b).
    ---------------------------------------------------------------------
 
    procedure Ghash
@@ -907,7 +907,7 @@ is
          --  Counter = Spec_Inc32^k (Initial_J) at iteration k). The
          --  invariant is straightforward but its discharge depends
          --  on the formal generic Post (Encrypt_Block matches
-         --  Spec_Encrypt_Block) — see CLAUDE.md §0b for the AES
+         --  Spec_Encrypt_Block) — see docs/conventions.md §0b for the AES
          --  spec gap. Honest-unproven §0b gap.
          null;
       end Aes_Ctr;

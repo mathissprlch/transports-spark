@@ -122,7 +122,7 @@ is
    --     pre_shared_key          = u16 selected_identity
    --
    --  Mode 1 (psk_ke — PSK without DHE) is NOT advertised on the wire
-   --  per CLAUDE.md §0a (production peers reject mode 1 by default;
+   --  per docs/conventions.md §0a (production peers reject mode 1 by default;
    --  RFC 8446 §A.2 discourages it). The driver will reject any peer
    --  that advertises only mode 0.
    --

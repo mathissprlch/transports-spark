@@ -1,7 +1,7 @@
 # Portable Pure-SW AES Spec Investigation (v0.5 platinum gap)
 
 Date:    2026-05-07
-Author:  research pass per CLAUDE.md §0b
+Author:  research pass per docs/conventions.md §0b
 Scope:   determine whether a portable pure-software AES-128 / AES-256
          functional spec exists in any verified-crypto project that we
          could port to SPARK to achieve platinum on
@@ -44,7 +44,7 @@ separate question (see "Proof tractability" section).
 If the time is not available in the v0.5 window, fall back to option
 **(d)**: tag both modules `[VERIFIED — AoRTE]` and document the gap
 explicitly in the v0.5 release report under "open functional-correctness
-gaps," per CLAUDE.md §0b.
+gaps," per docs/conventions.md §0b.
 
 ---
 
@@ -187,7 +187,7 @@ libsparkcrypto are mainly on SHA-2 and HMAC, not AES.
 
 **Implication:** porting libsparkcrypto's AES gives us an
 already-SPARK-discharged AoRTE proof — saving us the Bronze/Silver
-work — but does **not** by itself satisfy CLAUDE.md §0d clause 5
+work — but does **not** by itself satisfy docs/conventions.md §0d clause 5
 (*"every public procedure's Post …"*). Platinum still requires
 a functional spec from elsewhere, which sends us back to HACL\*
 `Spec.AES.fst` anyway.
@@ -354,7 +354,7 @@ the partially-finished spec checked in for future use.
 as `[VERIFIED — AoRTE]` and document in v0.5 release report under
 "open functional-correctness gaps":**
 
-> Per CLAUDE.md §0b: AES-128 / AES-256 portable software ship with
+> Per docs/conventions.md §0b: AES-128 / AES-256 portable software ship with
 > AoRTE proof only. A portable functional spec is available
 > (HACL\* `specs/Spec.AES.fst`, ~353 LOC F\*) but porting +
 > proof-discharge effort exceeded the v0.5 budget. Tracked for

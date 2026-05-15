@@ -23,7 +23,7 @@
 --  the negotiated suite.
 --
 --  Mode 1 (psk_ke — PSK without DHE) is **not implemented** in
---  the driver per CLAUDE.md §0a (RFC 8446 §A.2 discourages it; no
+--  the driver per docs/conventions.md §0a (RFC 8446 §A.2 discourages it; no
 --  production peer accepts it by default). The wire-format
 --  scaffolding in Tls_Core.Hello.Encode_Client_Hello_Psk now
 --  always emits psk_dhe_ke with a key_share, never plain psk_ke.

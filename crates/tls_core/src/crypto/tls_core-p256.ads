@@ -33,7 +33,7 @@
 --  where `Spec_Scalar_Mult` is the ported HACL\* `point_mul`
 --  spec built from the `Spec.P256.PointOps.fst` primitives. The
 --  body of `Spec_Scalar_Mult` is a real, computable function on
---  Big_Integer triples — no stub (CLAUDE.md §0d clause 4).
+--  Big_Integer triples — no stub (docs/conventions.md §0d clause 4).
 --
 --  Status (v0.5 platinum push, 2026-05-07):
 --    * `Spec_Scalar_Mult` and the helper ghosts (point_add, point

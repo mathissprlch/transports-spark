@@ -16,7 +16,7 @@
 --  RFC 4231 §4 supplies the canonical test vectors which we run in
 --  tls_core_tests.
 --
---  HACL\* spec porting (CLAUDE.md §0c): the public Compute procedure
+--  HACL\* spec porting (docs/conventions.md §0c): the public Compute procedure
 --  carries a functional Post `Out_Tag = Spec_HMAC_SHA256 (Key, Message)`
 --  where Spec_HMAC_SHA256 is a SPARK port of HACL\*'s
 --  `specs/Spec.HMAC.fst` `hmac` definition:
@@ -29,7 +29,7 @@
 --  the H((K' XOR opad) || H((K' XOR ipad) || M)) composition).
 --
 --  Spec_HMAC_SHA256 is a real (executable) SPARK function, not a
---  ghost stub (CLAUDE.md §0d clause 4) — it composes Spec_SHA256.
+--  ghost stub (docs/conventions.md §0d clause 4) — it composes Spec_SHA256.
 
 with Tls_Core.Sha256;
 
@@ -44,7 +44,7 @@ is
    --  HACL* Spec.HMAC port — exposed in the public spec because the
    --  Post on Compute references Spec_HMAC_SHA256. Bodies in the
    --  package body. These are real (executable) SPARK functions, not
-   --  ghost stubs (CLAUDE.md §0d clause 4).
+   --  ghost stubs (docs/conventions.md §0d clause 4).
    --
    --  Both spec functions take arbitrary-base inputs (no First = 1
    --  requirement) so a caller's Pre on Compute can name them

@@ -150,7 +150,9 @@ package body Protobuf.Descriptor is
             when 5  =>
                Protobuf.Wire.Decode_Varint_64 (Cursor, Buffer, V);
                Result.Field_Kind := Field_Type'Enum_Val (V);
-            when 6  => Result.Type_Name  := Read_String (Buffer, Cursor);
+            when 6  => Result.Type_Name       := Read_String (Buffer, Cursor);
+            when 9  => Result.Oneof_Index     := Read_Int32  (Buffer, Cursor);
+            when 17 => Result.Proto3_Optional := Read_Bool   (Buffer, Cursor);
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -254,6 +256,28 @@ package body Protobuf.Descriptor is
                begin
                   Decode_Enum (Sub, E);
                   Result.Enums.Append (E);
+               end;
+            when 8 =>
+               declare
+                  Sub     : constant Protobuf.IO.Octet_Array :=
+                    Read_Sub_Message (Buffer, Cursor);
+                  Inner_C : Protobuf.IO.Read_Cursor;
+                  Inner_N : Protobuf.Wire.Field_Number;
+                  Inner_W : Protobuf.Wire.Wire_Type;
+                  Oneof_N : Name;
+               begin
+                  while Protobuf.IO.Available (Inner_C, Sub) > 0 loop
+                     Protobuf.Wire.Decode_Tag
+                       (Inner_C, Sub, Inner_N, Inner_W);
+                     case Inner_N is
+                        when 1 =>
+                           Oneof_N := Read_String (Sub, Inner_C);
+                        when others =>
+                           Protobuf.Wire.Skip_Field
+                             (Inner_C, Sub, Inner_W);
+                     end case;
+                  end loop;
+                  Result.Oneof_Decl_Names.Append (Oneof_N);
                end;
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);

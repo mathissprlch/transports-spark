@@ -3,8 +3,10 @@ with Ada.Streams;            use Ada.Streams;
 with Ada.Streams.Stream_IO;  use Ada.Streams.Stream_IO;
 with Ada.Strings.Unbounded;  use Ada.Strings.Unbounded;
 with Ada.Text_IO;
+with Codegen.Emit_Client_V2;
 with Codegen.Emit_Enum;
 with Codegen.Emit_Message;
+with Codegen.Emit_Server_V2;
 with Codegen.Emit_Service;
 with Codegen.Naming;
 with Codegen.Plugin;
@@ -108,6 +110,17 @@ package body Codegen.Driver is
          & Req.Proto_Files.Length'Image
          & " descriptors received");
 
+      declare
+         Param   : constant String := To_String (Req.Parameter);
+         Bounded : constant Boolean :=
+           Param = "bounded" or else Param = "Bounded";
+      begin
+         if Bounded then
+            Ada.Text_IO.Put_Line
+              (Ada.Text_IO.Standard_Error,
+               "protoc-gen-grpc-ada: bounded (zero-heap) mode");
+         end if;
+
       for Target of Req.Files_To_Generate loop
          declare
             File : constant Protobuf.Descriptor.File_Descriptor :=
@@ -118,7 +131,8 @@ package body Codegen.Driver is
          begin
             Emit_Parent_Package (File.Package_Name, Resp.Files);
             for M of File.Messages loop
-               Codegen.Emit_Message.Emit (M.all, Pkg, Resp.Files);
+               Codegen.Emit_Message.Emit
+                 (M.all, Pkg, Resp.Files, Bounded);
             end loop;
             for E of File.Enums loop
                Codegen.Emit_Enum.Emit (E, Pkg, Resp.Files);
@@ -126,9 +140,23 @@ package body Codegen.Driver is
             for Svc of File.Services loop
                Codegen.Emit_Service.Emit
                  (Svc, Pkg, To_String (File.Package_Name), Resp.Files);
+               declare
+                  Svc_Ident : constant String :=
+                    Codegen.Naming.To_Ada_Identifier
+                      (To_String (Svc.Service_Name));
+                  Svc_Pkg : constant String :=
+                    Pkg & "." & Svc_Ident;
+               begin
+                  Codegen.Emit_Client_V2.Emit
+                    (Svc, Svc_Pkg, Resp.Files);
+                  Codegen.Emit_Server_V2.Emit
+                    (Svc, Svc_Pkg, Resp.Files);
+               end;
             end loop;
          end;
       end loop;
+
+      end;  --  Bounded declare
 
       Write_Stdout (Codegen.Plugin.Encode_Response (Resp));
    end Run;

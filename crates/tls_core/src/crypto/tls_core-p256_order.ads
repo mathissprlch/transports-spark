@@ -25,9 +25,9 @@
 --  value of the inputs, modulo n."
 --
 --  Status (v0.5 platinum push, 2026-05-07):
---    * Ghost layer is real, computable, no `Spec_*` stubs (CLAUDE.md
+--    * Ghost layer is real, computable, no `Spec_*` stubs (docs/conventions.md
 --      §0d clause 4).
---    * Posts are functional (CLAUDE.md §0d clause 5): each one
+--    * Posts are functional (docs/conventions.md §0d clause 5): each one
 --      references real Big_Integer arithmetic, not a tautology.
 --    * AoRTE on the limb arithmetic + the bit-serial reducer + the
 --      Fermat exponent walk, plus the functional Post proofs, are

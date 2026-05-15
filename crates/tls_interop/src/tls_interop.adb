@@ -626,7 +626,7 @@ begin
          --  Bench results land in Log_Dir/bench.json — full numeric
          --  table for downstream parsing (CI, dashboards, regression
          --  trackers).  Stdout gets one terse progress line per row.
-         --  See CLAUDE.md §15.
+         --  See docs/conventions.md §15.
          Bench_Json_Path : constant String :=
            To_String (Log_Dir) & "/bench.json";
       begin

@@ -196,6 +196,104 @@ is
       end if;
    end Encode;
 
+   procedure Encode_With_Table
+     (Headers       : Header_Block;
+      Encoder_Table : in out Dynamic_Table.Table;
+      Output        : in out Octet_Array;
+      Output_Last   : out Natural;
+      Output_OK     : out Boolean)
+   is
+      Out_Idx : Integer := Output'First - 1;
+
+      procedure Emit_Integer
+        (Discriminator : U8; N : Int_Codec.Prefix_Bits; Value : Natural)
+      with Pre => Out_Idx + 1 <= Output'Last;
+      procedure Emit_Integer
+        (Discriminator : U8; N : Int_Codec.Prefix_Bits; Value : Natural)
+      is
+         Scratch : Int_Codec.Octet_Array (1 .. 4) := (others => 0);
+         IC_Last : Natural;
+         IC_OK   : Boolean;
+      begin
+         Scratch (1) := Int_Codec.Octet (Discriminator);
+         Int_Codec.Encode (Value, N, Scratch, IC_Last, IC_OK);
+         if not IC_OK or else Out_Idx + IC_Last > Output'Last then
+            Output_OK := False; return;
+         end if;
+         for I in 1 .. IC_Last loop
+            Out_Idx := Out_Idx + 1;
+            Output (Out_Idx) := U8 (Scratch (I));
+         end loop;
+      end Emit_Integer;
+
+      procedure Emit_String_Raw (S : String);
+      procedure Emit_String_Raw (S : String) is
+         Scratch : String_Literal.Octet_Array
+           (1 .. 1 + 4 + S'Length + 1) := (others => 0);
+         Input   : String_Literal.Octet_Array (1 .. S'Length);
+         SL_Last : Natural;
+         SL_OK   : Boolean;
+      begin
+         for I in 1 .. S'Length loop
+            Input (I) := String_Literal.Octet
+              (Character'Pos (S (S'First + I - 1)));
+         end loop;
+         String_Literal.Encode_Raw (Input, Scratch, SL_Last, SL_OK);
+         if not SL_OK or else Out_Idx + SL_Last > Output'Last then
+            Output_OK := False; return;
+         end if;
+         for I in 1 .. SL_Last loop
+            Out_Idx := Out_Idx + 1;
+            Output (Out_Idx) := U8 (Scratch (I));
+         end loop;
+      end Emit_String_Raw;
+
+   begin
+      Output_OK := True;
+      for H of Headers loop
+         declare
+            Name  : String renames H.Name (1 .. H.Name_Last);
+            Value : String renames H.Value (1 .. H.Value_Last);
+            S_Idx   : Natural;
+            S_Exact : Boolean;
+            D_Idx   : Natural;
+            D_Exact : Boolean;
+         begin
+            Static_Table.Find (Name, Value, S_Idx, S_Exact);
+
+            if S_Exact then
+               Emit_Integer (16#80#, 7, S_Idx);
+            else
+               Dynamic_Table.Find
+                 (Encoder_Table, Name, Value, D_Idx, D_Exact);
+
+               if D_Exact then
+                  Emit_Integer (16#80#, 7, D_Idx + 61);
+               elsif D_Idx > 0 then
+                  Emit_Integer (16#40#, 6, D_Idx + 61);
+                  Emit_String_Raw (Value);
+                  Dynamic_Table.Add (Encoder_Table, Name, Value);
+               elsif S_Idx > 0 then
+                  Emit_Integer (16#40#, 6, S_Idx);
+                  Emit_String_Raw (Value);
+                  Dynamic_Table.Add (Encoder_Table, Name, Value);
+               else
+                  if Out_Idx >= Output'Last then
+                     Output_OK := False; exit;
+                  end if;
+                  Out_Idx := Out_Idx + 1;
+                  Output (Out_Idx) := 16#40#;
+                  Emit_String_Raw (Name);
+                  Emit_String_Raw (Value);
+                  Dynamic_Table.Add (Encoder_Table, Name, Value);
+               end if;
+            end if;
+            exit when not Output_OK;
+         end;
+      end loop;
+      Output_Last := (if Output_OK then Out_Idx else Output'First - 1);
+   end Encode_With_Table;
+
    ---------------------------------------------------------------------
    --  Decode
    ---------------------------------------------------------------------

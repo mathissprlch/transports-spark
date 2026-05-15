@@ -1,6 +1,6 @@
 --  tls_cli — production-shaped TLS 1.3 client / server CLI.
 --
---  Per CLAUDE.md §10a: a single binary, CLI-controlled, that
+--  Per docs/conventions.md §10a: a single binary, CLI-controlled, that
 --  exercises the same public Tls_Core APIs a downstream consumer
 --  (http_core / mqtt_core / grpc_core) would link against.  The
 --  tls_interop runner drives this binary; users can also invoke it
@@ -45,7 +45,7 @@
 --    2 = usage / argument / file-IO error
 --
 --  This program is plain Ada (no SPARK_Mode aspect): test/CLI
---  glue, not part of the proven core.  CLAUDE.md §0d compliance:
+--  glue, not part of the proven core.  docs/conventions.md §0d compliance:
 --  no SPARK_Mode (Off) outside Tcp_Transport, no pragma Assume,
 --  no Pre/Post bypass.
 

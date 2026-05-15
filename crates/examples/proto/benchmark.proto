@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package benchmark;
+
+enum Priority {
+  LOW = 0;
+  NORMAL = 1;
+  HIGH = 2;
+  CRITICAL = 3;
+}
+
+message BenchmarkRequest {
+  string client_id = 1;
+  int64 timestamp_ms = 2;
+  bytes raw_payload = 3;
+  double score = 4;
+  float threshold = 5;
+  Priority priority = 6;
+  uint32 sequence = 7;
+  bool compress = 8;
+
+  oneof payload {
+    string text_payload = 10;
+    int64  numeric_payload = 11;
+    bool   flag_payload = 12;
+    bytes  binary_payload = 13;
+  }
+
+  repeated string tags = 20;
+  repeated int64 measurements = 21;
+}
+
+message BenchmarkReply {
+  bool ok = 1;
+  string summary = 2;
+  int64 elapsed_us = 3;
+  double throughput_mbps = 4;
+  uint64 bytes_processed = 5;
+  Priority result_priority = 6;
+
+  oneof result {
+    string  text_result = 10;
+    int64   numeric_result = 11;
+    bytes   binary_result = 12;
+  }
+}
+
+service BenchmarkService {
+  rpc RunBenchmark (BenchmarkRequest) returns (BenchmarkReply);
+  rpc StreamResults (BenchmarkRequest) returns (stream BenchmarkReply);
+}

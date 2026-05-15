@@ -28,7 +28,11 @@ project Examples is
                  "mqtt_session_demo.adb",
                  "mqtt_tls_demo.adb",
                  "grpc_tls_demo.adb",
-                 "tls_cli.adb");
+                 "tls_cli.adb",
+                 "benchmark_oneof_test.adb",
+                 "grpc_bench_client.adb",
+                 "greeter_stub_demo.adb",
+                 "greeter_server_stub_demo.adb");
 
    type Build_Mode_Kind is ("debug", "release");
    Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");

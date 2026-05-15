@@ -8,7 +8,7 @@
 --  six bit-mixing functions (FIPS §4.1.3) and a different
 --  round-constant table (§4.2.3).
 --
---  HACL* spec porting (CLAUDE.md §0c): the public one-shot Hash
+--  HACL* spec porting (docs/conventions.md §0c): the public one-shot Hash
 --  procedure carries `Output = Spec_SHA512 (Data)`. Spec_SHA512 is
 --  a SPARK port of HACL*'s `Spec.SHA2.fst` for SHA2_512:
 --

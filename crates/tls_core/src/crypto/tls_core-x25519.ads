@@ -32,7 +32,7 @@
 --          encode_point ( montgomery_ladder ( decode_point u, k ) )
 --
 --  defined in this package. The body of `Spec_X25519` is a real,
---  computable function (CLAUDE.md §0d clause 4 — no stub
+--  computable function (docs/conventions.md §0d clause 4 — no stub
 --  ghost spec; the body is a Big_Integer-based reference
 --  implementation, not `return False` / `return Default`).
 --
@@ -44,7 +44,7 @@
 --
 --  Status (v0.5 platinum push, 2026-05-07):
 --    * `Spec_X25519` and the ladder/decode/encode helpers are real
---      Big_Integer-based functions (CLAUDE.md §0d clause 4).
+--      Big_Integer-based functions (docs/conventions.md §0d clause 4).
 --    * `Scalar_Mult` and `Derive_Public` carry the
 --      `Out = Spec_X25519 (input)` Post (clause 5).
 --    * The Posts on Scalar_Mult / Derive_Public are not yet
