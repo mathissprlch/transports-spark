@@ -33,7 +33,7 @@
 --  where `Spec_Scalar_Mult` is the ported HACL\* `point_mul`
 --  spec built from the `Spec.P256.PointOps.fst` primitives. The
 --  body of `Spec_Scalar_Mult` is a real, computable function on
---  Big_Integer triples — no stub (docs/conventions.md §0d clause 4).
+--  Big_Integer triples — no stub (docs/conventions.md §0d B3).
 --
 --  Status (v0.5 platinum push, 2026-05-07):
 --    * `Spec_Scalar_Mult` and the helper ghosts (point_add, point
@@ -165,7 +165,7 @@ is
    --                 Spec_Scalar_Mult (Scalar, Spec_Of (P)))
    --  Proven at:  honest unproven (functional Post and AoRTE on the
    --              256-bit ladder are NOT yet discharged at level=2;
-   --              clause-6 clean — no SPARK_Mode (Off), no pragma
+   --              B4 clean — no SPARK_Mode (Off), no pragma
    --              Assume, no annotation suppressing VCs). RFC 6979
    --              §A.2.5 P-256 KAT exercises the chain end-to-end.
    --  --------------------------------------------------------------

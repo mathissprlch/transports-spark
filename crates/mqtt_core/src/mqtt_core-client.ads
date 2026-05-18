@@ -70,6 +70,25 @@ package Mqtt_Core.Client is
      (C         : in out Client;
       Trust_Der : RFLX.RFLX_Types.Bytes);
 
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Open MQTT 3.1.1 session.
+   --
+   --  Standard:    OASIS MQTT 3.1.1 §3.1 CONNECT + §3.2 CONNACK
+   --  Spec mirror: `specs/session.rflx` machine Connect_Handshake
+   --
+   --  Drives the CONNECT/CONNACK exchange through the
+   --  Connect_Handshake FSM. If Clean_Session=False, restores
+   --  any persistent session held by the broker for Client_Id
+   --  (§3.1.2.4). Will_Topic + Will_Message + Will_QoS +
+   --  Will_Retain populate the §3.1.2.5 will-flag fields
+   --  (Will_Topic = "" → will-flag clear).
+   --
+   --  Proven at:   gnatprove --level=2 — AoRTE on the driver
+   --               glue; structural correctness of the
+   --               state-machine comes from the RFLX exhaustive
+   --               dispatch (no untaken Server→Client packet
+   --               branch).
+   --------------------------------------------------------------------
    procedure Open
      (C             : in out Client;
       Host          : String;
@@ -83,19 +102,40 @@ package Mqtt_Core.Client is
                         RFLX.Control_Packet.QOS_0;
       Will_Retain   : Boolean := False);
 
-   --  Publish QoS 0 — fire-and-forget. No FSM (no reply, no dispatch).
-   --  Retain=True asks the broker to store the message and replay
-   --  it (with RETAIN=1) to subsequent SUBSCRIBEs that match the
-   --  topic — see §3.3.1.3.
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  QoS 0 publish — fire-and-forget.
+   --
+   --  Standard:    OASIS MQTT 3.1.1 §3.3 PUBLISH
+   --  Spec mirror: `specs/publish.rflx` Publish::Packet
+   --
+   --  No FSM (no reply, no dispatch). Retain=True asks the
+   --  broker to store the message and replay it (with RETAIN=1)
+   --  to subsequent SUBSCRIBEs that match the topic (§3.3.1.3).
+   --------------------------------------------------------------------
    procedure Publish
      (C       : in out Client;
       Topic   : String;
       Payload : RFLX.RFLX_Types.Bytes;
       Retain  : Boolean := False);
 
-   --  Publish QoS 1 — sends PUBLISH, awaits PUBACK with matching id.
-   --  Inbound PUBLISHes interleaved while waiting for PUBACK are
-   --  enqueued for Receive_Publish to drain. No data is dropped.
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  QoS 1 publish — at-least-once.
+   --
+   --  Standard:    OASIS MQTT 3.1.1 §3.3.4 + §4.3.2
+   --  Spec mirror: `specs/session.rflx` machine Publish_Qos1
+   --
+   --  Sends PUBLISH, awaits PUBACK with matching Packet Identifier.
+   --  Inbound PUBLISHes interleaved while waiting for PUBACK
+   --  (broker echoing back our own message because we're
+   --  subscribed to the topic; see §3.3.4) are enqueued for
+   --  Receive_Publish to drain. No data is dropped.
+   --
+   --  The "PUBACK before echo-PUBLISH" interleave bug class that
+   --  bit the original hand-written implementation is structurally
+   --  unwriteable in `specs/session.rflx` — RFLX's dispatch
+   --  exhaustiveness rejects any unenumerated packet type at
+   --  spec-compile time.
+   --------------------------------------------------------------------
    procedure Publish_Qos1
      (C       : in out Client;
       Topic   : String;
@@ -122,6 +162,17 @@ package Mqtt_Core.Client is
    --  (§3.8.3). Raises Subscribe_Failure if the broker returns Failure
    --  for *any* filter — caller can rebuild Filters with the bad ones
    --  removed and retry.
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Subscribe to N Topic Filters in one
+   --                      SUBSCRIBE packet.
+   --
+   --  Standard:    OASIS MQTT 3.1.1 §3.8 SUBSCRIBE + §3.9 SUBACK
+   --  Spec mirror: `specs/session.rflx` machine Subscribing
+   --
+   --  Raises Subscribe_Failure if the broker returns Failure for
+   --  *any* filter — caller can rebuild Filters with the bad ones
+   --  removed and retry.
+   --------------------------------------------------------------------
    procedure Subscribe_Many
      (C       : in out Client;
       Filters : Subscription_Filters);
@@ -135,10 +186,21 @@ package Mqtt_Core.Client is
      (C       : in out Client;
       Filters : Topic_Filters);
 
-   --  Block until the next inbound PUBLISH is available — first
-   --  draining any PUBLISHes that were queued by a concurrent
-   --  Subscribe / Unsubscribe / Publish_Qos1 / Open call, then
-   --  reading from the network if the queue is empty.
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Block until next inbound PUBLISH.
+   --
+   --  Standard:    OASIS MQTT 3.1.1 §3.3 PUBLISH (Server→Client)
+   --  Spec mirror: `specs/session.rflx` machine Receive
+   --
+   --  First drains any PUBLISHes that were queued by a concurrent
+   --  Subscribe / Unsubscribe / Publish_Qos* / Open call (the
+   --  broker may echo our QoS≥1 PUBLISH to ourselves if we
+   --  subscribed to the topic), then reads from the network if
+   --  the queue is empty. Per §3.3.4 the Server obligates the
+   --  Client to deliver subscribed PUBLISHes; we never drop one
+   --  (bounded internal queue, 4 slots in the current build —
+   --  full → drop is the failure mode flagged in `Open Risks`).
+   --------------------------------------------------------------------
    procedure Receive_Publish
      (C            : in out Client;
       Topic        : in out String;
@@ -146,6 +208,15 @@ package Mqtt_Core.Client is
       Payload      : in out RFLX.RFLX_Types.Bytes;
       Payload_Last :    out RFLX.RFLX_Types.Length);
 
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Graceful disconnect.
+   --
+   --  Standard:    OASIS MQTT 3.1.1 §3.14 DISCONNECT
+   --
+   --  Sends a DISCONNECT packet and closes the TCP socket.
+   --  Per §3.14.4 the Server treats this as clean shutdown
+   --  (Will message is NOT published).
+   --------------------------------------------------------------------
    procedure Close (C : in out Client);
 
    --  Slam the socket shut without sending DISCONNECT. Useful for

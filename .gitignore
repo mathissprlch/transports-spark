@@ -37,3 +37,9 @@ crates/examples/obj_tls/
 
 # Vendored Go reference impls — not part of the SPARK distribution
 /bench/go-grpc/
+
+# gnatprove workspace-level session state (only gnatprove.out is the artifact)
+/gnatprove/*.tmp
+/gnatprove/why3.conf
+/gnatprove/data_representation_generation.log
+/gnatprove/sessions/

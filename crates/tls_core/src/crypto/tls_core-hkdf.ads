@@ -30,7 +30,8 @@
 --      the `expand_spec` axiom HACL\* discharges in F\*; once we
 --      have a SPARK HMAC-SHA-256, we instantiate against it.
 --
---  See ../docs/v0.5-tls-plan.md for the slicing rationale.
+--  See ../../docs/wrapper-pattern.md for the RFLX + SPARK-Post
+--  approach this primitive follows.
 
 
 package Tls_Core.Hkdf

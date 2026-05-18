@@ -68,7 +68,7 @@ is
    ---------------------------------------------------------------------
    --  HACL* Spec.RSAPSS port — ghost functions referenced by the
    --  Posts on Emsa_Pss_Verify_*. These are real, executable SPARK
-   --  functions (docs/conventions.md §0d clause 4). The bodies MUST compute
+   --  functions (docs/conventions.md §0d B3). The bodies MUST compute
    --  the function — no stub returning False.
    ---------------------------------------------------------------------
 
@@ -205,7 +205,7 @@ is
    --  where `Spec_Em_From_Pubkey_Sig` is the canonical RSAVP1 step:
    --  `Big_To_Bigint (Spec_Mod_Exp (Bn_V (Sig), Bn_V (E), Bn_V (N)))`.
    --  Both ghost components have real, computable bodies (docs/conventions.md
-   --  §0d clauses 4 & 5). The Post is real functional, not a length-
+   --  §0d B3 & A4). The Post is real functional, not a length-
    --  only shape — it pushes the unproven obligation down to (a) the
    --  functional Post of `Bignum_2048.Mod_Exp` (the Montgomery ↔
    --  Big_Integer square-and-multiply equivalence) and (b) the
@@ -251,7 +251,7 @@ is
    --  Same shape as Verify_Sha256: the Post composes Spec_Mod_Exp
    --  (HACL* `bn_mod_exp`) with Spec_Pss_Verify_Sha384 (HACL*
    --  `pss_verify` for SHA-384). Honest unproven (the Mod_Exp
-   --  functional Post is the choke point) — clause-6 clean.
+   --  functional Post is the choke point) — B4 clean.
    --------------------------------------------------------------------
    procedure Verify_Sha384
      (N         : Bigint;

@@ -378,7 +378,10 @@ If you find yourself reaching for any of those, the answer is:
 `Tls_Core.Hello.Decode_*`, `Tls_Core.Ext_Walk_Rflx`, and
 `Tls_Core.Psk_Binder` were written hand-rolled because the
 RFLX-via-Cert-mode path wasn't ready in time for v0.5.0.
-Result: ~26 of the 304 unproved VCs in `tls_core` are in these
-files. The v0.5.x track lifts them to the wrapper pattern —
-RFLX `.rflx` spec for the wire format, SPARK wrapper with a
-miTLS-mirrored Post. Same trick that took HPACK to platinum.
+Result: these files (plus `Mqtt_Core.Wire`, `Tls_Core.X509`,
+and the HPACK encoder subtree) account for roughly 80 % of the
+unproved VCs in the workspace gnatprove sweep
+(see `docs/proof-results.txt`). The v0.5.x track lifts them to
+the wrapper pattern — RFLX `.rflx` spec for the wire format,
+SPARK wrapper with a miTLS-mirrored Post. Same trick that took
+HPACK to platinum.

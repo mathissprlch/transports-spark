@@ -28,7 +28,10 @@ else
   ALR_ENV :=
 endif
 
-GNATPROVE := /Users/mathis/.alire/bin/gnatprove
+#  Default host install (Alire user prefix).  Override to plain
+#  `gnatprove` on the Docker CI image where it sits on PATH:
+#  `GNATPROVE=gnatprove make prove`.
+GNATPROVE ?= /Users/mathis/.alire/bin/gnatprove
 PROVE_LEVEL ?= 2
 SOAK_ITERS ?= 100
 SOAK_QUICK_ITERS := 10
@@ -45,6 +48,7 @@ EXAMPLES_GEN := crates/examples/generated
 
 .PHONY: all build clean help \
         tls-build tls-test tls-perf tls-prove tls-prove-l3 \
+        prove prove-quick prove-coverage \
         tls-soak tls-soak-quick tls-audit tls-bare \
         tls-interop tls-interop-openssl tls-interop-rustls tls-interop-go \
         tls-interop-gnutls tls-interop-mbedtls tls-interop-boringssl \
@@ -54,7 +58,8 @@ EXAMPLES_GEN := crates/examples/generated
         grpc-bench grpc-bench-build grpc-bench-quick \
         mqtt-build mqtt-test \
         http2-build http2-test \
-        examples-build
+        examples-build \
+        docker-image docker-test docker-prove docker-interop docker-ci docker-shell
 
 # Default — build the production crate.
 all: tls-build
@@ -103,9 +108,18 @@ help:
 	@echo '    examples-build   Build crates/examples (interop binaries)'
 	@echo '    clean            Remove obj/lib/bin from every crate'
 	@echo ''
+	@echo '  Docker CI image (single Dockerfile, BuildKit cache):'
+	@echo '    docker-image     Build transports-spark:ci image'
+	@echo '    docker-test      Run tls-test inside the image'
+	@echo '    docker-prove     Run prove-quick (level=1 sweep) inside the image'
+	@echo '    docker-interop   Run tls-interop matrix inside the image'
+	@echo '    docker-ci        Sequenced test + interop + prove-quick'
+	@echo '    docker-shell     Interactive shell with source bind-mounted'
+	@echo ''
 	@echo '  Variables:'
 	@echo '    PROVE_LEVEL=N    gnatprove level for tls-prove (default 2)'
 	@echo '    SOAK_ITERS=N     iterations for tls-soak (default 100)'
+	@echo '    DOCKER_IMAGE=tag override image tag (default transports-spark:ci)'
 
 build:
 	@for c in $(CRATES); do \
@@ -156,7 +170,8 @@ tls-bench-build:
 
 tls-prove: tls-audit
 	@$(ALR_ENV) $(GNATPROVE) -P crates/tls_core/tls_core.gpr \
-	  --level=$(PROVE_LEVEL) -j0 2>&1 | tail -25
+	  --level=$(PROVE_LEVEL) --proof-warnings=on --no-subprojects -j0 \
+	  2>&1 | tail -25
 	@$(MAKE) -s tls-audit
 	@echo
 	@echo "Reminder: a green prove headline alone is not platinum."
@@ -164,6 +179,34 @@ tls-prove: tls-audit
 
 tls-prove-l3:
 	@$(MAKE) tls-prove PROVE_LEVEL=3
+
+# Full-stack proof sweep via the workspace umbrella. -U makes
+# gnatprove walk every with'd subproject; one process, one
+# unified gnatprove/gnatprove.out at the repo root. GPR_PROJECT_PATH
+# is composed of each crate's parent dir plus Alire's transitive-dep
+# path (borrowed from tls_core's manifest).
+PROVE_J ?= 0
+PROVE_FULL_LEVEL ?= 4
+LOCAL_CRATES := rflx_runtime logger protobuf_core http1_core tls_core tls_transport mqtt_core http2_core grpc_core
+
+prove:
+	@GPR_PROJECT_PATH="$$(echo $(addprefix $(CURDIR)/crates/,$(LOCAL_CRATES)) | tr ' ' ':'):$$(cd crates/tls_core && alr exec -- printenv GPR_PROJECT_PATH)" \
+	  $(ALR_ENV) $(GNATPROVE) -P transports_spark.gpr -U \
+	    --level=$(PROVE_FULL_LEVEL) --proof-warnings=on -j$(PROVE_J) 2>&1 | tail -25
+
+# Iterative variant — level=1 (AoRTE triage), warnings off, same
+# umbrella. Finishes in a few minutes on a warm cache; the right
+# target during a SPARK-edit / re-prove inner loop. The full
+# `make prove` is the release-readiness sweep.
+prove-quick:
+	@GPR_PROJECT_PATH="$$(echo $(addprefix $(CURDIR)/crates/,$(LOCAL_CRATES)) | tr ' ' ':'):$$(cd crates/tls_core && alr exec -- printenv GPR_PROJECT_PATH)" \
+	  $(ALR_ENV) $(GNATPROVE) -P transports_spark.gpr -U \
+	    --level=1 -j$(PROVE_J) 2>&1 | tail -25
+
+# Re-render docs/proof-coverage.md from the latest gnatprove
+# output. Run after `make prove`.
+prove-coverage:
+	@python3 scripts/render-proof-coverage.py
 
 tls-prove-report:
 	@echo "=== tls_core proof breakdown (from last gnatprove run) ==="
@@ -243,7 +286,14 @@ tls-ci: tls-audit tls-test tls-prove
 # all extensions — driven by CLI flags.  Per docs/conventions.md §10a.
 tls-interop-build: tls-build tls-interop-go-helpers
 	@$(ALR_ENV) alr -C crates/tls_interop build
-	@$(ALR_ENV) alr -C crates/examples build
+	@# `examples` pins vendor/aws (v0.1 gRPC fork); on a CI image
+	@# where that submodule isn't present, skip its build — the
+	@# interop matrix doesn't depend on the example binaries.
+	@if [ -d vendor/aws ]; then \
+	    $(ALR_ENV) alr -C crates/examples build; \
+	else \
+	    echo "tls-interop-build: skipping examples-build (vendor/aws absent)"; \
+	fi
 
 # Pre-compile Go peer helpers; `go run` is too slow to start within
 # the matrix's 0.8 s spawn window (causes c2s/s2c CONNECT_ERROR
@@ -397,3 +447,45 @@ bench-quick: grpc-bench-quick
 codegen: grpc-codegen
 plugin: grpc-plugin
 test: tls-test
+
+# ============================================================
+# Docker CI image — see docker/Dockerfile for the cache strategy.
+# Builds compiled Ada test binaries + every dep needed to run the
+# testbench (gnatprove, openssl, gnutls-cli, Go, mosquitto).
+# Subsequent builds are fast: a source-only edit recompiles
+# only the changed crates' objects, not the dep tree.
+# ============================================================
+
+DOCKER_IMAGE      ?= transports-spark:ci
+DOCKER_BUILDER    ?= docker buildx
+DOCKER_PLATFORM   ?=
+
+# `docker buildx build --load` uses the local BuildKit cache, so
+# the cache mounts in docker/Dockerfile persist between runs.
+DOCKER_BUILD_ARGS := --load -f docker/Dockerfile -t $(DOCKER_IMAGE) \
+                    $(if $(DOCKER_PLATFORM),--platform=$(DOCKER_PLATFORM),) \
+                    .
+
+# Run helper.  `--init` for clean PID-1, `--rm` so the container
+# disappears on exit.  `-v $(CURDIR):/work` is intentionally NOT
+# the default — the image already contains the source + binaries.
+# Override DOCKER_RUN_EXTRA to bind-mount for dev iteration.
+DOCKER_RUN := docker run --rm --init $(DOCKER_RUN_EXTRA) $(DOCKER_IMAGE)
+
+docker-image:
+	@DOCKER_BUILDKIT=1 $(DOCKER_BUILDER) build $(DOCKER_BUILD_ARGS)
+
+docker-test: docker-image
+	@$(DOCKER_RUN) make tls-test
+
+docker-prove: docker-image
+	@$(DOCKER_RUN) make prove-quick
+
+docker-interop: docker-image
+	@$(DOCKER_RUN) make tls-interop
+
+docker-ci: docker-image
+	@$(DOCKER_RUN) sh -c 'make tls-test && make tls-interop && make prove-quick'
+
+docker-shell: docker-image
+	@docker run --rm -it --init -v $(CURDIR):/work $(DOCKER_IMAGE) bash

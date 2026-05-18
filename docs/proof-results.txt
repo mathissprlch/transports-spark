@@ -1,0 +1,56 @@
+transports-spark — gnatprove --level=4 sweep
+============================================================
+
+Headline aggregation. Per-subprogram detail is in
+gnatprove/gnatprove.out (the raw workspace-level output).
+
+| Package family | Subprograms (proved / total) | VCs (proved / total) | %  |
+|---|---:|---:|---:|
+| **`Tls_Core.*`** — TLS 1.3 — crypto, key schedule, wire, driver | 117 / 160 | 4,439 / 4,716 | 94% |
+| **`Http2_Core.*`** — HTTP/2 — frame layer, HPACK, multi-stream server | 33 / 54 | 928 / 1,061 | 87% |
+| **`Mqtt_Core.*`** — MQTT 3.1.1 — client, broker, wire | 4 / 39 | 656 / 755 | 87% |
+| **`Grpc_Core.*`** — gRPC framing on top of HTTP/2 | 4 / 4 | 96 / 96 | 100% |
+| **`RFLX.*`** — RecordFlux-generated parsers + state machines | 3111 / 3184 | 23,963 / 24,032 | 100% |
+| **Total** | **3269 / 3441** | **30,082 / 30,660** | **98%** |
+
+Where unproved VCs live (top packages by gap):
+
+| Package | VCs (proved / total) | Gap |
+|---|---:|---:|
+| `Tls_Core.Hello` | 1,439 / 1,663 | 224 |
+| `Mqtt_Core.Wire` | 652 / 742 | 90 |
+| `Http2_Core.Hpack` | 304 / 374 | 70 |
+| `Tls_Core.X509` | 162 / 185 | 23 |
+| `Http2_Core.Hpack_Dynamic_Table` | 58 / 74 | 16 |
+| `Http2_Core.Wire` | 315 / 327 | 12 |
+| `Http2_Core.Hpack.String_Literal` | 24 / 35 | 11 |
+| `Tls_Core.Ext_Walk_Rflx` | 187 / 197 | 10 |
+| `Mqtt_Core.Topics` | 4 / 13 | 9 |
+| `Http2_Core.Hpack.Huffman` | 46 / 54 | 8 |
+| `RFLX.Connect.Packet` | 1,812 / 1,819 | 7 |
+| `Http2_Core.Flow_Gate` | 80 / 86 | 6 |
+
+gnatprove summary block:
+
+=========================
+Summary of SPARK analysis
+=========================
+
+-----------------------------------------------------------------------------------------------------------------------------
+SPARK Analysis results        Total          Flow                                             Provers   Justified    Unproved
+-----------------------------------------------------------------------------------------------------------------------------
+Data Dependencies                11            11                                                   .           .           .
+Flow Dependencies               174           174                                                   .           .           .
+Initialization                 3239          2941                                                   .           .         298
+Non-Aliasing                    102           102                                                   .           .           .
+Run-time Checks               15778             .    15374 (CVC5 83%, Trivial 4%, Z3 13%, altergo 0%)           .         404
+Assertions                     1201             .     1200 (CVC5 83%, Trivial 2%, Z3 14%, altergo 0%)           .           1
+Functional Contracts          13680             .    13507 (CVC5 80%, Trivial 5%, Z3 14%, altergo 1%)           .         173
+LSP Verification                  .             .                                                   .           .           .
+Termination                    4554          4551                                            1 (CVC5)           .           2
+Concurrency                       .             .                                                   .           .           .
+-----------------------------------------------------------------------------------------------------------------------------
+Total                         38739    7779 (20%)                                         30082 (78%)           .    878 (2%)
+
+
+max steps used for successful proof: 215274

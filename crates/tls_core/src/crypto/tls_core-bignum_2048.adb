@@ -12,7 +12,7 @@ is
 
    ---------------------------------------------------------------------
    --  Ghost spec layer bodies. Real, computable Big_Integer arithmetic
-   --  (docs/conventions.md §0d clause 4: no `return False` / placeholder bodies).
+   --  (docs/conventions.md §0d B3: no `return False` / placeholder bodies).
    --
    --  `Byte_Big` and `Pow_2_8` are simple lifters. `Spec_Mod_Exp` is
    --  the canonical recursive square-and-multiply on Big_Integer: it
@@ -104,7 +104,7 @@ is
       --  by 2^(8*k) at index Byte_Length - k. The detailed lemma is
       --  out of scope for this session (multi-day inductive proof);
       --  the procedure body is empty so the Post is left as honest
-      --  unproven (docs/conventions.md §0d clause 1) — clause-6 clean (no
+      --  unproven (docs/conventions.md §0d A1) — B4 clean (no
       --  pragma Assume, no annotation).
       null;
    end Lemma_Bigint_Roundtrip;

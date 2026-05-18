@@ -1,0 +1,25 @@
+tls_core-tls13_driver-step_awaiting_ch_cert.adb:353:13: warning: initialization of "Der_Sig" has no effect
+  353 |            Der_Sig : Octet_Array (1 .. 72) := (others => 0);
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+tls_core-tls13_driver-step_awaiting_ch_cert.adb:355:13: warning: initialization of "Cv_Body" has no effect
+  355 |            Cv_Body  : Octet_Array (1 .. 4 + 72) := (others => 0);
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+tls_core-tls13_driver-step_awaiting_ch_cert.adb:357:13: warning: initialization of "Cv_Hs" has no effect
+  357>|            Cv_Hs    : Octet_Array (1 .. 4 + 4 + 72) :=
+  358 |              (others => 0);
+
+tls_core-tls13_driver-step_awaiting_ch_cert.adb:360:13: warning: initialization of "Cv_Rec" has no effect
+  360 |            Cv_Rec   : Octet_Array (1 .. 256) := (others => 0);
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+tls_core-tls13_driver-step_awaiting_ch_cert.adb:423:13: warning: initialization of "Fin_Hs" has no effect
+  423 |            Fin_Hs : Octet_Array (1 .. 4 + 48) := (others => 0);
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+tls_core-tls13_driver-step_awaiting_ch_cert.adb:425:13: warning: initialization of "Fin_Rec" has no effect
+  425 |            Fin_Rec : Octet_Array (1 .. 256) := (others => 0);
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Summary logged in /Users/mathis/work/transports-spark/gnatprove/gnatprove.out
+gnatprove: error during flow analysis and proof

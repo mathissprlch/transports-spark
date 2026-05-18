@@ -3,7 +3,12 @@
 # scrub-attribution.sh — find tool/assistant attribution in the tree.
 #
 # Per docs/conventions.md §13, the following must not appear in
-# committed source, build files, public docs, or commit messages:
+# committed source, build files, per-feature docs, or commit
+# messages.  The top-level README.md and NOTICE are exempt:
+# they're where the methodology disclosure ("How this was built")
+# lives, by design.
+#
+# Banned everywhere else:
 #
 #   * literal tool / assistant names (Claude, claude.com, claude-code,
 #     Anthropic, ChatGPT, Copilot, Cursor, Codex, Aider, GPT-4, ...)
@@ -39,6 +44,8 @@ EXCLUDES=(
    --exclude-dir=node_modules
    --exclude-dir=.claude
    --exclude="CLAUDE.md"             # the assistant contract itself
+   --exclude="README.md"             # methodology disclosure lives here (§13)
+   --exclude="NOTICE"                # optional methodology mirror (§13)
    --exclude=".gitignore"            # may reference the ignored filename
    --exclude="scrub-attribution.sh"  # this script
    --exclude="*.json"

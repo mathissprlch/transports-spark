@@ -26,8 +26,8 @@
 --
 --  Status (v0.5 platinum push, 2026-05-07):
 --    * Ghost layer is real, computable, no `Spec_*` stubs (docs/conventions.md
---      §0d clause 4).
---    * Posts are functional (docs/conventions.md §0d clause 5): each one
+--      §0d B3).
+--    * Posts are functional (docs/conventions.md §0d A4): each one
 --      references real Big_Integer arithmetic, not a tautology.
 --    * AoRTE on the limb arithmetic + the bit-serial reducer + the
 --      Fermat exponent walk, plus the functional Post proofs, are
@@ -146,7 +146,7 @@ is
    --                            Spec_Q_Add (To_Big_Spec (A),
    --                                        To_Big_Spec (B)))
    --  Proven at:  honest unproven (Post not discharged at level=2;
-   --              clause-6 clean).
+   --              B4 clean).
    --  --------------------------------------------------------------
    procedure Add (A, B : Scalar; Out_C : out Scalar)
    with Post =>

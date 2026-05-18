@@ -1,0 +1,19 @@
+--  Workspace umbrella — withs every SPARK crate so a single
+--  `gnatprove -P transports_spark.gpr -U` analyses the whole
+--  stack (the `-U` walks every with'd subproject). Used by
+--  `make prove`; not used for build.
+
+with "crates/rflx_runtime/rflx_runtime.gpr";
+with "crates/logger/logger.gpr";
+with "crates/protobuf_core/protobuf_core.gpr";
+with "crates/http1_core/http1_core.gpr";
+with "crates/tls_core/tls_core.gpr";
+with "crates/tls_transport/tls_transport.gpr";
+with "crates/mqtt_core/mqtt_core.gpr";
+with "crates/http2_core/http2_core.gpr";
+with "crates/grpc_core/grpc_core.gpr";
+
+project Transports_Spark is
+   for Source_Files use ();
+   for Object_Dir   use "obj";
+end Transports_Spark;

@@ -103,9 +103,12 @@ insufficient and whose functional contract needs spec-mirror
 tightening. The honest summary form per `docs/conventions.md`
 §6:
 
-> "98 % proven, 304 unproved VCs in tls_core (audit-clean on
-> suppression). N (d)-tagged primitives in the bug log are AoRTE-
-> proven but functionally under-specified; lifting them is the
-> next wrapper-pattern push."
+> "98 % proven, 878 unproved VCs across the workspace at
+> `gnatprove --level=4 --proof-warnings=on` (audit-clean on
+> suppression — see `docs/proof-results.txt` for the per-package
+> rollup and `docs/proof-coverage.md` for the per-subprogram
+> tree). N (d)-tagged primitives in the bug log are AoRTE-proven
+> but functionally under-specified; lifting them is the next
+> wrapper-pattern push."
 
 Not "100 % proven".

@@ -871,10 +871,10 @@ package body Tls_Interop_Peers is
    function Ada_Unblock_Link (F : Feature_Kind) return String is
    begin
       case F is
-         when Cert_Rsa_Pss_Sha256 => return "v0.5-not-impl.md#rsa-pss-sign";
-         when Psk_External_Aes256 => return "v0.5-not-impl.md#aes256-gcm-cell";
+         when Cert_Rsa_Pss_Sha256 => return "README.md#v050--known-gaps-xfail";
+         when Psk_External_Aes256 => return "README.md#v050--known-gaps-xfail";
          when Psk_Resumption      => return "";
-         when Zero_Rtt            => return "v0.5-not-impl.md#zero-rtt";
+         when Zero_Rtt            => return "README.md#v050--known-gaps-xfail";
          when others              => return "";
       end case;
    end Ada_Unblock_Link;

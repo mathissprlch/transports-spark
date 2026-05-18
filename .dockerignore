@@ -1,0 +1,51 @@
+# Keep the build context small + cache-friendly. Anything that
+# changes per build but isn't input to the build belongs here.
+
+# Repo metadata + agent scratch
+.git
+.github
+.claude
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build outputs — recreated inside the container
+**/obj/
+**/lib/
+**/bin/
+**/alire/
+**/build/
+
+# gnatprove artifacts — sessions caches inflate the context
+gnatprove/sessions/
+gnatprove/*.tmp
+gnatprove/why3.conf
+gnatprove/data_representation_generation.log
+**/*.spark
+**/*.alfa
+
+# Bench / soak / interop run logs — generated artifacts
+bench/proof-results/
+overnight/results/
+overnight/*.log
+*.log
+
+# Local-only tooling
+tools/recordflux/.cache/
+vendor/
+node_modules/
+
+# Worktree / scratch dirs from agent sessions
+.claude/worktrees/
+
+# Docker temp
+docker/.build/
+
+# Local artifacts the README points at but that get regenerated
+# by `make prove` in the container.
+gnatprove/gnatprove.out
+
+# Files committed for repo browsing convenience but not part of build
+"convo history"
+"Terminal Saved Output.txt"

@@ -9,8 +9,9 @@
 --  not vendor or link any miTLS artefact. Each wrapper points to
 --  the F* file whose proof obligations it mirrors.
 --
---  See ../docs/v0.5-tls-plan.md for the layered architecture and
---  slicing strategy.
+--  See the top-level README for the layered architecture and
+--  ../docs/wrapper-pattern.md for the RFLX-spec + SPARK-Post
+--  approach mirrored in every wrapper here.
 
 with Interfaces;
 

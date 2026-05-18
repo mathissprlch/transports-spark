@@ -163,8 +163,9 @@ package Tls_Interop_Peers is
    --  without spawning processes.
    function Ada_Can_Attempt (F : Feature_Kind) return Boolean;
 
-   --  Work-item identifier for an XFAIL cell.  Points to a row in
-   --  docs/v0.5-not-impl.md.  Empty when Ada_Supports = True.
+   --  Work-item identifier for an XFAIL cell.  Points at the
+   --  "Known gaps" section in the top-level README.  Empty when
+   --  Ada_Supports = True.
    function Ada_Unblock_Link (F : Feature_Kind) return String;
 
    --  Short label for the feature in the matrix table.

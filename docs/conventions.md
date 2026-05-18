@@ -61,23 +61,56 @@ The v0.5 release goal: a complete TLS 1.3 implementation, fully
 proven to true platinum, BEFORE any external-implementation interop
 tests. Not v0.6. Not later.
 
-**True platinum** means all five of:
+Platinum, as defined by the AdaCore SPARK assurance-level taxonomy,
+means full functional proof of the requirements (unit-level and any
+abstract safety / security properties) plus GNATprove discharge of
+complete user specifications: type invariants, type predicates,
+preconditions, postconditions, loop variants, and loop termination.
+The application must also pass SPARK analysis without violations.
+Achieving this level is uncommon — for most projects Silver (AoRTE)
+is the recommended target — but it is the right bar for a TLS 1.3
+stack whose Posts can mirror HACL\* / miTLS lemmas.
 
-- gnatprove: 100% proved at level=2 or higher
+**On top of that AdaCore definition, this project enforces four
+anti-bypass hygiene rules** so that the proof headline cannot be
+gamed (see §0d for the audit form and the rationale):
+
 - **zero `SPARK_Mode (Off)` bodies in production code** — the only
   legitimate exception is `Tcp_Transport` / `Transport` wrapping
   `GNAT.Sockets` at the transport boundary, and that must be
   flagged as outside-SPARK, not folded into the proof claim
 - zero `pragma Assume` papering over unproven VCs (assume is for
   axioms about external code only — never as a proof shortcut)
+- zero stub `Spec_*` ghost functions whose body is a constant
+  (any Post referencing a ghost must compute that ghost from its
+  inputs, never return `False` / `True` / `Default`)
+- zero `pragma Annotate (GNATprove, …)` justifications and no
+  equivalent "make a VC disappear without proving it" mechanism
+
+Plus the protocol-side requirements that make the proof bar
+non-vacuous:
+
 - bounds match the protocol spec (AEAD must handle 16640-byte
   plaintext per RFC 8446 §5.2; bounds tighter than that are bugs,
   not features)
-- **functional correctness of every crypto primitive — not just
-  AoRTE.** Each primitive's Post must reference a *real* executable
-  ghost spec (ported from HACL\* `Hacl.Spec.*.fst` — see §0c). Tests
-  + AoRTE alone is not platinum; that's only memory-safety with
-  test confidence.
+- every crypto primitive carries a *real* executable ghost spec
+  ported from HACL\* `Hacl.Spec.*.fst` (see §0c), so the Post is
+  `Output = Spec_X (Input)` — not a tautology, not a length-only
+  shape. Tests + AoRTE alone is not platinum.
+
+About the gnatprove `--level=` switch: it controls prover effort
+(0..4), not Platinum membership. Per-package iterative work in
+this project uses `--level=2`; the workspace release-gate sweep
+(`make prove`) runs at `--level=4`. A Platinum tag is valid if
+the audit (§0d) is clean at the level it cites.
+
+About Gold: the AdaCore taxonomy has an intermediate Gold tier
+(proof of key integrity properties — Posts covering critical
+invariants but not necessarily the full functional spec). This
+project does not use it as a distinct tag because, for crypto
+primitives, the "key integrity property" essentially *is* the
+functional spec — the HACL\*-mirror Post collapses Gold and
+Platinum into the same artefact.
 
 **Full TLS** for v0.5 means all of:
 
@@ -201,36 +234,64 @@ gnatprove guided by the upstream invariant structure.
 
 ---
 
-## §0d — Definition of "platinum" + ban on every bypass
+## §0d — Auditable definition of platinum + ban on every bypass
 
-**Platinum** for a SPARK package means **all six** of the following
-hold simultaneously, with no exceptions:
+For a SPARK package in this project to be tagged platinum, the
+AdaCore criteria below must hold, *and* the four anti-bypass
+hygiene rules from §0 must hold, *and* the audit checklist must
+come back clean.
 
-1. **gnatprove level≥2 reports zero unproved VCs** for the package.
-2. **No `SPARK_Mode (Off)` / `SPARK_Mode => Off`** anywhere in the
-   package, nested packages, generic instantiations, private parts,
-   or bodies. The single global exception is `Tcp_Transport` /
-   `Transport` wrapping `GNAT.Sockets`, reported as outside-SPARK
-   in the audit (not lumped into the proof claim).
-3. **No `pragma Assume`** in the package body. None. (`pragma
-   Assume` is reserved for asserting properties of genuinely-
-   external code we have no SPARK source for — e.g.
-   `GNAT.Sockets`. For internal SPARK code, the answer is no.)
-4. **No stub `Spec_*` ghost functions** whose body is `return
-   False` / `return Default` / similar constant. Every ghost
-   referenced by a Post must have a real, computable body that
-   actually defines the function over its inputs.
-5. **Functional correctness**: every public procedure's Post
-   references the real spec of what it computes — not a tautology,
-   not a length-only shape. For crypto primitives, this means
-   `Output = Spec_X (Input)` where `Spec_X` is the ported
-   HACL\* / FIAT-Crypto / miTLS computational spec.
-6. **No bypass mechanism by another name.** If a future clever
-   trick (`pragma Annotate (GNATprove, Inline_For_Proof)`,
-   `pragma Annotate (GNATprove, False_Positive)`, abstract states
-   without refinement, justification messages in `gnatprove.out`,
-   hidden subtype predicates, etc.) is introduced, that's the
-   same vice as the rules above and equally not platinum.
+### A. AdaCore Platinum criteria (the published definition)
+
+A1. **No SPARK analysis violations** at the package's chosen
+    gnatprove level. In this project: `--level=2` is the
+    per-package iteration bar, `--level=4` is the release-gate
+    sweep — see §0 for which goes on the `[VERIFIED — PLATINUM]`
+    tag header.
+A2. **Complete user specifications**: every public subprogram has
+    the preconditions and postconditions its functional behaviour
+    requires, and gnatprove discharges them. Type invariants and
+    type predicates declared on the package's types are likewise
+    discharged.
+A3. **Loop variants and loop termination** are stated where
+    relevant and proved. Use `pragma Loop_Variant (Decreases =>
+    ...)` for any loop whose termination is non-obvious, and the
+    `Always_Terminates` aspect on functions whose totality is
+    referenced from a Post.
+A4. **Functional correctness, not just AoRTE**: every public
+    procedure's Post is the *real* spec of what it computes — not
+    a tautology, not a length-only shape. For crypto primitives,
+    `Output = Spec_X (Input)` where `Spec_X` is a ported HACL\* /
+    FIAT-Crypto / miTLS computational spec (§0c). Length-only or
+    "Output /= old" Posts are AoRTE, not platinum.
+
+### B. Project-local anti-bypass clauses
+
+These are not part of the AdaCore definition; they're added here
+because every gap on this list lets a clean gnatprove headline
+hide an unproven VC.
+
+B1. **No `SPARK_Mode (Off)` / `SPARK_Mode => Off`** anywhere in
+    the package, nested packages, generic instantiations, private
+    parts, or bodies. The single global exception is
+    `Tcp_Transport` / `Transport` wrapping `GNAT.Sockets`,
+    reported as outside-SPARK in the audit (not lumped into the
+    proof claim).
+B2. **No `pragma Assume`** in the package body. (`pragma Assume`
+    is reserved for asserting properties of genuinely-external
+    code we have no SPARK source for — e.g. `GNAT.Sockets`. For
+    internal SPARK code, the answer is no.)
+B3. **No stub `Spec_*` ghost functions** whose body is `return
+    False` / `return Default` / similar constant. Any ghost
+    referenced by a Post must compute the function from its
+    inputs.
+B4. **No bypass annotation by another name.** `pragma Annotate
+    (GNATprove, Inline_For_Proof)`, `pragma Annotate (GNATprove,
+    False_Positive)`, abstract states without refinement,
+    justification messages in `gnatprove.out`, hidden subtype
+    predicates that elide checks — all of these make a VC
+    disappear without discharging it, and are equally not
+    platinum here.
 
 The rule, restated: **VCs come down only through real proofs, not
 through any pragma, annotation, scope exception, or specification
@@ -391,7 +452,7 @@ Y wasn't ready."*
 
 ---
 
-## §4 (test/proof distinction) — Tests prove a different thing than proofs
+## §3a — Tests prove a different thing than proofs
 
 A long soak proves determinism on the test inputs and freedom from
 latent crashes / nondeterminism. **It does NOT prove:**
@@ -407,7 +468,7 @@ interchangeable.
 
 ---
 
-## §4 (readability) — Top-level readability: the .ads must say what's computed and that it's proven
+## §4 — Top-level readability: the .ads must say what's computed and that it's proven
 
 Reading the `.ads` of a primitive should answer three questions
 **without scrolling into the body or running gnatprove**:
@@ -444,14 +505,22 @@ variants:
 
 | Tag | Meaning |
 |---|---|
-| `[VERIFIED — PLATINUM]` | All six §0d clauses hold |
+| `[VERIFIED — PLATINUM]` | §0d A1–A4 (AdaCore criteria) **and** B1–B4 (anti-bypass) hold |
 | `[VERIFIED — AoRTE]` | Body proven free of run-time errors only; functional spec not ported |
 | `[OUTSIDE SPARK]` | GNAT.Sockets / FFI boundary — not analyzed |
 | `[NOT VERIFIED]` | Work-in-progress; do not use in production |
 
 The tag is binding — if you write `[VERIFIED — PLATINUM]` then the
-audit checklist (§0d) must pass. Mismatched tag = bypass by
-another name; treat as the same vice.
+audit checklist (§0d) must pass at the level cited on the
+`Proven at:` line. Mismatched tag = bypass by another name; treat
+as the same vice.
+
+Per-package iterative work tags `--level=2`; the release-gate
+workspace sweep (`make prove`) uses `--level=4` and produces
+`gnatprove/gnatprove.out` + `docs/proof-coverage.md`. A tag at
+`--level=2` is a valid Platinum claim if §0d A and B both pass at
+that level; the level=4 sweep is the broader release gate that
+catches regressions on top.
 
 ---
 
@@ -706,18 +775,11 @@ Every interop-/benchmark-/fuzz-found bug gets a row in the
 | Date | Found by | Component | RFC § | Tag(s) per §9 | One-line summary | Commit |
 |---|---|---|---|---|---|---|
 
-**One log file per feature**, in `docs/<feature>-bug-log.md`:
-
-- `docs/v0.5-bug-log.md` — TLS v0.5 only
-- `docs/http2-bug-log.md` — Http2_Core
-- `docs/grpc-bug-log.md` — Grpc_Core + protoc-gen-grpc-ada
-- `docs/mqtt-bug-log.md` — Mqtt_Core
-- (more per feature as they accrue interop bugs)
-
-A bug landing in one feature's stack goes into that feature's log,
-not into a release-named log. Use the commit's version (v0.5.X)
-to mark when the fix shipped — but the log itself is per-feature
-and lives across releases.
+**Single consolidated log** at `docs/bug-log.md`, with sections
+per track (TLS, HTTP/2, gRPC, MQTT). One row per fixed bug, with
+a `Track` column on every row so a reader can grep by feature.
+Use the commit's version (v0.5.X) to mark when the fix shipped —
+the log itself lives across releases.
 
 The (d) entries are load-bearing — each one means "we shipped this
 primitive as `[VERIFIED — AoRTE]` and a functional Post tied to
@@ -860,31 +922,35 @@ it in when there are multiple candidates.
 
 ---
 
-## §13 — Production code is attribution-free
+## §13 — Source and commits attribution-free; methodology in the README
 
-No reference to AI, LLMs, code-generation tools, or assistant
-names in:
+The project uses an LLM coding assistant during development.
+That methodology disclosure goes in **one place**: the
+"How this was built" section in the top-level README, optionally
+mirrored in `NOTICE`. Everywhere else, the rule is
+attribution-free:
 
 - Source code (`.adb`, `.ads`, `.gpr`, `.rflx`, `.proto`)
 - Build files (`Makefile`, `alire.toml`, `.gpr`)
-- Public documentation in `docs/` and crate-level READMEs
+- Other documentation under `docs/`
 - Commit messages and commit-trailers
 - Public-facing release notes
-- Comments anywhere in the above
+- Inline comments anywhere in the above
 
-The project ships as a portfolio artifact and a public
-SPARK-verified TLS implementation. The work — design choices,
-proof structure, RFC-mirroring discipline, bug-log entries — is
-the author's. Inline tool attribution muddles authorship,
-signals a different style of project than what's been built, and
-creates maintenance friction.
+These places are where attribution is noise: it rots as code is
+edited, muddles per-line authorship for `git blame`, makes
+commits less useful, and signals a different style of project
+than what's been built. The README disclosure is the canonical
+place; nothing further is needed file-by-file.
 
 ### Enforcement
 
-A `scripts/scrub-attribution.sh` enumerates the banned strings
-and a `git/hooks/pre-commit` hook rejects staged content
-containing any of them. Both are checked in. CI runs the
-scrub script across the full tree on every PR.
+`scripts/scrub-attribution.sh` enumerates the banned strings;
+the `git/hooks/pre-commit` hook rejects staged content
+containing any of them. The top-level `README.md` and `NOTICE`
+are exempt (the methodology disclosure is allowed there). CI
+runs the scrub script across the source tree (excluding those
+two files) on every PR.
 
 ---
 
@@ -995,6 +1061,277 @@ The wrong-things checklist:
    stubborn VCs where the SMT search needs more budget. Don't
    start at level=2.
 
+6. **Don't touch `.ads` files for cosmetic, non-SPARK reasons.**
+   gnatprove's session cache is content-hashed on the full
+   source file (not just the SPARK-relevant bits). A one-line
+   comment change in `tls_core.ads` invalidates the cached
+   results for *every* unit that withs tls_core — which on this
+   project is the whole closure. The next prove run then redoes
+   the SMT work for tens of thousands of VCs.
+
+   Doc references, README pointers, version bumps, and other
+   non-semantic edits belong in `docs/`, in the `.gpr` headers
+   (gnatprove doesn't fingerprint those), or in a sibling
+   markdown file — not as comments in the `.ads`. Touch `.ads`
+   only when changing the SPARK contract or the spec text
+   itself.
+
 **Reporting a proof run honestly:** the only number worth quoting
 is the `gnatprove.out` summary for the entity you care about,
 *after* the run has exited and no `gnatwhy3` is still alive.
+
+**Killing a stuck gnatprove cleanly:** plain `pkill -INT
+gnatprove` only kills the gnatprove parent. If the invocation
+was wrapped in `alr exec`, alr revives gnatprove. The full
+order is: `pkill -KILL -f 'alr exec.*gnatprove'` (the wrapper
+parent), then `pkill -KILL -f gnatprove`, then `pkill -KILL -f
+'gnatwhy3|gnat2why|spark_semaphore'` for the workers, then
+`pkill -x -KILL z3 cvc5 alt-ergo` for the SMT solver leaves.
+Loop with `pgrep -fl gnatwhy3` until the count is zero.
+
+---
+
+## §17 — RecordFlux authoring and integration
+
+The hard-won operational rules for working with RecordFlux specs
+and the generated SPARK code. Each one was discovered through a
+multi-hour debugging session; the cost of re-discovering them is
+worse than the cost of reading this section before writing your
+first spec.
+
+### §17a — No per-operation heap allocations
+
+The project targets bare-metal and safety-critical contexts;
+zero per-operation heap traffic is a hard requirement.
+
+- **Session machines**: use `External_IO_Buffers: True` in a
+  `.rfi` integration file. This generates `Add_Buffer` /
+  `Remove_Buffer` / `Buffer_Accessible` instead of `Bytes_Ptr`
+  ownership transfer at `Initialize`. The buffer lives in
+  `.bss`, on the stack, or in a custom pool — never `new` per
+  call.
+- **Message contexts** (standalone `Verify_Message` validation):
+  allocate the `Bytes_Ptr` **once** at connection setup (e.g.
+  `Open` / `Connect` / `Accept_One`), store it in the owning
+  record, reuse across all operations via `Initialize →
+  Take_Buffer` cycles, and free in `Close`. The
+  `Mqtt_Core.Client.Buf` and `Tls_Transport.Channel.Rflx_Buf`
+  patterns are the canonical implementations.
+- **Never** call `new RFLX_Types.Bytes'(...)` inside a per-
+  record, per-packet, or per-message procedure. The only `new`
+  calls are at connection-lifecycle boundaries.
+
+### §17b — Generated code IS committed (with caveats)
+
+`crates/<core>/generated/` directories are checked in. Rationale:
+the host build doesn't depend on having a working RecordFlux
+install, so a fresh clone + `alr build` works without the 7 GB
+Docker image. The trade-off is that **spec drift is only caught
+by re-running `rflx generate` and inspecting the diff** — if a
+`.rflx` spec changes and the regen step is skipped, the
+generator-emitted `.ads/.adb` lies about what the spec says.
+
+Mitigation: every PR that touches `crates/<core>/specs/*.rflx`
+MUST also touch `crates/<core>/generated/`. CI runs
+`scripts/rflx generate` and fails if the diff is non-empty.
+
+### §17c — Pass `--no-library` (`-n`) when generating
+
+Each `rflx generate` without `-n` emits its own copy of the RFLX
+runtime files. When multiple `*_core` crates share the
+`rflx_runtime` crate, gprbuild rejects the resulting binary
+("unit X cannot belong to several projects"). The shared
+`rflx_runtime` crate holds the canonical runtime; `-n` tells the
+generator to skip runtime files:
+
+```sh
+scripts/rflx generate -n -d crates/<core>/generated \
+  crates/<core>/specs/*.rflx
+```
+
+If runtime files slipped through, delete them:
+
+```sh
+cd crates/<core>/generated
+rm -f rflx.ads rflx-rflx_arithmetic.* rflx-rflx_builtin_types* \
+      rflx-rflx_generic_types* rflx-rflx_message_sequence.* \
+      rflx-rflx_scalar_sequence.* rflx-rflx_types*
+```
+
+### §17d — Opaque fields use `Well_Formed_Message`, not `Valid_Message`
+
+**This is a recurring wall.** RFLX sets Opaque (variable-length
+byte-array) fields to `S_Well_Formed` state, not `S_Valid`.
+`Valid_Message` requires ALL fields to be `S_Valid`. Therefore
+`Valid_Message` always returns False for any message containing
+an Opaque field, even when the message is structurally correct.
+
+**Use `Well_Formed_Message` instead.** This checks that all
+fields are at least `S_Well_Formed`, which is the correct
+semantic for messages with Opaque payloads (TLS record Fragment,
+MQTT payload, HTTP/2 frame body, etc.).
+
+This was discovered three times independently. Symptom is always
+the same: `Verify_Message` completes without exception,
+individual fields show `Valid = TRUE` for all typed fields, but
+`Valid_Message` returns False. The fix is always
+`Well_Formed_Message`.
+
+### §17e — Always `rflx check` before `rflx generate`
+
+```sh
+scripts/rflx check crates/<core>/specs/<package>.rflx
+```
+
+Sub-second; catches structural errors, missing transitions,
+unnecessary exception clauses, type mismatches before you wait
+for code generation + compilation.
+
+### §17f — Regenerate all specs in a directory together
+
+RecordFlux rejects partial regeneration with:
+
+```
+error: partial update of generated files
+```
+
+After removing or renaming a machine in a `.rflx` spec, manually
+delete stale generated files:
+
+```sh
+rm crates/<core>/generated/rflx-<pkg>-<old_name>*
+```
+
+### §17g — Spec authoring: traceability header
+
+Every `.rflx` file is traceable to a public, versioned, dated
+source document (RFC, OASIS standard, IEEE spec). Required file
+header:
+
+```rflx
+--  <Package>: <one-line description>.
+--
+--  Source: <Document title>, <Version>, <Organisation>, <Date>.
+--  Section coverage: §<X.Y> — <topic>.
+
+package <Name> is
+   ...
+```
+
+Per-construct comments cite §X.Y for every type, message,
+sequence, or session state. Out-of-scope sections get an explicit
+`--  Note: §X.Y deferred — <reason>.` rather than silent
+omission.
+
+### §17h — Session-machine template
+
+```rflx
+machine X is
+   Outgoing : <RequestType>;
+   Inbound  : <ResponseType>;
+begin
+   state Loading is
+      App_Outbox'Read (Outgoing);
+   transition
+      goto Sending if Outgoing'Valid
+      goto null
+   exception goto null
+   end Loading;
+
+   state Sending is
+      Network'Write (Outgoing);
+   transition goto Awaiting_Reply
+   end Sending;
+
+   state Awaiting_Reply is
+      Network'Read (Inbound);
+   transition
+      goto Forwarding_Reply if Inbound'Valid and <expected>
+      goto Forwarding_Inbound if Inbound'Valid and <side-traffic>
+      goto null
+   exception goto null
+   end Awaiting_Reply;
+
+   state Forwarding_Inbound is
+      App_Pending'Write (Inbound);
+   transition goto Awaiting_Reply
+   end Forwarding_Inbound;
+
+   state Forwarding_Reply is
+      App_Pending'Write (Inbound);
+   transition goto null
+   end Forwarding_Reply;
+end X;
+```
+
+For receive-only flows, drop Loading + Sending and start at
+Awaiting. Pre-feed Network data before the first Run — empty
+buffers cause immediate S_Final.
+
+Channel convention:
+
+- `Network` (Readable+Writable) — TCP socket, bidirectional
+- `App_Outbox` (Readable from FSM) — caller feeds pre-encoded bytes
+- `App_Pending` (Writable from FSM) — FSM emits bytes for caller
+
+### §17i — `.rfi` integration file required for every session machine
+
+```yaml
+Machine:
+  X:
+    External_IO_Buffers: True
+    Buffer_Size:
+      Default: 4096
+```
+
+Place at `crates/<core>/specs/<basename>.rfi`. Pass
+`--integration-files-dir crates/<core>/specs/` to `rflx generate`
+(the `scripts/rflx` wrapper does this).
+
+### §17j — Ada driver loop pattern
+
+```ada
+FSM.Initialize (Ctx);
+if FSM.Needs_Data (Ctx, FSM.C_App_Outbox) then
+   FSM.Write (Ctx, FSM.C_App_Outbox, Encoded_Bytes);
+end if;
+
+loop
+   FSM.Run (Ctx);
+   exit when not FSM.Active (Ctx);
+
+   if FSM.Has_Data (Ctx, FSM.C_Network) then
+      FSM.Read (Ctx, FSM.C_Network, View);
+      Transport.Send (Sock, View);
+   end if;
+
+   if FSM.Has_Data (Ctx, FSM.C_App_Pending) then
+      FSM.Read (Ctx, FSM.C_App_Pending, View);
+      classify_and_route (View);
+   end if;
+
+   if FSM.Needs_Data (Ctx, FSM.C_Network) then
+      Read_Full_Packet (Sock, Buf, Last);
+      FSM.Write (Ctx, FSM.C_Network, Buf.all (1 .. Last));
+   end if;
+end loop;
+FSM.Finalize (Ctx);
+```
+
+### §17k — When session machines are worth it
+
+- Any state that reads from a channel and dispatches on
+  type/field. RFLX forces every transition to be declared;
+  "forgot a case" is a spec error, not a runtime bug.
+- Multi-step request-response protocols where intermediate
+  states matter (handshakes, ACKed publishes, subscribe→suback).
+- Skip the FSM for fire-and-forget (no reply, no dispatch) — it
+  adds cost with zero verification dividend.
+
+### §17l — Skip RecordFlux for text protocols and DER walks
+
+ABNF / textual formats (HTTP/1.1, header field values) and
+ad-hoc DER walks (X.509, ECDSA-Sig-Value) don't fit RecordFlux.
+For those, use either (a) miTLS-style parser combinators
+(EverParse) or (b) hand-written SPARK with full functional
+Posts — see §5 and `docs/wrapper-pattern.md`.

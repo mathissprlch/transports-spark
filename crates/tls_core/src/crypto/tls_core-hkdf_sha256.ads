@@ -38,7 +38,7 @@ is
    --  HACL* Spec.HKDF port — exposed in the public spec because the
    --  Post on Expand references Spec_HKDF_Expand. Bodies in the
    --  package body. These are real (executable) SPARK functions, not
-   --  ghost stubs (docs/conventions.md §0d clause 4).
+   --  ghost stubs (docs/conventions.md §0d B3).
    ---------------------------------------------------------------------
 
    --  Single-block T(i) computation:

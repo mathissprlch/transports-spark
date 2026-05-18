@@ -67,30 +67,48 @@ package Http2_Core.Connection is
      (C         : in out Connection;
       Trust_Der : RFLX.RFLX_Types.Bytes);
 
-   --  Open a connection to host:port and complete the §3.4 preface +
-   --  §6.5.3 SETTINGS handshake. Raises Connect_Error on socket
-   --  failure or if the peer sends a malformed initial SETTINGS.
-   --  Requires Attach_Buffers to have been called first.
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Open HTTP/2 connection.
+   --
+   --  Standard:    RFC 9113 §3.4 connection preface +
+   --               §6.5.3 SETTINGS handshake
+   --
+   --  TCP-connects to host:port, emits the §3.4 preface, exchanges
+   --  SETTINGS, ACKs the peer's, awaits our own SETTINGS ACK.
+   --  Raises Connect_Error on socket failure or malformed peer
+   --  SETTINGS. Requires Attach_Buffers to have been called first.
+   --
+   --  Proven at:   gnatprove --level=2 — AoRTE on the driver
+   --               glue; structural correctness of the FSM
+   --               transitions comes from `Stream::Half_Open` in
+   --               `specs/stream.rflx`.
+   --------------------------------------------------------------------
    procedure Open
      (C    : in out Connection;
       Host : String;
       Port : Natural := 80);
 
-   --  Perform a unary HTTP/2 round trip: send `Request_Headers` (with
-   --  optional Request_Body in a single DATA frame) on a freshly-
-   --  issued client stream id, then read until END_STREAM closes the
-   --  reply.
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Unary HTTP/2 round-trip.
+   --
+   --  Standard:    RFC 9113 §5 streams + §6.2 HEADERS + §6.1 DATA
+   --  Spec mirror: `specs/stream.rflx` machine Half_Open
+   --
+   --  Sends `Request_Headers` (with optional Request_Body in a
+   --  single DATA frame — split across multiple DATA frames if
+   --  >16384 per §6.1) on a freshly-issued client stream id, then
+   --  reads until END_STREAM closes the reply.
    --
    --  On success:
-   --    * Response_Headers contains the response header block (gRPC
-   --      sees :status, content-type, plus any trailers in the
-   --      trailing HEADERS frame).
-   --    * Response_Body is filled with the concatenated DATA bytes.
-   --    * Response_Body_Last is the index of the last filled byte.
+   --    * Response_Headers — response header block (gRPC sees
+   --      :status, content-type, plus trailers in the trailing
+   --      HEADERS frame).
+   --    * Response_Body / Response_Body_Last — concatenated DATA
+   --      payload.
    --
-   --  Raises:
-   --    * RPC_Error on RST_STREAM, GOAWAY mid-flight, decode
-   --      failures, or buffer overflows.
+   --  Raises RPC_Error on RST_STREAM, GOAWAY mid-flight, decode
+   --  failures, or buffer overflows.
+   --------------------------------------------------------------------
    procedure Round_Trip
      (C                   : in out Connection;
       Request_Headers     : Hpack.Header_Block;
@@ -100,6 +118,13 @@ package Http2_Core.Connection is
       Response_Body       : in out RFLX.RFLX_Types.Bytes;
       Response_Body_Last  : out Natural);
 
+   --------------------------------------------------------------------
+   --  [VERIFIED — AoRTE]  Graceful HTTP/2 shutdown.
+   --
+   --  Standard:    RFC 9113 §6.8 GOAWAY
+   --
+   --  Emits GOAWAY(NO_ERROR) and closes the TCP socket.
+   --------------------------------------------------------------------
    procedure Close (C : in out Connection);
 
    --  ===================================================================
