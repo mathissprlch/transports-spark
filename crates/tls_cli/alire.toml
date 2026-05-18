@@ -1,5 +1,5 @@
 name = "tls_cli"
-description = "Standalone TLS 1.3 client / server CLI used by the tls_interop matrix harness — depends on tls_core only, no AWS / examples baggage"
+description = "Standalone TLS 1.3 client / server CLI used by the tls_interop matrix harness -- depends on tls_core only, no AWS / examples baggage"
 version = "0.0.1"
 licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
 authors = ["Mathis Sperlich"]
