@@ -1,0 +1,102 @@
+transports-spark
+Copyright 2026 Mathis Sperlich
+
+This product includes software developed at, or derived from, the
+following upstream projects. Each is reproduced or mirrored under
+the terms of its own permissive license; this NOTICE file records
+those attributions per Apache-2.0 §4(d).
+
+================================================================
+HACL* / Project Everest (cryptographic specifications)
+================================================================
+
+  Upstream:  https://github.com/hacl-star/hacl-star
+  License:   Apache-2.0
+  Used in:   crates/tls_core/src/crypto/*.ad{s,b}
+
+  Every SPARK ghost function named `Spec_<Primitive>` in the
+  crates/tls_core/src/crypto/ tree is a direct line-by-line port
+  of an F* `let` definition from `Hacl.Spec.*.fst`, cited by
+  file:line in the body comment. Specifically:
+
+    Spec_SHA256       <- Hacl.Spec.SHA2.Generic.fst
+    Spec_SHA384       <- Hacl.Spec.SHA2.Generic.fst
+    Spec_SHA512       <- Hacl.Spec.SHA2.Generic.fst
+    Spec_HMAC_*       <- Hacl.Spec.HMAC.fst
+    Spec_HKDF_*       <- Hacl.Spec.HKDF.fst
+    Spec_Chacha20     <- Hacl.Spec.Chacha20.fst
+    Spec_Poly1305     <- Hacl.Spec.Poly1305.fst
+    Spec_AES_*        <- Hacl.Spec.AES.fst
+    Spec_GHASH        <- Hacl.Spec.GF128.fst
+    Spec_GCM          <- Hacl.Spec.GCM.fst
+    Spec_Scalar_Mult  <- Hacl.Spec.Curve25519.fst (X25519)
+    Spec_Ed25519_*    <- Hacl.Spec.Ed25519.fst
+    Spec_P256_*       <- Hacl.Spec.P256.fst
+    Spec_ECDSA_P256_* <- Hacl.Spec.ECDSA.fst
+    Spec_RSAPSS_*     <- Hacl.Spec.RSAPSS.fst
+
+================================================================
+miTLS / Project Everest (TLS protocol specifications)
+================================================================
+
+  Upstream:  https://github.com/project-everest/mitls-fstar
+  License:   Apache-2.0
+  Used in:   crates/tls_core/src/driver/*.ad{s,b}
+             crates/tls_core/src/wire/*.ad{s,b}
+
+  Contract structures (Pre/Post/invariant shapes) for the TLS
+  1.3 handshake driver, record layer, and wire parsers are
+  modelled after their miTLS counterparts. Each public
+  procedure cites the miTLS source file in its `[VERIFIED — …]`
+  header per docs/conventions.md §4.
+
+================================================================
+EverParse (parser combinator framework — pattern only)
+================================================================
+
+  Upstream:  https://github.com/project-everest/everparse
+  License:   Apache-2.0
+
+  The X.509 / DER walkers in crates/tls_core/src/wire/tls_core-cert*.ad{s,b}
+  follow the EverParse "validate-then-extract" pattern; the code
+  itself is hand-written SPARK, not a port.
+
+================================================================
+AdaCore RecordFlux (binary wire format DSL + generated SPARK)
+================================================================
+
+  Upstream:  https://github.com/AdaCore/RecordFlux
+  License:   Apache-2.0
+  Used in:   crates/*/specs/*.rflx (hand-written specs)
+             crates/*/generated/rflx-*.ad{s,b}  (generated)
+
+  All files under any crates/*/generated/rflx-* directory are
+  output of the RecordFlux generator from the corresponding
+  *.rflx spec in that crate's specs/ directory. The generated
+  code carries its own Apache-2.0 header per RecordFlux's
+  template.
+
+================================================================
+IANA registries (machine-derived enum tables)
+================================================================
+
+  Upstream:  https://www.iana.org/assignments/tls-parameters/
+             https://www.iana.org/assignments/http2-parameters/
+  License:   Public domain (IANA registry contents)
+  Used in:   crates/tls_core/specs/tls-parameters.rflx
+             crates/http2_core/specs/iana-http2-parameters.xml
+             crates/http2_core/specs/http2_parameters.rflx
+
+  The Frame_Type / Settings_Id / Alert_Description / Named_Group /
+  Signature_Scheme / Cipher_Suite enums are machine-derived from
+  the IANA XML registries via `rflx convert iana`. Re-run
+  command captured in each crate's specs/README.md.
+
+================================================================
+FIPS 186-4, RFC 7748, RFC 8032, RFC 8439, RFC 8446, RFC 9113,
+RFC 7541, OASIS MQTT 3.1.1 (normative standards)
+================================================================
+
+  These documents are reproduced only by reference (file:line
+  citation) and never by content; transports-spark contains no
+  copyrighted text from any of them.

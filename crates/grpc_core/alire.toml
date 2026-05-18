@@ -5,7 +5,7 @@ version = "0.0.1"
 authors = ["Mathis Sperlich"]
 maintainers = ["Mathis Sperlich <sperlich.mathis@gmail.com>"]
 maintainers-logins = ["mathis"]
-licenses = "MIT"
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
 tags = ["grpc", "spark", "verified", "rpc"]
 
 project-files = ["grpc_core.gpr"]
