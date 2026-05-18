@@ -167,14 +167,18 @@ COPY crates/tls_transport/alire.toml      crates/tls_transport/alire.toml
 COPY crates/tls_transport/tls_transport.gpr crates/tls_transport/tls_transport.gpr
 COPY crates/tls_interop/alire.toml        crates/tls_interop/alire.toml
 COPY crates/tls_interop/tls_interop.gpr   crates/tls_interop/tls_interop.gpr
+COPY crates/tls_cli/alire.toml            crates/tls_cli/alire.toml
+COPY crates/tls_cli/tls_cli.gpr           crates/tls_cli/tls_cli.gpr
 #  examples crate depends on grpc_ada → AWS → dropped, as above.
+#  The tls_cli binary the interop matrix needs is built from the
+#  standalone tls_cli crate above, which `with`s tls_core only.
 
 # Resolve + fetch dep crates.  Cache mounts make this a no-op on
 # warm builds.  We touch only the crates that pull external deps;
 # the rest just `with` their siblings.
 RUN --mount=type=cache,target=/root/.cache/alire,sharing=locked \
     --mount=type=cache,target=/root/.local/share/alire/builds,sharing=locked \
-    for c in tls_core tls_interop protoc_gen_grpc_ada \
+    for c in tls_core tls_interop tls_cli protoc_gen_grpc_ada \
              mqtt_core http2_core http1_core grpc_core \
              rflx_runtime protobuf_core protobuf_ada \
              protobuf_ada_tests http2_core_tests grpc_core_tests \
@@ -222,6 +226,7 @@ RUN --mount=type=cache,target=/root/.cache/alire,sharing=locked \
  && make tls-build \
  && make tls-interop-go-helpers \
  && alr -C crates/tls_interop build \
+ && alr -C crates/tls_cli build \
  && make mqtt-build \
  && make http2-build \
  && alr -C crates/tls_core/tests build \
@@ -234,6 +239,7 @@ RUN --mount=type=cache,target=/root/.cache/alire,sharing=locked \
 # Quick smoke — fail fast if a key binary didn't land.
 RUN test -x crates/tls_core/tests/bin/tls_core_tests \
  && test -x crates/tls_interop/bin/tls_interop \
+ && test -x crates/tls_cli/bin/tls_cli \
  && echo "build OK"
 
 # ──────────────────────────────────────────────────────────────

@@ -1,0 +1,39 @@
+--  tls_cli.gpr — standalone build for crates/examples/src/tls_cli.adb.
+--
+--  The CLI itself lives under crates/examples/src/ alongside the demo
+--  binaries, but examples.gpr `with`s grpc_ada (which pins the v0.1
+--  AWS fork at vendor/aws).  CI / Docker images that don't ship that
+--  submodule need the same binary built without dragging in the v0.1
+--  stack.  This .gpr does exactly that: it imports tls_cli.adb as its
+--  sole source and links against tls_core only.
+
+with "../tls_core/tls_core.gpr";
+
+project Tls_Cli is
+
+   type Build_Mode_Kind is ("debug", "release");
+   Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");
+
+   for Source_Dirs   use ("../examples/src");
+   for Source_Files  use ("tls_cli.adb");
+   for Object_Dir    use "obj";
+   for Exec_Dir      use "bin";
+   for Create_Missing_Dirs use "True";
+   for Main          use ("tls_cli.adb");
+
+   package Compiler is
+      case Build_Mode is
+         when "release" =>
+            for Default_Switches ("Ada") use
+              ("-g", "-O2", "-gnatn", "-gnatwa", "-gnatyM100");
+         when "debug" =>
+            for Default_Switches ("Ada") use
+              ("-g", "-O0", "-gnatwa", "-gnatyM100", "-gnata");
+      end case;
+   end Compiler;
+
+   package Binder is
+      for Default_Switches ("Ada") use ("-Es");
+   end Binder;
+
+end Tls_Cli;

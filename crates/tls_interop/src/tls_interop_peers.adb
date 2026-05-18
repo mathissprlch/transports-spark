@@ -233,6 +233,12 @@ package body Tls_Interop_Peers is
                if Ada.Directories.Exists (Sib) then
                   Bin := U (Sib);
                elsif Ada.Directories.Exists
+                       ("crates/tls_cli/bin/tls_cli")
+               then
+                  --  Standalone tls_cli crate (CI / Docker image
+                  --  without vendor/aws — depends on tls_core only).
+                  Bin := U ("crates/tls_cli/bin/tls_cli");
+               elsif Ada.Directories.Exists
                        ("crates/examples/bin/tls_cli")
                then
                   Bin := U ("crates/examples/bin/tls_cli");

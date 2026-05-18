@@ -69,17 +69,17 @@ jobs:
               echo "grpc_core_tests not present — skipping"
             fi'
 
-      # The Ada matrix harness against openssl / gnutls-cli / Go.
-      # Cells can FAIL on container-network timing of the Ada
-      # server bind — non-blocking until that is resolved, but
-      # the logs are uploaded so a regression is visible.
-      - name: Interop matrix (Ada TLS 1.3 vs. openssl / gnutls / Go)
+      # Full Ada matrix against openssl / gnutls-cli / Go (the
+      # peers shipped in the image).  Other peers (rustls / mbedtls
+      # / BoringSSL / wolfSSL) report NI-3P automatically when
+      # their binaries are missing — counted, not flagged.
+      # Blocking: any FAIL (Ada bug) row breaks the build.
+      - name: Interop matrix (full — Ada TLS 1.3 vs. openssl / gnutls / Go)
         id: interop
-        continue-on-error: true
         run: |
           docker run --rm --name=interop \
             -v "$PWD/interop-logs:/tmp/spark-tls-interop" \
-            ${{ env.DOCKER_IMAGE }} make tls-interop-quick
+            ${{ env.DOCKER_IMAGE }} make tls-interop
 
       # gnatprove at --level=1 — AoRTE triage sweep.  The
       # full release-gate sweep is --level=4 and takes 30+ min;
@@ -97,6 +97,6 @@ jobs:
           retention-days: 14
 
       - name: Surface interop status
-        if: steps.interop.outcome == 'failure'
+        if: failure() && steps.interop.outcome == 'failure'
         run: |
-          echo "::warning::tls-interop-quick reported failing cells — see uploaded interop-logs artifact."
+          echo "::warning::tls-interop reported failing cells — see uploaded interop-logs artifact."
