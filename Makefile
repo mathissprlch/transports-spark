@@ -198,10 +198,12 @@ prove:
 # umbrella. Finishes in a few minutes on a warm cache; the right
 # target during a SPARK-edit / re-prove inner loop. The full
 # `make prove` is the release-readiness sweep.
+PROVE_QUICK_LEVEL ?= 1
+PROVE_QUICK_FLAGS ?=
 prove-quick:
 	@GPR_PROJECT_PATH="$$(echo $(addprefix $(CURDIR)/crates/,$(LOCAL_CRATES)) | tr ' ' ':'):$$(cd crates/tls_core && alr exec -- printenv GPR_PROJECT_PATH)" \
 	  $(ALR_ENV) $(GNATPROVE) -P transports_spark.gpr -U \
-	    --level=1 -j$(PROVE_J) 2>&1 | tail -25
+	    --level=$(PROVE_QUICK_LEVEL) $(PROVE_QUICK_FLAGS) -j$(PROVE_J) 2>&1 | tail -25
 
 # Re-render docs/proof-coverage.md from the latest gnatprove
 # output. Run after `make prove`.

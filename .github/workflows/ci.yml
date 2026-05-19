@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   ci:
-    name: Build image + run unit tests, interop, prove-quick
+    name: Build image + run unit tests, interop, gnatprove smoke
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -87,11 +87,16 @@ jobs:
             ${{ env.DOCKER_IMAGE }} make tls-interop \
             2>&1 | tee interop-output.txt
 
-      # gnatprove at --level=1 — AoRTE triage sweep.  The
-      # full release-gate sweep is --level=4 and takes 30+ min;
-      # run it on the nightly workflow, not on every push.
-      - name: gnatprove (prove-quick, level=1)
-        run: docker run --rm ${{ env.DOCKER_IMAGE }} make prove-quick
+      # gnatprove smoke test — confirms the prover toolchain still
+      # loads the workspace and runs.  --level=0 is single-prover
+      # (cvc5 only) with a 1s per-VC timeout; --steps=1500 caps
+      # deterministically so hard VCs bail well under 1s.  Tuned
+      # for ~5-8 min wall time on the CI runner.  Exit code is
+      # masked by the trailing `| tail -25` in the make target,
+      # so this step is a smoke gate, not a proof gate; the
+      # release-gate sweep at --level=4 runs on a nightly workflow.
+      - name: gnatprove smoke (level=0, steps=1500)
+        run: docker run --rm ${{ env.DOCKER_IMAGE }} make prove-quick PROVE_QUICK_LEVEL=0 PROVE_QUICK_FLAGS="--steps=1500"
 
       - name: Upload interop logs
         if: always()
