@@ -21,7 +21,19 @@ PEER=${1:-openssl}
 TICKET=/tmp/spark-tls-resume-ticket.bin
 PORT=$((30000 + RANDOM % 10000))
 FIXTURES=$(dirname "$0")/../crates/tls_core/tests/fixtures/interop/ec
-TLS_CLI=$(dirname "$0")/../crates/examples/bin/tls_cli
+
+# Resolve tls_cli the same way crates/tls_interop/src/tls_interop_peers.adb
+# does: prefer the standalone crates/tls_cli/ build (CI / Docker image
+# without vendor/aws), fall back to crates/examples/ (host dev tree
+# where the v0.1 demo binaries still live alongside it).
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+if   [ -x "$REPO/crates/tls_cli/bin/tls_cli" ];     then TLS_CLI="$REPO/crates/tls_cli/bin/tls_cli"
+elif [ -x "$REPO/crates/examples/bin/tls_cli" ];    then TLS_CLI="$REPO/crates/examples/bin/tls_cli"
+elif command -v tls_cli >/dev/null 2>&1;            then TLS_CLI=$(command -v tls_cli)
+else
+  echo "FAIL: tls_cli binary not found (looked in crates/tls_cli/bin and crates/examples/bin)" >&2
+  exit 1
+fi
 
 echo "=== PSK Resumption test against $PEER on port $PORT ==="
 
