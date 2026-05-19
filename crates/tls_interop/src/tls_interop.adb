@@ -137,6 +137,12 @@ procedure Tls_Interop is
    Repo : constant String := Repo_Root;
    EC_Dir : constant String :=
      Repo & "/crates/tls_core/tests/fixtures/interop/ec";
+
+   --  Tally of real Ada-bug rows across the matrix.  NI-3P and
+   --  XFAIL stay non-blocking; only Fail increments this.  Drives
+   --  the process exit status so the CI workflow's "any FAIL row
+   --  breaks the build" contract is actually enforced.
+   Fail_Count : Natural := 0;
    Psk_Hex_Str  : constant String :=
      "4242424242424242424242424242424242424242424242424242424242424242";
    Psk_Identity : constant String := "Test";
@@ -504,6 +510,9 @@ procedure Tls_Interop is
          end;
       end if;
 
+      if C2S_Result = Fail then Fail_Count := Fail_Count + 1; end if;
+      if S2C_Result = Fail then Fail_Count := Fail_Count + 1; end if;
+
       case Format is
          when Markdown =>
             Tls_Interop_Output.Md_Feature_Row
@@ -705,6 +714,17 @@ begin
             Put_Line (Top.Write (Compact => False));
          end;
    end case;
+
+   if Fail_Count > 0 then
+      if Format = Markdown then
+         Put_Line
+           (Standard_Error,
+            "tls_interop:" & Natural'Image (Fail_Count)
+            & " FAIL cell(s) — see matrix above and logs in "
+            & To_String (Log_Dir));
+      end if;
+      Ada.Command_Line.Set_Exit_Status (1);
+   end if;
 
 exception
    when E : others =>
