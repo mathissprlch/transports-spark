@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -13,11 +13,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   ci:
-    name: Build image + run unit tests, interop, prove-quick
+    name: Build image + run unit tests, interop
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     # Persists across jobs and runs as long as the cache stays
     # under GitHub's eviction threshold (10 GB per repo, LRU).
@@ -77,16 +81,17 @@ jobs:
       - name: Interop matrix (full — Ada TLS 1.3 vs. openssl / gnutls / Go)
         id: interop
         run: |
+          set -o pipefail
           docker run --rm --name=interop \
             -v "$PWD/interop-logs:/tmp/spark-tls-interop" \
-            ${{ env.DOCKER_IMAGE }} make tls-interop
+            ${{ env.DOCKER_IMAGE }} make tls-interop \
+            2>&1 | tee interop-output.txt
 
-      # gnatprove at --level=1 — AoRTE triage sweep.  The
-      # full release-gate sweep is --level=4 and takes 30+ min;
-      # run it on the nightly workflow, not on every push.
-      - name: gnatprove (prove-quick, level=1)
-        run: docker run --rm ${{ env.DOCKER_IMAGE }} make prove-quick
-
+      # gnatprove is intentionally not run here — the per-PR
+      # critical path was sitting at 25+ min and the full sweep
+      # is the gate that matters.  The release-gate sweep at
+      # --level=4 runs on .github/workflows/gnatprove.yml against
+      # main every 12 h.
       - name: Upload interop logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -100,3 +105,32 @@ jobs:
         if: failure() && steps.interop.outcome == 'failure'
         run: |
           echo "::warning::tls-interop reported failing cells — see uploaded interop-logs artifact."
+
+      # On PR runs (where artifact downloads need auth), post the
+      # matrix output as a PR comment so reviewers — and bots that
+      # can read PR comments but not artifacts — see the failing
+      # rows inline.  push-run failures still upload the artifact;
+      # this step just adds a more accessible surface for PRs.
+      - name: Comment matrix on PR (failure only)
+        if: failure() && steps.interop.outcome == 'failure' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          {
+            echo "## Interop matrix — failing cells"
+            echo
+            echo "Commit: \`${{ github.sha }}\`"
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo '<details><summary>Full matrix output (tail 50KB)</summary>'
+            echo
+            echo '```'
+            tail -c 50000 interop-output.txt
+            echo '```'
+            echo
+            echo '</details>'
+          } > comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body-file comment.md
