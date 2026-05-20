@@ -49,6 +49,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # gnatformat style gate. Warnings-as-errors (-gnatwae) is
+      # enforced by the build itself in the steps below, so a stray
+      # warning fails compilation; this guards layout drift too.
+      - name: Format check (gnatformat)
+        run: docker run --rm ${{ env.DOCKER_IMAGE }} make tls-format-check
+
       - name: Unit tests (tls_core, 598 asserts)
         run: docker run --rm ${{ env.DOCKER_IMAGE }} make tls-test
 
