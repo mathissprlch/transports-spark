@@ -35,6 +35,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Regenerate the RFLX-derived SPARK from the *.rflx specs before the
+      # image build tars the context.  generated/ is gitignored (the specs
+      # are the source of truth); RecordFlux ships manylinux wheels so this
+      # is a plain pip install — no Docker/source build of RecordFlux.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate RecordFlux SPARK from specs
+        run: |
+          python -m pip install --upgrade pip
+          pip install "RecordFlux==0.26.0"
+          RFLX=rflx make rflx-gen
+          echo "regenerated $(find crates/*/generated -name '*.ad[sb]' | wc -l) RFLX files"
+
       # Build via buildx with the GitHub Actions cache backend so
       # the BuildKit cache mounts (apt, Alire downloads, Alire
       # build cache, alr toolchain) survive between runs.  First
