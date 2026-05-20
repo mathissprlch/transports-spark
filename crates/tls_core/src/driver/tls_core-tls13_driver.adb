@@ -35,40 +35,7 @@ is
       PSK          : Octet_Array;
       Psk_Identity : Octet_Array;
       Ecdhe_Priv   : Octet_Array)
-   is
-      Priv_32 : Tls_Core.X25519.Bytes_32;
-      Pub_32  : Tls_Core.X25519.Bytes_32;
-   begin
-      D.My_Role := Server;
-      D.Cur_State := Awaiting_CH;
-      Tls_Core.Transcript.Init (D.Hash_Ctx);
-      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
-      D.PSK := (others => 0);
-      D.PSK := PSK;
-      D.Identity := (others => 0);
-      D.Identity_Len := Psk_Identity'Length;
-      D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
-      D.App_Set := False;
-      Prime_Driver_Defaults (D);
-      D.Hrr_Demand    := False;
-      D.Hrr_Sent      := False;
-      D.Hrr_Aware     := False;
-      D.Hrr_Seen      := False;
-      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
-      D.Hrr_Cookie    := (others => 0);
-      D.Hrr_Cookie_Len := 0;
-      D.Hrr_Ch1_Hash  := (others => 0);
-      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
-
-      --  Derive ephemeral X25519 public key from caller-supplied
-      --  private scalar. RFC 7748 §6.1: pub = X25519(priv, base_u=9).
-      Priv_32 := Ecdhe_Priv;
-      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
-      D.My_Ecdhe_Priv := Priv_32;
-      D.My_Ecdhe_Pub  := Pub_32;
-      D.Peer_Ecdhe_Pub := (others => 0);
-      D.Ecdhe_Shared := (others => 0);
-   end Init_Psk_Server;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Init_Cert_Server — RFC 8446 §4.4.2 / §4.4.3 cert-mode foundation.
@@ -87,83 +54,14 @@ is
       Sign_Priv_Key    : Octet_Array;
       Sig_Alg          : Tls_Core.Suites.U16;
       Ecdhe_Priv       : Octet_Array)
-   is
-      Priv_32 : Tls_Core.X25519.Bytes_32;
-      Pub_32  : Tls_Core.X25519.Bytes_32;
-   begin
-      D.My_Role := Server;
-      D.Cur_State := Awaiting_CH;
-      Tls_Core.Transcript.Init (D.Hash_Ctx);
-      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
-      D.PSK := (others => 0);
-      D.Identity := (others => 0);
-      D.Identity_Len := 0;
-      D.App_Set := False;
-      Prime_Driver_Defaults (D);
-      D.Hrr_Demand    := False;
-      D.Hrr_Sent      := False;
-      D.Hrr_Aware     := False;
-      D.Hrr_Seen      := False;
-      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
-      D.Hrr_Cookie    := (others => 0);
-      D.Hrr_Cookie_Len := 0;
-      D.Hrr_Ch1_Hash  := (others => 0);
-      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
-
-      Priv_32 := Ecdhe_Priv;
-      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
-      D.My_Ecdhe_Priv := Priv_32;
-      D.My_Ecdhe_Pub  := Pub_32;
-      D.Peer_Ecdhe_Pub := (others => 0);
-      D.Ecdhe_Shared := (others => 0);
-
-      D.Mode := Cert_Mode;
-      D.Cert_Chain_Bytes := (others => 0);
-      D.Cert_Chain_Bytes (1 .. Cert_Chain_Bytes'Length) := Cert_Chain_Bytes;
-      D.Cert_Chain_Len := Cert_Chain_Bytes'Length;
-      D.Cert_Chain_Spec := Chain_Spec;
-      D.Server_Sign_Priv := (others => 0);
-      D.Server_Sign_Priv (1 .. 32) := Sign_Priv_Key;
-      D.Sig_Alg := Sig_Alg;
-   end Init_Cert_Server;
+   is separate;
 
    procedure Init_Psk_Client
      (D            : out Driver;
       PSK          : Octet_Array;
       Psk_Identity : Octet_Array;
       Ecdhe_Priv   : Octet_Array)
-   is
-      Priv_32 : Tls_Core.X25519.Bytes_32;
-      Pub_32  : Tls_Core.X25519.Bytes_32;
-   begin
-      D.My_Role := Client;
-      D.Cur_State := Idle;
-      Tls_Core.Transcript.Init (D.Hash_Ctx);
-      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
-      D.PSK := (others => 0);
-      D.PSK := PSK;
-      D.Identity := (others => 0);
-      D.Identity_Len := Psk_Identity'Length;
-      D.Identity (1 .. Psk_Identity'Length) := Psk_Identity;
-      D.App_Set := False;
-      Prime_Driver_Defaults (D);
-      D.Hrr_Demand    := False;
-      D.Hrr_Sent      := False;
-      D.Hrr_Aware     := False;
-      D.Hrr_Seen      := False;
-      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
-      D.Hrr_Cookie    := (others => 0);
-      D.Hrr_Cookie_Len := 0;
-      D.Hrr_Ch1_Hash  := (others => 0);
-      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
-
-      Priv_32 := Ecdhe_Priv;
-      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
-      D.My_Ecdhe_Priv := Priv_32;
-      D.My_Ecdhe_Pub  := Pub_32;
-      D.Peer_Ecdhe_Pub := (others => 0);
-      D.Ecdhe_Shared := (others => 0);
-   end Init_Psk_Client;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Init_Cert_Client — RFC 8446 §4.4.2 / §4.4.3 cert-mode foundation
@@ -178,51 +76,7 @@ is
       Trust_Spec         : Tls_Core.Cert_Chain.Trust_Store;
       Hostname           : Octet_Array;
       Ecdhe_Priv         : Octet_Array)
-   is
-      Priv_32 : Tls_Core.X25519.Bytes_32;
-      Pub_32  : Tls_Core.X25519.Bytes_32;
-   begin
-      D.My_Role := Client;
-      D.Cur_State := Idle;
-      Tls_Core.Transcript.Init (D.Hash_Ctx);
-      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
-      D.PSK := (others => 0);
-      D.Identity := (others => 0);
-      D.Identity_Len := 0;
-      D.App_Set := False;
-      Prime_Driver_Defaults (D);
-      D.Hrr_Demand    := False;
-      D.Hrr_Sent      := False;
-      D.Hrr_Aware     := False;
-      D.Hrr_Seen      := False;
-      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
-      D.Hrr_Cookie    := (others => 0);
-      D.Hrr_Cookie_Len := 0;
-      D.Hrr_Ch1_Hash  := (others => 0);
-      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
-
-      Priv_32 := Ecdhe_Priv;
-      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
-      D.My_Ecdhe_Priv := Priv_32;
-      D.My_Ecdhe_Pub  := Pub_32;
-      D.Peer_Ecdhe_Pub := (others => 0);
-      D.Ecdhe_Shared := (others => 0);
-
-      D.Mode := Cert_Mode;
-      D.Trust_Anchor_Bytes := (others => 0);
-      D.Trust_Anchor_Bytes (1 .. Trust_Anchor_Bytes'Length) :=
-        Trust_Anchor_Bytes;
-      D.Trust_Anchor_Len := Trust_Anchor_Bytes'Length;
-      D.Trust_Anchor_Spec := Trust_Spec;
-      --  Hostname re-uses Sni_Hostname / Sni_Len.  An empty hostname
-      --  means "skip hostname check" — only valid with a self-signed
-      --  pinned trust anchor (e.g., test fixtures).
-      D.Sni_Hostname := (others => 0);
-      D.Sni_Len := Hostname'Length;
-      if Hostname'Length > 0 then
-         D.Sni_Hostname (1 .. Hostname'Length) := Hostname;
-      end if;
-   end Init_Cert_Client;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Init_Psk_Server_With_Hrr / Init_Psk_Client_Hrr_Aware
@@ -236,34 +90,14 @@ is
       Ecdhe_Priv        : Octet_Array;
       Demanded_Group    : Tls_Core.Suites.U16;
       Cookie            : Octet_Array)
-   is
-   begin
-      Init_Psk_Server (D, PSK, Psk_Identity, Ecdhe_Priv);
-      D.Hrr_Demand := True;
-      D.Hrr_Sent   := False;
-      D.Hrr_Group  := Demanded_Group;
-      D.Hrr_Cookie := (others => 0);
-      D.Hrr_Cookie_Len := Cookie'Length;
-      if Cookie'Length > 0 then
-         for I in 1 .. Cookie'Length loop
-            pragma Loop_Invariant (I in 1 .. Cookie'Length);
-            pragma Loop_Invariant
-              (Cookie'Length <= Tls_Core.Hello_Retry.Max_Cookie_Length);
-            D.Hrr_Cookie (I) := Cookie (Cookie'First + I - 1);
-         end loop;
-      end if;
-   end Init_Psk_Server_With_Hrr;
+   is separate;
 
    procedure Init_Psk_Client_Hrr_Aware
      (D            : out Driver;
       PSK          : Octet_Array;
       Psk_Identity : Octet_Array;
       Ecdhe_Priv   : Octet_Array)
-   is
-   begin
-      Init_Psk_Client (D, PSK, Psk_Identity, Ecdhe_Priv);
-      D.Hrr_Aware := True;
-   end Init_Psk_Client_Hrr_Aware;
+   is separate;
 
    --  Helpers (Fail_Plaintext, Fail_Encrypted, Build_Finished_Body,
    --  Encode_Hs_Message, Wrap_Tls_Plaintext, constants) moved to
@@ -278,68 +112,7 @@ is
       In_Bytes  : Octet_Array;
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
-   is
-      Cur_State_Old : constant State := D.Cur_State;
-   begin
-      Out_Buf := (others => 0);
-      Out_Last := 0;
-
-      --  RFC 8446 §4.4.2 + §4.4.3 — cert-mode dispatch.  Mode is set
-      --  by Init_Cert_Server / Init_Cert_Client; for all other Init_*
-      --  routines it remains Psk_Mode and the PSK handlers run as
-      --  before.  Awaiting_Sh_Or_Hrr / Awaiting_Ch_2 (HRR path) are
-      --  not yet cert-aware; they stay PSK-only and a cert-mode
-      --  driver that triggers HRR will fail Step (caller-visible
-      --  via Failed state) — to be lifted in a follow-up when HRR
-      --  cert flows are needed.
-      --
-      --  Spec mirror: miTLS src/tls/MiTLS.Handshake.Server.fst :
-      --               serverHandshakeStep — dispatches by (state,
-      --               handshake_mode) tuple; we mirror the same
-      --               two-axis structure.
-      case D.Cur_State is
-         when Idle =>
-            --  Step_Idle already branches on D.Mode internally
-            --  (cert-mode emits Encode_Client_Hello_Cert; PSK-mode
-            --  emits Encode_Client_Hello_Psk).
-            Step_Idle.Handle (D, In_Bytes, Out_Buf, Out_Last);
-
-         when Awaiting_Sf =>
-            --  Client awaiting server flight.  PSK-mode = SH+EE+SF;
-            --  cert-mode = SH+EE+Cert+CertVerify+SF.
-            if D.Mode = Cert_Mode then
-               Step_Awaiting_Sf_Cert.Handle
-                 (D, In_Bytes, Out_Buf, Out_Last);
-            else
-               Step_Awaiting_Sf.Handle (D, In_Bytes, Out_Buf, Out_Last);
-            end if;
-
-         when Awaiting_CH =>
-            --  Server awaiting client hello.  Cert-mode emits the
-            --  §4.4.2 + §4.4.3 server flight; PSK-mode emits SH+EE+SF.
-            if D.Mode = Cert_Mode then
-               Step_Awaiting_Ch_Cert.Handle
-                 (D, In_Bytes, Out_Buf, Out_Last);
-            else
-               Step_Awaiting_Ch.Handle (D, In_Bytes, Out_Buf, Out_Last);
-            end if;
-
-         when Awaiting_Cf =>
-            --  Server awaiting client Finished — same shape for PSK
-            --  and cert; the cert path arrives here once the client
-            --  has verified the chain + CertVerify.
-            Step_Awaiting_Cf.Handle (D, In_Bytes, Out_Buf, Out_Last);
-
-         when Awaiting_Sh_Or_Hrr =>
-            Step_Hrr.Handle_Sh_Or_Hrr (D, In_Bytes, Out_Buf, Out_Last);
-
-         when Awaiting_Ch_2 =>
-            Step_Hrr.Handle_Ch_2 (D, In_Bytes, Out_Buf, Out_Last);
-
-         when others =>
-            null;
-      end case;
-   end Step;
+   is separate;
 
    procedure Open_App_Directions
      (D          : Driver;
@@ -403,34 +176,7 @@ is
       Request_Update : Octet;
       Out_Buf        : out Octet_Array;
       Out_Last       : out Natural)
-   is
-      pragma Unreferenced (D);
-      Ku_Msg : Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
-        (others => 0);
-      Ku_Last : Natural;
-      Next_Secret : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-   begin
-      Out_Buf := (others => 0);
-      Out_Last := 0;
-
-      --  1. Build the KeyUpdate handshake message (5 bytes total).
-      Tls_Core.Key_Update.Encode (Request_Update, Ku_Msg, Ku_Last);
-
-      --  2. Encrypt under the current send key as one record. The
-      --     inner content type is "handshake" (post-handshake
-      --     messages keep the handshake content type per §4.6).
-      Tls_Core.Aead_Channel.Send
-        (Out_Dir,
-         Ku_Msg (1 .. Ku_Last),
-         Tls_Core.Aead_Channel.Inner_Type_Handshake,
-         Out_Buf, Out_Last);
-
-      --  3. Derive the next traffic secret per §7.2 and rotate the
-      --     local send key + IV + sequence counter.
-      Tls_Core.Key_Update.Derive_Next_Sha256 (Send_Secret (1 .. 32), Next_Secret (1 .. 32));
-      Send_Secret := Next_Secret;
-      Tls_Core.Aead_Channel.Rotate_Sha256 (Out_Dir, Send_Secret (1 .. 32));
-   end Send_Key_Update;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Process_Inbound_Key_Update — RFC 8446 §4.6.3.
@@ -449,28 +195,7 @@ is
       Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
       Want_Reply   : out Boolean;
       OK           : out Boolean)
-   is
-      pragma Unreferenced (D);
-      Request_Update : Octet;
-      Decode_OK : Boolean;
-      Next_Secret : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-   begin
-      Want_Reply := False;
-      OK := False;
-      Tls_Core.Key_Update.Decode (In_Plaintext, Request_Update, Decode_OK);
-      if not Decode_OK then
-         return;
-      end if;
-
-      --  Rotate the peer-side decrypt key per §7.2.
-      Tls_Core.Key_Update.Derive_Next_Sha256 (Recv_Secret (1 .. 32), Next_Secret (1 .. 32));
-      Recv_Secret := Next_Secret;
-      Tls_Core.Aead_Channel.Rotate_Sha256 (In_Dir, Recv_Secret (1 .. 32));
-
-      Want_Reply :=
-        Request_Update = Tls_Core.Key_Update.Update_Requested;
-      OK := True;
-   end Process_Inbound_Key_Update;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Alert helpers (RFC 8446 §6).
@@ -572,17 +297,7 @@ is
      (D        : in out Driver;
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural)
-   is
-   begin
-      Ensure_App_Out_Dir (D);
-      Build_Encrypted_Alert
-        (D.App_Out_Dir,
-         Tls_Core.Alert.Level_Warning,
-         Tls_Core.Alert.Desc_Close_Notify,
-         Out_Buf, Out_Last);
-      D.Last_Alert := Tls_Core.Alert.Desc_Close_Notify;
-      D.Cur_State := Closed;
-   end Send_Close_Notify;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Send_Fatal_Alert — application-level fatal alert.
@@ -593,27 +308,7 @@ is
       Description : Octet;
       Out_Buf     : out Octet_Array;
       Out_Last    : out Natural)
-   is
-   begin
-      case D.Cur_State is
-         when Done =>
-            Ensure_App_Out_Dir (D);
-            Build_Encrypted_Alert
-              (D.App_Out_Dir,
-               Tls_Core.Alert.Level_Fatal,
-               Description, Out_Buf, Out_Last);
-         when Idle | Awaiting_CH =>
-            Build_Plaintext_Alert
-              (Tls_Core.Alert.Level_Fatal,
-               Description, Out_Buf, Out_Last);
-         when others =>
-            --  Excluded by Pre.
-            Out_Buf := (others => 0);
-            Out_Last := 0;
-      end case;
-      D.Last_Alert := Description;
-      D.Cur_State := Failed;
-   end Send_Fatal_Alert;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Send_New_Session_Ticket — RFC 8446 §4.6.1.
@@ -634,49 +329,7 @@ is
       Ticket_Bytes : Octet_Array;
       Out_Buf      : out Octet_Array;
       Out_Last     : out Natural)
-   is
-      pragma Unreferenced (D);
-
-      Hs_Type_New_Session_Ticket : constant Octet := 16#04#;
-
-      --  Worst-case body length per Session_Ticket spec.
-      Body_Buf : Octet_Array
-        (1 .. Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
-          (others => 0);
-      Body_Last : Natural;
-
-      --  Handshake-message wrapper (4-byte header + body).
-      Hs_Buf : Octet_Array
-        (1 .. 4 + Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
-          (others => 0);
-      Hs_Last : Natural;
-   begin
-      Out_Buf := (others => 0);
-      Out_Last := 0;
-
-      --  1. Build NST body.
-      Tls_Core.Session_Ticket.Encode_Body
-        (Lifetime     => Lifetime,
-         Age_Add      => Age_Add,
-         Ticket_Nonce => Ticket_Nonce,
-         Ticket       => Ticket_Bytes,
-         Out_Buf      => Body_Buf,
-         Out_Last     => Body_Last);
-
-      --  2. Wrap as Handshake message (type 4 + u24 length + body).
-      Encode_Hs_Message
-        (Hs_Type_New_Session_Ticket,
-         Body_Buf (1 .. Body_Last),
-         Hs_Buf, Hs_Last);
-
-      --  3. Encrypt the whole Handshake message as one application
-      --     traffic record. Inner type is Handshake per §5.4.
-      Tls_Core.Aead_Channel.Send
-        (Out_Dir,
-         Hs_Buf (1 .. Hs_Last),
-         Tls_Core.Aead_Channel.Inner_Type_Handshake,
-         Out_Buf, Out_Last);
-   end Send_New_Session_Ticket;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Receive_New_Session_Ticket — RFC 8446 §4.6.1 client side.
@@ -693,102 +346,7 @@ is
       Cache        : in out Tls_Core.Session_Cache.Cache;
       Record_Bytes : Octet_Array;
       OK           : out Boolean)
-   is
-      Hs_Type_New_Session_Ticket : constant Octet := 16#04#;
-
-      Pt_Buf : Octet_Array
-        (1 .. 4 + Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
-          (others => 0);
-      Pt_Last    : Natural;
-      Inner_Type : Octet;
-      Decrypt_OK : Boolean;
-   begin
-      OK := False;
-
-      Tls_Core.Aead_Channel.Receive
-        (In_Dir, Record_Bytes,
-         Pt_Buf, Pt_Last, Inner_Type, Decrypt_OK);
-      if not Decrypt_OK
-        or else Inner_Type /=
-                  Tls_Core.Aead_Channel.Inner_Type_Handshake
-        or else Pt_Last < 4
-        or else Pt_Buf (1) /= Hs_Type_New_Session_Ticket
-      then
-         return;
-      end if;
-
-      --  Validate the u24 length matches the rest of the buffer.
-      declare
-         L : constant Natural :=
-           Natural (Pt_Buf (2)) * 65536
-           + Natural (Pt_Buf (3)) * 256
-           + Natural (Pt_Buf (4));
-      begin
-         if 4 + L /= Pt_Last then
-            return;
-         end if;
-         if L < 14
-           or else L > Tls_Core.Session_Ticket.Max_Nst_Body_Length
-         then
-            return;
-         end if;
-
-         --  Decode body. Body_Slice has 'First = 1 by construction.
-         declare
-            Body_Slice : constant Octet_Array (1 .. L) :=
-              Pt_Buf (5 .. 4 + L);
-            Lt   : Tls_Core.Session_Ticket.U32;
-            Ag   : Tls_Core.Session_Ticket.U32;
-            Nf   : Natural;
-            Tf   : Natural;
-            Nl   : Integer;
-            Tl   : Integer;
-            Decode_OK : Boolean;
-         begin
-            Tls_Core.Session_Ticket.Decode_Body
-              (In_Buf       => Body_Slice,
-               Lifetime     => Lt,
-               Age_Add      => Ag,
-               Nonce_First  => Nf,
-               Nonce_Last   => Nl,
-               Ticket_First => Tf,
-               Ticket_Last  => Tl,
-               OK           => Decode_OK);
-            if not Decode_OK then
-               return;
-            end if;
-
-            --  Insert into cache. The Decode_Body Post guarantees
-            --  the index ranges are valid sub-slices of Body_Slice,
-            --  so the slice expressions below are safe.
-            if Nl >= Nf then
-               Tls_Core.Session_Cache.Insert
-                 (C                 => Cache,
-                  Lifetime          => Lt,
-                  Age_Add           => Ag,
-                  Ticket_Nonce      => Body_Slice (Nf .. Nl),
-                  Ticket            => Body_Slice (Tf .. Tl),
-                  Resumption_Secret => D.Res_Master_Sec (1 .. 32),
-                  Suite             => D.Suite);
-            else
-               declare
-                  Empty_Nonce : constant Octet_Array (1 .. 0) :=
-                    (others => 0);
-               begin
-                  Tls_Core.Session_Cache.Insert
-                    (C                 => Cache,
-                     Lifetime          => Lt,
-                     Age_Add           => Ag,
-                     Ticket_Nonce      => Empty_Nonce,
-                     Ticket            => Body_Slice (Tf .. Tl),
-                     Resumption_Secret => D.Res_Master_Sec (1 .. 32),
-                     Suite             => D.Suite);
-               end;
-            end if;
-            OK := True;
-         end;
-      end;
-   end Receive_New_Session_Ticket;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Process_Post_Handshake_Plaintext — RFC 8446 §4.6 demux.
@@ -810,131 +368,7 @@ is
       Saw_KeyUpdate : out Boolean;
       Want_Reply   : out Boolean;
       OK           : out Boolean)
-   is
-      Hs_Type_New_Session_Ticket : constant Octet := 16#04#;
-   begin
-      Saw_Nst := False;
-      Saw_KeyUpdate := False;
-      Want_Reply := False;
-      OK := True;
-
-      --  Inner_Type 0x17 (Application_Data) is not our concern —
-      --  caller treats Plaintext as app data.
-      if Inner_Type /= Tls_Core.Aead_Channel.Inner_Type_Handshake then
-         return;
-      end if;
-
-      --  RFC 8446 §4.6 post-handshake messages all carry inner type
-      --  Handshake (0x16) and start with the §4 handshake header
-      --  (1-byte type + uint24 length + body).  Need at least 4
-      --  bytes to read the header.
-      if Plaintext'Length < 4 then
-         OK := False;
-         return;
-      end if;
-
-      if Plaintext (Plaintext'First) = Hs_Type_New_Session_Ticket then
-         --  RFC 8446 §4.6.1.  Validate the header length, then
-         --  decode + insert into Cache (mirror of the post-decrypt
-         --  block in Receive_New_Session_Ticket).
-         declare
-            Hi : constant Natural :=
-              Natural (Plaintext (Plaintext'First + 1));
-            Mid : constant Natural :=
-              Natural (Plaintext (Plaintext'First + 2));
-            Lo : constant Natural :=
-              Natural (Plaintext (Plaintext'First + 3));
-            L : constant Natural := Hi * 65536 + Mid * 256 + Lo;
-         begin
-            if 4 + L /= Plaintext'Length
-              or else L < 14
-              or else L >
-                Tls_Core.Session_Ticket.Max_Nst_Body_Length
-            then
-               OK := False;
-               return;
-            end if;
-            declare
-               Body_Slice : constant Octet_Array (1 .. L) :=
-                 Plaintext (Plaintext'First + 4 ..
-                            Plaintext'First + 3 + L);
-               Lt   : Tls_Core.Session_Ticket.U32;
-               Ag   : Tls_Core.Session_Ticket.U32;
-               Nf, Tf : Natural;
-               Nl, Tl : Integer;
-               Decode_OK : Boolean;
-            begin
-               Tls_Core.Session_Ticket.Decode_Body
-                 (In_Buf       => Body_Slice,
-                  Lifetime     => Lt,
-                  Age_Add      => Ag,
-                  Nonce_First  => Nf,
-                  Nonce_Last   => Nl,
-                  Ticket_First => Tf,
-                  Ticket_Last  => Tl,
-                  OK           => Decode_OK);
-               if not Decode_OK then
-                  OK := False;
-                  return;
-               end if;
-               if Nl >= Nf then
-                  Tls_Core.Session_Cache.Insert
-                    (C                 => Cache,
-                     Lifetime          => Lt,
-                     Age_Add           => Ag,
-                     Ticket_Nonce      => Body_Slice (Nf .. Nl),
-                     Ticket            => Body_Slice (Tf .. Tl),
-                     Resumption_Secret => D.Res_Master_Sec (1 .. 32),
-                     Suite             => D.Suite);
-               else
-                  declare
-                     Empty_Nonce : constant Octet_Array (1 .. 0) :=
-                       (others => 0);
-                  begin
-                     Tls_Core.Session_Cache.Insert
-                       (C                 => Cache,
-                        Lifetime          => Lt,
-                        Age_Add           => Ag,
-                        Ticket_Nonce      => Empty_Nonce,
-                        Ticket            => Body_Slice (Tf .. Tl),
-                        Resumption_Secret => D.Res_Master_Sec (1 .. 32),
-                        Suite             => D.Suite);
-                  end;
-               end if;
-               Saw_Nst := True;
-            end;
-         end;
-      elsif Plaintext (Plaintext'First) =
-              Tls_Core.Key_Update.Hs_Type_Key_Update
-      then
-         --  RFC 8446 §4.6.3.  Process_Inbound_Key_Update operates
-         --  on plaintext + rotates In_Dir + Recv_Secret in place.
-         --  In_Dir.Seq must be < Last for the Pre to hold; v0.5
-         --  callers re-Init the dir each demux call to keep this.
-         declare
-            Inner_OK : Boolean;
-         begin
-            Process_Inbound_Key_Update
-              (D            => D,
-               In_Plaintext => Plaintext,
-               In_Dir       => In_Dir,
-               Recv_Secret  => Recv_Secret,
-               Want_Reply   => Want_Reply,
-               OK           => Inner_OK);
-            if not Inner_OK then
-               OK := False;
-               return;
-            end if;
-            Saw_KeyUpdate := True;
-         end;
-      else
-         --  RFC 8446 §4.6 doesn't define any other post-handshake
-         --  handshake-message type for this profile (no Cert_Request
-         --  in PSK mode).  Per §6.2 unexpected_message — leave
-         --  OK := False; caller decides whether to alert.
-         OK := False;
-      end if;
-   end Process_Post_Handshake_Plaintext;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Init_Psk_Resumption_Client — RFC 8446 §2.2 / §4.6.1.
@@ -947,56 +381,6 @@ is
    procedure Init_Psk_Resumption_Client
      (D    : out Driver;
       Slot : Tls_Core.Session_Cache.Slot)
-   is
-      Derived_Psk : Tls_Core.Key_Sched.Max_Secret;
-      Priv_32     : Tls_Core.X25519.Bytes_32;
-      Pub_32      : Tls_Core.X25519.Bytes_32;
-   begin
-      --  Compute the resumption-PSK on the spot.
-      Tls_Core.Session_Ticket.Derive_Psk_From_Ticket_Sha256
-        (Resumption_Secret => Slot.Resumption_Secret,
-         Ticket_Nonce      =>
-           Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len),
-         Psk               => Derived_Psk (1 .. 32));
-
-      --  Initialise as a regular PSK client (the existing PSK_KE
-      --  path drives the handshake).
-      D.My_Role := Client;
-      D.Cur_State := Idle;
-      Tls_Core.Transcript.Init (D.Hash_Ctx);
-      Tls_Core.Transcript_Sha384.Init (D.Hash_Ctx_384);
-      D.PSK := Derived_Psk (1 .. 32);
-      D.Identity := (others => 0);
-      D.Identity_Len := Slot.Ticket_Len;
-      D.Identity (1 .. Slot.Ticket_Len) :=
-        Slot.Ticket (1 .. Slot.Ticket_Len);
-      D.Is_Resumption := True;  --  use "res binder" label
-      D.App_Set := False;
-      Prime_Driver_Defaults (D);
-      D.Hrr_Demand    := False;
-      D.Hrr_Sent      := False;
-      D.Hrr_Aware     := False;
-      D.Hrr_Seen      := False;
-      D.Hrr_Group     := Tls_Core.Suites.Group_Secp256r1;
-      D.Hrr_Cookie    := (others => 0);
-      D.Hrr_Cookie_Len := 0;
-      D.Hrr_Ch1_Hash  := (others => 0);
-      Tls_Core.Handshake_Buffer.Init (D.Hs_In_Buf);
-
-      --  Resumption is psk_dhe_ke (mode 3) — needs a fresh X25519
-      --  ephemeral.  Use a deterministic-but-non-zero scalar derived
-      --  from the resumption_secret so peers compute a real shared.
-      --  RFC 8446 §4.2.11.2: resumption-PSK + ECDHE; key_share is
-      --  mandatory in CH.  (Production callers should layer a CSPRNG
-      --  here; v0.5 derives from the unique-per-session resumption
-      --  secret so each session has a distinct ephemeral.)
-      Priv_32 := Slot.Resumption_Secret;
-      --  RFC 7748 §5: the X25519.Derive_Public clamps the scalar.
-      Tls_Core.X25519.Derive_Public (Priv_32, Pub_32);
-      D.My_Ecdhe_Priv := Priv_32;
-      D.My_Ecdhe_Pub  := Pub_32;
-      D.Peer_Ecdhe_Pub := (others => 0);
-      D.Ecdhe_Shared := (others => 0);
-   end Init_Psk_Resumption_Client;
+   is separate;
 
 end Tls_Core.Tls13_Driver;
