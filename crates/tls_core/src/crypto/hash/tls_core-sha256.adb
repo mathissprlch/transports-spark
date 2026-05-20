@@ -1,5 +1,5 @@
 package body Tls_Core.Sha256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use Interfaces;
@@ -12,22 +12,70 @@ is
    ---------------------------------------------------------------------
 
    K : constant array (0 .. 63) of Word :=
-     (16#428A_2F98#, 16#7137_4491#, 16#B5C0_FBCF#, 16#E9B5_DBA5#,
-      16#3956_C25B#, 16#59F1_11F1#, 16#923F_82A4#, 16#AB1C_5ED5#,
-      16#D807_AA98#, 16#1283_5B01#, 16#2431_85BE#, 16#550C_7DC3#,
-      16#72BE_5D74#, 16#80DE_B1FE#, 16#9BDC_06A7#, 16#C19B_F174#,
-      16#E49B_69C1#, 16#EFBE_4786#, 16#0FC1_9DC6#, 16#240C_A1CC#,
-      16#2DE9_2C6F#, 16#4A74_84AA#, 16#5CB0_A9DC#, 16#76F9_88DA#,
-      16#983E_5152#, 16#A831_C66D#, 16#B003_27C8#, 16#BF59_7FC7#,
-      16#C6E0_0BF3#, 16#D5A7_9147#, 16#06CA_6351#, 16#1429_2967#,
-      16#27B7_0A85#, 16#2E1B_2138#, 16#4D2C_6DFC#, 16#5338_0D13#,
-      16#650A_7354#, 16#766A_0ABB#, 16#81C2_C92E#, 16#9272_2C85#,
-      16#A2BF_E8A1#, 16#A81A_664B#, 16#C24B_8B70#, 16#C76C_51A3#,
-      16#D192_E819#, 16#D699_0624#, 16#F40E_3585#, 16#106A_A070#,
-      16#19A4_C116#, 16#1E37_6C08#, 16#2748_774C#, 16#34B0_BCB5#,
-      16#391C_0CB3#, 16#4ED8_AA4A#, 16#5B9C_CA4F#, 16#682E_6FF3#,
-      16#748F_82EE#, 16#78A5_636F#, 16#84C8_7814#, 16#8CC7_0208#,
-      16#90BE_FFFA#, 16#A450_6CEB#, 16#BEF9_A3F7#, 16#C671_78F2#);
+     (16#428A_2F98#,
+      16#7137_4491#,
+      16#B5C0_FBCF#,
+      16#E9B5_DBA5#,
+      16#3956_C25B#,
+      16#59F1_11F1#,
+      16#923F_82A4#,
+      16#AB1C_5ED5#,
+      16#D807_AA98#,
+      16#1283_5B01#,
+      16#2431_85BE#,
+      16#550C_7DC3#,
+      16#72BE_5D74#,
+      16#80DE_B1FE#,
+      16#9BDC_06A7#,
+      16#C19B_F174#,
+      16#E49B_69C1#,
+      16#EFBE_4786#,
+      16#0FC1_9DC6#,
+      16#240C_A1CC#,
+      16#2DE9_2C6F#,
+      16#4A74_84AA#,
+      16#5CB0_A9DC#,
+      16#76F9_88DA#,
+      16#983E_5152#,
+      16#A831_C66D#,
+      16#B003_27C8#,
+      16#BF59_7FC7#,
+      16#C6E0_0BF3#,
+      16#D5A7_9147#,
+      16#06CA_6351#,
+      16#1429_2967#,
+      16#27B7_0A85#,
+      16#2E1B_2138#,
+      16#4D2C_6DFC#,
+      16#5338_0D13#,
+      16#650A_7354#,
+      16#766A_0ABB#,
+      16#81C2_C92E#,
+      16#9272_2C85#,
+      16#A2BF_E8A1#,
+      16#A81A_664B#,
+      16#C24B_8B70#,
+      16#C76C_51A3#,
+      16#D192_E819#,
+      16#D699_0624#,
+      16#F40E_3585#,
+      16#106A_A070#,
+      16#19A4_C116#,
+      16#1E37_6C08#,
+      16#2748_774C#,
+      16#34B0_BCB5#,
+      16#391C_0CB3#,
+      16#4ED8_AA4A#,
+      16#5B9C_CA4F#,
+      16#682E_6FF3#,
+      16#748F_82EE#,
+      16#78A5_636F#,
+      16#84C8_7814#,
+      16#8CC7_0208#,
+      16#90BE_FFFA#,
+      16#A450_6CEB#,
+      16#BEF9_A3F7#,
+      16#C671_78F2#);
 
    ---------------------------------------------------------------------
    --  FIPS 180-4 §4.1.2 — the six bit-mixing functions.
@@ -63,11 +111,10 @@ is
    ---------------------------------------------------------------------
 
    function BE_Word (B : Block; Offset : Block_Index) return Word
-   is
-     (Shift_Left (Word (B (Offset)), 24)
-      or Shift_Left (Word (B (Offset + 1)), 16)
-      or Shift_Left (Word (B (Offset + 2)), 8)
-      or Word (B (Offset + 3)))
+   is (Shift_Left (Word (B (Offset)), 24)
+       or Shift_Left (Word (B (Offset + 1)), 16)
+       or Shift_Left (Word (B (Offset + 2)), 8)
+       or Word (B (Offset + 3)))
    with Pre => Offset <= Block_Length - 3;
 
    ---------------------------------------------------------------------
@@ -85,14 +132,11 @@ is
    --  The shuffle inlines the message schedule (`ws_pre`,
    --  Spec.SHA2.fst:175-200) and the round function
    --  (`shuffle_core_pre_`, Spec.SHA2.fst:154).
-   function Update_Block_Spec
-     (S : Hash_State;
-      B : Block) return Hash_State
-   is
-      W : array (0 .. 63) of Word := (others => 0);
+   function Update_Block_Spec (S : Hash_State; B : Block) return Hash_State is
+      W                       : array (0 .. 63) of Word := (others => 0);
       A, Bv, C, D, E, F, G, H : Word;
-      T1, T2 : Word;
-      Out_S : Hash_State := (others => 0);
+      T1, T2                  : Word;
+      Out_S                   : Hash_State := (others => 0);
    begin
       --  ws_pre: first 16 words are big-endian loads of the block.
       for I in 0 .. 15 loop
@@ -101,31 +145,33 @@ is
       --  ws_pre: subsequent words from sigma functions.
       for I in 16 .. 63 loop
          W (I) :=
-           Small_Sigma_1 (W (I - 2)) + W (I - 7)
-           + Small_Sigma_0 (W (I - 15)) + W (I - 16);
+           Small_Sigma_1 (W (I - 2))
+           + W (I - 7)
+           + Small_Sigma_0 (W (I - 15))
+           + W (I - 16);
       end loop;
 
       --  Shuffle: 64 rounds of shuffle_core_pre_.
-      A  := S (1);
+      A := S (1);
       Bv := S (2);
-      C  := S (3);
-      D  := S (4);
-      E  := S (5);
-      F  := S (6);
-      G  := S (7);
-      H  := S (8);
+      C := S (3);
+      D := S (4);
+      E := S (5);
+      F := S (6);
+      G := S (7);
+      H := S (8);
 
       for I in 0 .. 63 loop
          T1 := H + Big_Sigma_1 (E) + Ch (E, F, G) + K (I) + W (I);
          T2 := Big_Sigma_0 (A) + Maj (A, Bv, C);
-         H  := G;
-         G  := F;
-         F  := E;
-         E  := D + T1;
-         D  := C;
-         C  := Bv;
+         H := G;
+         G := F;
+         F := E;
+         E := D + T1;
+         D := C;
+         C := Bv;
          Bv := A;
-         A  := T1 + T2;
+         A := T1 + T2;
       end loop;
 
       --  seq_map2 (+): elementwise add of input state and shuffle output.
@@ -140,10 +186,7 @@ is
       return Out_S;
    end Update_Block_Spec;
 
-   function Block_At
-     (Padded : Octet_Array;
-      I      : Natural) return Block
-   is
+   function Block_At (Padded : Octet_Array; I : Natural) return Block is
       B : Block := (others => 0);
    begin
       for J in Block_Index loop
@@ -153,26 +196,23 @@ is
    end Block_At;
 
    function Spec_Hash_Blocks
-     (S0     : Hash_State;
-      Padded : Octet_Array;
-      N      : Natural) return Hash_State
-   is
+     (S0 : Hash_State; Padded : Octet_Array; N : Natural) return Hash_State is
    begin
       if N = 0 then
          return S0;
       else
-         return Update_Block_Spec
-           (Spec_Hash_Blocks (S0, Padded, N - 1),
-            Block_At (Padded, N - 1));
+         return
+           Update_Block_Spec
+             (Spec_Hash_Blocks (S0, Padded, N - 1), Block_At (Padded, N - 1));
       end if;
    end Spec_Hash_Blocks;
 
    function Pad_SHA256 (Input : Octet_Array) return Octet_Array is
-      Pad_Len  : constant Positive := Spec_Pad_Length (Input'Length);
-      Total    : constant Positive := Input'Length + Pad_Len;
-      Bits     : constant Interfaces.Unsigned_64
-        := Interfaces.Unsigned_64 (Input'Length) * 8;
-      Out_Buf  : Octet_Array (1 .. Total) := (others => 0);
+      Pad_Len : constant Positive := Spec_Pad_Length (Input'Length);
+      Total   : constant Positive := Input'Length + Pad_Len;
+      Bits    : constant Interfaces.Unsigned_64 :=
+        Interfaces.Unsigned_64 (Input'Length) * 8;
+      Out_Buf : Octet_Array (1 .. Total) := (others => 0);
    begin
       if Input'Length > 0 then
          Out_Buf (1 .. Input'Length) := Input;
@@ -191,7 +231,7 @@ is
       for I in 1 .. 8 loop
          D (4 * (I - 1) + 1) := Octet (Shift_Right (S (I), 24) and 16#FF#);
          D (4 * (I - 1) + 2) := Octet (Shift_Right (S (I), 16) and 16#FF#);
-         D (4 * (I - 1) + 3) := Octet (Shift_Right (S (I), 8)  and 16#FF#);
+         D (4 * (I - 1) + 3) := Octet (Shift_Right (S (I), 8) and 16#FF#);
          D (4 * (I - 1) + 4) := Octet (S (I) and 16#FF#);
       end loop;
       return D;
@@ -216,42 +256,44 @@ is
 
    procedure Process_Block (Ctx : in out Context; B : Block);
    procedure Process_Block (Ctx : in out Context; B : Block) is
-      W : array (0 .. 63) of Word := (others => 0);
+      W                       : array (0 .. 63) of Word := (others => 0);
       A, Bv, C, D, E, F, G, H : Word;
-      T1, T2 : Word;
+      T1, T2                  : Word;
    begin
       for I in 0 .. 15 loop
          W (I) := BE_Word (B, B'First + 4 * I);
-         pragma Loop_Invariant
-           (for all J in 0 .. I =>
-              W (J) = BE_Word (B, B'First + 4 * J));
+         pragma
+           Loop_Invariant
+             (for all J in 0 .. I => W (J) = BE_Word (B, B'First + 4 * J));
       end loop;
       for I in 16 .. 63 loop
          W (I) :=
-           Small_Sigma_1 (W (I - 2)) + W (I - 7)
-           + Small_Sigma_0 (W (I - 15)) + W (I - 16);
+           Small_Sigma_1 (W (I - 2))
+           + W (I - 7)
+           + Small_Sigma_0 (W (I - 15))
+           + W (I - 16);
       end loop;
 
-      A  := Ctx.H (1);
+      A := Ctx.H (1);
       Bv := Ctx.H (2);
-      C  := Ctx.H (3);
-      D  := Ctx.H (4);
-      E  := Ctx.H (5);
-      F  := Ctx.H (6);
-      G  := Ctx.H (7);
-      H  := Ctx.H (8);
+      C := Ctx.H (3);
+      D := Ctx.H (4);
+      E := Ctx.H (5);
+      F := Ctx.H (6);
+      G := Ctx.H (7);
+      H := Ctx.H (8);
 
       for I in 0 .. 63 loop
          T1 := H + Big_Sigma_1 (E) + Ch (E, F, G) + K (I) + W (I);
          T2 := Big_Sigma_0 (A) + Maj (A, Bv, C);
-         H  := G;
-         G  := F;
-         F  := E;
-         E  := D + T1;
-         D  := C;
-         C  := Bv;
+         H := G;
+         G := F;
+         F := E;
+         E := D + T1;
+         D := C;
+         C := Bv;
          Bv := A;
-         A  := T1 + T2;
+         A := T1 + T2;
       end loop;
 
       Ctx.H (1) := Ctx.H (1) + A;
@@ -270,27 +312,22 @@ is
 
    procedure Init (Ctx : out Context) is
    begin
-      Ctx.H         := Initial_State_SHA256;
-      Ctx.Buf       := (others => 0);
-      Ctx.Buf_Len   := 0;
+      Ctx.H := Initial_State_SHA256;
+      Ctx.Buf := (others => 0);
+      Ctx.Buf_Len := 0;
       Ctx.Total_Len := 0;
    end Init;
 
-   procedure Update
-     (Ctx  : in out Context;
-      Data : Octet_Array)
-   is
+   procedure Update (Ctx : in out Context; Data : Octet_Array) is
       Consumed : Natural := 0;
       Need     : Natural;
    begin
-      Ctx.Total_Len :=
-        Ctx.Total_Len + Interfaces.Unsigned_64 (Data'Length);
+      Ctx.Total_Len := Ctx.Total_Len + Interfaces.Unsigned_64 (Data'Length);
 
       if Ctx.Buf_Len > 0 then
          Need := Block_Length - Ctx.Buf_Len;
          if Data'Length < Need then
-            Ctx.Buf
-              (Ctx.Buf_Len + 1 .. Ctx.Buf_Len + Data'Length) := Data;
+            Ctx.Buf (Ctx.Buf_Len + 1 .. Ctx.Buf_Len + Data'Length) := Data;
             Ctx.Buf_Len := Ctx.Buf_Len + Data'Length;
             return;
          end if;
@@ -310,8 +347,10 @@ is
          pragma Loop_Invariant (Consumed <= Data'Length);
          pragma Loop_Invariant (Ctx.Buf_Len = 0);
          Ctx.Buf :=
-           Data (Data'First + Consumed
-                 .. Data'First + Consumed + Block_Length - 1);
+           Data
+             (Data'First
+              + Consumed
+              .. Data'First + Consumed + Block_Length - 1);
          declare
             Snap : constant Block := Ctx.Buf;
          begin
@@ -326,17 +365,16 @@ is
          Ctx.Buf := (others => 0);
          if Remaining > 0 then
             Ctx.Buf (1 .. Remaining) :=
-              Data (Data'First + Consumed
-                    .. Data'First + Consumed + Remaining - 1);
+              Data
+                (Data'First
+                 + Consumed
+                 .. Data'First + Consumed + Remaining - 1);
          end if;
          Ctx.Buf_Len := Remaining;
       end;
    end Update;
 
-   procedure Finalize
-     (Ctx        : in out Context;
-      Out_Digest : out Digest)
-   is
+   procedure Finalize (Ctx : in out Context; Out_Digest : out Digest) is
       Bits   : constant Interfaces.Unsigned_64 := Ctx.Total_Len * 8;
       Filled : Natural := Ctx.Buf_Len;
    begin
@@ -384,8 +422,7 @@ is
            Octet (Shift_Right (Ctx.H (I), 16) and 16#FF#);
          Out_Digest (4 * (I - 1) + 3) :=
            Octet (Shift_Right (Ctx.H (I), 8) and 16#FF#);
-         Out_Digest (4 * (I - 1) + 4) :=
-           Octet (Ctx.H (I) and 16#FF#);
+         Out_Digest (4 * (I - 1) + 4) := Octet (Ctx.H (I) and 16#FF#);
       end loop;
    end Finalize;
 
@@ -396,10 +433,7 @@ is
    --  the code IS the spec.
    ---------------------------------------------------------------------
 
-   procedure Hash
-     (Data       : Octet_Array;
-      Out_Digest : out Digest)
-   is
+   procedure Hash (Data : Octet_Array; Out_Digest : out Digest) is
    begin
       Out_Digest := Spec_SHA256 (Data);
    end Hash;

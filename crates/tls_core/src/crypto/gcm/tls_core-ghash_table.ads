@@ -18,7 +18,7 @@
 with Interfaces;
 
 package Tls_Core.Ghash_Table
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Block_16 is Octet_Array (1 .. 16);
@@ -42,7 +42,6 @@ is
 
 private
 
-   type Table is array (Interfaces.Unsigned_8 range 0 .. 15)
-     of Block_16;
+   type Table is array (Interfaces.Unsigned_8 range 0 .. 15) of Block_16;
 
 end Tls_Core.Ghash_Table;

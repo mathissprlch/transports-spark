@@ -4,7 +4,7 @@ with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
 
 package body Tls_Core.Tls13_Driver.Step_Idle
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -29,12 +29,12 @@ is
          declare
             Client_Random : constant Tls_Core.Hello.Random_Bytes :=
               (others => 16#A1#);
-            Ch_Body : Octet_Array (1 .. 512) := (others => 0);
-            Ch_Body_Last : Natural;
-            Ch_Hs   : Octet_Array (1 .. 1024) := (others => 0);
-            Ch_Hs_Last : Natural;
-            Ch_Rec  : Octet_Array (1 .. 1024) := (others => 0);
-            Ch_Rec_Last : Natural;
+            Ch_Body       : Octet_Array (1 .. 512) := (others => 0);
+            Ch_Body_Last  : Natural;
+            Ch_Hs         : Octet_Array (1 .. 1024) := (others => 0);
+            Ch_Hs_Last    : Natural;
+            Ch_Rec        : Octet_Array (1 .. 1024) := (others => 0);
+            Ch_Rec_Last   : Natural;
          begin
             Tls_Core.Hello.Encode_Client_Hello_Cert
               (Random      => Client_Random,
@@ -44,11 +44,10 @@ is
                Out_Buf     => Ch_Body,
                Out_Last    => Ch_Body_Last);
             Encode_Hs_Message
-              (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
-               Ch_Hs, Ch_Hs_Last);
-            Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
-            Wrap_Tls_Plaintext
-              (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
+              (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last), Ch_Hs, Ch_Hs_Last);
+            Tls_Core.Key_Sched.Transcript_Append
+              (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
+            Wrap_Tls_Plaintext (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
             Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
             Out_Last := Ch_Rec_Last;
             D.Cur_State := Awaiting_Sf;
@@ -59,14 +58,14 @@ is
       declare
          Client_Random : constant Tls_Core.Hello.Random_Bytes :=
            (others => 16#A1#);
-         Ch_Body : Octet_Array (1 .. 512) := (others => 0);
-         Ch_Body_Last : Natural;
-         T_Last  : Natural;
-         Binder  : Tls_Core.Psk_Binder.Binder_Bytes;
-         Ch_Hs   : Octet_Array (1 .. 1024) := (others => 0);
-         Ch_Hs_Last : Natural;
-         Ch_Rec  : Octet_Array (1 .. 1024) := (others => 0);
-         Ch_Rec_Last : Natural;
+         Ch_Body       : Octet_Array (1 .. 512) := (others => 0);
+         Ch_Body_Last  : Natural;
+         T_Last        : Natural;
+         Binder        : Tls_Core.Psk_Binder.Binder_Bytes;
+         Ch_Hs         : Octet_Array (1 .. 1024) := (others => 0);
+         Ch_Hs_Last    : Natural;
+         Ch_Rec        : Octet_Array (1 .. 1024) := (others => 0);
+         Ch_Rec_Last   : Natural;
       begin
          Tls_Core.Hello.Encode_Client_Hello_Psk
            (Client_Random,
@@ -74,7 +73,9 @@ is
             D.My_Ecdhe_Pub,
             D.Sni_Hostname (1 .. D.Sni_Len),
             D.Alpn_Offers (1 .. D.Alpn_Offers_Len),
-            Ch_Body, Ch_Body_Last, T_Last);
+            Ch_Body,
+            Ch_Body_Last,
+            T_Last);
          Ch_Hs := (others => 0);
          Ch_Hs (1) := Hs_Type_CH;
          Ch_Hs (2) := Octet ((Ch_Body_Last / 65536) mod 256);
@@ -88,11 +89,10 @@ is
             Is_Resumption          => D.Is_Resumption);
          Ch_Body (T_Last + 4 .. T_Last + 35) := Binder (1 .. 32);
          Encode_Hs_Message
-           (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last),
-            Ch_Hs, Ch_Hs_Last);
-         Tls_Core.Key_Sched.Transcript_Append (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
-         Wrap_Tls_Plaintext
-           (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
+           (Hs_Type_CH, Ch_Body (1 .. Ch_Body_Last), Ch_Hs, Ch_Hs_Last);
+         Tls_Core.Key_Sched.Transcript_Append
+           (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Ch_Hs (1 .. Ch_Hs_Last));
+         Wrap_Tls_Plaintext (Ch_Hs (1 .. Ch_Hs_Last), Ch_Rec, Ch_Rec_Last);
          Out_Buf (1 .. Ch_Rec_Last) := Ch_Rec (1 .. Ch_Rec_Last);
          Out_Last := Ch_Rec_Last;
          if D.Hrr_Aware then

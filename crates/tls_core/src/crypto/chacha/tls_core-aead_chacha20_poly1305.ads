@@ -22,12 +22,12 @@ with Tls_Core.Chacha20;
 with Tls_Core.Poly1305;
 
 package Tls_Core.Aead_Chacha20_Poly1305
-with SPARK_Mode
+  with SPARK_Mode
 is
 
-   subtype Key_Array   is Tls_Core.Chacha20.Key_Array;
+   subtype Key_Array is Tls_Core.Chacha20.Key_Array;
    subtype Nonce_Array is Tls_Core.Chacha20.Nonce_Array;
-   subtype Tag_Array   is Tls_Core.Poly1305.Tag_Array;
+   subtype Tag_Array is Tls_Core.Poly1305.Tag_Array;
 
    --  Seal: encrypt Plaintext under Key/Nonce, authenticate
    --  Plaintext + AAD, return Ciphertext (= Plaintext'Length bytes)

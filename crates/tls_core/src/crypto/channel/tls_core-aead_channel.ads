@@ -29,7 +29,7 @@ with Tls_Core.Record_Layer;
 with Tls_Core.Suites;
 
 package Tls_Core.Aead_Channel
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -48,13 +48,15 @@ is
    --  Per-direction state. The discriminant pins which of the
    --  three underlying Direction records is in play. Callers must
    --  Init_* before using Send / Receive.
-   type Direction (Suite : Cipher_Suite_Id := Chacha20_Poly1305_Sha256)
-     is record
+   type Direction (Suite : Cipher_Suite_Id := Chacha20_Poly1305_Sha256) is
+   record
       case Suite is
          when Chacha20_Poly1305_Sha256 =>
-            Cha    : Tls_Core.Channel.Direction;
+            Cha : Tls_Core.Channel.Direction;
+
          when Aes_128_Gcm_Sha256 =>
             Aes128 : Tls_Core.Channel_Aes128.Direction;
+
          when Aes_256_Gcm_Sha384 =>
             Aes256 : Tls_Core.Channel_Aes256.Direction;
       end case;
@@ -76,18 +78,18 @@ is
      (D      : out Direction;
       Suite  : Cipher_Suite_Id;
       Secret : Tls_Core.Key_Schedule.Secret)
-   with Pre =>
-     (Suite = Chacha20_Poly1305_Sha256
-      or else Suite = Aes_128_Gcm_Sha256)
-     and then not D'Constrained,
+   with
+     Pre  =>
+       (Suite = Chacha20_Poly1305_Sha256 or else Suite = Aes_128_Gcm_Sha256)
+       and then not D'Constrained,
      Post =>
        D.Suite = Suite
        and then (case D.Suite is
                    when Chacha20_Poly1305_Sha256 =>
                      Tls_Core.Channel.Stream_Seq (D.Cha) = 0,
-                   when Aes_128_Gcm_Sha256 =>
+                   when Aes_128_Gcm_Sha256       =>
                      Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream) = 0,
-                   when Aes_256_Gcm_Sha384 => True);
+                   when Aes_256_Gcm_Sha384       => True);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Initialise a Direction for the SHA-384-based
@@ -103,12 +105,12 @@ is
    --               already audit-clean.
    --------------------------------------------------------------------
    procedure Init_Sha384
-     (D      : out Direction;
-      Secret : Tls_Core.Key_Schedule_Sha384.Secret)
-   with Pre  => not D'Constrained,
-        Post =>
-          D.Suite = Aes_256_Gcm_Sha384
-          and then Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream) = 0;
+     (D : out Direction; Secret : Tls_Core.Key_Schedule_Sha384.Secret)
+   with
+     Pre  => not D'Constrained,
+     Post =>
+       D.Suite = Aes_256_Gcm_Sha384
+       and then Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream) = 0;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Encrypt one record. Dispatches to the
@@ -128,29 +130,30 @@ is
       Inner_Type : Octet;
       Out_Buf    : out Octet_Array;
       Out_Last   : out Natural)
-   with Pre =>
-     Plaintext'Length in 0 .. 16384
-     and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
-     and then Out_Buf'First = 1
-     and then (case D.Suite is
-                 when Chacha20_Poly1305_Sha256 => True,
-                 when Aes_128_Gcm_Sha256 =>
-                   Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream)
+   with
+     Pre  =>
+       Plaintext'Length in 0 .. 16384
+       and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
+       and then Out_Buf'First = 1
+       and then (case D.Suite is
+                   when Chacha20_Poly1305_Sha256 => True,
+                   when Aes_128_Gcm_Sha256       =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream)
                      < Tls_Core.Record_Layer.Seq_Number'Last,
-                 when Aes_256_Gcm_Sha384 =>
-                   Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
+                   when Aes_256_Gcm_Sha384       =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
                      < Tls_Core.Record_Layer.Seq_Number'Last),
-        Post =>
-          Out_Last in 0 .. 5 + Plaintext'Length + 1 + 16
-          and then D.Suite = D.Suite'Old
-          and then (case D.Suite is
-            when Chacha20_Poly1305_Sha256 => True,
-            when Aes_128_Gcm_Sha256 =>
-              Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream) =
-                Tls_Core.Record_Layer.Seq_Of (D'Old.Aes128.Stream) + 1,
-            when Aes_256_Gcm_Sha384 =>
-              Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream) =
-                Tls_Core.Record_Layer.Seq_Of (D'Old.Aes256.Stream) + 1);
+     Post =>
+       Out_Last in 0 .. 5 + Plaintext'Length + 1 + 16
+       and then D.Suite = D.Suite'Old
+       and then (case D.Suite is
+                   when Chacha20_Poly1305_Sha256 => True,
+                   when Aes_128_Gcm_Sha256       =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream)
+                     = Tls_Core.Record_Layer.Seq_Of (D'Old.Aes128.Stream) + 1,
+                   when Aes_256_Gcm_Sha384       =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
+                     = Tls_Core.Record_Layer.Seq_Of (D'Old.Aes256.Stream) + 1);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Decrypt one record. Dispatches on D.Suite.
@@ -171,19 +174,20 @@ is
       Out_Last   : out Natural;
       Inner_Type : out Octet;
       OK         : out Boolean)
-   with Pre =>
-     In_Buf'Length >= 5 + 1 + 16
-     and then In_Buf'First = 1
-     and then Out_Buf'First = 1
-     and then Out_Buf'Length + 5 + 1 + 16 >= In_Buf'Length
-     and then Out_Buf'Length >= In_Buf'Length
-     and then (case D.Suite is
-                 when Chacha20_Poly1305_Sha256 => True,
-                 when Aes_128_Gcm_Sha256 =>
-                   Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream)
+   with
+     Pre =>
+       In_Buf'Length >= 5 + 1 + 16
+       and then In_Buf'First = 1
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length + 5 + 1 + 16 >= In_Buf'Length
+       and then Out_Buf'Length >= In_Buf'Length
+       and then (case D.Suite is
+                   when Chacha20_Poly1305_Sha256 => True,
+                   when Aes_128_Gcm_Sha256       =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream)
                      < Tls_Core.Record_Layer.Seq_Number'Last,
-                 when Aes_256_Gcm_Sha384 =>
-                   Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
+                   when Aes_256_Gcm_Sha384       =>
+                     Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream)
                      < Tls_Core.Record_Layer.Seq_Number'Last);
 
    --------------------------------------------------------------------
@@ -210,14 +214,12 @@ is
    --  suites is 48 bytes — call Rotate_Sha384 for that.
    --------------------------------------------------------------------
    procedure Rotate_Sha256
-     (D          : in out Direction;
-      New_Secret : Tls_Core.Key_Schedule.Secret)
+     (D : in out Direction; New_Secret : Tls_Core.Key_Schedule.Secret)
    with
      Pre  =>
        (D.Suite = Chacha20_Poly1305_Sha256
-          or else D.Suite = Aes_128_Gcm_Sha256),
-     Post =>
-       D.Suite = D.Suite'Old;
+        or else D.Suite = Aes_128_Gcm_Sha256),
+     Post => D.Suite = D.Suite'Old;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Rotate a SHA-384-suite Direction in place.
@@ -231,11 +233,8 @@ is
    --               a Tls_Core.Channel_Aes256.Init call.
    --------------------------------------------------------------------
    procedure Rotate_Sha384
-     (D          : in out Direction;
-      New_Secret : Tls_Core.Key_Schedule_Sha384.Secret)
-   with
-     Pre  => D.Suite = Aes_256_Gcm_Sha384,
-     Post => D.Suite = D.Suite'Old;
+     (D : in out Direction; New_Secret : Tls_Core.Key_Schedule_Sha384.Secret)
+   with Pre => D.Suite = Aes_256_Gcm_Sha384, Post => D.Suite = D.Suite'Old;
 
    --------------------------------------------------------------------
    --  Cross-suite Seq accessor — needed by Tls13_Driver.Send_Key_Update
@@ -248,11 +247,10 @@ is
    --------------------------------------------------------------------
    function Seq_Of (D : Direction) return Tls_Core.Record_Layer.Seq_Number
    is (case D.Suite is
-         when Chacha20_Poly1305_Sha256 =>
-           Tls_Core.Channel.Seq_Of (D.Cha),
-         when Aes_128_Gcm_Sha256 =>
+         when Chacha20_Poly1305_Sha256 => Tls_Core.Channel.Seq_Of (D.Cha),
+         when Aes_128_Gcm_Sha256       =>
            Tls_Core.Record_Layer.Seq_Of (D.Aes128.Stream),
-         when Aes_256_Gcm_Sha384 =>
+         when Aes_256_Gcm_Sha384       =>
            Tls_Core.Record_Layer.Seq_Of (D.Aes256.Stream))
    with Ghost;
 

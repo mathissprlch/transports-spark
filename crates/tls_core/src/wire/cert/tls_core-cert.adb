@@ -10,7 +10,7 @@
 --    id-ce-subjectAltName    06 03 55 1D 11
 
 package body Tls_Core.Cert
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -18,29 +18,45 @@ is
    use type Tls_Core.Octet;
 
    --  ASN.1 DER tag bytes we care about.
-   Tag_Sequence    : constant Octet := 16#30#;
-   Tag_Bit_String  : constant Octet := 16#03#;
-   Tag_Octet_Str   : constant Octet := 16#04#;
-   Tag_Integer     : constant Octet := 16#02#;
-   Tag_Oid         : constant Octet := 16#06#;
-   Tag_Boolean     : constant Octet := 16#01#;
-   Tag_Context_0   : constant Octet := 16#A0#;
-   Tag_Context_3   : constant Octet := 16#A3#;
-   Tag_Dns_Name    : constant Octet := 16#82#;  --  GeneralName [2] IMPLICIT
+   Tag_Sequence   : constant Octet := 16#30#;
+   Tag_Bit_String : constant Octet := 16#03#;
+   Tag_Octet_Str  : constant Octet := 16#04#;
+   Tag_Integer    : constant Octet := 16#02#;
+   Tag_Oid        : constant Octet := 16#06#;
+   Tag_Boolean    : constant Octet := 16#01#;
+   Tag_Context_0  : constant Octet := 16#A0#;
+   Tag_Context_3  : constant Octet := 16#A3#;
+   Tag_Dns_Name   : constant Octet := 16#82#;  --  GeneralName [2] IMPLICIT
 
    --  Algorithm OIDs we recognise as the OUTER signature algorithm.
    --
    --  ecdsa-with-SHA256: 1.2.840.10045.4.3.2
    --      OID-only TLV: 06 08 2A 86 48 CE 3D 04 03 02      (10 bytes)
    Oid_Ecdsa_Sha256_Tlv : constant Octet_Array (1 .. 10) :=
-     (16#06#, 16#08#,
-      16#2A#, 16#86#, 16#48#, 16#CE#, 16#3D#, 16#04#, 16#03#, 16#02#);
+     (16#06#,
+      16#08#,
+      16#2A#,
+      16#86#,
+      16#48#,
+      16#CE#,
+      16#3D#,
+      16#04#,
+      16#03#,
+      16#02#);
 
    --  rsassaPss: 1.2.840.113549.1.1.10
    --      OID-only TLV: 06 09 2A 86 48 86 F7 0D 01 01 0A    (11 bytes)
    Oid_Rsa_Pss_Tlv : constant Octet_Array (1 .. 11) :=
-     (16#06#, 16#09#,
-      16#2A#, 16#86#, 16#48#, 16#86#, 16#F7#, 16#0D#, 16#01#, 16#01#,
+     (16#06#,
+      16#09#,
+      16#2A#,
+      16#86#,
+      16#48#,
+      16#86#,
+      16#F7#,
+      16#0D#,
+      16#01#,
+      16#01#,
       16#0A#);
 
    --  id-ce-subjectAltName: 2.5.29.17
@@ -67,19 +83,20 @@ is
       Next_Pos  : out Natural;
       OK        : out Boolean)
    with
-     Pre  => Buf'First = 1
-             and then Buf'Last < Integer'Last - 16,
-     Post => (if OK then
-                Value_Pos > Pos
-                and then Value_Pos in Buf'First .. Buf'Last + 1
-                and then Value_Len <= Buf'Length
-                and then (if Value_Len > 0 then
-                            Value_Pos in Buf'Range
-                            and then Value_Pos + Value_Len - 1
-                                       in Buf'Range)
-                and then Next_Pos = Value_Pos + Value_Len
-                and then Next_Pos in Buf'First .. Buf'Last + 1
-                and then Next_Pos > Pos);
+     Pre  => Buf'First = 1 and then Buf'Last < Integer'Last - 16,
+     Post =>
+       (if OK
+        then
+          Value_Pos > Pos
+          and then Value_Pos in Buf'First .. Buf'Last + 1
+          and then Value_Len <= Buf'Length
+          and then (if Value_Len > 0
+                    then
+                      Value_Pos in Buf'Range
+                      and then Value_Pos + Value_Len - 1 in Buf'Range)
+          and then Next_Pos = Value_Pos + Value_Len
+          and then Next_Pos in Buf'First .. Buf'Last + 1
+          and then Next_Pos > Pos);
 
    procedure Read_Tlv
      (Buf       : Octet_Array;
@@ -95,18 +112,16 @@ is
    --  Slice equality: Buf (Pos .. Pos+Ref'Length-1) = Ref ?
    ---------------------------------------------------------------------
    function Equal_At
-     (Buf       : Octet_Array;
-      Pos       : Natural;
-      Reference : Octet_Array) return Boolean
-   with Pre => Buf'First = 1
-              and then Buf'Last < Integer'Last - 16
-              and then Reference'First = 1
-              and then Reference'Last < Integer'Last - 16;
+     (Buf : Octet_Array; Pos : Natural; Reference : Octet_Array) return Boolean
+   with
+     Pre =>
+       Buf'First = 1
+       and then Buf'Last < Integer'Last - 16
+       and then Reference'First = 1
+       and then Reference'Last < Integer'Last - 16;
 
    function Equal_At
-     (Buf       : Octet_Array;
-      Pos       : Natural;
-      Reference : Octet_Array) return Boolean
+     (Buf : Octet_Array; Pos : Natural; Reference : Octet_Array) return Boolean
    is
    begin
       if Reference'Length = 0 then
@@ -142,10 +157,12 @@ is
       San_Last  : out Natural)
    with
      Pre  => Buf'First = 1 and then Buf'Last < Integer'Last - 16,
-     Post => (if Found then
-                San_First in Buf'Range
-                and then San_Last in Buf'Range
-                and then San_First <= San_Last);
+     Post =>
+       (if Found
+        then
+          San_First in Buf'Range
+          and then San_Last in Buf'Range
+          and then San_First <= San_Last);
 
    procedure Find_SAN_Ext
      (Buf       : Octet_Array;
@@ -158,10 +175,7 @@ is
    ---------------------------------------------------------------------
    --  Parse — public entry point.
    ---------------------------------------------------------------------
-   procedure Parse
-     (Der : Octet_Array;
-      P   : out Parsed_Cert;
-      OK  : out Boolean)
+   procedure Parse (Der : Octet_Array; P : out Parsed_Cert; OK : out Boolean)
    is separate;
 
    ---------------------------------------------------------------------
@@ -172,14 +186,14 @@ is
    function Lower (B : Octet) return Octet
    is (if B in 16#41# .. 16#5A# then B + 16#20# else B);
 
-   function Iequal
-     (A : Octet_Array; B : Octet_Array) return Boolean
-   with Pre => A'First = 1 and then B'First = 1
-              and then A'Last < Integer'Last - 16
-              and then B'Last < Integer'Last - 16;
-   function Iequal
-     (A : Octet_Array; B : Octet_Array) return Boolean
-   is
+   function Iequal (A : Octet_Array; B : Octet_Array) return Boolean
+   with
+     Pre =>
+       A'First = 1
+       and then B'First = 1
+       and then A'Last < Integer'Last - 16
+       and then B'Last < Integer'Last - 16;
+   function Iequal (A : Octet_Array; B : Octet_Array) return Boolean is
    begin
       if A'Length /= B'Length then
          return False;
@@ -202,8 +216,7 @@ is
    --  the SEQUENCE header, then iterate the GeneralName entries.
    ---------------------------------------------------------------------
    function Match_DNS_SAN
-     (San_Body : Octet_Array;
-      Hostname : Octet_Array) return Boolean
+     (San_Body : Octet_Array; Hostname : Octet_Array) return Boolean
    is separate;
 
 end Tls_Core.Cert;

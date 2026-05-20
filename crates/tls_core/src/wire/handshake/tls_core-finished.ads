@@ -15,7 +15,7 @@ with Tls_Core.Sha256;
 with Tls_Core.Key_Schedule;
 
 package Tls_Core.Finished
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Verify_Data is Tls_Core.Sha256.Digest;

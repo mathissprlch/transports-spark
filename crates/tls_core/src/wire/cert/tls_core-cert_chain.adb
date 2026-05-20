@@ -16,7 +16,7 @@ with Tls_Core.Rsa_Pss;
 with Tls_Core.X509_Spki;
 
 package body Tls_Core.Cert_Chain
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -40,9 +40,10 @@ is
       S   : out Tls_Core.Ecdsa_P256.Component;
       OK  : out Boolean)
    with
-     Pre  => Sig'First = 1
-             and then Sig'Length in 8 .. 80
-             and then Sig'Last < Integer'Last - 16,
+     Pre  =>
+       Sig'First = 1
+       and then Sig'Length in 8 .. 80
+       and then Sig'Last < Integer'Last - 16,
      Post => True;
 
    procedure Parse_Ecdsa_Sig_Der
@@ -59,29 +60,30 @@ is
    --  valid signature by the parent's public key over the TBS.
    ---------------------------------------------------------------------
    procedure Verify_Signed_TBS
-     (TBS_Bytes  : Octet_Array;
-      Sig_Bytes  : Octet_Array;
-      Sig_Alg    : Tls_Core.Cert.Signature_Alg;
-      Spki_Buf   : Octet_Array;
-      OK         : out Boolean)
+     (TBS_Bytes : Octet_Array;
+      Sig_Bytes : Octet_Array;
+      Sig_Alg   : Tls_Core.Cert.Signature_Alg;
+      Spki_Buf  : Octet_Array;
+      OK        : out Boolean)
    with
-     Pre  => TBS_Bytes'First = 1
-             and then TBS_Bytes'Length in 1 .. 16384
-             and then TBS_Bytes'Last < Integer'Last - 256
-             and then Sig_Bytes'First = 1
-             and then Sig_Bytes'Length in 1 .. 512
-             and then Sig_Bytes'Last < Integer'Last - 256
-             and then Spki_Buf'First = 1
-             and then Spki_Buf'Length >= 16
-             and then Spki_Buf'Last < Integer'Last - 16,
+     Pre  =>
+       TBS_Bytes'First = 1
+       and then TBS_Bytes'Length in 1 .. 16384
+       and then TBS_Bytes'Last < Integer'Last - 256
+       and then Sig_Bytes'First = 1
+       and then Sig_Bytes'Length in 1 .. 512
+       and then Sig_Bytes'Last < Integer'Last - 256
+       and then Spki_Buf'First = 1
+       and then Spki_Buf'Length >= 16
+       and then Spki_Buf'Last < Integer'Last - 16,
      Post => True;
 
    procedure Verify_Signed_TBS
-     (TBS_Bytes  : Octet_Array;
-      Sig_Bytes  : Octet_Array;
-      Sig_Alg    : Tls_Core.Cert.Signature_Alg;
-      Spki_Buf   : Octet_Array;
-      OK         : out Boolean)
+     (TBS_Bytes : Octet_Array;
+      Sig_Bytes : Octet_Array;
+      Sig_Alg   : Tls_Core.Cert.Signature_Alg;
+      Spki_Buf  : Octet_Array;
+      OK        : out Boolean)
    is separate;
 
    ---------------------------------------------------------------------

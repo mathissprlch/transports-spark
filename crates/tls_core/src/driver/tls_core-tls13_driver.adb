@@ -21,7 +21,7 @@ with Tls_Core.Tls13_Driver.Step_Idle;
 with Tls_Core.X25519;
 
 package body Tls_Core.Tls13_Driver
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -84,12 +84,12 @@ is
    ---------------------------------------------------------------------
 
    procedure Init_Psk_Server_With_Hrr
-     (D                 : out Driver;
-      PSK               : Octet_Array;
-      Psk_Identity      : Octet_Array;
-      Ecdhe_Priv        : Octet_Array;
-      Demanded_Group    : Tls_Core.Suites.U16;
-      Cookie            : Octet_Array)
+     (D              : out Driver;
+      PSK            : Octet_Array;
+      Psk_Identity   : Octet_Array;
+      Ecdhe_Priv     : Octet_Array;
+      Demanded_Group : Tls_Core.Suites.U16;
+      Cookie         : Octet_Array)
    is separate;
 
    procedure Init_Psk_Client_Hrr_Aware
@@ -108,10 +108,10 @@ is
    ---------------------------------------------------------------------
 
    procedure Step
-     (D         : in out Driver;
-      In_Bytes  : Octet_Array;
-      Out_Buf   : out Octet_Array;
-      Out_Last  : out Natural)
+     (D        : in out Driver;
+      In_Bytes : Octet_Array;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
    is separate;
 
    procedure Open_App_Directions
@@ -119,26 +119,22 @@ is
       Out_Dir    : out Tls_Core.Aead_Channel.Direction;
       In_Dir     : out Tls_Core.Aead_Channel.Direction;
       Out_Secret : out Tls_Core.Key_Sched.Max_Secret;
-      In_Secret  : out Tls_Core.Key_Sched.Max_Secret)
-   is
+      In_Secret  : out Tls_Core.Key_Sched.Max_Secret) is
    begin
       case D.My_Role is
          when Server =>
             --  Server: out encrypts with s_ap; in decrypts with c_ap.
             Out_Secret := D.App_S_Ap;
-            In_Secret  := D.App_C_Ap;
-            Tls_Core.Key_Sched.Init_Hs_Channel
-              (D.Suite, Out_Dir, Out_Secret);
-            Tls_Core.Key_Sched.Init_Hs_Channel
-              (D.Suite, In_Dir,  In_Secret);
+            In_Secret := D.App_C_Ap;
+            Tls_Core.Key_Sched.Init_Hs_Channel (D.Suite, Out_Dir, Out_Secret);
+            Tls_Core.Key_Sched.Init_Hs_Channel (D.Suite, In_Dir, In_Secret);
+
          when Client =>
             --  Client: out encrypts with c_ap; in decrypts with s_ap.
             Out_Secret := D.App_C_Ap;
-            In_Secret  := D.App_S_Ap;
-            Tls_Core.Key_Sched.Init_Hs_Channel
-              (D.Suite, Out_Dir, Out_Secret);
-            Tls_Core.Key_Sched.Init_Hs_Channel
-              (D.Suite, In_Dir,  In_Secret);
+            In_Secret := D.App_S_Ap;
+            Tls_Core.Key_Sched.Init_Hs_Channel (D.Suite, Out_Dir, Out_Secret);
+            Tls_Core.Key_Sched.Init_Hs_Channel (D.Suite, In_Dir, In_Secret);
       end case;
    end Open_App_Directions;
 
@@ -207,10 +203,7 @@ is
    --  Set_Sni_Hostname / Sni_Hostname — RFC 6066 §3.
    ---------------------------------------------------------------------
 
-   procedure Set_Sni_Hostname
-     (D        : in out Driver;
-      Hostname : Octet_Array)
-   is
+   procedure Set_Sni_Hostname (D : in out Driver; Hostname : Octet_Array) is
    begin
       D.Sni_Hostname := (others => 0);
       D.Sni_Len := Hostname'Length;
@@ -220,10 +213,7 @@ is
    end Set_Sni_Hostname;
 
    procedure Sni_Hostname
-     (D        : Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
-   is
+     (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural) is
    begin
       Out_Buf := (others => 0);
       Out_Last := D.Sni_Len;
@@ -237,10 +227,7 @@ is
    --  Selected_Alpn — RFC 7301 + RFC 8446 §4.2.
    ---------------------------------------------------------------------
 
-   procedure Set_Alpn_Offers
-     (D     : in out Driver;
-      Names : Octet_Array)
-   is
+   procedure Set_Alpn_Offers (D : in out Driver; Names : Octet_Array) is
    begin
       D.Alpn_Offers := (others => 0);
       D.Alpn_Offers_Len := Names'Length;
@@ -250,10 +237,7 @@ is
    end Set_Alpn_Offers;
 
    procedure Alpn_Offers
-     (D        : Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
-   is
+     (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural) is
    begin
       Out_Buf := (others => 0);
       Out_Last := D.Alpn_Offers_Len;
@@ -263,10 +247,7 @@ is
       end if;
    end Alpn_Offers;
 
-   procedure Set_Selected_Alpn
-     (D    : in out Driver;
-      Name : Octet_Array)
-   is
+   procedure Set_Selected_Alpn (D : in out Driver; Name : Octet_Array) is
    begin
       D.Selected_Alpn := (others => 0);
       D.Selected_Alpn_Len := Name'Length;
@@ -276,10 +257,7 @@ is
    end Set_Selected_Alpn;
 
    procedure Selected_Alpn
-     (D        : Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
-   is
+     (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural) is
    begin
       Out_Buf := (others => 0);
       Out_Last := D.Selected_Alpn_Len;
@@ -294,9 +272,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Send_Close_Notify
-     (D        : in out Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (D : in out Driver; Out_Buf : out Octet_Array; Out_Last : out Natural)
    is separate;
 
    ---------------------------------------------------------------------
@@ -358,16 +334,16 @@ is
    ---------------------------------------------------------------------
 
    procedure Process_Post_Handshake_Plaintext
-     (D            : Driver;
-      Plaintext    : Octet_Array;
-      Inner_Type   : Octet;
-      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
-      Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
-      Cache        : in out Tls_Core.Session_Cache.Cache;
-      Saw_Nst      : out Boolean;
+     (D             : Driver;
+      Plaintext     : Octet_Array;
+      Inner_Type    : Octet;
+      In_Dir        : in out Tls_Core.Aead_Channel.Direction;
+      Recv_Secret   : in out Tls_Core.Key_Sched.Max_Secret;
+      Cache         : in out Tls_Core.Session_Cache.Cache;
+      Saw_Nst       : out Boolean;
       Saw_KeyUpdate : out Boolean;
-      Want_Reply   : out Boolean;
-      OK           : out Boolean)
+      Want_Reply    : out Boolean;
+      OK            : out Boolean)
    is separate;
 
    ---------------------------------------------------------------------
@@ -379,8 +355,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Init_Psk_Resumption_Client
-     (D    : out Driver;
-      Slot : Tls_Core.Session_Cache.Slot)
+     (D : out Driver; Slot : Tls_Core.Session_Cache.Slot)
    is separate;
 
 end Tls_Core.Tls13_Driver;

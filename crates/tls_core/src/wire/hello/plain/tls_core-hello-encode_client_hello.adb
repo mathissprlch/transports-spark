@@ -1,11 +1,9 @@
 separate (Tls_Core.Hello)
 procedure Encode_Client_Hello
-  (CH        : Client_Hello;
-   Out_Buf   : out Octet_Array;
-   Out_Last  : out Natural)
+  (CH : Client_Hello; Out_Buf : out Octet_Array; Out_Last : out Natural)
 is
-   Cursor   : Natural := 0;
-   Ext_Len_Pos : Natural;
+   Cursor         : Natural := 0;
+   Ext_Len_Pos    : Natural;
    Ext_Body_Start : Natural;
 begin
    Out_Buf := (others => 0);
@@ -18,9 +16,7 @@ begin
    --  legacy_session_id (u8 len + N bytes)
    W_U8 (Out_Buf, Cursor, Octet (CH.Session_Id_Len));
    if CH.Session_Id_Len > 0 then
-      W_Bytes
-        (Out_Buf, Cursor,
-         CH.Session_Id_Bytes (1 .. CH.Session_Id_Len));
+      W_Bytes (Out_Buf, Cursor, CH.Session_Id_Bytes (1 .. CH.Session_Id_Len));
    end if;
    --  cipher_suites (u16 len = 2, then one suite)
    W_U16 (Out_Buf, Cursor, 2);

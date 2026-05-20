@@ -4,7 +4,7 @@ with Tls_Core.Sha384;
 pragma Warnings (Off, "redundant with clause in body");
 
 package body Tls_Core.Rsa_Pss
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -38,25 +38,24 @@ is
    --  Build a 4-byte big-endian counter at the tail of a buffer.
    --  Mirrors the `nat_to_intseq_be 4 i` step of mgf_hash_f
    --  (Spec.RSAPSS.fst:47-48).
-   procedure Put_Counter_BE
-     (Buf       : in out Octet_Array;
-      Counter   : Unsigned_32)
+   procedure Put_Counter_BE (Buf : in out Octet_Array; Counter : Unsigned_32)
    with
      Pre  => Buf'Length >= 4,
-     Post => Buf (Buf'Last - 3) = Octet (Shift_Right (Counter, 24) and 16#FF#)
-             and then Buf (Buf'Last - 2) = Octet (Shift_Right (Counter, 16) and 16#FF#)
-             and then Buf (Buf'Last - 1) = Octet (Shift_Right (Counter, 8) and 16#FF#)
-             and then Buf (Buf'Last) = Octet (Counter and 16#FF#);
+     Post =>
+       Buf (Buf'Last - 3) = Octet (Shift_Right (Counter, 24) and 16#FF#)
+       and then Buf (Buf'Last - 2)
+                = Octet (Shift_Right (Counter, 16) and 16#FF#)
+       and then Buf (Buf'Last - 1)
+                = Octet (Shift_Right (Counter, 8) and 16#FF#)
+       and then Buf (Buf'Last) = Octet (Counter and 16#FF#);
 
-   procedure Put_Counter_BE
-     (Buf       : in out Octet_Array;
-      Counter   : Unsigned_32)
+   procedure Put_Counter_BE (Buf : in out Octet_Array; Counter : Unsigned_32)
    is
    begin
       Buf (Buf'Last - 3) := Octet (Shift_Right (Counter, 24) and 16#FF#);
       Buf (Buf'Last - 2) := Octet (Shift_Right (Counter, 16) and 16#FF#);
       Buf (Buf'Last - 1) := Octet (Shift_Right (Counter, 8) and 16#FF#);
-      Buf (Buf'Last)     := Octet (Counter and 16#FF#);
+      Buf (Buf'Last) := Octet (Counter and 16#FF#);
    end Put_Counter_BE;
 
    ---------------------------------------------------------------------
@@ -65,23 +64,22 @@ is
    ---------------------------------------------------------------------
 
    function Spec_MGF1_Sha256
-     (Seed     : Octet_Array;
-      Mask_Len : Natural) return Octet_Array
+     (Seed : Octet_Array; Mask_Len : Natural) return Octet_Array
    is
-      Buf_Len   : constant Natural := Seed'Length + 4;
-      Buf       : Octet_Array (1 .. Buf_Len) := (others => 0);
-      Result    : Octet_Array (1 .. Mask_Len) := (others => 0);
-      Counter   : Unsigned_32 := 0;
-      Filled    : Natural := 0;
-      Take      : Natural;
-      Digest    : Tls_Core.Sha256.Digest;
+      Buf_Len : constant Natural := Seed'Length + 4;
+      Buf     : Octet_Array (1 .. Buf_Len) := (others => 0);
+      Result  : Octet_Array (1 .. Mask_Len) := (others => 0);
+      Counter : Unsigned_32 := 0;
+      Filled  : Natural := 0;
+      Take    : Natural;
+      Digest  : Tls_Core.Sha256.Digest;
    begin
       --  Copy Seed into prefix of Buf (counter trailing zeros).
       for I in 0 .. Seed'Length - 1 loop
          Buf (1 + I) := Seed (Seed'First + I);
-         pragma Loop_Invariant
-           (for all K in 0 .. I =>
-              Buf (1 + K) = Seed (Seed'First + K));
+         pragma
+           Loop_Invariant
+             (for all K in 0 .. I => Buf (1 + K) = Seed (Seed'First + K));
       end loop;
 
       while Filled < Mask_Len loop
@@ -113,22 +111,21 @@ is
    ---------------------------------------------------------------------
 
    function Spec_MGF1_Sha384
-     (Seed     : Octet_Array;
-      Mask_Len : Natural) return Octet_Array
+     (Seed : Octet_Array; Mask_Len : Natural) return Octet_Array
    is
-      Buf_Len   : constant Natural := Seed'Length + 4;
-      Buf       : Octet_Array (1 .. Buf_Len) := (others => 0);
-      Result    : Octet_Array (1 .. Mask_Len) := (others => 0);
-      Counter   : Unsigned_32 := 0;
-      Filled    : Natural := 0;
-      Take      : Natural;
-      Digest    : Tls_Core.Sha384.Digest;
+      Buf_Len : constant Natural := Seed'Length + 4;
+      Buf     : Octet_Array (1 .. Buf_Len) := (others => 0);
+      Result  : Octet_Array (1 .. Mask_Len) := (others => 0);
+      Counter : Unsigned_32 := 0;
+      Filled  : Natural := 0;
+      Take    : Natural;
+      Digest  : Tls_Core.Sha384.Digest;
    begin
       for I in 0 .. Seed'Length - 1 loop
          Buf (1 + I) := Seed (Seed'First + I);
-         pragma Loop_Invariant
-           (for all K in 0 .. I =>
-              Buf (1 + K) = Seed (Seed'First + K));
+         pragma
+           Loop_Invariant
+             (for all K in 0 .. I => Buf (1 + K) = Seed (Seed'First + K));
       end loop;
 
       while Filled < Mask_Len loop
@@ -160,8 +157,7 @@ is
    --  For our fixed emBits=2047, msBits=7 ⇒ mask the top bit.
    ---------------------------------------------------------------------
 
-   function Spec_DB_Zero_2047 (DB : Octet_Array) return Octet_Array
-   is
+   function Spec_DB_Zero_2047 (DB : Octet_Array) return Octet_Array is
       --  Pre guarantees DB'First = 1, so DB'Last = DB'Length.
       R : Octet_Array (1 .. DB'Length) := (others => 0);
    begin
@@ -169,8 +165,7 @@ is
       for I in 2 .. DB'Length loop
          R (I) := DB (I);
          pragma Loop_Invariant (R (1) = (DB (1) and EM_High_Mask));
-         pragma Loop_Invariant
-           (for all K in 2 .. I => R (K) = DB (K));
+         pragma Loop_Invariant (for all K in 2 .. I => R (K) = DB (K));
       end loop;
       return R;
    end Spec_DB_Zero_2047;
@@ -196,8 +191,7 @@ is
    ---------------------------------------------------------------------
 
    function Spec_Pss_Verify_Sha256
-     (Message : Octet_Array;
-      EM      : Bigint) return Boolean
+     (Message : Octet_Array; EM : Bigint) return Boolean
    is
       H_Len   : constant Natural := 32;
       S_Len   : constant Natural := 32;
@@ -284,8 +278,7 @@ is
    ---------------------------------------------------------------------
 
    function Spec_Pss_Verify_Sha384
-     (Message : Octet_Array;
-      EM      : Bigint) return Boolean
+     (Message : Octet_Array; EM : Bigint) return Boolean
    is
       H_Len   : constant Natural := 48;
       S_Len   : constant Natural := 48;
@@ -363,19 +356,13 @@ is
    ---------------------------------------------------------------------
 
    procedure Emsa_Pss_Verify_Sha256
-     (Message : Octet_Array;
-      EM      : Bigint;
-      OK      : out Boolean)
-   is
+     (Message : Octet_Array; EM : Bigint; OK : out Boolean) is
    begin
       OK := Spec_Pss_Verify_Sha256 (Message, EM);
    end Emsa_Pss_Verify_Sha256;
 
    procedure Emsa_Pss_Verify_Sha384
-     (Message : Octet_Array;
-      EM      : Bigint;
-      OK      : out Boolean)
-   is
+     (Message : Octet_Array; EM : Bigint; OK : out Boolean) is
    begin
       OK := Spec_Pss_Verify_Sha384 (Message, EM);
    end Emsa_Pss_Verify_Sha384;
@@ -405,15 +392,15 @@ is
       Out_EM  : out Bigint;
       OK      : out Boolean)
    is
-      H_Len    : constant Natural := 32;
-      S_Len    : constant Natural := 32;
-      DB_Len   : constant Natural := EM_Length - H_Len - 1;
-      M_Hash   : Tls_Core.Sha256.Digest;
-      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
-      H_Bytes  : Tls_Core.Sha256.Digest;
-      DB       : Octet_Array (1 .. DB_Len) := (others => 0);
-      Db_Mask  : Octet_Array (1 .. DB_Len);
-      PS_Len   : constant Natural := EM_Length - S_Len - H_Len - 2;
+      H_Len   : constant Natural := 32;
+      S_Len   : constant Natural := 32;
+      DB_Len  : constant Natural := EM_Length - H_Len - 1;
+      M_Hash  : Tls_Core.Sha256.Digest;
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      H_Bytes : Tls_Core.Sha256.Digest;
+      DB      : Octet_Array (1 .. DB_Len) := (others => 0);
+      Db_Mask : Octet_Array (1 .. DB_Len);
+      PS_Len  : constant Natural := EM_Length - S_Len - H_Len - 2;
    begin
       Out_EM := (others => 0);
       pragma Assert (Salt'Length = S_Len);
@@ -464,15 +451,15 @@ is
       Out_EM  : out Bigint;
       OK      : out Boolean)
    is
-      H_Len    : constant Natural := 48;
-      S_Len    : constant Natural := 48;
-      DB_Len   : constant Natural := EM_Length - H_Len - 1;
-      M_Hash   : Tls_Core.Sha384.Digest;
-      M_Prime  : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
-      H_Bytes  : Tls_Core.Sha384.Digest;
-      DB       : Octet_Array (1 .. DB_Len) := (others => 0);
-      Db_Mask  : Octet_Array (1 .. DB_Len);
-      PS_Len   : constant Natural := EM_Length - S_Len - H_Len - 2;
+      H_Len   : constant Natural := 48;
+      S_Len   : constant Natural := 48;
+      DB_Len  : constant Natural := EM_Length - H_Len - 1;
+      M_Hash  : Tls_Core.Sha384.Digest;
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      H_Bytes : Tls_Core.Sha384.Digest;
+      DB      : Octet_Array (1 .. DB_Len) := (others => 0);
+      Db_Mask : Octet_Array (1 .. DB_Len);
+      PS_Len  : constant Natural := EM_Length - S_Len - H_Len - 2;
    begin
       Out_EM := (others => 0);
       pragma Assert (Salt'Length = S_Len);

@@ -43,7 +43,7 @@ with Interfaces;
 with Tls_Core.Bignum_2048;
 
 package Tls_Core.Rsa_Pss
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -57,7 +57,7 @@ is
    ---------------------------------------------------------------------
    --  Fixed sizes for our 2048-bit / emBits=2047 / emLen=256 setup.
    ---------------------------------------------------------------------
-   EM_Length : constant := 256;
+   EM_Length    : constant := 256;
    --  emBits = 2047 ⇒ msBits = emBits mod 8 = 7. The HACL* db_zero
    --  spec (Spec.RSAPSS.fst:97-104) zeros the topmost (8 - msBits)
    --  bits of EM[0]; for msBits=7 that's the topmost 1 bit, i.e.
@@ -83,38 +83,41 @@ is
    --  imperative entry point's body is a thin call to it so the
    --  functional Post discharges by construction.
    function Spec_MGF1_Sha256
-     (Seed     : Octet_Array;
-      Mask_Len : Natural) return Octet_Array
+     (Seed : Octet_Array; Mask_Len : Natural) return Octet_Array
    with
-     Pre  => Seed'First = 1
-             and then Seed'Length <= Natural'Last - 4 - 9 - 64
-             and then Mask_Len > 0
-             and then Mask_Len <= Natural'Last - 32,
-     Post => Spec_MGF1_Sha256'Result'First = 1
-             and then Spec_MGF1_Sha256'Result'Length = Mask_Len;
+     Pre  =>
+       Seed'First = 1
+       and then Seed'Length <= Natural'Last - 4 - 9 - 64
+       and then Mask_Len > 0
+       and then Mask_Len <= Natural'Last - 32,
+     Post =>
+       Spec_MGF1_Sha256'Result'First = 1
+       and then Spec_MGF1_Sha256'Result'Length = Mask_Len;
 
    --  SHA-384 variant (same shape as MGF1_Sha256).
    function Spec_MGF1_Sha384
-     (Seed     : Octet_Array;
-      Mask_Len : Natural) return Octet_Array
+     (Seed : Octet_Array; Mask_Len : Natural) return Octet_Array
    with
-     Pre  => Seed'First = 1
-             and then Seed'Length <= Natural'Last - 4 - 17 - 128
-             and then Mask_Len > 0
-             and then Mask_Len <= Natural'Last - 48,
-     Post => Spec_MGF1_Sha384'Result'First = 1
-             and then Spec_MGF1_Sha384'Result'Length = Mask_Len;
+     Pre  =>
+       Seed'First = 1
+       and then Seed'Length <= Natural'Last - 4 - 17 - 128
+       and then Mask_Len > 0
+       and then Mask_Len <= Natural'Last - 48,
+     Post =>
+       Spec_MGF1_Sha384'Result'First = 1
+       and then Spec_MGF1_Sha384'Result'Length = Mask_Len;
 
    --  Mirrors Spec.RSAPSS.fst:97-104 (db_zero) for our fixed
    --  emBits = 2047 case (msBits = 7, mask = 0x7F).
    function Spec_DB_Zero_2047 (DB : Octet_Array) return Octet_Array
    with
      Pre  => DB'First = 1 and then DB'Length >= 1,
-     Post => Spec_DB_Zero_2047'Result'First = 1
-             and then Spec_DB_Zero_2047'Result'Length = DB'Length
-             and then Spec_DB_Zero_2047'Result (1) = (DB (1) and EM_High_Mask)
-             and then (for all I in 2 .. DB'Length =>
-                          Spec_DB_Zero_2047'Result (I) = DB (I));
+     Post =>
+       Spec_DB_Zero_2047'Result'First = 1
+       and then Spec_DB_Zero_2047'Result'Length = DB'Length
+       and then Spec_DB_Zero_2047'Result (1) = (DB (1) and EM_High_Mask)
+       and then (for all I in 2 .. DB'Length =>
+                   Spec_DB_Zero_2047'Result (I) = DB (I));
 
    --  Mirrors Spec.RSAPSS.fst:160-187 (pss_verify_) +
    --  Spec.RSAPSS.fst:200-212 (pss_verify), specialized to:
@@ -125,21 +128,21 @@ is
    --  Returns True iff the encoded message EM is a valid PSS
    --  encoding of Message under SHA-256/MGF1-SHA-256/sLen=32.
    function Spec_Pss_Verify_Sha256
-     (Message : Octet_Array;
-      EM      : Bigint) return Boolean
+     (Message : Octet_Array; EM : Bigint) return Boolean
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 9 - 64
-             and then Message'Last < Integer'Last - 128;
+     Pre =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 9 - 64
+       and then Message'Last < Integer'Last - 128;
 
    --  SHA-384 variant (sLen = hLen = 48).
    function Spec_Pss_Verify_Sha384
-     (Message : Octet_Array;
-      EM      : Bigint) return Boolean
+     (Message : Octet_Array; EM : Bigint) return Boolean
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 17 - 128
-             and then Message'Last < Integer'Last - 128;
+     Pre =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 17 - 128
+       and then Message'Last < Integer'Last - 128;
 
    ---------------------------------------------------------------------
    --  Public entry points
@@ -158,13 +161,12 @@ is
    --  (i.e. Mod_Exp (Signature, E, N)). hLen = sLen = 32.
    --------------------------------------------------------------------
    procedure Emsa_Pss_Verify_Sha256
-     (Message : Octet_Array;
-      EM      : Bigint;
-      OK      : out Boolean)
+     (Message : Octet_Array; EM : Bigint; OK : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 9 - 64
-             and then Message'Last < Integer'Last - 128,
+     Pre  =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 9 - 64
+       and then Message'Last < Integer'Last - 128,
      Post => OK = Spec_Pss_Verify_Sha256 (Message, EM);
 
    --------------------------------------------------------------------
@@ -179,13 +181,12 @@ is
    --  hLen = sLen = 48.
    --------------------------------------------------------------------
    procedure Emsa_Pss_Verify_Sha384
-     (Message : Octet_Array;
-      EM      : Bigint;
-      OK      : out Boolean)
+     (Message : Octet_Array; EM : Bigint; OK : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 17 - 128
-             and then Message'Last < Integer'Last - 128,
+     Pre  =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 17 - 128
+       and then Message'Last < Integer'Last - 128,
      Post => OK = Spec_Pss_Verify_Sha384 (Message, EM);
 
    --------------------------------------------------------------------
@@ -232,14 +233,15 @@ is
       Signature : Bigint;
       OK        : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 9 - 64
-             and then Message'Last < Integer'Last - 128,
+     Pre  =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 9 - 64
+       and then Message'Last < Integer'Last - 128,
      Post =>
-       OK = Spec_Pss_Verify_Sha256
-              (Message,
-               Tls_Core.Bignum_2048.Spec_Em_From_Pubkey_Sig
-                 (N, E, Signature));
+       OK
+       = Spec_Pss_Verify_Sha256
+           (Message,
+            Tls_Core.Bignum_2048.Spec_Em_From_Pubkey_Sig (N, E, Signature));
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  RSASSA-PSS-VERIFY with SHA-384.
@@ -260,14 +262,15 @@ is
       Signature : Bigint;
       OK        : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 17 - 128
-             and then Message'Last < Integer'Last - 128,
+     Pre  =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 17 - 128
+       and then Message'Last < Integer'Last - 128,
      Post =>
-       OK = Spec_Pss_Verify_Sha384
-              (Message,
-               Tls_Core.Bignum_2048.Spec_Em_From_Pubkey_Sig
-                 (N, E, Signature));
+       OK
+       = Spec_Pss_Verify_Sha384
+           (Message,
+            Tls_Core.Bignum_2048.Spec_Em_From_Pubkey_Sig (N, E, Signature));
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  EMSA-PSS-ENCODE with SHA-256.
@@ -295,10 +298,11 @@ is
       Out_EM  : out Bigint;
       OK      : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 9 - 64
-             and then Message'Last < Integer'Last - 128
-             and then Salt'Length = 32;
+     Pre =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 9 - 64
+       and then Message'Last < Integer'Last - 128
+       and then Salt'Length = 32;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  EMSA-PSS-ENCODE with SHA-384 (sLen = 48).
@@ -310,10 +314,11 @@ is
       Out_EM  : out Bigint;
       OK      : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Length <= Natural'Last - 17 - 128
-             and then Message'Last < Integer'Last - 128
-             and then Salt'Length = 48;
+     Pre =>
+       Message'First = 1
+       and then Message'Length <= Natural'Last - 17 - 128
+       and then Message'Last < Integer'Last - 128
+       and then Salt'Length = 48;
 
    pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 

@@ -1,7 +1,7 @@
 with Tls_Core.Aes_Core;
 
 package body Tls_Core.Aes256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -10,10 +10,7 @@ is
    --  Expand_Key — body is a one-liner over the platinum spec.
    ---------------------------------------------------------------------
 
-   procedure Expand_Key
-     (Key    : Key_Array;
-      Out_RK : out Round_Keys)
-   is
+   procedure Expand_Key (Key : Key_Array; Out_RK : out Round_Keys) is
    begin
       Out_RK := Aes_Spec.Aes256_Key_Expansion (Key);
    end Expand_Key;
@@ -24,10 +21,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encrypt_Block
-     (RK        : Round_Keys;
-      Plaintext : Block;
-      Out_Block : out Block)
-   is
+     (RK : Round_Keys; Plaintext : Block; Out_Block : out Block) is
    begin
       --  T_Tables_Enabled is a static constant; one of the branches
       --  is dead code at compile time.  The "no effect / never
@@ -60,10 +54,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Decrypt_Block
-     (RK         : Round_Keys;
-      Ciphertext : Block;
-      Out_Block  : out Block)
-   is
+     (RK : Round_Keys; Ciphertext : Block; Out_Block : out Block) is
    begin
       Out_Block := Aes_Spec.Aes256_Decrypt_Block (Ciphertext, RK);
    end Decrypt_Block;

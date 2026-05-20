@@ -1,5 +1,5 @@
 package body Tls_Core.Session_Cache
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -49,8 +49,7 @@ is
    is
       Target      : Slot_Index := Slot_Index'First;
       Found_Empty : Boolean := False;
-      Oldest_Seq  : Interfaces.Unsigned_32 :=
-        Interfaces.Unsigned_32'Last;
+      Oldest_Seq  : Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
    begin
       --  Phase 1: prefer an empty slot.
       for I in Slot_Index loop
@@ -105,9 +104,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Lookup_Most_Recent
-     (C     : Cache;
-      Index : out Slot_Index;
-      Found : out Boolean)
+     (C : Cache; Index : out Slot_Index; Found : out Boolean)
    is
       Best_Seq : Interfaces.Unsigned_32 := 0;
    begin
@@ -116,15 +113,13 @@ is
 
       for I in Slot_Index loop
          if C.Slots (I).Used
-           and then (not Found
-                     or else C.Slots (I).Insertion_Seq >= Best_Seq)
+           and then (not Found or else C.Slots (I).Insertion_Seq >= Best_Seq)
          then
             Index := I;
             Best_Seq := C.Slots (I).Insertion_Seq;
             Found := True;
          end if;
-         pragma Loop_Invariant
-           (if Found then C.Slots (Index).Used);
+         pragma Loop_Invariant (if Found then C.Slots (Index).Used);
       end loop;
    end Lookup_Most_Recent;
 

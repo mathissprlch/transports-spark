@@ -2,7 +2,7 @@ with Interfaces;
 with Tls_Core.Aead_Chacha20_Poly1305;
 
 package body Tls_Core.Channel
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -10,7 +10,7 @@ is
    use Interfaces;
 
    --  TLS 1.3 §5.2 record-layer envelope opaque_type values.
-   Application_Data : constant Octet := 16#17#;
+   Application_Data  : constant Octet := 16#17#;
    --  Legacy version field on the wire is always 0x0303 in TLS 1.3.
    Legacy_Version_Hi : constant Octet := 16#03#;
    Legacy_Version_Lo : constant Octet := 16#03#;
@@ -28,21 +28,21 @@ is
       Plaintext  : Octet_Array;
       Ciphertext : out Octet_Array;
       Tag        : out Tag_Bytes)
-   with Pre =>
-     Ciphertext'Length = Plaintext'Length
-     and then AAD'Length <= 16640
-     and then Plaintext'Length <= 16640
-     and then AAD'Last < Integer'Last - 16640
-     and then Plaintext'Last < Integer'Last - 16640
-     and then Ciphertext'Last < Integer'Last - 16640;
+   with
+     Pre =>
+       Ciphertext'Length = Plaintext'Length
+       and then AAD'Length <= 16640
+       and then Plaintext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Plaintext'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640;
    procedure Cha_Seal
      (Key        : Key_Type;
       Nonce      : Tls_Core.Record_Layer.IV_Array;
       AAD        : Octet_Array;
       Plaintext  : Octet_Array;
       Ciphertext : out Octet_Array;
-      Tag        : out Tag_Bytes)
-   is
+      Tag        : out Tag_Bytes) is
    begin
       Tls_Core.Aead_Chacha20_Poly1305.Seal
         (Key        => Key,
@@ -61,13 +61,14 @@ is
       Tag        : Tag_Bytes;
       Plaintext  : out Octet_Array;
       OK         : out Boolean)
-   with Pre =>
-     Plaintext'Length = Ciphertext'Length
-     and then AAD'Length <= 16640
-     and then Ciphertext'Length <= 16640
-     and then AAD'Last < Integer'Last - 16640
-     and then Ciphertext'Last < Integer'Last - 16640
-     and then Plaintext'Last < Integer'Last - 16640;
+   with
+     Pre =>
+       Plaintext'Length = Ciphertext'Length
+       and then AAD'Length <= 16640
+       and then Ciphertext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640
+       and then Plaintext'Last < Integer'Last - 16640;
    procedure Cha_Open
      (Key        : Key_Type;
       Nonce      : Tls_Core.Record_Layer.IV_Array;
@@ -75,8 +76,7 @@ is
       Ciphertext : Octet_Array;
       Tag        : Tag_Bytes;
       Plaintext  : out Octet_Array;
-      OK         : out Boolean)
-   is
+      OK         : out Boolean) is
    begin
       Tls_Core.Aead_Chacha20_Poly1305.Open
         (Key        => Key,
@@ -88,26 +88,22 @@ is
          OK         => OK);
    end Cha_Open;
 
-   package Aead is new Tls_Core.Record_Layer.Aead
-     (Key_Type => Key_Type,
-      Tag_Type => Tag_Bytes,
-      Seal     => Cha_Seal,
-      Open     => Cha_Open);
+   package Aead is new
+     Tls_Core.Record_Layer.Aead
+       (Key_Type => Key_Type,
+        Tag_Type => Tag_Bytes,
+        Seal     => Cha_Seal,
+        Open     => Cha_Open);
 
    ---------------------------------------------------------------------
    --  Init
    ---------------------------------------------------------------------
 
-   procedure Init
-     (D      : out Direction;
-      Secret : Tls_Core.Key_Schedule.Secret)
-   is
+   procedure Init (D : out Direction; Secret : Tls_Core.Key_Schedule.Secret) is
       Iv : Tls_Core.Record_Layer.IV_Array;
    begin
       Tls_Core.Traffic_Keys.Derive
-        (Secret_In => Secret,
-         Out_Key   => D.Key,
-         Out_IV    => Iv);
+        (Secret_In => Secret, Out_Key => D.Key, Out_IV => Iv);
       Tls_Core.Record_Layer.Init (D.Stream, Iv);
    end Init;
 
@@ -127,15 +123,16 @@ is
       Out_Last   : out Natural)
    is
       --  TLSInnerPlaintext = content || type (no padding for now).
-      Inner : Octet_Array (1 .. Plaintext'Length + 1) := (others => 0);
+      Inner         : Octet_Array (1 .. Plaintext'Length + 1) := (others => 0);
       Encrypted_Len : constant Natural := Inner'Length + 16;
-      AAD : constant Octet_Array (1 .. 5) :=
+      AAD           : constant Octet_Array (1 .. 5) :=
         (Application_Data,
-         Legacy_Version_Hi, Legacy_Version_Lo,
+         Legacy_Version_Hi,
+         Legacy_Version_Lo,
          Octet (Unsigned_16 (Encrypted_Len) / 256),
          Octet (Unsigned_16 (Encrypted_Len) mod 256));
-      Ct  : Octet_Array (1 .. Inner'Length);
-      Tag : Tag_Bytes;
+      Ct            : Octet_Array (1 .. Inner'Length);
+      Tag           : Tag_Bytes;
    begin
       Out_Buf := (others => 0);
       if Plaintext'Length > 0 then
@@ -151,8 +148,7 @@ is
          Tag        => Tag);
       Out_Buf (1 .. 5) := AAD;
       Out_Buf (6 .. 5 + Inner'Length) := Ct;
-      Out_Buf
-        (5 + Inner'Length + 1 .. 5 + Inner'Length + 16) := Tag;
+      Out_Buf (5 + Inner'Length + 1 .. 5 + Inner'Length + 16) := Tag;
       Out_Last := 5 + Inner'Length + 16;
    end Send;
 
@@ -160,8 +156,7 @@ is
      (D         : in out Direction;
       Plaintext : Octet_Array;
       Out_Buf   : out Octet_Array;
-      Out_Last  : out Natural)
-   is
+      Out_Last  : out Natural) is
    begin
       Send (D, Plaintext, Inner_Type_Application_Data, Out_Buf, Out_Last);
    end Send;
@@ -211,16 +206,15 @@ is
          if Inner_Len <= 0 or else Out_Buf'Length + 1 < Inner_Len then
             return;
          end if;
-         AAD := (Op_Type, Ver_Hi, Ver_Lo,
-                 In_Buf (F + 3), In_Buf (F + 4));
+         AAD := (Op_Type, Ver_Hi, Ver_Lo, In_Buf (F + 3), In_Buf (F + 4));
          declare
-            Ct  : constant Octet_Array := In_Buf (F + 5 .. F + 4 + Inner_Len);
-            Tag : Tag_Bytes;
-            Pt  : Octet_Array (1 .. Inner_Len);
+            Ct       : constant Octet_Array :=
+              In_Buf (F + 5 .. F + 4 + Inner_Len);
+            Tag      : Tag_Bytes;
+            Pt       : Octet_Array (1 .. Inner_Len);
             OK_Local : Boolean;
          begin
-            Tag := In_Buf
-              (F + 5 + Inner_Len .. F + 4 + Inner_Len + 16);
+            Tag := In_Buf (F + 5 + Inner_Len .. F + 4 + Inner_Len + 16);
             Aead.Open_Record
               (S          => D.Stream,
                Key        => D.Key,

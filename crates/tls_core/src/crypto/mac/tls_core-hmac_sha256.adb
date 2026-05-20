@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.Hmac_Sha256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_8;
@@ -35,9 +35,8 @@ is
    begin
       for I in 1 .. S'Length loop
          R (I) := S (S'First + I - 1);
-         pragma Loop_Invariant
-           (for all J in 1 .. I =>
-              R (J) = S (S'First + J - 1));
+         pragma
+           Loop_Invariant (for all J in 1 .. I => R (J) = S (S'First + J - 1));
       end loop;
       return R;
    end Spec_To_One_Based;
@@ -45,9 +44,7 @@ is
    --  Spec_Wrap_Key — RFC 2104 §2 / HACL* `wrap_key`
    --  (specs/Spec.HMAC.fst:13-25). If |K| > B then K' = H(K) || 0..0,
    --  else K' = K || 0..0, padded to Block_Length bytes.
-   function Spec_Wrap_Key
-     (Key : Octet_Array) return Tls_Core.Sha256.Block
-   is
+   function Spec_Wrap_Key (Key : Octet_Array) return Tls_Core.Sha256.Block is
       K_Prime : Block_Buf := (others => 0);
    begin
       if Key'Length > Block_Length then
@@ -60,9 +57,9 @@ is
       else
          for I in 1 .. Key'Length loop
             K_Prime (I) := Key (Key'First + I - 1);
-            pragma Loop_Invariant
-              (for all J in 1 .. I =>
-                 K_Prime (J) = Key (Key'First + J - 1));
+            pragma
+              Loop_Invariant
+                (for all J in 1 .. I => K_Prime (J) = Key (Key'First + J - 1));
          end loop;
       end if;
       return K_Prime;
@@ -78,8 +75,7 @@ is
    --    let h1   = hash (ki @| m)  in
    --    hash (ko @| h1)
    function Spec_HMAC_SHA256
-     (Key     : Octet_Array;
-      Message : Octet_Array) return Tag
+     (Key : Octet_Array; Message : Octet_Array) return Tag
    is
       K_Prime    : constant Block_Buf := Spec_Wrap_Key (Key);
       Inner_Pad  : Block_Buf;
@@ -100,12 +96,13 @@ is
       Inner_Buf (1 .. Block_Length) := Inner_Pad;
       for I in 1 .. Message'Length loop
          Inner_Buf (Block_Length + I) := Message (Message'First + I - 1);
-         pragma Loop_Invariant
-           (for all J in 1 .. Block_Length =>
-              Inner_Buf (J) = Inner_Pad (J));
-         pragma Loop_Invariant
-           (for all J in 1 .. I =>
-              Inner_Buf (Block_Length + J)
+         pragma
+           Loop_Invariant
+             (for all J in 1 .. Block_Length => Inner_Buf (J) = Inner_Pad (J));
+         pragma
+           Loop_Invariant
+             (for all J in 1 .. I =>
+                Inner_Buf (Block_Length + J)
                 = Message (Message'First + J - 1));
       end loop;
 
@@ -113,8 +110,7 @@ is
 
       --  Outer_Buf = (K' XOR opad) || Inner_Hash.
       Outer_Buf (1 .. Block_Length) := Outer_Pad;
-      Outer_Buf (Block_Length + 1 .. Block_Length + Hash_Length) :=
-        Inner_Hash;
+      Outer_Buf (Block_Length + 1 .. Block_Length + Hash_Length) := Inner_Hash;
 
       return Tls_Core.Sha256.Spec_SHA256 (Outer_Buf);
    end Spec_HMAC_SHA256;
@@ -130,10 +126,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Compute
-     (Key     : Octet_Array;
-      Message : Octet_Array;
-      Out_Tag : out Tag)
-   is
+     (Key : Octet_Array; Message : Octet_Array; Out_Tag : out Tag) is
    begin
       Out_Tag := Spec_HMAC_SHA256 (Key, Message);
    end Compute;

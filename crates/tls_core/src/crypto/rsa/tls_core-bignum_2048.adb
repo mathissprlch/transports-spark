@@ -3,7 +3,7 @@ with Interfaces;
 pragma Warnings (On, "redundant with clause in body");
 
 package body Tls_Core.Bignum_2048
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -29,7 +29,7 @@ is
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer is
    begin
-      return Big.To_Big_Integer (2) ** (8 * N);
+      return Big.To_Big_Integer (2)**(8 * N);
    end Pow_2_8;
 
    --  Square-and-multiply on Big_Integer. Mirror of HACL\*'s `pow_mod`
@@ -44,8 +44,8 @@ is
    function Spec_Mod_Exp
      (Base, Exp, N : Big.Big_Integer) return Big.Big_Integer
    is
-      One   : constant Big.Big_Integer := Big.To_Big_Integer (1);
-      Two   : constant Big.Big_Integer := Big.To_Big_Integer (2);
+      One    : constant Big.Big_Integer := Big.To_Big_Integer (1);
+      Two    : constant Big.Big_Integer := Big.To_Big_Integer (2);
       Zero_B : constant Big.Big_Integer := Big.To_Big_Integer (0);
       Result : Big.Big_Integer := One;
       B      : Big.Big_Integer;
@@ -80,9 +80,9 @@ is
    function Big_To_Bigint (X : Big.Big_Integer) return Bigint is
       --  Init suppresses an "initialization has no effect" gnat
       --  warning; flow analysis still needs the unconditional write.
-      Result    : Bigint := (others => 0);
-      Base_256  : constant Big.Big_Integer := Big.To_Big_Integer (256);
-      Acc       : Big.Big_Integer := X;
+      Result   : Bigint := (others => 0);
+      Base_256 : constant Big.Big_Integer := Big.To_Big_Integer (256);
+      Acc      : Big.Big_Integer := X;
       package Octet_Big is new Big.Signed_Conversions (Int => Integer);
    begin
       --  LSB-first extraction: Bigint (256), Bigint (255), ... Bigint (1).
@@ -90,8 +90,7 @@ is
          pragma Loop_Invariant (Acc >= Big.To_Big_Integer (0));
          --  Byte_Big_Val (in [0, 256) by definition of mod with positive
          --  divisor) reduced to Integer for the conversion to Octet.
-         Result (K) :=
-           Octet (Octet_Big.From_Big_Integer (Acc mod Base_256));
+         Result (K) := Octet (Octet_Big.From_Big_Integer (Acc mod Base_256));
          Acc := Acc / Base_256;
       end loop;
       return Result;
@@ -120,15 +119,15 @@ is
 
    N_Limbs : constant := 64;
 
-   subtype Limb_Index   is Natural range 0 .. N_Limbs - 1;
-   subtype Limb2_Index  is Natural range 0 .. 2 * N_Limbs - 1;
+   subtype Limb_Index is Natural range 0 .. N_Limbs - 1;
+   subtype Limb2_Index is Natural range 0 .. 2 * N_Limbs - 1;
    subtype Limb_Plus_Index is Natural range 0 .. N_Limbs;
    subtype Limb66_Index is Natural range 0 .. N_Limbs + 1;
 
-   type Limbs64  is array (Limb_Index)      of Unsigned_32;
-   type Limbs128 is array (Limb2_Index)     of Unsigned_32;
-   type Limbs65  is array (Limb_Plus_Index) of Unsigned_32;
-   type Limbs66  is array (Limb66_Index)    of Unsigned_32;
+   type Limbs64 is array (Limb_Index) of Unsigned_32;
+   type Limbs128 is array (Limb2_Index) of Unsigned_32;
+   type Limbs65 is array (Limb_Plus_Index) of Unsigned_32;
+   type Limbs66 is array (Limb66_Index) of Unsigned_32;
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 256 BE bytes and limbs.
@@ -143,10 +142,10 @@ is
    begin
       for I in Limb_Index loop
          L (I) :=
-             Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 3)), 24)
+           Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 3)), 24)
            or Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 2)), 16)
-           or Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 1)),  8)
-           or            Unsigned_32 (B (Byte_Length - 4 * I));
+           or Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 1)), 8)
+           or Unsigned_32 (B (Byte_Length - 4 * I));
       end loop;
    end From_Bytes;
 
@@ -163,9 +162,8 @@ is
          B (Byte_Length - 4 * I - 2) :=
            Octet (Shift_Right (L (I), 16) and 16#FF#);
          B (Byte_Length - 4 * I - 1) :=
-           Octet (Shift_Right (L (I),  8) and 16#FF#);
-         B (Byte_Length - 4 * I)     :=
-           Octet (L (I) and 16#FF#);
+           Octet (Shift_Right (L (I), 8) and 16#FF#);
+         B (Byte_Length - 4 * I) := Octet (L (I) and 16#FF#);
       end loop;
    end To_Bytes;
 
@@ -235,10 +233,7 @@ is
       Diff   : Unsigned_64;
    begin
       for I in Limb_Plus_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (B (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (B (I)) - Borrow;
          R (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -259,7 +254,7 @@ is
          Carry := 0;
          for J in Limb_Index loop
             Acc :=
-                Unsigned_64 (T (I + J))
+              Unsigned_64 (T (I + J))
               + Unsigned_64 (A (I)) * Unsigned_64 (B (J))
               + Carry;
             T (I + J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
@@ -352,10 +347,8 @@ is
    --  Mod_Mul kernel on limb representation.
    ---------------------------------------------------------------------
 
-   procedure Limb_Mod_Mul
-     (A, B, N : Limbs64; R : out Limbs64)
-   is
-      T : Limbs128;
+   procedure Limb_Mod_Mul (A, B, N : Limbs64; R : out Limbs64) is
+      T     : Limbs128;
       A_Red : Limbs64 := A;
       B_Red : Limbs64 := B;
       Tmp   : Limbs128;
@@ -418,9 +411,9 @@ is
    --  Concretely: build T128 = 2^2048 (so T (64) = 1, others = 0),
    --  reduce to get R mod N, then square and reduce again.
    procedure R_Sq_Mod_N (N : Limbs64; Out_R : out Limbs64) is
-      T128   : Limbs128 := (others => 0);
-      R_Mod  : Limbs64;
-      Sq128  : Limbs128;
+      T128  : Limbs128 := (others => 0);
+      R_Mod : Limbs64;
+      Sq128 : Limbs128;
    begin
       --  T128 represents 2^2048 (one in limb position 64 of a 128-bit
       --  numerator). Reduction by N yields R mod N.
@@ -442,9 +435,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Mont_Mul
-     (A, B, N : Limbs64;
-      Inv32   : Unsigned_32;
-      Out_R   : out Limbs64)
+     (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    is
       T     : Limbs66 := (others => 0);
       Acc   : Unsigned_64;
@@ -456,7 +447,7 @@ is
          Carry := 0;
          for J in Limb_Index loop
             Acc :=
-                Unsigned_64 (T (J))
+              Unsigned_64 (T (J))
               + Unsigned_64 (A (J)) * Unsigned_64 (B (I))
               + Carry;
             T (J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
@@ -478,13 +469,11 @@ is
          --  half is discarded (it is zero by construction); only the
          --  carry into the next limb matters.
          Acc :=
-             Unsigned_64 (T (0))
-           + Unsigned_64 (M) * Unsigned_64 (N (0))
-           + Carry;
+           Unsigned_64 (T (0)) + Unsigned_64 (M) * Unsigned_64 (N (0)) + Carry;
          Carry := Shift_Right (Acc, 32);
          for J in 1 .. N_Limbs - 1 loop
             Acc :=
-                Unsigned_64 (T (J))
+              Unsigned_64 (T (J))
               + Unsigned_64 (M) * Unsigned_64 (N (J))
               + Carry;
             T (J - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
@@ -501,8 +490,8 @@ is
       --  value lives in T (0 .. N_Limbs); the top word (T (N_Limbs))
       --  is at most 1.
       declare
-         T64    : Limbs64;
-         Top    : constant Unsigned_32 := T (N_Limbs);
+         T64      : Limbs64;
+         Top      : constant Unsigned_32 := T (N_Limbs);
          Need_Sub : Boolean;
       begin
          for K in Limb_Index loop
@@ -516,10 +505,7 @@ is
                Diff   : Unsigned_64;
             begin
                for J in Limb_Index loop
-                  Diff :=
-                      Unsigned_64 (T64 (J))
-                    - Unsigned_64 (N (J))
-                    - Borrow;
+                  Diff := Unsigned_64 (T64 (J)) - Unsigned_64 (N (J)) - Borrow;
                   T64 (J) := Unsigned_32 (Diff and 16#FFFFFFFF#);
                   Borrow := Shift_Right (Diff, 63) and 1;
                end loop;
@@ -568,8 +554,8 @@ is
       Limb_Word  : Unsigned_32;
    begin
       From_Bytes (Base, BL);
-      From_Bytes (Exp,  EL);
-      From_Bytes (N,    NL);
+      From_Bytes (Exp, EL);
+      From_Bytes (N, NL);
 
       --  Edge cases: N = 0 (illegal — return zero per the ads), or
       --  N = 1 (everything is 0 mod 1), or N even (Montgomery needs
@@ -614,10 +600,10 @@ is
       end if;
 
       declare
-         Inv32   : constant Unsigned_32 := N0_Inv (NL);
-         R2      : Limbs64;
-         One_L   : Limbs64 := (others => 0);
-         Base_M  : Limbs64;
+         Inv32    : constant Unsigned_32 := N0_Inv (NL);
+         R2       : Limbs64;
+         One_L    : Limbs64 := (others => 0);
+         Base_M   : Limbs64;
          Result_M : Limbs64;
       begin
          One_L (0) := 1;
@@ -666,9 +652,10 @@ is
    begin
       for I in Bigint'Range loop
          Diff := Diff or (A (I) xor B (I));
-         pragma Loop_Invariant
-           (Diff = 0
-            xor (for some K in Bigint'First .. I => A (K) /= B (K)));
+         pragma
+           Loop_Invariant
+             (Diff = 0
+                xor (for some K in Bigint'First .. I => A (K) /= B (K)));
       end loop;
       return Diff = 0;
    end Equal_CT;

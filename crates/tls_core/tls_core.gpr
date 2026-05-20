@@ -20,11 +20,11 @@ library project Tls_Core is
          when "release" =>
             for Default_Switches ("Ada") use
               ("-g", "-O" & Opt, "-gnatn", "-gnatp",
-               "-gnat2022", "-gnatwa", "-gnatyM100");
+               "-gnat2022", "-gnatwa", "-gnatyM100", "-gnatW8");
          when "debug" =>
             for Default_Switches ("Ada") use
               ("-g", "-O0", "-gnat2022", "-gnatwa", "-gnatVa",
-               "-gnatyM100");
+               "-gnatyM100", "-gnatW8");
       end case;
    end Compiler;
 

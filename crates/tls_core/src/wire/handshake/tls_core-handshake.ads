@@ -30,7 +30,7 @@
 with Tls_Core.Key_Schedule;
 
 package Tls_Core.Handshake
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    --  TLS 1.3 traffic secrets, RFC 8446 §7.1. Names follow the
@@ -48,12 +48,13 @@ is
    --  Functional content checked end-to-end against the RFC 8448 PSK
    --  vector via the test harness; no Post is asserted here.
    procedure Derive_Psk_Secrets
-     (PSK            : Octet_Array;
-      Client_Hello   : Octet_Array;
-      Server_Hello   : Octet_Array;
+     (PSK             : Octet_Array;
+      Client_Hello    : Octet_Array;
+      Server_Hello    : Octet_Array;
       Server_Finished : Octet_Array;
-      Out_Secrets    : out Traffic_Secrets)
-   with Pre =>
+      Out_Secrets     : out Traffic_Secrets)
+   with
+     Pre =>
        PSK'Length = 32
        and then PSK'Last < Integer'Last - 1024
        and then Client_Hello'Length <= 1024
@@ -75,7 +76,8 @@ is
       Server_Hello    : Octet_Array;
       Server_Finished : Octet_Array;
       Out_Secrets     : out Traffic_Secrets)
-   with Pre =>
+   with
+     Pre =>
        ECDHE_Shared'Length = 32
        and then ECDHE_Shared'Last < Integer'Last - 1024
        and then Client_Hello'Length <= 1024

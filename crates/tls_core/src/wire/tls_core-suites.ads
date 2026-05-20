@@ -21,7 +21,7 @@
 with Interfaces;
 
 package Tls_Core.Suites
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_16;
@@ -45,9 +45,7 @@ is
    --  dispatchers (see Tls_Core.Aead_Channel). Maps 1-to-1 onto
    --  the three §B.4 codepoints above.
    type Cipher_Suite_Id is
-     (Chacha20_Poly1305_Sha256,
-      Aes_128_Gcm_Sha256,
-      Aes_256_Gcm_Sha384);
+     (Chacha20_Poly1305_Sha256, Aes_128_Gcm_Sha256, Aes_256_Gcm_Sha384);
 
    --  Lift an IANA codepoint to the enum. Caller must check
    --  Is_Supported_Suite (Code) first — an unsupported code falls
@@ -56,8 +54,10 @@ is
    --  server selection: send handshake_failure if no offered suite
    --  is acceptable, before ever calling Suite_Of_Code.
    function Suite_Of_Code (Code : U16) return Cipher_Suite_Id
-   is (if Code = TLS_AES_128_GCM_SHA256       then Aes_128_Gcm_Sha256
-       elsif Code = TLS_AES_256_GCM_SHA384    then Aes_256_Gcm_Sha384
+   is (if Code = TLS_AES_128_GCM_SHA256
+       then Aes_128_Gcm_Sha256
+       elsif Code = TLS_AES_256_GCM_SHA384
+       then Aes_256_Gcm_Sha384
        else Chacha20_Poly1305_Sha256)
    with
      Pre  => Is_Supported_Suite (Code),
@@ -113,14 +113,14 @@ is
    --  Extension types — RFC 8446 §4.2 (selected; not exhaustive)
    ---------------------------------------------------------------------
 
-   Ext_Server_Name              : constant U16 := 16#0000#;
-   Ext_Supported_Groups         : constant U16 := 16#000A#;
-   Ext_Signature_Algorithms     : constant U16 := 16#000D#;
+   Ext_Server_Name                            : constant U16 := 16#0000#;
+   Ext_Supported_Groups                       : constant U16 := 16#000A#;
+   Ext_Signature_Algorithms                   : constant U16 := 16#000D#;
    Ext_Application_Layer_Protocol_Negotiation : constant U16 := 16#0010#;
-   Ext_Pre_Shared_Key           : constant U16 := 16#0029#;
-   Ext_Supported_Versions       : constant U16 := 16#002B#;
-   Ext_Psk_Key_Exchange_Modes   : constant U16 := 16#002D#;
-   Ext_Key_Share                : constant U16 := 16#0033#;
+   Ext_Pre_Shared_Key                         : constant U16 := 16#0029#;
+   Ext_Supported_Versions                     : constant U16 := 16#002B#;
+   Ext_Psk_Key_Exchange_Modes                 : constant U16 := 16#002D#;
+   Ext_Key_Share                              : constant U16 := 16#0033#;
 
    ---------------------------------------------------------------------
    --  Hash length implied by a cipher suite (the suffix in the name).

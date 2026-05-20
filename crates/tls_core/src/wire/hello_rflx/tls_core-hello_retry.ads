@@ -31,7 +31,7 @@ with Tls_Core.Sha256;
 with Tls_Core.Suites;
 
 package Tls_Core.Hello_Retry
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_8;
@@ -41,10 +41,38 @@ is
    --  We hard-code the digest rather than recompute it because the
    --  RFC mandates the constant.
    Magic_Random : constant Octet_Array (1 .. 32) :=
-     (16#CF#, 16#21#, 16#AD#, 16#74#, 16#E5#, 16#9A#, 16#61#, 16#11#,
-      16#BE#, 16#1D#, 16#8C#, 16#02#, 16#1E#, 16#65#, 16#B8#, 16#91#,
-      16#C2#, 16#A2#, 16#11#, 16#16#, 16#7A#, 16#BB#, 16#8C#, 16#5E#,
-      16#07#, 16#9E#, 16#09#, 16#E2#, 16#C8#, 16#A8#, 16#33#, 16#9C#);
+     (16#CF#,
+      16#21#,
+      16#AD#,
+      16#74#,
+      16#E5#,
+      16#9A#,
+      16#61#,
+      16#11#,
+      16#BE#,
+      16#1D#,
+      16#8C#,
+      16#02#,
+      16#1E#,
+      16#65#,
+      16#B8#,
+      16#91#,
+      16#C2#,
+      16#A2#,
+      16#11#,
+      16#16#,
+      16#7A#,
+      16#BB#,
+      16#8C#,
+      16#5E#,
+      16#07#,
+      16#9E#,
+      16#09#,
+      16#E2#,
+      16#C8#,
+      16#A8#,
+      16#33#,
+      16#9C#);
 
    --  Synthetic handshake type code for the message_hash record
    --  RFC 8446 §4.4.1 emits in place of ClientHello1.
@@ -73,9 +101,7 @@ is
    --  Proven at:   gnatprove --level=2 (5/5 checks proved, audit-clean).
    --------------------------------------------------------------------
    function Is_Hrr_Random (Random : Octet_Array) return Boolean
-   with Pre =>
-     Random'Length = 32
-     and then Random'Last < Integer'Last;
+   with Pre => Random'Length = 32 and then Random'Last < Integer'Last;
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  §4.4.1 synthetic message_hash builder.
@@ -96,8 +122,7 @@ is
    --               audit-clean).
    --------------------------------------------------------------------
    procedure Build_Synthetic_Msg_Sha256
-     (Ch1_Hash : Tls_Core.Sha256.Digest;
-      Out_Buf  : out Octet_Array)
+     (Ch1_Hash : Tls_Core.Sha256.Digest; Out_Buf : out Octet_Array)
    with
      Pre  => Out_Buf'First = 1 and then Out_Buf'Length = 36,
      Post =>
@@ -105,8 +130,7 @@ is
        and then Out_Buf (2) = 0
        and then Out_Buf (3) = 0
        and then Out_Buf (4) = 32
-       and then
-         (for all I in 1 .. 32 => Out_Buf (4 + I) = Ch1_Hash (I));
+       and then (for all I in 1 .. 32 => Out_Buf (4 + I) = Ch1_Hash (I));
 
    ----------------------------------------------------------------------
    --  HelloRetryRequest wire encode / decode
@@ -145,8 +169,7 @@ is
        and then Out_Buf'Length >= 256
        and then Out_Buf'Last <= Integer'Last - 4
        and then Cookie'Length <= Max_Cookie_Length,
-     Post =>
-       Out_Last in 0 .. Out_Buf'Last;
+     Post => Out_Last in 0 .. Out_Buf'Last;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  HelloRetryRequest wire decoder.
@@ -171,10 +194,8 @@ is
       Cookie_Length  : out Natural;
       OK             : out Boolean)
    with
-     Pre  =>
-       In_Bytes'Last < Integer'Last - 4,
-     Post =>
-       Cookie_Length in 0 .. Max_Cookie_Length;
+     Pre  => In_Bytes'Last < Integer'Last - 4,
+     Post => Cookie_Length in 0 .. Max_Cookie_Length;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Cookie constant-time compare.
@@ -193,14 +214,12 @@ is
    --               audit-clean).
    --------------------------------------------------------------------
    function Cookies_Equal
-     (Have        : Octet_Array;
-      Want        : Cookie_Bytes;
-      Want_Length : Natural)
+     (Have : Octet_Array; Want : Cookie_Bytes; Want_Length : Natural)
       return Boolean
    with
-     Pre  => Want_Length in 0 .. Max_Cookie_Length
-             and then Have'Length <= Max_Cookie_Length
-             and then (if Have'Length > 0
-                       then Have'Last < Integer'Last);
+     Pre =>
+       Want_Length in 0 .. Max_Cookie_Length
+       and then Have'Length <= Max_Cookie_Length
+       and then (if Have'Length > 0 then Have'Last < Integer'Last);
 
 end Tls_Core.Hello_Retry;

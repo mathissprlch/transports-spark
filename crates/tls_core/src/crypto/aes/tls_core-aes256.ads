@@ -25,31 +25,26 @@ with Tls_Core_Config;
 with Tls_Core.Aes_Spec;
 
 package Tls_Core.Aes256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    Block_Length      : constant := 16;
    Key_Length        : constant := 32;
    Round_Keys_Length : constant := 15 * Block_Length;  --  240
 
-   subtype Block      is Octet_Array (1 .. Block_Length);
-   subtype Key_Array  is Octet_Array (1 .. Key_Length);
+   subtype Block is Octet_Array (1 .. Block_Length);
+   subtype Key_Array is Octet_Array (1 .. Key_Length);
    subtype Round_Keys is Octet_Array (1 .. Round_Keys_Length);
 
    --  FIPS 197 §5.2 KeyExpansion (Nk = 8, Nr = 14).  Mirrors HACL\*
    --  `aes256_key_expansion` (Spec.AES.fst:263).
-   procedure Expand_Key
-     (Key    : Key_Array;
-      Out_RK : out Round_Keys)
-   with
-     Post => Out_RK = Aes_Spec.Aes256_Key_Expansion (Key);
+   procedure Expand_Key (Key : Key_Array; Out_RK : out Round_Keys)
+   with Post => Out_RK = Aes_Spec.Aes256_Key_Expansion (Key);
 
    --  FIPS 197 §5.1 Cipher (Nr = 14).  Mirrors HACL\*
    --  `aes_encrypt_block AES256` (Spec.AES.fst:306).
    procedure Encrypt_Block
-     (RK        : Round_Keys;
-      Plaintext : Block;
-      Out_Block : out Block)
+     (RK : Round_Keys; Plaintext : Block; Out_Block : out Block)
    with
      Post =>
        (if not Tls_Core_Config.T_Tables_Enabled
@@ -58,10 +53,7 @@ is
    --  FIPS 197 §5.3 InvCipher.  Mirrors HACL\* `aes_decrypt_block
    --  AES256` (Spec.AES.fst:319).
    procedure Decrypt_Block
-     (RK         : Round_Keys;
-      Ciphertext : Block;
-      Out_Block  : out Block)
-   with
-     Post => Out_Block = Aes_Spec.Aes256_Decrypt_Block (Ciphertext, RK);
+     (RK : Round_Keys; Ciphertext : Block; Out_Block : out Block)
+   with Post => Out_Block = Aes_Spec.Aes256_Decrypt_Block (Ciphertext, RK);
 
 end Tls_Core.Aes256;

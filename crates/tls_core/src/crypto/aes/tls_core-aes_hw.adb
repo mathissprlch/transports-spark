@@ -1,5 +1,5 @@
 package body Tls_Core.Aes_Hw
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    --  v0.5 stub: forwards to the pure-Ada path. v0.6 replaces these
@@ -9,8 +9,7 @@ is
    procedure Hw_Full_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
-      Round : Tls_Core.Aes_Core.Round_Index)
-   is
+      Round : Tls_Core.Aes_Core.Round_Index) is
    begin
       Tls_Core.Aes_Core.Sub_Bytes (S);
       Tls_Core.Aes_Core.Shift_Rows (S);
@@ -21,8 +20,7 @@ is
    procedure Hw_Final_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
-      Round : Tls_Core.Aes_Core.Round_Index)
-   is
+      Round : Tls_Core.Aes_Core.Round_Index) is
    begin
       Tls_Core.Aes_Core.Sub_Bytes (S);
       Tls_Core.Aes_Core.Shift_Rows (S);

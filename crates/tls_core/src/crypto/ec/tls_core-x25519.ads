@@ -61,7 +61,7 @@ with Ada.Numerics.Big_Numbers.Big_Integers;
 with Tls_Core.Field25519;
 
 package Tls_Core.X25519
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Bytes_32 is Octet_Array (1 .. 32);
@@ -93,45 +93,51 @@ is
    --  Decode the u-coordinate: little-endian, mask off the high bit
    --  of byte 31, reduce mod p.
    function Spec_Decode_Point (U_Coord : Bytes_32) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range
-                  (Spec_Decode_Point'Result,
-                   Big.To_Big_Integer (0),
-                   Field25519.Prime_P_Spec - Big.To_Big_Integer (1));
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Spec_Decode_Point'Result,
+          Big.To_Big_Integer (0),
+          Field25519.Prime_P_Spec - Big.To_Big_Integer (1));
 
    --  Encode an elem (a value mod p) as 32 little-endian bytes.
    function Spec_Encode_Point (P : Big.Big_Integer) return Bytes_32
-   with Ghost, Global => null,
-        Pre => Big.In_Range
-                 (P,
-                  Big.To_Big_Integer (0),
-                  Field25519.Prime_P_Spec - Big.To_Big_Integer (1));
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Big.In_Range
+         (P,
+          Big.To_Big_Integer (0),
+          Field25519.Prime_P_Spec - Big.To_Big_Integer (1));
 
    --  The Montgomery ladder, ported line-by-line from
    --  Spec.Curve25519.fst :: montgomery_ladder. The body is a real
    --  Big_Integer implementation that exercises 255 ladder steps —
    --  not a stub. See body for the F\* trace.
    function Spec_Montgomery_Ladder
-     (Init   : Big.Big_Integer;
-      Scalar : Bytes_32) return Big.Big_Integer
-   with Ghost, Global => null,
-        Pre  => Big.In_Range
-                  (Init,
-                   Big.To_Big_Integer (0),
-                   Field25519.Prime_P_Spec - Big.To_Big_Integer (1)),
-        Post => Big.In_Range
-                  (Spec_Montgomery_Ladder'Result,
-                   Big.To_Big_Integer (0),
-                   Field25519.Prime_P_Spec - Big.To_Big_Integer (1));
+     (Init : Big.Big_Integer; Scalar : Bytes_32) return Big.Big_Integer
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Big.In_Range
+         (Init,
+          Big.To_Big_Integer (0),
+          Field25519.Prime_P_Spec - Big.To_Big_Integer (1)),
+     Post   =>
+       Big.In_Range
+         (Spec_Montgomery_Ladder'Result,
+          Big.To_Big_Integer (0),
+          Field25519.Prime_P_Spec - Big.To_Big_Integer (1));
 
    --  Top-level  scalarmult  spec.
-   function Spec_X25519
-     (Scalar  : Bytes_32;
-      U_Coord : Bytes_32) return Bytes_32
+   function Spec_X25519 (Scalar : Bytes_32; U_Coord : Bytes_32) return Bytes_32
    is (Spec_Encode_Point
          (Spec_Montgomery_Ladder
-            (Spec_Decode_Point (U_Coord),
-             Spec_Decode_Scalar (Scalar))))
+            (Spec_Decode_Point (U_Coord), Spec_Decode_Scalar (Scalar))))
    with Ghost, Global => null;
 
    ---------------------------------------------------------------------
@@ -143,20 +149,13 @@ is
    ---------------------------------------------------------------------
 
    procedure Scalar_Mult
-     (Scalar  : Bytes_32;
-      U_Coord : Bytes_32;
-      Out_Q   : out Bytes_32)
+     (Scalar : Bytes_32; U_Coord : Bytes_32; Out_Q : out Bytes_32)
    with Post => Out_Q = Spec_X25519 (Scalar, U_Coord);
 
    --  RFC 7748 §6.1: derive a public key from a private scalar
    --  by multiplying the curve's base point.
    --      base_u = 9 (32 bytes little-endian)
-   procedure Derive_Public
-     (Private_Key : Bytes_32;
-      Out_Public  : out Bytes_32)
-   with Post => Out_Public =
-                  Spec_X25519
-                    (Private_Key,
-                     (1 => 9, others => 0));
+   procedure Derive_Public (Private_Key : Bytes_32; Out_Public : out Bytes_32)
+   with Post => Out_Public = Spec_X25519 (Private_Key, (1 => 9, others => 0));
 
 end Tls_Core.X25519;

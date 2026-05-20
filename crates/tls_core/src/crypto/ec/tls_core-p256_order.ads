@@ -39,7 +39,7 @@
 with Ada.Numerics.Big_Numbers.Big_Integers;
 
 package Tls_Core.P256_Order
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -47,8 +47,7 @@ is
    subtype Scalar is Octet_Array (1 .. 32);
 
    Zero : constant Scalar := (others => 0);
-   One  : constant Scalar :=
-     (1 .. 31 => 0, 32 => 1);
+   One  : constant Scalar := (1 .. 31 => 0, 32 => 1);
 
    pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
@@ -68,21 +67,23 @@ is
    with Ghost, Global => null;
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer
-   with Ghost, Global => null,
-        Pre  => N <= 32,
-        Post => Pow_2_8'Result > Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Pre    => N <= 32,
+     Post   => Pow_2_8'Result > Big.To_Big_Integer (0);
 
-   function To_Big_Up_To
-     (S : Scalar; N : Natural) return Big.Big_Integer
-   is
-     (if N = 0 then Big.To_Big_Integer (0)
-      else
-        To_Big_Up_To (S, N - 1)
-        + Byte_Big (S (32 - (N - 1))) * Pow_2_8 (N - 1))
-   with Ghost,
-        Global => null,
-        Pre => N <= 32,
-        Subprogram_Variant => (Decreases => N);
+   function To_Big_Up_To (S : Scalar; N : Natural) return Big.Big_Integer
+   is (if N = 0
+       then Big.To_Big_Integer (0)
+       else
+         To_Big_Up_To (S, N - 1)
+         + Byte_Big (S (32 - (N - 1))) * Pow_2_8 (N - 1))
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N <= 32,
+     Subprogram_Variant => (Decreases => N);
 
    --  Integer interpretation of the 32-byte big-endian Scalar.
    function To_Big_Spec (S : Scalar) return Big.Big_Integer
@@ -91,16 +92,21 @@ is
 
    --  Group order n (Spec.P256.PointOps.fst :  order ).
    function Order_N_Spec return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Order_N_Spec'Result > Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Post   => Order_N_Spec'Result > Big.To_Big_Integer (0);
 
    --  Canonical residue mod n.
    function Spec_Mod_N (X : Big.Big_Integer) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range
-                  (Spec_Mod_N'Result,
-                   Big.To_Big_Integer (0),
-                   Order_N_Spec - Big.To_Big_Integer (1));
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Spec_Mod_N'Result,
+          Big.To_Big_Integer (0),
+          Order_N_Spec - Big.To_Big_Integer (1));
 
    --  Equivalence mod n.
    function Equiv_N_Spec (A, B : Big.Big_Integer) return Boolean
@@ -126,11 +132,14 @@ is
    with Ghost, Global => null;
 
    function Spec_Q_Inv (A : Big.Big_Integer) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range
-                  (Spec_Q_Inv'Result,
-                   Big.To_Big_Integer (0),
-                   Order_N_Spec - Big.To_Big_Integer (1));
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Spec_Q_Inv'Result,
+          Big.To_Big_Integer (0),
+          Order_N_Spec - Big.To_Big_Integer (1));
 
    ---------------------------------------------------------------------
    --  Public scalar operations with functional Posts.
@@ -149,10 +158,10 @@ is
    --              B4 clean).
    --  --------------------------------------------------------------
    procedure Add (A, B : Scalar; Out_C : out Scalar)
-   with Post =>
-     Equiv_N_Spec
-       (To_Big_Spec (Out_C),
-        Spec_Q_Add (To_Big_Spec (A), To_Big_Spec (B)));
+   with
+     Post =>
+       Equiv_N_Spec
+         (To_Big_Spec (Out_C), Spec_Q_Add (To_Big_Spec (A), To_Big_Spec (B)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Z_n subtraction.
@@ -161,10 +170,10 @@ is
    --                            Spec_Q_Sub (..., ...))
    --  --------------------------------------------------------------
    procedure Sub (A, B : Scalar; Out_C : out Scalar)
-   with Post =>
-     Equiv_N_Spec
-       (To_Big_Spec (Out_C),
-        Spec_Q_Sub (To_Big_Spec (A), To_Big_Spec (B)));
+   with
+     Post =>
+       Equiv_N_Spec
+         (To_Big_Spec (Out_C), Spec_Q_Sub (To_Big_Spec (A), To_Big_Spec (B)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Z_n multiplication.
@@ -176,10 +185,10 @@ is
    --                                        To_Big_Spec (B)))
    --  --------------------------------------------------------------
    procedure Mul (A, B : Scalar; Out_C : out Scalar)
-   with Post =>
-     Equiv_N_Spec
-       (To_Big_Spec (Out_C),
-        Spec_Q_Mul (To_Big_Spec (A), To_Big_Spec (B)));
+   with
+     Post =>
+       Equiv_N_Spec
+         (To_Big_Spec (Out_C), Spec_Q_Mul (To_Big_Spec (A), To_Big_Spec (B)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Z_n inversion via Fermat (a^(n-2) mod n).
@@ -191,12 +200,12 @@ is
    --              by A is congruent to 1 mod n.
    --  --------------------------------------------------------------
    procedure Invert (A : Scalar; Out_C : out Scalar)
-   with Post =>
-     (if not Equiv_N_Spec (To_Big_Spec (A), Big.To_Big_Integer (0))
-      then
-        Equiv_N_Spec
-          (To_Big_Spec (Out_C) * To_Big_Spec (A),
-           Big.To_Big_Integer (1)));
+   with
+     Post =>
+       (if not Equiv_N_Spec (To_Big_Spec (A), Big.To_Big_Integer (0))
+        then
+          Equiv_N_Spec
+            (To_Big_Spec (Out_C) * To_Big_Spec (A), Big.To_Big_Integer (1)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Single-step reduction mod n.
@@ -210,8 +219,7 @@ is
    --              (since n > 2^255 and the input is < 2^256 < 2*n).
    --  --------------------------------------------------------------
    procedure Reduce (A : Scalar; Out_C : out Scalar)
-   with Post =>
-     To_Big_Spec (Out_C) = Spec_Mod_N (To_Big_Spec (A));
+   with Post => To_Big_Spec (Out_C) = Spec_Mod_N (To_Big_Spec (A));
 
    --  True iff X = 0.
    function Is_Zero (X : Scalar) return Boolean;

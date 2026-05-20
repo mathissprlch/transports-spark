@@ -8,11 +8,11 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Record_Layer;
 
 package Tls_Core.Traffic_Keys_Aes128
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Aead_Key is Octet_Array (1 .. 16);
-   subtype Aead_Iv  is Tls_Core.Record_Layer.IV_Array;
+   subtype Aead_Iv is Tls_Core.Record_Layer.IV_Array;
 
    --  RFC 8446 §7.3 traffic-key derivation; functionally checked
    --  via end-to-end RFC 8448 vectors at the channel level.

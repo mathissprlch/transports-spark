@@ -1,5 +1,5 @@
 package body Tls_Core.Cert_Verify
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -12,35 +12,87 @@ is
    --  string, then a single 0x00 separator, then the transcript
    --  hash.
    Server_Prefix : constant Octet_Array (1 .. 33) :=
-     (16#54#, 16#4C#, 16#53#, 16#20#, 16#31#, 16#2E#, 16#33#, 16#2C#,
-      16#20#, 16#73#, 16#65#, 16#72#, 16#76#, 16#65#, 16#72#, 16#20#,
-      16#43#, 16#65#, 16#72#, 16#74#, 16#69#, 16#66#, 16#69#, 16#63#,
-      16#61#, 16#74#, 16#65#, 16#56#, 16#65#, 16#72#, 16#69#, 16#66#,
+     (16#54#,
+      16#4C#,
+      16#53#,
+      16#20#,
+      16#31#,
+      16#2E#,
+      16#33#,
+      16#2C#,
+      16#20#,
+      16#73#,
+      16#65#,
+      16#72#,
+      16#76#,
+      16#65#,
+      16#72#,
+      16#20#,
+      16#43#,
+      16#65#,
+      16#72#,
+      16#74#,
+      16#69#,
+      16#66#,
+      16#69#,
+      16#63#,
+      16#61#,
+      16#74#,
+      16#65#,
+      16#56#,
+      16#65#,
+      16#72#,
+      16#69#,
+      16#66#,
       16#79#);
    --  "TLS 1.3, server CertificateVerify"
 
    Client_Prefix : constant Octet_Array (1 .. 33) :=
-     (16#54#, 16#4C#, 16#53#, 16#20#, 16#31#, 16#2E#, 16#33#, 16#2C#,
-      16#20#, 16#63#, 16#6C#, 16#69#, 16#65#, 16#6E#, 16#74#, 16#20#,
-      16#43#, 16#65#, 16#72#, 16#74#, 16#69#, 16#66#, 16#69#, 16#63#,
-      16#61#, 16#74#, 16#65#, 16#56#, 16#65#, 16#72#, 16#69#, 16#66#,
+     (16#54#,
+      16#4C#,
+      16#53#,
+      16#20#,
+      16#31#,
+      16#2E#,
+      16#33#,
+      16#2C#,
+      16#20#,
+      16#63#,
+      16#6C#,
+      16#69#,
+      16#65#,
+      16#6E#,
+      16#74#,
+      16#20#,
+      16#43#,
+      16#65#,
+      16#72#,
+      16#74#,
+      16#69#,
+      16#66#,
+      16#69#,
+      16#63#,
+      16#61#,
+      16#74#,
+      16#65#,
+      16#56#,
+      16#65#,
+      16#72#,
+      16#69#,
+      16#66#,
       16#79#);
    --  "TLS 1.3, client CertificateVerify"
 
    procedure Put_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      V       : Unsigned_16)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; V : Unsigned_16)
    with
-     Pre =>
+     Pre  =>
        Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 16
        and then Cursor <= Out_Buf'Length - 2,
      Post => Cursor = Cursor'Old + 2;
    procedure Put_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      V       : Unsigned_16)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; V : Unsigned_16)
    is
    begin
       Out_Buf (Cursor + 1) := Octet (Shift_Right (V, 8) and 16#FF#);
@@ -49,21 +101,16 @@ is
    end Put_U16;
 
    procedure Put_U24
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      V       : Natural)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; V : Natural)
    with
-     Pre =>
+     Pre  =>
        Out_Buf'First = 1
        and then V in 0 .. 16#FFFFFF#
        and then Out_Buf'Last < Integer'Last - 16
        and then Cursor <= Out_Buf'Length - 3,
      Post => Cursor = Cursor'Old + 3;
    procedure Put_U24
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      V       : Natural)
-   is
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; V : Natural) is
    begin
       Out_Buf (Cursor + 1) := Octet ((V / 16#10000#) mod 256);
       Out_Buf (Cursor + 2) := Octet ((V / 16#100#) mod 256);
@@ -137,8 +184,7 @@ is
        and then Out_Buf'First = 1
        and then Out_Buf'Last <= Integer'Last - 35
        and then Cursor in 0 .. Out_Buf'Length - 35,
-     Post =>
-       Cursor in Cursor'Old + 3 .. Cursor'Old + 35;
+     Post => Cursor in Cursor'Old + 3 .. Cursor'Old + 35;
 
    procedure Append_Der_Integer
      (Value   : Octet_Array;
@@ -147,9 +193,7 @@ is
    is separate;
 
    procedure Encode_Ecdsa_Sig_Der
-     (R, S     : Octet_Array;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (R, S : Octet_Array; Out_Buf : out Octet_Array; Out_Last : out Natural)
    is separate;
 
 end Tls_Core.Cert_Verify;

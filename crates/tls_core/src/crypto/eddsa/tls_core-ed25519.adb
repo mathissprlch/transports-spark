@@ -3,8 +3,7 @@ with Interfaces;
 with Tls_Core.Field25519;
 with Tls_Core.Sha512;
 
-package body Tls_Core.Ed25519
-is
+package body Tls_Core.Ed25519 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
@@ -19,17 +18,41 @@ is
 
    --  d in 16 × 16-bit limbs, little-endian (low limb first).
    D_Felt : constant Felt :=
-     (16#78A3#, 16#1359#, 16#4DCA#, 16#75EB#,
-      16#D8AB#, 16#4141#, 16#0A4D#, 16#0070#,
-      16#E898#, 16#7779#, 16#4079#, 16#8CC7#,
-      16#FE73#, 16#2B6F#, 16#6CEE#, 16#5203#);
+     (16#78A3#,
+      16#1359#,
+      16#4DCA#,
+      16#75EB#,
+      16#D8AB#,
+      16#4141#,
+      16#0A4D#,
+      16#0070#,
+      16#E898#,
+      16#7779#,
+      16#4079#,
+      16#8CC7#,
+      16#FE73#,
+      16#2B6F#,
+      16#6CEE#,
+      16#5203#);
 
    --  2 * d.
    D2_Felt : constant Felt :=
-     (16#F159#, 16#26B2#, 16#9B94#, 16#EBD6#,
-      16#B156#, 16#8283#, 16#149A#, 16#00E0#,
-      16#D130#, 16#EEF3#, 16#80F2#, 16#198E#,
-      16#FCE7#, 16#56DF#, 16#D9DC#, 16#2406#);
+     (16#F159#,
+      16#26B2#,
+      16#9B94#,
+      16#EBD6#,
+      16#B156#,
+      16#8283#,
+      16#149A#,
+      16#00E0#,
+      16#D130#,
+      16#EEF3#,
+      16#80F2#,
+      16#198E#,
+      16#FCE7#,
+      16#56DF#,
+      16#D9DC#,
+      16#2406#);
 
    --  Curve order L = 2^252 + 27742317777372353535851937790883648493
    --  is held inside Mod_L_Pkg below as L_Bytes_S so it can sit
@@ -49,8 +72,10 @@ is
    procedure Set_Identity (P : out Point) is
    begin
       P.X := (others => 0);
-      P.Y := (others => 0); P.Y (0) := 1;
-      P.Z := (others => 0); P.Z (0) := 1;
+      P.Y := (others => 0);
+      P.Y (0) := 1;
+      P.Z := (others => 0);
+      P.Z (0) := 1;
       P.T := (others => 0);
    end Set_Identity;
 
@@ -59,16 +84,40 @@ is
    --  hardcoded constant that could drift from X*Y.
 
    Bx : constant Felt :=
-     (16#D51A#, 16#8F25#, 16#2D60#, 16#C956#,
-      16#A7B2#, 16#9525#, 16#C760#, 16#692C#,
-      16#DC5C#, 16#FDD6#, 16#E231#, 16#C0A4#,
-      16#53FE#, 16#CD6E#, 16#36D3#, 16#2169#);
+     (16#D51A#,
+      16#8F25#,
+      16#2D60#,
+      16#C956#,
+      16#A7B2#,
+      16#9525#,
+      16#C760#,
+      16#692C#,
+      16#DC5C#,
+      16#FDD6#,
+      16#E231#,
+      16#C0A4#,
+      16#53FE#,
+      16#CD6E#,
+      16#36D3#,
+      16#2169#);
 
    By : constant Felt :=
-     (16#6658#, 16#6666#, 16#6666#, 16#6666#,
-      16#6666#, 16#6666#, 16#6666#, 16#6666#,
-      16#6666#, 16#6666#, 16#6666#, 16#6666#,
-      16#6666#, 16#6666#, 16#6666#, 16#6666#);
+     (16#6658#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#,
+      16#6666#);
 
    procedure Get_Base_Point (P : out Point);
    procedure Get_Base_Point (P : out Point) is
@@ -93,7 +142,7 @@ is
    procedure Point_Add (R : out Point; P, Q : Point) is
       Aval, Bval, Cval, Dval : Felt;
       Eval, Fval, Gval, Hval : Felt;
-      T1, T2 : Felt;
+      T1, T2                 : Felt;
    begin
       F_Sub (T1, P.Y, P.X);
       F_Sub (T2, Q.Y, Q.X);
@@ -127,13 +176,9 @@ is
    ---------------------------------------------------------------------
 
    procedure Scalar_Mult_Bytes
-     (R       : out Point;
-      Scalar  : Octet_Array;
-      Base    : Point);
+     (R : out Point; Scalar : Octet_Array; Base : Point);
    procedure Scalar_Mult_Bytes
-     (R       : out Point;
-      Scalar  : Octet_Array;
-      Base    : Point)
+     (R : out Point; Scalar : Octet_Array; Base : Point)
    is
       Acc, Tmp, Cur : Point;
    begin
@@ -143,8 +188,7 @@ is
          declare
             Byte : constant Integer_64 :=
               Integer_64 (Scalar (Scalar'First + I / 8));
-            Bit  : constant Integer_64 :=
-              And_64 (Asr (Byte, I mod 8), 1);
+            Bit  : constant Integer_64 := And_64 (Asr (Byte, I mod 8), 1);
          begin
             if Bit = 1 then
                Point_Add (Tmp, Acc, Cur);
@@ -169,7 +213,7 @@ is
    procedure Encode_Point (Out_Bytes : out Bytes_32; P : Point);
    procedure Encode_Point (Out_Bytes : out Bytes_32; P : Point) is
       Z_Inv, X_Aff, Y_Aff : Felt;
-      Sign_Bit : Integer_64;
+      Sign_Bit            : Integer_64;
    begin
       F_Inv (Z_Inv, P.Z);
       F_Mul (X_Aff, P.X, Z_Inv);
@@ -208,25 +252,33 @@ is
    end Felt_Eq;
 
    procedure Decode_Point
-     (P  : out Point;
-      In_Bytes : Bytes_32;
-      OK : out Boolean);
+     (P : out Point; In_Bytes : Bytes_32; OK : out Boolean);
    procedure Decode_Point
-     (P  : out Point;
-      In_Bytes : Bytes_32;
-      OK : out Boolean)
+     (P : out Point; In_Bytes : Bytes_32; OK : out Boolean)
    is
-      One        : constant Felt := (1, others => 0);
-      I_Sqrt_M1  : constant Felt :=
-        --  sqrt(-1) mod p — TweetNaCl's `gf I` constant.
-        (16#A0B0#, 16#4A0E#, 16#1B27#, 16#C4EE#,
-         16#E478#, 16#AD2F#, 16#1806#, 16#2F43#,
-         16#D7A7#, 16#3DFB#, 16#0099#, 16#2B4D#,
-         16#DF0B#, 16#4FC1#, 16#2480#, 16#2B83#);
+      One                               : constant Felt := (1, others => 0);
+      I_Sqrt_M1                         : constant Felt :=
+      --  sqrt(-1) mod p — TweetNaCl's `gf I` constant.
+        (16#A0B0#,
+         16#4A0E#,
+         16#1B27#,
+         16#C4EE#,
+         16#E478#,
+         16#AD2F#,
+         16#1806#,
+         16#2F43#,
+         16#D7A7#,
+         16#3DFB#,
+         16#0099#,
+         16#2B4D#,
+         16#DF0B#,
+         16#4FC1#,
+         16#2480#,
+         16#2B83#);
       Y, Y2, Num, Den, Den2, Den4, Den6 : Felt;
-      T1, X_Cand, Chk, Tmp, Negated : Felt;
-      Local_In : Bytes_32 := In_Bytes;
-      Sign_Bit : constant Integer_64 :=
+      T1, X_Cand, Chk, Tmp, Negated     : Felt;
+      Local_In                          : Bytes_32 := In_Bytes;
+      Sign_Bit                          : constant Integer_64 :=
         And_64 (Asr (Integer_64 (In_Bytes (32)), 7), 1);
    begin
       Local_In (32) := Local_In (32) and 16#7F#;
@@ -234,33 +286,42 @@ is
       P.Y := Y;
       P.Z := One;
       --  num = y^2 - 1, den = d*y^2 + 1.
-      F_Sqr  (Y2,  Y);
-      F_Mul  (Den, Y2, D_Felt);
-      F_Sub  (Num, Y2, One);
-      F_Add  (Tmp, One, Den); Den := Tmp;
+      F_Sqr (Y2, Y);
+      F_Mul (Den, Y2, D_Felt);
+      F_Sub (Num, Y2, One);
+      F_Add (Tmp, One, Den);
+      Den := Tmp;
       --  den^2, den^4, den^6.
       F_Sqr (Den2, Den);
       F_Sqr (Den4, Den2);
       F_Mul (Den6, Den4, Den2);
       --  t = num * den^7.
-      F_Mul (T1,  Num, Den6);
-      F_Mul (Tmp, T1,  Den); T1 := Tmp;
+      F_Mul (T1, Num, Den6);
+      F_Mul (Tmp, T1, Den);
+      T1 := Tmp;
       --  t = t^((p-5)/8).
-      Pow_2523 (Tmp, T1); T1 := Tmp;
+      Pow_2523 (Tmp, T1);
+      T1 := Tmp;
       --  x_cand = t * num * den^3.
-      F_Mul (Tmp, T1,    Num);  T1 := Tmp;
-      F_Mul (Tmp, T1,    Den);  T1 := Tmp;
-      F_Mul (Tmp, T1,    Den);  T1 := Tmp;
+      F_Mul (Tmp, T1, Num);
+      T1 := Tmp;
+      F_Mul (Tmp, T1, Den);
+      T1 := Tmp;
+      F_Mul (Tmp, T1, Den);
+      T1 := Tmp;
       F_Mul (X_Cand, T1, Den);
       --  Check: x_cand^2 * den == num? If not, multiply by sqrt(-1).
       F_Sqr (Chk, X_Cand);
-      F_Mul (Tmp, Chk, Den); Chk := Tmp;
+      F_Mul (Tmp, Chk, Den);
+      Chk := Tmp;
       if not Felt_Eq (Chk, Num) then
-         F_Mul (Tmp, X_Cand, I_Sqrt_M1); X_Cand := Tmp;
+         F_Mul (Tmp, X_Cand, I_Sqrt_M1);
+         X_Cand := Tmp;
       end if;
       --  Re-check after possible sqrt(-1) multiply.
       F_Sqr (Chk, X_Cand);
-      F_Mul (Tmp, Chk, Den); Chk := Tmp;
+      F_Mul (Tmp, Chk, Den);
+      Chk := Tmp;
       if not Felt_Eq (Chk, Num) then
          OK := False;
          Set_Identity (P);
@@ -320,33 +381,33 @@ is
    --  by 32 cross terms of 255*255 plus 255 < 2**21.  Verify
    --  path feeds bytes 0..255, well within 2**21.  Lower bound
    --  is 0: every contribution is non-negative.
-   X_Limb_Bound : constant := 2 ** 21;
+   X_Limb_Bound : constant := 2**21;
 
-   package Mod_L_Pkg with SPARK_Mode => On is
+   package Mod_L_Pkg
+     with SPARK_Mode => On
+   is
 
-      procedure Mod_L_Core
-        (Out_Bytes : out Bytes_32;
-         X         : X64_Array)
-      with
-        Pre =>
-          (for all K in X64 => X (K) in 0 .. X_Limb_Bound);
+      procedure Mod_L_Core (Out_Bytes : out Bytes_32; X : X64_Array)
+      with Pre => (for all K in X64 => X (K) in 0 .. X_Limb_Bound);
 
    end Mod_L_Pkg;
 
-   package body Mod_L_Pkg with SPARK_Mode => On is
+   package body Mod_L_Pkg
+     with SPARK_Mode => On
+   is
 
-      subtype U64  is Interfaces.Unsigned_64;
+      subtype U64 is Interfaces.Unsigned_64;
       subtype U128 is Interfaces.Unsigned_128;
 
       --  56-bit limb (HACL Hacl.Spec.BignumQ.Definitions.qelem5).
-      Pow56 : constant := 2 ** 56;
+      Pow56 : constant := 2**56;
       subtype Limb is U64 range 0 .. Pow56 - 1;
 
       --  5-limb representation (560/2 bits but only 280 used; the
       --  top limb in HACL is further restricted to 32 bits when
       --  storing, but here we keep the full 56 for arithmetic
       --  intermediates).
-      type Qelem      is array (0 .. 4) of Limb;
+      type Qelem is array (0 .. 4) of Limb;
       type Qelem_Wide is array (0 .. 9) of Limb;
 
       --  Curve order L = 2^252 + 27742317777372353535851937790883648493
@@ -368,7 +429,7 @@ is
          16#0000_000F_FFFF_FFFF#);
 
       Mask56 : constant U64 := Pow56 - 1;
-      Mask40 : constant U64 := 2 ** 40 - 1;
+      Mask40 : constant U64 := 2**40 - 1;
 
       ---------------------------------------------------------------
       --  Step 1: carry-propagate X (each limb 0..2**21) into 64
@@ -386,25 +447,19 @@ is
 
       type Bytes_64 is array (0 .. 63) of U64;
 
-      procedure Carry_Propagate_64
-        (X    : X64_Array;
-         B    : out Bytes_64)
+      procedure Carry_Propagate_64 (X : X64_Array; B : out Bytes_64)
       with
         Pre  => (for all K in X64 => X (K) in 0 .. X_Limb_Bound),
         Post => (for all K in 0 .. 63 => B (K) <= 255);
 
-      procedure Carry_Propagate_64
-        (X    : X64_Array;
-         B    : out Bytes_64)
-      is
+      procedure Carry_Propagate_64 (X : X64_Array; B : out Bytes_64) is
          C : Integer_64 := 0;  --  running carry
          V : Integer_64;
       begin
          B := (others => 0);
          for I in 0 .. 63 loop
             pragma Loop_Invariant (C in 0 .. X_Limb_Bound);
-            pragma Loop_Invariant
-              (for all K in 0 .. I - 1 => B (K) <= 255);
+            pragma Loop_Invariant (for all K in 0 .. I - 1 => B (K) <= 255);
 
             V := X (I) + C;
             --  V <= X_Limb_Bound + X_Limb_Bound = 2 * 2**21 = 2**22.
@@ -412,13 +467,13 @@ is
             B (I) := U64 (V - C * 256);
             --  V - C*256 = V mod 256, in 0..255.
          end loop;
-         --  C may be nonzero in pathological inputs whose total
-         --  value > 2^512; we discard it, which is sound because
-         --  the only effect is the input wraps mod 2^512, but
-         --  our actual inputs (Sign's r + k*a, Verify's hash) are
-         --  always < 2^512 so C = 0 in practice.  No proof of that
-         --  property is needed; the per-byte bound is what matters
-         --  and is delivered unconditionally.
+      --  C may be nonzero in pathological inputs whose total
+      --  value > 2^512; we discard it, which is sound because
+      --  the only effect is the input wraps mod 2^512, but
+      --  our actual inputs (Sign's r + k*a, Verify's hash) are
+      --  always < 2^512 so C = 0 in practice.  No proof of that
+      --  property is needed; the per-byte bound is what matters
+      --  and is delivered unconditionally.
       end Carry_Propagate_64;
 
       ---------------------------------------------------------------
@@ -438,7 +493,7 @@ is
       begin
          --  Combine 7 bytes; result fits in 56 bits.
          R := B (Off);
-         R := R + Interfaces.Shift_Left (B (Off + 1),  8);
+         R := R + Interfaces.Shift_Left (B (Off + 1), 8);
          R := R + Interfaces.Shift_Left (B (Off + 2), 16);
          R := R + Interfaces.Shift_Left (B (Off + 3), 24);
          R := R + Interfaces.Shift_Left (B (Off + 4), 32);
@@ -448,21 +503,21 @@ is
       end Load_56_LE;
 
       procedure Load_64_Bytes (B : Bytes_64; W : out Qelem_Wide)
-      with
-        Pre  => (for all K in 0 .. 63 => B (K) <= 255);
+      with Pre => (for all K in 0 .. 63 => B (K) <= 255);
 
       procedure Load_64_Bytes (B : Bytes_64; W : out Qelem_Wide) is
       begin
-         W := (Load_56_LE (B,  0),
-               Load_56_LE (B,  7),
-               Load_56_LE (B, 14),
-               Load_56_LE (B, 21),
-               Load_56_LE (B, 28),
-               Load_56_LE (B, 35),
-               Load_56_LE (B, 42),
-               Load_56_LE (B, 49),
-               Load_56_LE (B, 56),
-               B (63));        --  one byte (input is 64 bytes total)
+         W :=
+           (Load_56_LE (B, 0),
+            Load_56_LE (B, 7),
+            Load_56_LE (B, 14),
+            Load_56_LE (B, 21),
+            Load_56_LE (B, 28),
+            Load_56_LE (B, 35),
+            Load_56_LE (B, 42),
+            Load_56_LE (B, 49),
+            Load_56_LE (B, 56),
+            B (63));        --  one byte (input is 64 bytes total)
       end Load_64_Bytes;
 
       ---------------------------------------------------------------
@@ -476,8 +531,7 @@ is
       ---------------------------------------------------------------
 
       function Div_2_24_Step (X, Y : Limb) return Limb
-      with
-        Post => Div_2_24_Step'Result <= Mask56;
+      with Post => Div_2_24_Step'Result <= Mask56;
 
       function Div_2_24_Step (X, Y : Limb) return Limb is
          X_Shr : constant U64 := Interfaces.Shift_Right (X, 24);
@@ -494,11 +548,12 @@ is
 
       procedure Div_248 (W : Qelem_Wide; Q : out Qelem) is
       begin
-         Q := (Div_2_24_Step (W (4), W (5)),
-               Div_2_24_Step (W (5), W (6)),
-               Div_2_24_Step (W (6), W (7)),
-               Div_2_24_Step (W (7), W (8)),
-               Div_2_24_Step (W (8), W (9)));
+         Q :=
+           (Div_2_24_Step (W (4), W (5)),
+            Div_2_24_Step (W (5), W (6)),
+            Div_2_24_Step (W (6), W (7)),
+            Div_2_24_Step (W (7), W (8)),
+            Div_2_24_Step (W (8), W (9)));
       end Div_248;
 
       ---------------------------------------------------------------
@@ -511,9 +566,7 @@ is
       ---------------------------------------------------------------
 
       procedure Carry_Wide (X : U128; T : out Limb; C : out U128)
-      with
-        Post => C = X / U128 (Pow56)
-                and then T <= Mask56;
+      with Post => C = X / U128 (Pow56) and then T <= Mask56;
 
       procedure Carry_Wide (X : U128; T : out Limb; C : out U128) is
       begin
@@ -530,7 +583,7 @@ is
 
          function P (I, J : Natural) return U128
          with
-           Pre => I in 0 .. 4 and then J in 0 .. 4,
+           Pre  => I in 0 .. 4 and then J in 0 .. 4,
            Post => P'Result <= U128 ((Pow56 - 1) * (Pow56 - 1));
 
          function P (I, J : Natural) return U128 is
@@ -540,23 +593,23 @@ is
 
          Z0, Z1, Z2, Z3, Z4, Z5, Z6, Z7, Z8 : U128;
          T0, T1, T2, T3, T4, T5, T6, T7, T8 : Limb;
-         C : U128;
+         C                                  : U128;
       begin
          Z0 := P (0, 0);
          Z1 := P (0, 1) + P (1, 0);
          Z2 := P (0, 2) + P (1, 1) + P (2, 0);
          Z3 := P (0, 3) + P (1, 2) + P (2, 1) + P (3, 0);
          Z4 := P (0, 4) + P (1, 3) + P (2, 2) + P (3, 1) + P (4, 0);
-         Z5 :=            P (1, 4) + P (2, 3) + P (3, 2) + P (4, 1);
-         Z6 :=                       P (2, 4) + P (3, 3) + P (4, 2);
-         Z7 :=                                  P (3, 4) + P (4, 3);
-         Z8 :=                                             P (4, 4);
+         Z5 := P (1, 4) + P (2, 3) + P (3, 2) + P (4, 1);
+         Z6 := P (2, 4) + P (3, 3) + P (4, 2);
+         Z7 := P (3, 4) + P (4, 3);
+         Z8 := P (4, 4);
 
          --  Carry chain (Hacl mul_5 does this with carry56_wide /
          --  add_inner_carry).  After each step T_i is the next
          --  output limb (in 0..Mask56) and C is the carry to fold
          --  into the next column.
-         Carry_Wide (Z0,     T0, C);
+         Carry_Wide (Z0, T0, C);
          Carry_Wide (Z1 + C, T1, C);
          Carry_Wide (Z2 + C, T2, C);
          Carry_Wide (Z3 + C, T3, C);
@@ -567,8 +620,7 @@ is
          Carry_Wide (Z8 + C, T8, C);
          --  C now holds the residual at bit position 504+; for our
          --  Barrett input space (input < 2^512) it fits in 56 bits.
-         Z := (T0, T1, T2, T3, T4, T5, T6, T7, T8,
-               U64 (C and U128 (Mask56)));
+         Z := (T0, T1, T2, T3, T4, T5, T6, T7, T8, U64 (C and U128 (Mask56)));
       end Mul_5_Wide;
 
       ---------------------------------------------------------------
@@ -577,8 +629,7 @@ is
       ---------------------------------------------------------------
 
       function Div_2_40_Step (X, Y : Limb) return Limb
-      with
-        Post => Div_2_40_Step'Result <= Mask56;
+      with Post => Div_2_40_Step'Result <= Mask56;
 
       function Div_2_40_Step (X, Y : Limb) return Limb is
          X_Shr : constant U64 := Interfaces.Shift_Right (X, 40);
@@ -592,11 +643,12 @@ is
 
       procedure Div_264 (W : Qelem_Wide; Q : out Qelem) is
       begin
-         Q := (Div_2_40_Step (W (4), W (5)),
-               Div_2_40_Step (W (5), W (6)),
-               Div_2_40_Step (W (6), W (7)),
-               Div_2_40_Step (W (7), W (8)),
-               Div_2_40_Step (W (8), W (9)));
+         Q :=
+           (Div_2_40_Step (W (4), W (5)),
+            Div_2_40_Step (W (5), W (6)),
+            Div_2_40_Step (W (6), W (7)),
+            Div_2_40_Step (W (7), W (8)),
+            Div_2_40_Step (W (8), W (9)));
       end Div_264;
 
       ---------------------------------------------------------------
@@ -606,8 +658,7 @@ is
       ---------------------------------------------------------------
 
       procedure Mod_264 (W : Qelem_Wide; R : out Qelem)
-      with
-        Post => R (4) <= Mask40;
+      with Post => R (4) <= Mask40;
 
       procedure Mod_264 (W : Qelem_Wide; R : out Qelem) is
       begin
@@ -622,13 +673,12 @@ is
       ---------------------------------------------------------------
 
       procedure Low_Mul_5 (X, Y : Qelem; R : out Qelem)
-      with
-        Post => R (4) <= Mask40;
+      with Post => R (4) <= Mask40;
 
       procedure Low_Mul_5 (X, Y : Qelem; R : out Qelem) is
          function P (I, J : Natural) return U128
          with
-           Pre => I in 0 .. 4 and then J in 0 .. 4,
+           Pre  => I in 0 .. 4 and then J in 0 .. 4,
            Post => P'Result <= U128 ((Pow56 - 1) * (Pow56 - 1));
 
          function P (I, J : Natural) return U128 is
@@ -637,8 +687,8 @@ is
          end P;
 
          W0, W1, W2, W3, W4 : U128;
-         R0, R1, R2, R3 : Limb;
-         C  : U128;
+         R0, R1, R2, R3     : Limb;
+         C                  : U128;
       begin
          W0 := P (0, 0);
          W1 := P (0, 1) + P (1, 0);
@@ -646,7 +696,7 @@ is
          W3 := P (0, 3) + P (1, 2) + P (2, 1) + P (3, 0);
          W4 := P (0, 4) + P (1, 3) + P (2, 2) + P (3, 1) + P (4, 0);
 
-         Carry_Wide (W0,     R0, C);
+         Carry_Wide (W0, R0, C);
          Carry_Wide (W1 + C, R1, C);
          Carry_Wide (W2 + C, R2, C);
          Carry_Wide (W3 + C, R3, C);
@@ -664,14 +714,13 @@ is
       --  is exact because the running borrow is in {0, 1}.
       ---------------------------------------------------------------
 
-      procedure Subm_Step (X, Y : Limb; B_In : Limb;
-                           T : out Limb; B_Out : out Limb)
-      with
-        Pre  => B_In <= 1,
-        Post => B_Out <= 1 and then T <= Mask56;
+      procedure Subm_Step
+        (X, Y : Limb; B_In : Limb; T : out Limb; B_Out : out Limb)
+      with Pre => B_In <= 1, Post => B_Out <= 1 and then T <= Mask56;
 
-      procedure Subm_Step (X, Y : Limb; B_In : Limb;
-                           T : out Limb; B_Out : out Limb) is
+      procedure Subm_Step
+        (X, Y : Limb; B_In : Limb; T : out Limb; B_Out : out Limb)
+      is
          Y_Plus : constant U64 := Y + B_In;  --  ≤ Mask56 + 1 ≤ 2^56
          D      : constant U64 := X - Y_Plus;  --  modular sub
       begin
@@ -679,16 +728,15 @@ is
          T := (D + Interfaces.Shift_Left (B_Out, 56)) and Mask56;
       end Subm_Step;
 
-      procedure Subm_Last_Step (X, Y : Limb; B_In : Limb;
-                                T : out Limb; B_Out : out Limb)
+      procedure Subm_Last_Step
+        (X, Y : Limb; B_In : Limb; T : out Limb; B_Out : out Limb)
       with
-        Pre  => B_In <= 1
-                and then X <= Mask40
-                and then Y <= Mask40,
+        Pre  => B_In <= 1 and then X <= Mask40 and then Y <= Mask40,
         Post => B_Out <= 1 and then T <= Mask40;
 
-      procedure Subm_Last_Step (X, Y : Limb; B_In : Limb;
-                                T : out Limb; B_Out : out Limb) is
+      procedure Subm_Last_Step
+        (X, Y : Limb; B_In : Limb; T : out Limb; B_Out : out Limb)
+      is
          Y_Plus : constant U64 := Y + B_In;
          D      : constant U64 := X - Y_Plus;
       begin
@@ -697,17 +745,16 @@ is
       end Subm_Last_Step;
 
       procedure Sub_Mod_264 (R, Q : Qelem; S : out Qelem)
-      with
-        Pre => R (4) <= Mask40 and then Q (4) <= Mask40;
+      with Pre => R (4) <= Mask40 and then Q (4) <= Mask40;
 
       procedure Sub_Mod_264 (R, Q : Qelem; S : out Qelem) is
          B0, B1, B2, B3, B4 : Limb;
          T0, T1, T2, T3, T4 : Limb;
       begin
-         Subm_Step      (R (0), Q (0), 0,  T0, B0);
-         Subm_Step      (R (1), Q (1), B0, T1, B1);
-         Subm_Step      (R (2), Q (2), B1, T2, B2);
-         Subm_Step      (R (3), Q (3), B2, T3, B3);
+         Subm_Step (R (0), Q (0), 0, T0, B0);
+         Subm_Step (R (1), Q (1), B0, T1, B1);
+         Subm_Step (R (2), Q (2), B1, T2, B2);
+         Subm_Step (R (3), Q (3), B2, T3, B3);
          Subm_Last_Step (R (4), Q (4), B3, T4, B4);
          pragma Unreferenced (B4);
          S := (T0, T1, T2, T3, T4);
@@ -724,12 +771,15 @@ is
          Y0, Y1, Y2, Y3, Y4 : Limb;
          T0, T1, T2, T3, T4 : Limb;
          B0, B1, B2, B3, B4 : Limb;
-         Mask : U64;
+         Mask               : U64;
       begin
-         Y0 := Make_M (0); Y1 := Make_M (1); Y2 := Make_M (2);
-         Y3 := Make_M (3); Y4 := Make_M (4);
+         Y0 := Make_M (0);
+         Y1 := Make_M (1);
+         Y2 := Make_M (2);
+         Y3 := Make_M (3);
+         Y4 := Make_M (4);
 
-         Subm_Step (S (0), Y0,  0, T0, B0);
+         Subm_Step (S (0), Y0, 0, T0, B0);
          Subm_Step (S (1), Y1, B0, T1, B1);
          Subm_Step (S (2), Y2, B1, T2, B2);
          Subm_Step (S (3), Y3, B2, T3, B3);
@@ -754,15 +804,13 @@ is
       --     bytes[28..31] = limb 4 low 32 bits
       ---------------------------------------------------------------
 
-      procedure Store_56_LE (B : in out Bytes_32;
-                             Off : Positive;
-                             Limb_Val : Limb)
-      with
-        Pre => Off in 1 .. 26;
+      procedure Store_56_LE
+        (B : in out Bytes_32; Off : Positive; Limb_Val : Limb)
+      with Pre => Off in 1 .. 26;
 
-      procedure Store_56_LE (B : in out Bytes_32;
-                             Off : Positive;
-                             Limb_Val : Limb) is
+      procedure Store_56_LE
+        (B : in out Bytes_32; Off : Positive; Limb_Val : Limb)
+      is
          V : U64 := Limb_Val;
       begin
          for K in 0 .. 6 loop
@@ -778,8 +826,8 @@ is
          V : U64;
       begin
          Out_Bytes := (others => 0);
-         Store_56_LE (Out_Bytes,  1, S (0));
-         Store_56_LE (Out_Bytes,  8, S (1));
+         Store_56_LE (Out_Bytes, 1, S (0));
+         Store_56_LE (Out_Bytes, 8, S (1));
          Store_56_LE (Out_Bytes, 15, S (2));
          Store_56_LE (Out_Bytes, 22, S (3));
          --  Limb 4 is canonically ≤ 2^32 - 1 after final reduction
@@ -799,10 +847,7 @@ is
       --  Mod_L_Core
       ---------------------------------------------------------------
 
-      procedure Mod_L_Core
-        (Out_Bytes : out Bytes_32;
-         X         : X64_Array)
-      is
+      procedure Mod_L_Core (Out_Bytes : out Bytes_32; X : X64_Array) is
          B    : Bytes_64;
          W    : Qelem_Wide;
          Q    : Qelem;
@@ -848,16 +893,14 @@ is
    ---------------------------------------------------------------------
 
    function Verify
-     (Public_Key : Bytes_32;
-      Message    : Octet_Array;
-      Sig        : Signature)
+     (Public_Key : Bytes_32; Message : Octet_Array; Sig : Signature)
       return Boolean
    is
       R_Bytes : constant Bytes_32 := Sig (1 .. 32);
       S_Bytes : constant Bytes_32 := Sig (33 .. 64);
 
       A_Point, R_Point, Lhs, Rhs, Tmp_P : Point;
-      A_OK, R_OK : Boolean;
+      A_OK, R_OK                        : Boolean;
 
       Hash_Buf : Tls_Core.Sha512.Digest;
       K_Bytes  : Bytes_32;
@@ -924,13 +967,9 @@ is
    ---------------------------------------------------------------------
 
    procedure Seed_To_Scalar_And_Prefix
-     (Seed   : Bytes_32;
-      A_Out  : out Bytes_32;
-      Prefix : out Bytes_32);
+     (Seed : Bytes_32; A_Out : out Bytes_32; Prefix : out Bytes_32);
    procedure Seed_To_Scalar_And_Prefix
-     (Seed   : Bytes_32;
-      A_Out  : out Bytes_32;
-      Prefix : out Bytes_32)
+     (Seed : Bytes_32; A_Out : out Bytes_32; Prefix : out Bytes_32)
    is
       H : Tls_Core.Sha512.Digest;
    begin
@@ -945,13 +984,10 @@ is
    --  Public_Of_Seed — A = encode([a]B).
    ---------------------------------------------------------------------
 
-   procedure Public_Of_Seed
-     (Seed       : Bytes_32;
-      Out_Public : out Bytes_32)
-   is
-      A : Bytes_32;
+   procedure Public_Of_Seed (Seed : Bytes_32; Out_Public : out Bytes_32) is
+      A      : Bytes_32;
       Prefix : Bytes_32;
-      B, P : Point;
+      B, P   : Point;
    begin
       Seed_To_Scalar_And_Prefix (Seed, A, Prefix);
       Get_Base_Point (B);
@@ -964,9 +1000,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Sign
-     (Seed    : Bytes_32;
-      Message : Octet_Array;
-      Out_Sig : out Signature)
+     (Seed : Bytes_32; Message : Octet_Array; Out_Sig : out Signature)
    is
       A_Bytes : Bytes_32;
       Prefix  : Bytes_32;
@@ -981,10 +1015,10 @@ is
       K_Hash  : Tls_Core.Sha512.Digest;
       K_Bytes : Bytes_32;
 
-      X       : X64_Array := (others => 0);
-      S_Out   : Bytes_32;
+      X     : X64_Array := (others => 0);
+      S_Out : Bytes_32;
 
-      Ctx     : Tls_Core.Sha512.Context;
+      Ctx : Tls_Core.Sha512.Context;
    begin
       Out_Sig := (others => 0);
 

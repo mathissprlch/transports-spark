@@ -29,7 +29,7 @@ with Interfaces;
 with Tls_Core.Cert;
 
 package Tls_Core.Cert_Chain
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -123,22 +123,21 @@ is
       Result      : out Validation_Result;
       Leaf_Parsed : out Tls_Core.Cert.Parsed_Cert)
    with
-     Pre  =>
+     Pre =>
        All_Certs'First = 1
        and then All_Certs'Length >= 16
        and then All_Certs'Last < Integer'Last - 16
        and then Chain_In.Count in 1 .. Max_Chain_Depth
        and then Trust.Count in 0 .. Max_Trust_Roots
        and then (for all I in 1 .. Chain_In.Count =>
-                    Chain_In.Entries (I).First in All_Certs'Range
-                    and then Chain_In.Entries (I).Last in All_Certs'Range
-                    and then Chain_In.Entries (I).First
-                             <= Chain_In.Entries (I).Last)
+                   Chain_In.Entries (I).First in All_Certs'Range
+                   and then Chain_In.Entries (I).Last in All_Certs'Range
+                   and then Chain_In.Entries (I).First
+                            <= Chain_In.Entries (I).Last)
        and then (for all I in 1 .. Trust.Count =>
-                    Trust.Entries (I).First in All_Certs'Range
-                    and then Trust.Entries (I).Last in All_Certs'Range
-                    and then Trust.Entries (I).First
-                             <= Trust.Entries (I).Last);
+                   Trust.Entries (I).First in All_Certs'Range
+                   and then Trust.Entries (I).Last in All_Certs'Range
+                   and then Trust.Entries (I).First <= Trust.Entries (I).Last);
 
    ---------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Verify a TLS 1.3 CertificateVerify signature
@@ -230,15 +229,14 @@ is
        and then Chain_In.Count in 1 .. Max_Chain_Depth
        and then Trust.Count in 0 .. Max_Trust_Roots
        and then (for all I in 1 .. Chain_In.Count =>
-                    Chain_In.Entries (I).First in All_Certs'Range
-                    and then Chain_In.Entries (I).Last in All_Certs'Range
-                    and then Chain_In.Entries (I).First
-                             <= Chain_In.Entries (I).Last)
+                   Chain_In.Entries (I).First in All_Certs'Range
+                   and then Chain_In.Entries (I).Last in All_Certs'Range
+                   and then Chain_In.Entries (I).First
+                            <= Chain_In.Entries (I).Last)
        and then (for all I in 1 .. Trust.Count =>
-                    Trust.Entries (I).First in All_Certs'Range
-                    and then Trust.Entries (I).Last in All_Certs'Range
-                    and then Trust.Entries (I).First
-                             <= Trust.Entries (I).Last)
+                   Trust.Entries (I).First in All_Certs'Range
+                   and then Trust.Entries (I).Last in All_Certs'Range
+                   and then Trust.Entries (I).First <= Trust.Entries (I).Last)
        and then Hostname'First = 1
        and then Hostname'Last < Integer'Last - 16
        and then Sig_Body'First = 1

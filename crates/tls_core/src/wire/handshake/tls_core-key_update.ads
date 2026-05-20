@@ -26,7 +26,7 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Schedule_Sha384;
 
 package Tls_Core.Key_Update
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Octet;
@@ -67,7 +67,7 @@ is
    with
      Pre  =>
        (Request_Update = Update_Not_Requested
-          or else Request_Update = Update_Requested)
+        or else Request_Update = Update_Requested)
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= Wire_Size,
      Post =>
@@ -96,16 +96,15 @@ is
    --  illegal_parameter; we surface that via OK = False.
    --------------------------------------------------------------------
    procedure Decode
-     (In_Buf         : Octet_Array;
-      Request_Update : out Octet;
-      OK             : out Boolean)
+     (In_Buf : Octet_Array; Request_Update : out Octet; OK : out Boolean)
    with
      Post =>
-       (if OK then
+       (if OK
+        then
           In_Buf'Length = Wire_Size
           and then In_Buf (In_Buf'First) = Hs_Type_Key_Update
           and then (Request_Update = Update_Not_Requested
-                      or else Request_Update = Update_Requested));
+                    or else Request_Update = Update_Requested));
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Derive the next SHA-256 traffic secret

@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.Aead_Chacha20_Poly1305
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -15,21 +15,18 @@ is
    ---------------------------------------------------------------------
 
    procedure Make_Poly_Key
-     (Key       : Key_Array;
-      Nonce     : Nonce_Array;
-      Out_Poly  : out Tls_Core.Poly1305.Key_Array);
+     (Key      : Key_Array;
+      Nonce    : Nonce_Array;
+      Out_Poly : out Tls_Core.Poly1305.Key_Array);
    procedure Make_Poly_Key
-     (Key       : Key_Array;
-      Nonce     : Nonce_Array;
-      Out_Poly  : out Tls_Core.Poly1305.Key_Array)
+     (Key      : Key_Array;
+      Nonce    : Nonce_Array;
+      Out_Poly : out Tls_Core.Poly1305.Key_Array)
    is
       Block : Tls_Core.Chacha20.Block_Array;
    begin
       Tls_Core.Chacha20.Block
-        (Key       => Key,
-         Nonce     => Nonce,
-         Counter   => 0,
-         Out_Block => Block);
+        (Key => Key, Nonce => Nonce, Counter => 0, Out_Block => Block);
       Out_Poly := Block (1 .. 32);
    end Make_Poly_Key;
 
@@ -48,19 +45,23 @@ is
       Mac_Data   : out Octet_Array;
       Mac_Last   : out Natural)
    with
-     Pre =>
+     Pre  =>
        AAD'Length <= 16640
        and then Ciphertext'Length <= 16640
        and then Mac_Data'Length
-                >= AAD'Length + Pad16_Length (AAD'Length)
-                   + Ciphertext'Length + Pad16_Length (Ciphertext'Length)
+                >= AAD'Length
+                   + Pad16_Length (AAD'Length)
+                   + Ciphertext'Length
+                   + Pad16_Length (Ciphertext'Length)
                    + 16
        and then Mac_Data'First = 1,
      Post =>
        Mac_Last
-         = AAD'Length + Pad16_Length (AAD'Length)
-           + Ciphertext'Length + Pad16_Length (Ciphertext'Length)
-           + 16
+       = AAD'Length
+         + Pad16_Length (AAD'Length)
+         + Ciphertext'Length
+         + Pad16_Length (Ciphertext'Length)
+         + 16
        and then Mac_Last <= Mac_Data'Last;
 
    procedure Build_Mac_Data
@@ -81,8 +82,7 @@ is
       if Ciphertext'Length > 0 then
          Mac_Data (Cursor + 1 .. Cursor + Ciphertext'Length) := Ciphertext;
       end if;
-      Cursor := Cursor + Ciphertext'Length
-        + Pad16_Length (Ciphertext'Length);
+      Cursor := Cursor + Ciphertext'Length + Pad16_Length (Ciphertext'Length);
 
       --  u64 LE |AAD|.
       declare
@@ -121,23 +121,30 @@ is
       Tag        : out Tag_Array)
    is
       Poly_Key : Tls_Core.Poly1305.Key_Array;
-      Mac_Data : Octet_Array
-        (1 .. AAD'Length + Pad16_Length (AAD'Length)
-              + Plaintext'Length + Pad16_Length (Plaintext'Length)
+      Mac_Data :
+        Octet_Array
+          (1
+           .. AAD'Length
+              + Pad16_Length (AAD'Length)
+              + Plaintext'Length
+              + Pad16_Length (Plaintext'Length)
               + 16);
       Mac_Last : Natural;
    begin
       Make_Poly_Key (Key, Nonce, Poly_Key);
       Tls_Core.Chacha20.Encrypt
-        (Key => Key, Nonce => Nonce, Initial_Counter => 1,
-         Input => Plaintext, Output => Ciphertext);
+        (Key             => Key,
+         Nonce           => Nonce,
+         Initial_Counter => 1,
+         Input           => Plaintext,
+         Output          => Ciphertext);
       Build_Mac_Data
-        (AAD => AAD, Ciphertext => Ciphertext,
-         Mac_Data => Mac_Data, Mac_Last => Mac_Last);
+        (AAD        => AAD,
+         Ciphertext => Ciphertext,
+         Mac_Data   => Mac_Data,
+         Mac_Last   => Mac_Last);
       Tls_Core.Poly1305.Mac
-        (Key     => Poly_Key,
-         Message => Mac_Data (1 .. Mac_Last),
-         Out_Tag => Tag);
+        (Key => Poly_Key, Message => Mac_Data (1 .. Mac_Last), Out_Tag => Tag);
    end Seal;
 
    ---------------------------------------------------------------------
@@ -158,9 +165,13 @@ is
       OK         : out Boolean)
    is
       Poly_Key : Tls_Core.Poly1305.Key_Array;
-      Mac_Data : Octet_Array
-        (1 .. AAD'Length + Pad16_Length (AAD'Length)
-              + Ciphertext'Length + Pad16_Length (Ciphertext'Length)
+      Mac_Data :
+        Octet_Array
+          (1
+           .. AAD'Length
+              + Pad16_Length (AAD'Length)
+              + Ciphertext'Length
+              + Pad16_Length (Ciphertext'Length)
               + 16);
       Mac_Last : Natural;
       Got_Tag  : Tag_Array;
@@ -168,8 +179,10 @@ is
    begin
       Make_Poly_Key (Key, Nonce, Poly_Key);
       Build_Mac_Data
-        (AAD => AAD, Ciphertext => Ciphertext,
-         Mac_Data => Mac_Data, Mac_Last => Mac_Last);
+        (AAD        => AAD,
+         Ciphertext => Ciphertext,
+         Mac_Data   => Mac_Data,
+         Mac_Last   => Mac_Last);
       Tls_Core.Poly1305.Mac
         (Key     => Poly_Key,
          Message => Mac_Data (1 .. Mac_Last),
@@ -181,8 +194,11 @@ is
       OK := (Diff = 0);
 
       Tls_Core.Chacha20.Encrypt
-        (Key => Key, Nonce => Nonce, Initial_Counter => 1,
-         Input => Ciphertext, Output => Plaintext);
+        (Key             => Key,
+         Nonce           => Nonce,
+         Initial_Counter => 1,
+         Input           => Ciphertext,
+         Output          => Plaintext);
    end Open;
 
 end Tls_Core.Aead_Chacha20_Poly1305;

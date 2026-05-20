@@ -46,7 +46,7 @@
 with Interfaces;
 
 package Tls_Core.Aes_Spec
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_8;
@@ -94,9 +94,7 @@ is
    --    R = 2 -> a + b + 2*c + 3*d
    --    R = 3 -> 3*a + b + c + 2*d
    --  Per FIPS 197 §5.1.3 Eq.(5.6).  Same algebra as HACL\* `mix4`.
-   function Mix_Col_Byte
-     (A, B, C, D : Octet;
-      Row        : Natural) return Octet
+   function Mix_Col_Byte (A, B, C, D : Octet; Row : Natural) return Octet
    with Pre => Row in 0 .. 3;
 
    ---------------------------------------------------------------------
@@ -108,14 +106,16 @@ is
    --  HACL\* `subBytes` (Spec.AES.fst:67) — apply Sub_Byte byte-wise.
    function Sub_Bytes (S : Block_16) return Block_16
    with
-     Post => (for all I in Block_16'Range =>
-                Sub_Bytes'Result (I) = Sub_Byte (S (I)));
+     Post =>
+       (for all I in Block_16'Range =>
+          Sub_Bytes'Result (I) = Sub_Byte (S (I)));
 
    --  HACL\* `inv_subBytes` (Spec.AES.fst:70).
    function Inv_Sub_Bytes (S : Block_16) return Block_16
    with
-     Post => (for all I in Block_16'Range =>
-                Inv_Sub_Bytes'Result (I) = Inv_Sub_Byte (S (I)));
+     Post =>
+       (for all I in Block_16'Range =>
+          Inv_Sub_Bytes'Result (I) = Inv_Sub_Byte (S (I)));
 
    --  HACL\* `shiftRows` (Spec.AES.fst:84) — left-rotate each
    --  non-zero row by its row index.
@@ -129,8 +129,8 @@ is
      Post =>
        (for all C in 0 .. 3 =>
           (for all R in 0 .. 3 =>
-             Shift_Rows'Result (4 * C + R + 1) =
-               S (4 * ((C + R) mod 4) + R + 1)));
+             Shift_Rows'Result (4 * C + R + 1)
+             = S (4 * ((C + R) mod 4) + R + 1)));
 
    --  HACL\* `inv_shiftRows` (Spec.AES.fst:90) — right-rotate each
    --  non-zero row by its row index (= left-rotate by 4 - i).
@@ -152,18 +152,30 @@ is
    with
      Post =>
        (for all C in 0 .. 3 =>
-          Mix_Columns'Result (4 * C + 1) =
-            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
-                          S (4 * C + 3), S (4 * C + 4), 0)
-          and then Mix_Columns'Result (4 * C + 2) =
-            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
-                          S (4 * C + 3), S (4 * C + 4), 1)
-          and then Mix_Columns'Result (4 * C + 3) =
-            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
-                          S (4 * C + 3), S (4 * C + 4), 2)
-          and then Mix_Columns'Result (4 * C + 4) =
-            Mix_Col_Byte (S (4 * C + 1), S (4 * C + 2),
-                          S (4 * C + 3), S (4 * C + 4), 3));
+          Mix_Columns'Result (4 * C + 1)
+          = Mix_Col_Byte
+              (S (4 * C + 1), S (4 * C + 2), S (4 * C + 3), S (4 * C + 4), 0)
+          and then Mix_Columns'Result (4 * C + 2)
+                   = Mix_Col_Byte
+                       (S (4 * C + 1),
+                        S (4 * C + 2),
+                        S (4 * C + 3),
+                        S (4 * C + 4),
+                        1)
+          and then Mix_Columns'Result (4 * C + 3)
+                   = Mix_Col_Byte
+                       (S (4 * C + 1),
+                        S (4 * C + 2),
+                        S (4 * C + 3),
+                        S (4 * C + 4),
+                        2)
+          and then Mix_Columns'Result (4 * C + 4)
+                   = Mix_Col_Byte
+                       (S (4 * C + 1),
+                        S (4 * C + 2),
+                        S (4 * C + 3),
+                        S (4 * C + 4),
+                        3));
 
    --  HACL\* `inv_mixColumns` (Spec.AES.fst:144) — inverse of
    --  Mix_Columns; column matrix is {0B}{0D}{09}{0E} (FIPS 197 §5.3.3).
@@ -171,14 +183,14 @@ is
 
    --  HACL\* `addRoundKey` (Spec.AES.fst:154) — XOR the 16-byte
    --  round-key block into the state.
-   function Add_Round_Key
-     (Key   : Block_16;
-      State : Block_16) return Block_16
+   function Add_Round_Key (Key : Block_16; State : Block_16) return Block_16
    with
-     Post => (for all I in Block_16'Range =>
-                Add_Round_Key'Result (I) =
-                  Octet (Interfaces.Unsigned_8 (State (I))
-                         xor Interfaces.Unsigned_8 (Key (I))));
+     Post =>
+       (for all I in Block_16'Range =>
+          Add_Round_Key'Result (I)
+          = Octet
+              (Interfaces.Unsigned_8 (State (I))
+               xor Interfaces.Unsigned_8 (Key (I))));
 
    ---------------------------------------------------------------------
    --  Round drivers.
@@ -186,28 +198,19 @@ is
 
    --  HACL\* `aes_enc` (Spec.AES.fst:157).
    --  Sub_Bytes ∘ Shift_Rows ∘ Mix_Columns ∘ AddRoundKey.
-   function Aes_Enc
-     (Key   : Block_16;
-      State : Block_16) return Block_16
+   function Aes_Enc (Key : Block_16; State : Block_16) return Block_16
    with
-     Post => Aes_Enc'Result =
-               Add_Round_Key
-                 (Key,
-                  Mix_Columns
-                    (Shift_Rows
-                       (Sub_Bytes (State))));
+     Post =>
+       Aes_Enc'Result
+       = Add_Round_Key (Key, Mix_Columns (Shift_Rows (Sub_Bytes (State))));
 
    --  HACL\* `aes_enc_last` (Spec.AES.fst:164) — final round, no
    --  Mix_Columns.
-   function Aes_Enc_Last
-     (Key   : Block_16;
-      State : Block_16) return Block_16
+   function Aes_Enc_Last (Key : Block_16; State : Block_16) return Block_16
    with
-     Post => Aes_Enc_Last'Result =
-               Add_Round_Key
-                 (Key,
-                  Shift_Rows
-                    (Sub_Bytes (State)));
+     Post =>
+       Aes_Enc_Last'Result
+       = Add_Round_Key (Key, Shift_Rows (Sub_Bytes (State)));
 
    --  Per FIPS 197 §5.3 InvCipher (direct form): InvSubBytes →
    --  InvShiftRows → AddRoundKey → InvMixColumns.  HACL\*'s
@@ -216,14 +219,10 @@ is
    --  `aes_dec_key_expansion`; we use the direct form so callers
    --  can pass the same round keys built by Expand_Key.  FIPS 197
    --  §5.3 proves the two forms compute the same function.
-   function Aes_Dec
-     (Key   : Block_16;
-      State : Block_16) return Block_16;
+   function Aes_Dec (Key : Block_16; State : Block_16) return Block_16;
 
    --  HACL\* `aes_dec_last` (Spec.AES.fst:177) — final inverse round.
-   function Aes_Dec_Last
-     (Key   : Block_16;
-      State : Block_16) return Block_16;
+   function Aes_Dec_Last (Key : Block_16; State : Block_16) return Block_16;
 
    ---------------------------------------------------------------------
    --  Key expansion.
@@ -241,20 +240,16 @@ is
 
    --  HACL\* `aes_encrypt_block AES128` (Spec.AES.fst:306, specialised).
    function Aes128_Encrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes128_Xkey) return Block_16;
+     (Input : Block_16; Xkey : Aes128_Xkey) return Block_16;
 
    --  HACL\* `aes_decrypt_block AES128` (Spec.AES.fst:319, specialised).
    function Aes128_Decrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes128_Xkey) return Block_16;
+     (Input : Block_16; Xkey : Aes128_Xkey) return Block_16;
 
    function Aes256_Encrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes256_Xkey) return Block_16;
+     (Input : Block_16; Xkey : Aes256_Xkey) return Block_16;
 
    function Aes256_Decrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes256_Xkey) return Block_16;
+     (Input : Block_16; Xkey : Aes256_Xkey) return Block_16;
 
 end Tls_Core.Aes_Spec;

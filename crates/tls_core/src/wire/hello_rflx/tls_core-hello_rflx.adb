@@ -4,7 +4,7 @@ with RFLX.Server_Hello.Message;
 with Tls_Core.Ext_Walk_Rflx;
 
 package body Tls_Core.Hello_Rflx
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type RFLX.RFLX_Types.Bit_Length;
@@ -18,12 +18,12 @@ is
 
       Last_Idx : constant RFLX.RFLX_Types.Index :=
         RFLX.RFLX_Types.Index (In_Bytes'Length);
-      Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+      Buf      : RFLX.RFLX_Types.Bytes_Ptr :=
         new RFLX.RFLX_Types.Bytes'(1 .. Last_Idx => 0);
-      Ctx     : SH.Context;
-      WL      : constant RFLX.RFLX_Types.Bit_Length :=
+      Ctx      : SH.Context;
+      WL       : constant RFLX.RFLX_Types.Bit_Length :=
         RFLX.RFLX_Types.Bit_Length (In_Bytes'Length) * 8;
-      Result  : Boolean;
+      Result   : Boolean;
    begin
       for K in 1 .. Last_Idx loop
          pragma Loop_Invariant (K in 1 .. Last_Idx);
@@ -42,24 +42,24 @@ is
    end Rflx_Validate;
 
    procedure Decode_Server_Hello_Fields
-     (In_Bytes        : Octet_Array;
-      Random          : out Random_Bytes;
-      Suite_Code      : out Tls_Core.Suites.U16;
-      Sid_First       : out Natural;
-      Sid_Last        : out Natural;
-      Ext_First       : out Natural;
-      Ext_Last        : out Natural;
-      OK              : out Boolean)
+     (In_Bytes   : Octet_Array;
+      Random     : out Random_Bytes;
+      Suite_Code : out Tls_Core.Suites.U16;
+      Sid_First  : out Natural;
+      Sid_Last   : out Natural;
+      Ext_First  : out Natural;
+      Ext_Last   : out Natural;
+      OK         : out Boolean)
    is
       use type Tls_Core.Suites.U16;
    begin
-      Random     := (others => 0);
+      Random := (others => 0);
       Suite_Code := 0;
-      Sid_First  := 0;
-      Sid_Last   := 0;
-      Ext_First  := 0;
-      Ext_Last   := 0;
-      OK         := False;
+      Sid_First := 0;
+      Sid_Last := 0;
+      Ext_First := 0;
+      Ext_Last := 0;
+      OK := False;
 
       if not Rflx_Validate (In_Bytes) then
          return;
@@ -73,7 +73,7 @@ is
       end if;
 
       declare
-         Sid_Len : constant Natural := Natural (In_Bytes (35));
+         Sid_Len   : constant Natural := Natural (In_Bytes (35));
          Suite_Off : constant Natural := 36 + Sid_Len;
       begin
          if Suite_Off + 4 > In_Bytes'Last then
@@ -88,16 +88,16 @@ is
          pragma Assert (Suite_Off = Spec_Suite_Offset (In_Bytes));
 
          Suite_Code :=
-           Tls_Core.Suites.U16 (In_Bytes (Suite_Off)) * 256
+           Tls_Core.Suites.U16 (In_Bytes (Suite_Off))
+           * 256
            + Tls_Core.Suites.U16 (In_Bytes (Suite_Off + 1));
 
-         pragma Assert
-           (Suite_Code = Spec_Suite_Code (In_Bytes));
+         pragma Assert (Suite_Code = Spec_Suite_Code (In_Bytes));
          pragma Assert (Random = Spec_Random (In_Bytes));
 
          if Sid_Len > 0 then
             Sid_First := 36;
-            Sid_Last  := 35 + Sid_Len;
+            Sid_Last := 35 + Sid_Len;
          end if;
 
          declare
@@ -106,14 +106,14 @@ is
             if Ext_Len_Off + 1 <= In_Bytes'Last then
                declare
                   EL : constant Natural :=
-                    Natural (In_Bytes (Ext_Len_Off)) * 256
+                    Natural (In_Bytes (Ext_Len_Off))
+                    * 256
                     + Natural (In_Bytes (Ext_Len_Off + 1));
                begin
-                  if EL > 0 and then
-                     Ext_Len_Off + 2 + EL - 1 <= In_Bytes'Last
+                  if EL > 0 and then Ext_Len_Off + 2 + EL - 1 <= In_Bytes'Last
                   then
                      Ext_First := Ext_Len_Off + 2;
-                     Ext_Last  := Ext_Len_Off + 1 + EL;
+                     Ext_Last := Ext_Len_Off + 1 + EL;
                   end if;
                end;
             end if;
@@ -130,10 +130,8 @@ is
       Out_Buf    : out Octet_Array;
       Out_Last   : out Natural)
    is
-      Suite_Hi : constant Octet :=
-        Octet (Suite_Code / 16#0100#);
-      Suite_Lo : constant Octet :=
-        Octet (Suite_Code mod 16#0100#);
+      Suite_Hi : constant Octet := Octet (Suite_Code / 16#0100#);
+      Suite_Lo : constant Octet := Octet (Suite_Code mod 16#0100#);
    begin
       Out_Buf := (others => 0);
       Out_Buf (1) := 16#03#;
@@ -153,9 +151,12 @@ is
       pragma Assert (Spec_Sid_Len (Out_Buf) = 0);
       pragma Assert (Spec_Suite_Offset (Out_Buf) = 36);
 
-      pragma Assert
-        (Tls_Core.Suites.U16 (Out_Buf (36)) * 256
-         + Tls_Core.Suites.U16 (Out_Buf (37)) = Suite_Code);
+      pragma
+        Assert
+          (Tls_Core.Suites.U16 (Out_Buf (36))
+             * 256
+             + Tls_Core.Suites.U16 (Out_Buf (37))
+             = Suite_Code);
 
       pragma Assert (Spec_Suite_Code (Out_Buf) = Suite_Code);
       pragma Assert (Spec_Random (Out_Buf) = Random);
@@ -165,8 +166,7 @@ is
    end Encode_Server_Hello_Core;
 
    procedure Lemma_Round_Trip
-     (Random     : Random_Bytes;
-      Suite_Code : Tls_Core.Suites.U16)
+     (Random : Random_Bytes; Suite_Code : Tls_Core.Suites.U16)
    is
       use type Tls_Core.Suites.U16;
       Buf      : Octet_Array (1 .. 256) := (others => 0);
@@ -194,7 +194,8 @@ is
          declare
             Dec_Rnd : constant Random_Bytes := Buf (3 .. 34);
             Dec_Sc  : constant Tls_Core.Suites.U16 :=
-              Tls_Core.Suites.U16 (Buf (Suite_Off)) * 256
+              Tls_Core.Suites.U16 (Buf (Suite_Off))
+              * 256
               + Tls_Core.Suites.U16 (Buf (Suite_Off + 1));
          begin
             pragma Assert (Dec_Rnd = Spec_Random (Buf));
@@ -212,15 +213,15 @@ is
       Key_Share_Last  : out Natural;
       OK              : out Boolean)
    is
-      Rnd    : Random_Bytes;
-      Suite  : Tls_Core.Suites.U16;
-      Sf, Sl : Natural;
-      Ef, El : Natural;
+      Rnd       : Random_Bytes;
+      Suite     : Tls_Core.Suites.U16;
+      Sf, Sl    : Natural;
+      Ef, El    : Natural;
       Fields_OK : Boolean;
    begin
       Key_Share_First := 0;
-      Key_Share_Last  := 0;
-      OK              := False;
+      Key_Share_Last := 0;
+      OK := False;
 
       if In_Bytes'Length < 40 or else In_Bytes'First < 1 then
          return;
@@ -246,29 +247,25 @@ is
                return;
             end if;
             declare
-               Ext_Copy : Octet_Array (1 .. Ext_Len) :=
-                 Local (Ef .. El);
+               Ext_Copy     : Octet_Array (1 .. Ext_Len) := Local (Ef .. El);
                Ks_Ef, Ks_El : Natural;
-               Ks_Found : Boolean;
+               Ks_Found     : Boolean;
             begin
                Tls_Core.Ext_Walk_Rflx.Find_Key_Share_X25519_Sh
                  (Ext_Copy, Ks_Ef, Ks_El, Ks_Found);
                if Ks_Found
-                 and then Ks_Ef >= 1 and then Ks_El >= 1
+                 and then Ks_Ef >= 1
+                 and then Ks_El >= 1
                  and then Ks_Ef <= Ext_Len
                  and then Ks_El <= Ext_Len
                  and then In_Bytes'First <= Natural'Last - Ext_Len
                  and then Ef - 1 <= Natural'Last - Ks_Ef
                  and then Ef - 1 <= Natural'Last - Ks_El
-                 and then In_Bytes'First + (Ef - 1) <=
-                          Natural'Last - Ks_Ef
-                 and then In_Bytes'First + (Ef - 1) <=
-                          Natural'Last - Ks_El
+                 and then In_Bytes'First + (Ef - 1) <= Natural'Last - Ks_Ef
+                 and then In_Bytes'First + (Ef - 1) <= Natural'Last - Ks_El
                then
-                  Key_Share_First :=
-                    In_Bytes'First + (Ef - 1) + Ks_Ef - 1;
-                  Key_Share_Last :=
-                    In_Bytes'First + (Ef - 1) + Ks_El - 1;
+                  Key_Share_First := In_Bytes'First + (Ef - 1) + Ks_Ef - 1;
+                  Key_Share_Last := In_Bytes'First + (Ef - 1) + Ks_El - 1;
                   OK := True;
                end if;
             end;

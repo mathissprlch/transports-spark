@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.P256_Order
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -19,7 +19,7 @@ is
    is (Octet_Big.To_Big_Integer (Integer (X)));
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer
-   is (Big.To_Big_Integer (2) ** (8 * N));
+   is (Big.To_Big_Integer (2)**(8 * N));
 
    --  P-256 group order n — written in hex limbs that exactly match
    --  the wire representation in N_Limbs below. Constructed as a
@@ -29,15 +29,45 @@ is
       --  n = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
       --  Build from MSB to LSB.
       Hex_BE : constant array (1 .. 32) of Octet :=
-        (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
-         16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
-         16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
-         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#);
-      R : Big.Big_Integer := Big.To_Big_Integer (0);
+        (16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#00#,
+         16#00#,
+         16#00#,
+         16#00#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#BC#,
+         16#E6#,
+         16#FA#,
+         16#AD#,
+         16#A7#,
+         16#17#,
+         16#9E#,
+         16#84#,
+         16#F3#,
+         16#B9#,
+         16#CA#,
+         16#C2#,
+         16#FC#,
+         16#63#,
+         16#25#,
+         16#51#);
+      R      : Big.Big_Integer := Big.To_Big_Integer (0);
    begin
       for I in Hex_BE'Range loop
-         R := R * Big.To_Big_Integer (256)
-              + Octet_Big.To_Big_Integer (Integer (Hex_BE (I)));
+         R :=
+           R
+           * Big.To_Big_Integer (256)
+           + Octet_Big.To_Big_Integer (Integer (Hex_BE (I)));
       end loop;
       return R;
    end Order_N_Spec;
@@ -84,8 +114,14 @@ is
    --                              BCE6FAADA7179E84F3B9CAC2FC632551
    --  as eight 32-bit little-endian limbs.
    N_Limbs : constant Limbs8 :=
-     (16#FC632551#, 16#F3B9CAC2#, 16#A7179E84#, 16#BCE6FAAD#,
-      16#FFFFFFFF#, 16#FFFFFFFF#, 16#00000000#, 16#FFFFFFFF#);
+     (16#FC632551#,
+      16#F3B9CAC2#,
+      16#A7179E84#,
+      16#BCE6FAAD#,
+      16#FFFFFFFF#,
+      16#FFFFFFFF#,
+      16#00000000#,
+      16#FFFFFFFF#);
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 32 BE bytes and limbs.
@@ -95,10 +131,10 @@ is
    begin
       for I in Limb_Index loop
          L (I) :=
-             Shift_Left (Unsigned_32 (B (32 - 4 * I - 3)), 24)
+           Shift_Left (Unsigned_32 (B (32 - 4 * I - 3)), 24)
            or Shift_Left (Unsigned_32 (B (32 - 4 * I - 2)), 16)
-           or Shift_Left (Unsigned_32 (B (32 - 4 * I - 1)),  8)
-           or            Unsigned_32 (B (32 - 4 * I));
+           or Shift_Left (Unsigned_32 (B (32 - 4 * I - 1)), 8)
+           or Unsigned_32 (B (32 - 4 * I));
       end loop;
    end From_Bytes;
 
@@ -107,8 +143,8 @@ is
       for I in Limb_Index loop
          B (32 - 4 * I - 3) := Octet (Shift_Right (L (I), 24) and 16#FF#);
          B (32 - 4 * I - 2) := Octet (Shift_Right (L (I), 16) and 16#FF#);
-         B (32 - 4 * I - 1) := Octet (Shift_Right (L (I),  8) and 16#FF#);
-         B (32 - 4 * I)     := Octet (L (I) and 16#FF#);
+         B (32 - 4 * I - 1) := Octet (Shift_Right (L (I), 8) and 16#FF#);
+         B (32 - 4 * I) := Octet (L (I) and 16#FF#);
       end loop;
    end To_Bytes;
 
@@ -154,10 +190,7 @@ is
       Diff   : Unsigned_64;
    begin
       for I in Limb_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (N_Limbs (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (N_Limbs (I)) - Borrow;
          A (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -174,10 +207,7 @@ is
       Diff   : Unsigned_64;
    begin
       for I in Limb_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (N_Limbs (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (N_Limbs (I)) - Borrow;
          A (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -229,10 +259,7 @@ is
       T      : Limbs8;
    begin
       for I in Limb_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (B (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (B (I)) - Borrow;
          T (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -273,7 +300,7 @@ is
          Carry := 0;
          for J in Limb_Index loop
             Acc :=
-                Unsigned_64 (T (I + J))
+              Unsigned_64 (T (I + J))
               + Unsigned_64 (A (I)) * Unsigned_64 (B (J))
               + Carry;
             T (I + J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
@@ -295,8 +322,8 @@ is
    ---------------------------------------------------------------------
 
    procedure Reduce_Mul (T : Limbs16; R : out Limbs8) is
-      Acc : Limbs9 := (others => 0);
-      Bit : Unsigned_32;
+      Acc       : Limbs9 := (others => 0);
+      Bit       : Unsigned_32;
       Carry_Out : Unsigned_32;
    begin
       for K in reverse 0 .. 511 loop
@@ -396,10 +423,38 @@ is
    ---------------------------------------------------------------------
 
    N_Minus_2 : constant Scalar :=
-     (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
-      16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
-      16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
-      16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#4F#);
+     (16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#BC#,
+      16#E6#,
+      16#FA#,
+      16#AD#,
+      16#A7#,
+      16#17#,
+      16#9E#,
+      16#84#,
+      16#F3#,
+      16#B9#,
+      16#CA#,
+      16#C2#,
+      16#FC#,
+      16#63#,
+      16#25#,
+      16#4F#);
 
    procedure Invert (A : Scalar; Out_C : out Scalar) is
       Result  : Limbs8 := (others => 0);

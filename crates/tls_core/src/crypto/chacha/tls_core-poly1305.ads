@@ -36,7 +36,7 @@ pragma Warnings (On, "use of this unit is non-portable");
 pragma Warnings (On, "is an internal GNAT unit");
 
 package Tls_Core.Poly1305
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -64,56 +64,58 @@ is
    --  call site. The recursive arm is `Spec_Pow2 (N) = 2 * Spec_Pow2
    --  (N - 1)`, base case `Spec_Pow2 (0) = 1`.
    function Spec_Pow2 (N : Natural) return Big.Big_Natural
-   is (if N = 0 then Big.To_Big_Integer (1)
+   is (if N = 0
+       then Big.To_Big_Integer (1)
        else Big.To_Big_Integer (2) * Spec_Pow2 (N - 1))
-   with Ghost,
-        Subprogram_Variant => (Decreases => N);
+   with Ghost, Subprogram_Variant => (Decreases => N);
 
    --  Lemma: 2^(N+1) = 2 * 2^N. Body proves it by case analysis on
    --  whether N hits the base block of Spec_Pow2.
    procedure Lemma_Pow2_Step (N : Natural)
-   with Ghost,
-        Pre  => N < Natural'Last,
-        Post => Spec_Pow2 (N + 1) = Big.To_Big_Integer (2) * Spec_Pow2 (N);
+   with
+     Ghost,
+     Pre  => N < Natural'Last,
+     Post => Spec_Pow2 (N + 1) = Big.To_Big_Integer (2) * Spec_Pow2 (N);
 
    --  Lemma: 2^(N+8) = 256 * 2^N. Used by Lemma_Bytes_Bound.
    procedure Lemma_Pow2_Plus_8 (N : Natural)
-   with Ghost,
-        Pre  => N < Natural'Last - 8,
-        Post => Spec_Pow2 (N + 8) = Big.To_Big_Integer (256) * Spec_Pow2 (N);
+   with
+     Ghost,
+     Pre  => N < Natural'Last - 8,
+     Post => Spec_Pow2 (N + 8) = Big.To_Big_Integer (256) * Spec_Pow2 (N);
 
    --  Lemma: 2^(M+N) = 2^M * 2^N. The general additive law that
    --  Lemma_Pow2_Step is the unit-step specialisation of. Body
    --  inducts on N.
    procedure Lemma_Pow2_Add (M, N : Natural)
-   with Ghost,
-        Pre  => M <= Natural'Last - N,
-        Post => Spec_Pow2 (M + N) = Spec_Pow2 (M) * Spec_Pow2 (N),
-        Subprogram_Variant => (Decreases => N);
+   with
+     Ghost,
+     Pre                => M <= Natural'Last - N,
+     Post               => Spec_Pow2 (M + N) = Spec_Pow2 (M) * Spec_Pow2 (N),
+     Subprogram_Variant => (Decreases => N);
 
    --  Lemma: Spec_Pow2 is strictly monotonic. Used to chain
    --  bounds across non-adjacent powers of two without a manual
    --  unrolling at every call site.
    procedure Lemma_Pow2_Monotone (M, N : Natural)
-   with Ghost,
-        Pre  => M <= N,
-        Post => Spec_Pow2 (M) <= Spec_Pow2 (N);
+   with Ghost, Pre => M <= N, Post => Spec_Pow2 (M) <= Spec_Pow2 (N);
 
    --  Lemma: 2^128 < 2^130 - 5 = Spec_Prime. Required to chain
    --  the Spec_Encode_R bound (< 2^128) into the Spec_Update_All
    --  precondition (< Spec_Prime).
    procedure Lemma_Pow2_128_Lt_Prime
-   with Ghost,
-        Post => Spec_Pow2 (128) < Spec_Prime;
+   with Ghost, Post => Spec_Pow2 (128) < Spec_Prime;
 
    --  Lemma: nat_from_bytes_le is bounded by 2^(8*length). Used to
    --  bound Spec_Encode_R and Spec_Encode_Block.
    procedure Lemma_Bytes_Bound (B : Octet_Array)
-   with Ghost,
-        Pre  => B'Length <= 32,
-        Post => Spec_Nat_From_Bytes_Le (B) < Spec_Pow2 (8 * B'Length),
-        Always_Terminates,
-        Subprogram_Variant => (Decreases => B'Length);
+   with
+     Ghost,
+     Pre                => B'Length <= 32,
+     Post               =>
+       Spec_Nat_From_Bytes_Le (B) < Spec_Pow2 (8 * B'Length),
+     Always_Terminates,
+     Subprogram_Variant => (Decreases => B'Length);
 
    --  The HACL\* `prime` constant: 2^130 - 5.
    function Spec_Prime return Big.Big_Natural
@@ -132,16 +134,15 @@ is
    --  to avoid `B'First + 1` overflow on edge cases) so gnatprove can
    --  inline-expand it at every call site.
    function Spec_Nat_From_Bytes_Le (B : Octet_Array) return Big.Big_Natural
-   is
-     (if B'Length = 0 then
-        Big.To_Big_Integer (0)
-      else
-        Spec_Nat_From_Bytes_Le (B (B'First .. B'Last - 1))
-          + Octet_Bigint.To_Big_Integer (B (B'Last))
-            * Spec_Pow2 (8 * (B'Length - 1)))
+   is (if B'Length = 0
+       then Big.To_Big_Integer (0)
+       else
+         Spec_Nat_From_Bytes_Le (B (B'First .. B'Last - 1))
+         + Octet_Bigint.To_Big_Integer (B (B'Last))
+           * Spec_Pow2 (8 * (B'Length - 1)))
    with
      Ghost,
-     Pre => B'Length <= 32,
+     Pre                => B'Length <= 32,
      Subprogram_Variant => (Decreases => B'Length);
 
    --  HACL\* `poly1305_encode_r` — clamped 16-byte-LE-decoded r.
@@ -151,8 +152,7 @@ is
    function Spec_Encode_R (Rb : Octet_Array) return Big.Big_Natural
    with
      Ghost,
-     Pre  => Rb'Length = 16
-             and then Rb'Last < Integer'Last - 16,
+     Pre  => Rb'Length = 16 and then Rb'Last < Integer'Last - 16,
      Post => Spec_Encode_R'Result < Spec_Pow2 (128);
 
    --  HACL\* `encode` — `2^(8*len) + nat_from_bytes_le(b)`. For full
@@ -162,40 +162,39 @@ is
      (B : Octet_Array; Len : Natural) return Big.Big_Natural
    with
      Ghost,
-     Pre => Len in 1 .. 16
-            and then B'Length = Len
-            and then B'Last < Integer'Last - 16;
+     Pre =>
+       Len in 1 .. 16
+       and then B'Length = Len
+       and then B'Last < Integer'Last - 16;
 
    --  HACL\* `poly1305_update1` — single-block update step:
    --    acc' = (encode(b, len) + acc) * r mod prime
    function Spec_Update1
-     (Acc, R : Big.Big_Natural;
-      B      : Octet_Array;
-      Len    : Natural)
+     (Acc, R : Big.Big_Natural; B : Octet_Array; Len : Natural)
       return Big.Big_Natural
    with
      Ghost,
-     Pre  => Len in 1 .. 16
-             and then B'Length = Len
-             and then B'Last < Integer'Last - 16
-             and then Acc < Spec_Prime
-             and then R < Spec_Prime,
+     Pre  =>
+       Len in 1 .. 16
+       and then B'Length = Len
+       and then B'Last < Integer'Last - 16
+       and then Acc < Spec_Prime
+       and then R < Spec_Prime,
      Post => Spec_Update1'Result < Spec_Prime;
 
    --  HACL\* `poly1305_update_last` — final partial-block update.
    --  Empty case is no-op (acc unchanged).
    function Spec_Update_Last
-     (Acc, R : Big.Big_Natural;
-      B      : Octet_Array;
-      Len    : Natural)
+     (Acc, R : Big.Big_Natural; B : Octet_Array; Len : Natural)
       return Big.Big_Natural
    with
      Ghost,
-     Pre  => Len <= 15
-             and then B'Length = Len
-             and then B'Last < Integer'Last - 16
-             and then Acc < Spec_Prime
-             and then R < Spec_Prime,
+     Pre  =>
+       Len <= 15
+       and then B'Length = Len
+       and then B'Last < Integer'Last - 16
+       and then Acc < Spec_Prime
+       and then R < Spec_Prime,
      Post => Spec_Update_Last'Result < Spec_Prime;
 
    --  HACL\* `poly1305_update` — repeat_blocks fold: process every
@@ -203,29 +202,25 @@ is
    --  recursion is on the cursor: we strip one block from the front
    --  per recursive call until at most 15 bytes remain.
    function Spec_Update_All
-     (Text   : Octet_Array;
-      Acc, R : Big.Big_Natural)
-      return Big.Big_Natural
+     (Text : Octet_Array; Acc, R : Big.Big_Natural) return Big.Big_Natural
    with
      Ghost,
      Subprogram_Variant => (Decreases => Text'Length),
-     Pre  => Acc < Spec_Prime and then R < Spec_Prime
-             and then Text'Last < Integer'Last - 16,
-     Post => Spec_Update_All'Result < Spec_Prime;
+     Pre                =>
+       Acc < Spec_Prime
+       and then R < Spec_Prime
+       and then Text'Last < Integer'Last - 16,
+     Post               => Spec_Update_All'Result < Spec_Prime;
 
    --  HACL\* `poly1305_finish`: tag = nat_to_bytes_le_16 ((acc + s) mod 2^128).
    function Spec_Finish
      (Key : Key_Array; Acc : Big.Big_Natural) return Tag_Array
-   with
-     Ghost,
-     Pre => Acc < Spec_Prime;
+   with Ghost, Pre => Acc < Spec_Prime;
 
    --  HACL\* `poly1305_mac`: top-level. Init -> Update_All -> Finish.
    function Spec_Poly1305_Mac
      (Key : Key_Array; Message : Octet_Array) return Tag_Array
-   with
-     Ghost,
-     Pre => Message'Last < Integer'Last - 16;
+   with Ghost, Pre => Message'Last < Integer'Last - 16;
 
    ------------------------------------------------------------------
    --  Limb-projection ghost (HACL\* `as_nat5` / `feval5` port)
@@ -272,21 +267,28 @@ is
 
    --  Power-of-two specialisations used by As_Nat5 (kept as constants
    --  to avoid repeated re-evaluation inside expression-function calls).
-   function Pow2_26  return Big.Big_Natural is (Spec_Pow2 (26))  with Ghost;
-   function Pow2_52  return Big.Big_Natural is (Spec_Pow2 (52))  with Ghost;
-   function Pow2_78  return Big.Big_Natural is (Spec_Pow2 (78))  with Ghost;
-   function Pow2_104 return Big.Big_Natural is (Spec_Pow2 (104)) with Ghost;
+   function Pow2_26 return Big.Big_Natural
+   is (Spec_Pow2 (26))
+   with Ghost;
+   function Pow2_52 return Big.Big_Natural
+   is (Spec_Pow2 (52))
+   with Ghost;
+   function Pow2_78 return Big.Big_Natural
+   is (Spec_Pow2 (78))
+   with Ghost;
+   function Pow2_104 return Big.Big_Natural
+   is (Spec_Pow2 (104))
+   with Ghost;
 
    package U64_Bigint is new Big.Unsigned_Conversions (Int => U64);
 
    --  HACL\* `as_nat5`: 5×26-bit limb array → integer value.
    function As_Nat5 (L : Limbs) return Big.Big_Natural
-   is
-     (U64_Bigint.To_Big_Integer (L (0))
-      + U64_Bigint.To_Big_Integer (L (1)) * Pow2_26
-      + U64_Bigint.To_Big_Integer (L (2)) * Pow2_52
-      + U64_Bigint.To_Big_Integer (L (3)) * Pow2_78
-      + U64_Bigint.To_Big_Integer (L (4)) * Pow2_104)
+   is (U64_Bigint.To_Big_Integer (L (0))
+       + U64_Bigint.To_Big_Integer (L (1)) * Pow2_26
+       + U64_Bigint.To_Big_Integer (L (2)) * Pow2_52
+       + U64_Bigint.To_Big_Integer (L (3)) * Pow2_78
+       + U64_Bigint.To_Big_Integer (L (4)) * Pow2_104)
    with Ghost;
 
    --  HACL\* `feval5`: limb array → field element.
@@ -311,12 +313,13 @@ is
    --  decomposed into the bitvec / arithmetic identity.
 
    procedure Lemma_Limb_Split_26 (X : U64)
-   with Ghost,
-        Post =>
-          U64_Bigint.To_Big_Integer (X) =
-            U64_Bigint.To_Big_Integer (Interfaces.Shift_Right (X, 26))
-              * Pow2_26
-            + U64_Bigint.To_Big_Integer (X and 16#03FF_FFFF#);
+   with
+     Ghost,
+     Post =>
+       U64_Bigint.To_Big_Integer (X)
+       = U64_Bigint.To_Big_Integer (Interfaces.Shift_Right (X, 26))
+         * Pow2_26
+         + U64_Bigint.To_Big_Integer (X and 16#03FF_FFFF#);
 
    --  The Pow2_X = Pow2 * Pow2_(X-26) commutativity lemmas. Each is
    --  a one-step chain via Lemma_Pow2_Plus_8 / Lemma_Pow2_Step. The
@@ -327,22 +330,18 @@ is
    --  i+1.
 
    procedure Lemma_Pow2_52_Eq_26x26
-   with Ghost,
-        Post => Pow2_52 = Pow2_26 * Pow2_26;
+   with Ghost, Post => Pow2_52 = Pow2_26 * Pow2_26;
 
    procedure Lemma_Pow2_78_Eq_52x26
-   with Ghost,
-        Post => Pow2_78 = Pow2_52 * Pow2_26;
+   with Ghost, Post => Pow2_78 = Pow2_52 * Pow2_26;
 
    procedure Lemma_Pow2_104_Eq_78x26
-   with Ghost,
-        Post => Pow2_104 = Pow2_78 * Pow2_26;
+   with Ghost, Post => Pow2_104 = Pow2_78 * Pow2_26;
 
    --  Top-limb modular fold: 2^130 ≡ 5 (mod prime). Used to discharge
    --  the Carry top-step where bits past 2^130 are folded back via × 5.
    procedure Lemma_Pow2_130_Mod_Prime
-   with Ghost,
-        Post => Spec_Pow2 (130) mod Spec_Prime = Big.To_Big_Integer (5);
+   with Ghost, Post => Spec_Pow2 (130) mod Spec_Prime = Big.To_Big_Integer (5);
 
    --  TODO: The following lemmas are needed to close the Mac Post
    --  (`Out_Tag = Spec_Poly1305_Mac (Key, Message)`):
@@ -374,9 +373,7 @@ is
    ------------------------------------------------------------------
 
    procedure Mac
-     (Key     : Key_Array;
-      Message : Octet_Array;
-      Out_Tag : out Tag_Array)
+     (Key : Key_Array; Message : Octet_Array; Out_Tag : out Tag_Array)
    with
      Pre  => Message'Last < Integer'Last - 16,
      Post => Out_Tag = Spec_Poly1305_Mac (Key, Message);

@@ -2,13 +2,13 @@ with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 
 package body Tls_Core.Traffic_Keys
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
-   procedure Hkdf_Expand_Label_Sha256
-     is new Tls_Core.Hkdf.Expand_Label
+   procedure Hkdf_Expand_Label_Sha256 is new
+     Tls_Core.Hkdf.Expand_Label
        (Hash_Length      => 32,
         Max_Info         => 512,
         Spec_Hmac_Expand => Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand,

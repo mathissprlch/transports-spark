@@ -46,7 +46,7 @@
 --  in plain SPARK without the dependent-type machinery.
 
 package Tls_Core.Handshake_Buffer
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    --  Reassembly cap. 64 KiB is well above what production peers
@@ -89,9 +89,7 @@ is
    --  Proven at:  gnatprove --level=2 (audit-clean).
    --------------------------------------------------------------------
    procedure Push_Record_Bytes
-     (B     : in out Buffer;
-      Bytes : Octet_Array;
-      OK    : out Boolean)
+     (B : in out Buffer; Bytes : Octet_Array; OK : out Boolean)
    with
      Pre  => Bytes'Length <= Max_Buf,
      Post =>
@@ -137,9 +135,7 @@ is
    --  Proven at:  gnatprove --level=2 (audit-clean).
    --------------------------------------------------------------------
    procedure Pop_Complete_Message
-     (B        : in out Buffer;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (B : in out Buffer; Out_Buf : out Octet_Array; Out_Last : out Natural)
    with
      Pre  =>
        Has_Complete_Message (B)
@@ -169,22 +165,24 @@ private
 
    type Buffer is record
       Data : Storage_Array := (others => 0);
-      Len  : Natural       := 0;
+      Len  : Natural := 0;
    end record
    with Predicate => Len <= Max_Buf;
 
-   function Used (B : Buffer) return Natural is (B.Len);
+   function Used (B : Buffer) return Natural
+   is (B.Len);
 
-   function Peek_Body_Length (B : Buffer) return Natural is
-     (if B.Len < Header_Len
-      then 0
-      else
-        Natural (B.Data (2)) * 65_536
-        + Natural (B.Data (3)) * 256
-        + Natural (B.Data (4)));
+   function Peek_Body_Length (B : Buffer) return Natural
+   is (if B.Len < Header_Len
+       then 0
+       else
+         Natural (B.Data (2))
+         * 65_536
+         + Natural (B.Data (3)) * 256
+         + Natural (B.Data (4)));
 
-   function Has_Complete_Message (B : Buffer) return Boolean is
-     (B.Len >= Header_Len
-      and then Peek_Body_Length (B) <= B.Len - Header_Len);
+   function Has_Complete_Message (B : Buffer) return Boolean
+   is (B.Len >= Header_Len
+       and then Peek_Body_Length (B) <= B.Len - Header_Len);
 
 end Tls_Core.Handshake_Buffer;

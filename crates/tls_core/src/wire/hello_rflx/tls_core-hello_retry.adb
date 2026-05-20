@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.Hello_Retry
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_8;
@@ -17,15 +17,13 @@ is
    --  Is_Hrr_Random
    ---------------------------------------------------------------------
 
-   function Is_Hrr_Random (Random : Octet_Array) return Boolean
-   is
-      Diff : Octet := 0;
+   function Is_Hrr_Random (Random : Octet_Array) return Boolean is
+      Diff   : Octet := 0;
       Result : Boolean;
    begin
       for I in 1 .. 32 loop
          pragma Loop_Invariant (I in 1 .. 32);
-         Diff := Diff or
-           (Random (Random'First + I - 1) xor Magic_Random (I));
+         Diff := Diff or (Random (Random'First + I - 1) xor Magic_Random (I));
       end loop;
       Result := Diff = 0;
       return Result;
@@ -36,9 +34,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Build_Synthetic_Msg_Sha256
-     (Ch1_Hash : Tls_Core.Sha256.Digest;
-      Out_Buf  : out Octet_Array)
-   is
+     (Ch1_Hash : Tls_Core.Sha256.Digest; Out_Buf : out Octet_Array) is
    begin
       Out_Buf := (others => 0);
       Out_Buf (1) := Synthetic_Type;
@@ -51,8 +47,9 @@ is
          pragma Loop_Invariant (Out_Buf (2) = 0);
          pragma Loop_Invariant (Out_Buf (3) = 0);
          pragma Loop_Invariant (Out_Buf (4) = 32);
-         pragma Loop_Invariant
-           (for all J in 1 .. I - 1 => Out_Buf (4 + J) = Ch1_Hash (J));
+         pragma
+           Loop_Invariant
+             (for all J in 1 .. I - 1 => Out_Buf (4 + J) = Ch1_Hash (J));
          Out_Buf (4 + I) := Ch1_Hash (I);
       end loop;
    end Build_Synthetic_Msg_Sha256;
@@ -62,39 +59,32 @@ is
    ---------------------------------------------------------------------
 
    procedure W_U8
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Value   : Octet)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Octet)
    with
-     Pre  => Out_Buf'First = 1
-             and then Out_Buf'Last >= 1
-             and then Cursor < Out_Buf'Last,
-     Post => Cursor = Cursor'Old + 1
-             and then Cursor in 1 .. Out_Buf'Last;
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Last >= 1
+       and then Cursor < Out_Buf'Last,
+     Post => Cursor = Cursor'Old + 1 and then Cursor in 1 .. Out_Buf'Last;
    procedure W_U8
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Value   : Octet) is
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Octet) is
    begin
       Cursor := Cursor + 1;
       Out_Buf (Cursor) := Value;
    end W_U8;
 
    procedure W_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Value   : Natural)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Natural)
    with
-     Pre  => Out_Buf'First = 1
-             and then Out_Buf'Last >= 2
-             and then Cursor <= Out_Buf'Last - 2
-             and then Value <= 16#FFFF#,
-     Post => Cursor = Cursor'Old + 2
-             and then Cursor in 2 .. Out_Buf'Last;
+     Pre  =>
+       Out_Buf'First = 1
+       and then Out_Buf'Last >= 2
+       and then Cursor <= Out_Buf'Last - 2
+       and then Value <= 16#FFFF#,
+     Post => Cursor = Cursor'Old + 2 and then Cursor in 2 .. Out_Buf'Last;
    procedure W_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Value   : Natural) is
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Natural)
+   is
    begin
       Cursor := Cursor + 1;
       Out_Buf (Cursor) := Octet (Value / 256);
@@ -107,16 +97,17 @@ is
       Cursor  : in out Natural;
       Bytes   : Octet_Array)
    with
-     Pre  => Out_Buf'First = 1
-             and then Bytes'Length <= Out_Buf'Last
-             and then Cursor <= Out_Buf'Last - Bytes'Length,
-     Post => Cursor = Cursor'Old + Bytes'Length
-             and then Cursor in Cursor'Old .. Out_Buf'Last;
+     Pre  =>
+       Out_Buf'First = 1
+       and then Bytes'Length <= Out_Buf'Last
+       and then Cursor <= Out_Buf'Last - Bytes'Length,
+     Post =>
+       Cursor = Cursor'Old + Bytes'Length
+       and then Cursor in Cursor'Old .. Out_Buf'Last;
    procedure W_Bytes
      (Out_Buf : in out Octet_Array;
       Cursor  : in out Natural;
-      Bytes   : Octet_Array)
-   is
+      Bytes   : Octet_Array) is
    begin
       if Bytes'Length > 0 then
          Out_Buf (Cursor + 1 .. Cursor + Bytes'Length) := Bytes;
@@ -125,21 +116,18 @@ is
    end W_Bytes;
 
    procedure Patch_U16
-     (Out_Buf : in out Octet_Array;
-      At_Pos  : Natural;
-      Value   : Natural)
+     (Out_Buf : in out Octet_Array; At_Pos : Natural; Value : Natural)
    with
-     Pre => Out_Buf'First = 1
-            and then Out_Buf'Last >= 2
-            and then At_Pos >= 1
-            and then At_Pos < Out_Buf'Last
-            and then Value <= 16#FFFF#;
+     Pre =>
+       Out_Buf'First = 1
+       and then Out_Buf'Last >= 2
+       and then At_Pos >= 1
+       and then At_Pos < Out_Buf'Last
+       and then Value <= 16#FFFF#;
    procedure Patch_U16
-     (Out_Buf : in out Octet_Array;
-      At_Pos  : Natural;
-      Value   : Natural) is
+     (Out_Buf : in out Octet_Array; At_Pos : Natural; Value : Natural) is
    begin
-      Out_Buf (At_Pos)     := Octet (Value / 256);
+      Out_Buf (At_Pos) := Octet (Value / 256);
       Out_Buf (At_Pos + 1) := Octet (Value mod 256);
    end Patch_U16;
 
@@ -244,14 +232,14 @@ is
       Cookie_Length  : out Natural;
       OK             : out Boolean)
    is
-      Base : constant Integer := In_Bytes'First;
-      P : Natural;
-      Random_OK : Boolean;
-      U8_Val : Octet;
-      Ext_Total_Len : Natural;
+      Base            : constant Integer := In_Bytes'First;
+      P               : Natural;
+      Random_OK       : Boolean;
+      U8_Val          : Octet;
+      Ext_Total_Len   : Natural;
       Ext_Block_Start : Natural;
-      Ext_Block_End : Natural;
-      Found_Ks : Boolean := False;
+      Ext_Block_End   : Natural;
+      Found_Ks        : Boolean := False;
    begin
       Cipher_Suite := 0;
       Selected_Group := 0;
@@ -266,9 +254,7 @@ is
       end if;
 
       --  legacy_version (skip — must be 0x0303)
-      if In_Bytes (Base) /= 16#03#
-        or else In_Bytes (Base + 1) /= 16#03#
-      then
+      if In_Bytes (Base) /= 16#03# or else In_Bytes (Base + 1) /= 16#03# then
          return;
       end if;
       P := Base + 2;
@@ -287,8 +273,7 @@ is
       if Natural (U8_Val) > 32 then
          return;
       end if;
-      if Natural (U8_Val) > 0
-        and then Natural (U8_Val) > In_Bytes'Last - P + 1
+      if Natural (U8_Val) > 0 and then Natural (U8_Val) > In_Bytes'Last - P + 1
       then
          return;
       end if;
@@ -299,7 +284,8 @@ is
          return;
       end if;
       Cipher_Suite :=
-        Tls_Core.Suites.U16 (In_Bytes (P)) * 256
+        Tls_Core.Suites.U16 (In_Bytes (P))
+        * 256
         + Tls_Core.Suites.U16 (In_Bytes (P + 1));
       P := P + 2;
 
@@ -317,8 +303,7 @@ is
          return;
       end if;
       Ext_Total_Len :=
-        Natural (In_Bytes (P)) * 256
-        + Natural (In_Bytes (P + 1));
+        Natural (In_Bytes (P)) * 256 + Natural (In_Bytes (P + 1));
       P := P + 2;
       Ext_Block_Start := P;
       if Ext_Total_Len > 0
@@ -330,25 +315,18 @@ is
 
       --  Walk extensions; locate key_share (mandatory) and cookie (optional).
       declare
-         Q : Natural := Ext_Block_Start;
+         Q     : Natural := Ext_Block_Start;
          T_Val : Natural;
          L_Val : Natural;
       begin
          while Q + 3 < Ext_Block_End loop
-            pragma Loop_Invariant
-              (Q in Ext_Block_Start .. Ext_Block_End);
-            pragma Loop_Invariant
-              (Ext_Block_End <= In_Bytes'Last + 1);
-            pragma Loop_Invariant
-              (Ext_Block_End <= Integer'Last - 4);
-            pragma Loop_Invariant
-              (Cookie_Length in 0 .. Max_Cookie_Length);
-            T_Val :=
-              Natural (In_Bytes (Q)) * 256
-              + Natural (In_Bytes (Q + 1));
+            pragma Loop_Invariant (Q in Ext_Block_Start .. Ext_Block_End);
+            pragma Loop_Invariant (Ext_Block_End <= In_Bytes'Last + 1);
+            pragma Loop_Invariant (Ext_Block_End <= Integer'Last - 4);
+            pragma Loop_Invariant (Cookie_Length in 0 .. Max_Cookie_Length);
+            T_Val := Natural (In_Bytes (Q)) * 256 + Natural (In_Bytes (Q + 1));
             L_Val :=
-              Natural (In_Bytes (Q + 2)) * 256
-              + Natural (In_Bytes (Q + 3));
+              Natural (In_Bytes (Q + 2)) * 256 + Natural (In_Bytes (Q + 3));
             Q := Q + 4;
             if L_Val > Ext_Block_End - Q then
                return;
@@ -359,7 +337,8 @@ is
                   return;
                end if;
                Selected_Group :=
-                 Tls_Core.Suites.U16 (In_Bytes (Q)) * 256
+                 Tls_Core.Suites.U16 (In_Bytes (Q))
+                 * 256
                  + Tls_Core.Suites.U16 (In_Bytes (Q + 1));
                Found_Ks := True;
             elsif T_Val = Ext_Cookie then
@@ -369,8 +348,7 @@ is
                end if;
                declare
                   Cookie_Data_Len : constant Natural :=
-                    Natural (In_Bytes (Q)) * 256
-                    + Natural (In_Bytes (Q + 1));
+                    Natural (In_Bytes (Q)) * 256 + Natural (In_Bytes (Q + 1));
                begin
                   if Cookie_Data_Len /= L_Val - 2
                     or else Cookie_Data_Len > Max_Cookie_Length
@@ -379,10 +357,10 @@ is
                   end if;
                   if Cookie_Data_Len > 0 then
                      for I in 1 .. Cookie_Data_Len loop
-                        pragma Loop_Invariant
-                          (I in 1 .. Cookie_Data_Len);
-                        pragma Loop_Invariant
-                          (Cookie_Data_Len <= Max_Cookie_Length);
+                        pragma Loop_Invariant (I in 1 .. Cookie_Data_Len);
+                        pragma
+                          Loop_Invariant
+                            (Cookie_Data_Len <= Max_Cookie_Length);
                         Cookie (I) := In_Bytes (Q + 2 + I - 1);
                      end loop;
                   end if;
@@ -404,9 +382,7 @@ is
    ---------------------------------------------------------------------
 
    function Cookies_Equal
-     (Have        : Octet_Array;
-      Want        : Cookie_Bytes;
-      Want_Length : Natural)
+     (Have : Octet_Array; Want : Cookie_Bytes; Want_Length : Natural)
       return Boolean
    is
       Diff : Octet := 0;
@@ -420,8 +396,7 @@ is
       for I in 1 .. Want_Length loop
          pragma Loop_Invariant (I in 1 .. Want_Length);
          pragma Loop_Invariant (Want_Length <= Max_Cookie_Length);
-         Diff := Diff or
-           (Have (Have'First + I - 1) xor Want (I));
+         Diff := Diff or (Have (Have'First + I - 1) xor Want (I));
       end loop;
       return Diff = 0;
    end Cookies_Equal;

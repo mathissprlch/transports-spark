@@ -5,7 +5,7 @@ with Tls_Core.P256_Field;
 with Tls_Core.P256_Order;
 
 package body Tls_Core.Ecdsa_P256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Octet;
@@ -29,15 +29,15 @@ is
       U1       : Component;
       U2       : Component;
 
-      Q        : Tls_Core.P256.Point;
-      U1_G     : Tls_Core.P256.Point;
-      U2_Q     : Tls_Core.P256.Point;
-      Sum      : Tls_Core.P256.Point;
-      Decoded  : Boolean;
+      Q       : Tls_Core.P256.Point;
+      U1_G    : Tls_Core.P256.Point;
+      U2_Q    : Tls_Core.P256.Point;
+      Sum     : Tls_Core.P256.Point;
+      Decoded : Boolean;
 
-      X_Field  : Tls_Core.P256_Field.Field;
-      X_Bytes  : Component := (others => 0);
-      X_Mod_N  : Component;
+      X_Field : Tls_Core.P256_Field.Field;
+      X_Bytes : Component := (others => 0);
+      X_Mod_N : Component;
    begin
       OK := False;
 
@@ -116,19 +116,19 @@ is
       E_Bytes  : Component := (others => 0);
       E_Mod    : Component;
 
-      KG       : Tls_Core.P256.Point;
-      X_Field  : Tls_Core.P256_Field.Field;
-      X_Bytes  : Component := (others => 0);
-      R_Mod    : Component;
+      KG      : Tls_Core.P256.Point;
+      X_Field : Tls_Core.P256_Field.Field;
+      X_Bytes : Component := (others => 0);
+      R_Mod   : Component;
 
-      K_Inv    : Component;
-      D_R      : Component;
-      E_Plus   : Component;
-      S_Mod    : Component;
+      K_Inv  : Component;
+      D_R    : Component;
+      E_Plus : Component;
+      S_Mod  : Component;
    begin
       Out_R := (others => 0);
       Out_S := (others => 0);
-      OK    := False;
+      OK := False;
 
       if not Tls_Core.P256_Order.In_Range (K) then
          return;
@@ -169,7 +169,7 @@ is
 
       Out_R := R_Mod;
       Out_S := S_Mod;
-      OK    := True;
+      OK := True;
 
    end Sign;
 
@@ -185,13 +185,40 @@ is
    is
       --  P-256 group order n in big-endian (FIPS 186-4 §D.1.2.3).
       N_BE : constant Component :=
-        (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
-         16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
-         16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
-         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#);
+        (16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#00#,
+         16#00#,
+         16#00#,
+         16#00#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#BC#,
+         16#E6#,
+         16#FA#,
+         16#AD#,
+         16#A7#,
+         16#17#,
+         16#9E#,
+         16#84#,
+         16#F3#,
+         16#B9#,
+         16#CA#,
+         16#C2#,
+         16#FC#,
+         16#63#,
+         16#25#,
+         16#51#);
 
-      function Less_Than (A, B : Component) return Boolean
-      is
+      function Less_Than (A, B : Component) return Boolean is
       begin
          for I in 1 .. 32 loop
             if A (I) < B (I) then
@@ -203,8 +230,7 @@ is
          return False;
       end Less_Than;
 
-      function Is_Zero (A : Component) return Boolean
-      is
+      function Is_Zero (A : Component) return Boolean is
       begin
          for I in 1 .. 32 loop
             if A (I) /= 0 then
@@ -217,8 +243,7 @@ is
       --  In-place reduction A := A mod n. Used for bits2octets(h1):
       --  since |h1| = 256 bits and n > 2^255, at most one subtraction
       --  is required.
-      procedure Reduce_Mod_N (A : in out Component)
-      is
+      procedure Reduce_Mod_N (A : in out Component) is
          Borrow : Integer := 0;
          Diff   : Integer;
       begin
@@ -237,20 +262,20 @@ is
          end if;
       end Reduce_Mod_N;
 
-      H1       : Tls_Core.Sha256.Digest;
-      H1_Modq  : Component;
-      X_Bytes  : constant Component := Private_Key;
+      H1      : Tls_Core.Sha256.Digest;
+      H1_Modq : Component;
+      X_Bytes : constant Component := Private_Key;
 
-      V        : Component := (others => 16#01#);
-      K        : Component := (others => 16#00#);
-      Big_Buf  : Octet_Array (1 .. 1 + 32 + 32 + 32) := (others => 0);
-      New_V    : Tls_Core.Hmac_Sha256.Tag;
-      New_K    : Tls_Core.Hmac_Sha256.Tag;
+      V       : Component := (others => 16#01#);
+      K       : Component := (others => 16#00#);
+      Big_Buf : Octet_Array (1 .. 1 + 32 + 32 + 32) := (others => 0);
+      New_V   : Tls_Core.Hmac_Sha256.Tag;
+      New_K   : Tls_Core.Hmac_Sha256.Tag;
 
       Iter : Natural := 0;
    begin
       Out_K := (others => 0);
-      OK    := False;
+      OK := False;
 
       --  Step 1: h1 = SHA-256 (m); reduce mod n.
       Tls_Core.Sha256.Hash (Message, H1);
@@ -258,16 +283,16 @@ is
       Reduce_Mod_N (H1_Modq);
 
       --  Steps 4–7: initial K/V update.
-      Big_Buf (1 .. 32)  := V;
-      Big_Buf (33)       := 16#00#;
+      Big_Buf (1 .. 32) := V;
+      Big_Buf (33) := 16#00#;
       Big_Buf (34 .. 65) := X_Bytes;
       Big_Buf (66 .. 97) := H1_Modq;
       Tls_Core.Hmac_Sha256.Compute (K, Big_Buf, New_K);
       K := New_K;
       Tls_Core.Hmac_Sha256.Compute (K, V, New_V);
       V := New_V;
-      Big_Buf (1 .. 32)  := V;
-      Big_Buf (33)       := 16#01#;
+      Big_Buf (1 .. 32) := V;
+      Big_Buf (33) := 16#01#;
       Big_Buf (34 .. 65) := X_Bytes;
       Big_Buf (66 .. 97) := H1_Modq;
       Tls_Core.Hmac_Sha256.Compute (K, Big_Buf, New_K);
@@ -288,7 +313,7 @@ is
          end if;
          --  Reject: K := HMAC_K (V || 0x00); V := HMAC_K (V).
          Big_Buf (1 .. 32) := V;
-         Big_Buf (33)      := 16#00#;
+         Big_Buf (33) := 16#00#;
          Tls_Core.Hmac_Sha256.Compute (K, Big_Buf (1 .. 33), New_K);
          K := New_K;
          Tls_Core.Hmac_Sha256.Compute (K, V, New_V);

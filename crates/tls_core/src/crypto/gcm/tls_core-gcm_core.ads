@@ -32,11 +32,10 @@
 --  HACL\* `gf128_mul` reduces to it via the Mkfour ↔ byte-array
 --  isomorphism in `Vale.AES.GHash_s.gf128_mul_LE`.
 
-with Interfaces;
-use Interfaces;
+with Interfaces; use Interfaces;
 
 package Tls_Core.Gcm_Core
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Block_16 is Octet_Array (1 .. 16);
@@ -60,37 +59,38 @@ is
    --  Spec_Xor_Block — bytewise XOR of two 16-byte blocks. Direct
    --  port of `Vale.Def.Types_s.quad32_xor` extended to bytes.
    function Spec_Xor_Block (A, B : Block_16) return Block_16
-   is (Block_16'(1  => A (1)  xor B (1),
-                 2  => A (2)  xor B (2),
-                 3  => A (3)  xor B (3),
-                 4  => A (4)  xor B (4),
-                 5  => A (5)  xor B (5),
-                 6  => A (6)  xor B (6),
-                 7  => A (7)  xor B (7),
-                 8  => A (8)  xor B (8),
-                 9  => A (9)  xor B (9),
-                 10 => A (10) xor B (10),
-                 11 => A (11) xor B (11),
-                 12 => A (12) xor B (12),
-                 13 => A (13) xor B (13),
-                 14 => A (14) xor B (14),
-                 15 => A (15) xor B (15),
-                 16 => A (16) xor B (16)))
+   is (Block_16'
+         (1  => A (1) xor B (1),
+          2  => A (2) xor B (2),
+          3  => A (3) xor B (3),
+          4  => A (4) xor B (4),
+          5  => A (5) xor B (5),
+          6  => A (6) xor B (6),
+          7  => A (7) xor B (7),
+          8  => A (8) xor B (8),
+          9  => A (9) xor B (9),
+          10 => A (10) xor B (10),
+          11 => A (11) xor B (11),
+          12 => A (12) xor B (12),
+          13 => A (13) xor B (13),
+          14 => A (14) xor B (14),
+          15 => A (15) xor B (15),
+          16 => A (16) xor B (16)))
    with Ghost;
 
    --  Spec_Shifted_Byte — byte I of `V >> 1` (1-bit right shift across
    --  the 16-byte buffer). Helper for Spec_Mul_By_X.
    function Spec_Shifted_Byte (V : Block_16; I : Positive) return Octet
-   is (if I = 1 then
-          Octet (Interfaces.Shift_Right (Interfaces.Unsigned_8 (V (1)), 1))
+   is (if I = 1
+       then Octet (Interfaces.Shift_Right (Interfaces.Unsigned_8 (V (1)), 1))
        else
-          Octet (Interfaces.Shift_Right (Interfaces.Unsigned_8 (V (I)), 1))
-            or Octet (Interfaces.Shift_Left
-                        (Interfaces.Unsigned_8 (V (I - 1))
-                          and Interfaces.Unsigned_8'(1),
-                         7)))
-   with Ghost,
-        Pre => I in 1 .. 16;
+         Octet (Interfaces.Shift_Right (Interfaces.Unsigned_8 (V (I)), 1))
+         or Octet
+              (Interfaces.Shift_Left
+                 (Interfaces.Unsigned_8 (V (I - 1))
+                  and Interfaces.Unsigned_8'(1),
+                  7)))
+   with Ghost, Pre => I in 1 .. 16;
 
    --  Spec_Mul_By_X — multiply a 128-bit GF(2^128) value by x mod p.
    --  Port of `Vale.AES.GF128_s.gf128_mul` for the special case
@@ -99,9 +99,10 @@ is
    --  0xE1 in byte 1 if bit x^127 (= low bit of byte 16) was 1.
    function Spec_Mul_By_X (V : Block_16) return Block_16
    is (Block_16'
-         (1  => (if (V (16) and 16#01#) = 1
-                 then Spec_Shifted_Byte (V, 1) xor 16#E1#
-                 else Spec_Shifted_Byte (V, 1)),
+         (1  =>
+            (if (V (16) and 16#01#) = 1
+             then Spec_Shifted_Byte (V, 1) xor 16#E1#
+             else Spec_Shifted_Byte (V, 1)),
           2  => Spec_Shifted_Byte (V, 2),
           3  => Spec_Shifted_Byte (V, 3),
           4  => Spec_Shifted_Byte (V, 4),
@@ -128,24 +129,21 @@ is
    --  Inverse:    I = 1 + K/8,   J = 7 - K mod 8.
    function Spec_GF128_Mul_From
      (V, Z, Y : Block_16; K : Natural) return Block_16
-   is
-     (if K = 128 then Z
-      else
-        Spec_GF128_Mul_From
-          (V => Spec_Mul_By_X (V),
-           Z =>
-             (if ((Interfaces.Shift_Right
-                     (Interfaces.Unsigned_8 (Y (1 + K / 8)),
-                      7 - (K mod 8)))
-                  and Interfaces.Unsigned_8'(1)) = 1
-              then Spec_Xor_Block (Z, V)
-              else Z),
-           Y => Y,
-           K => K + 1))
-   with
-     Ghost,
-     Pre => K <= 128,
-     Subprogram_Variant => (Decreases => 128 - K);
+   is (if K = 128
+       then Z
+       else
+         Spec_GF128_Mul_From
+           (V => Spec_Mul_By_X (V),
+            Z =>
+              (if ((Interfaces.Shift_Right
+                      (Interfaces.Unsigned_8 (Y (1 + K / 8)), 7 - (K mod 8)))
+                   and Interfaces.Unsigned_8'(1))
+                 = 1
+               then Spec_Xor_Block (Z, V)
+               else Z),
+            Y => Y,
+            K => K + 1))
+   with Ghost, Pre => K <= 128, Subprogram_Variant => (Decreases => 128 - K);
 
    --  Spec_GF128_Mul — port of HACL\* `gf128_mul` for the GHASH
    --  reduction polynomial (`Vale.AES.GF128_s.fsti`):
@@ -165,24 +163,23 @@ is
    function Spec_GF128_Mul (X, Y : Block_16) return Block_16
    with
      Ghost,
-     Post => Spec_GF128_Mul'Result =
-               Spec_GF128_Mul_From (X, Zero_Block, Y, 0);
+     Post => Spec_GF128_Mul'Result = Spec_GF128_Mul_From (X, Zero_Block, Y, 0);
 
    --  Spec_GHash_Byte_Or_Zero — the J-th byte of the K-th 16-byte
    --  block of Data, or 0 if it falls past Data's end. Helper for
    --  Spec_GHash_Block_K.
    function Spec_GHash_Byte_Or_Zero
      (Data : Octet_Array; K : Natural; J : Positive) return Octet
-   is
-     (if K * 16 + (J - 1) < Data'Length
-      then Data (Data'First + K * 16 + (J - 1))
-      else Octet'(0))
+   is (if K * 16 + (J - 1) < Data'Length
+       then Data (Data'First + K * 16 + (J - 1))
+       else Octet'(0))
    with
      Ghost,
-     Pre  => Data'Last < Integer'Last - 16
-             and then K <= Natural'Last / 16
-             and then J in 1 .. 16
-             and then K * 16 < Data'Length;
+     Pre =>
+       Data'Last < Integer'Last - 16
+       and then K <= Natural'Last / 16
+       and then J in 1 .. 16
+       and then K * 16 < Data'Length;
 
    --  Spec_GHash_Block_K — extract the K-th 16-byte block of Data,
    --  zero-padding the (possibly partial) tail block. Mirrors the
@@ -208,19 +205,17 @@ is
           16 => Spec_GHash_Byte_Or_Zero (Data, K, 16)))
    with
      Ghost,
-     Pre => Data'Last < Integer'Last - 16
-            and then K <= Natural'Last / 16
-            and then K * 16 < Data'Length;
+     Pre =>
+       Data'Last < Integer'Last - 16
+       and then K <= Natural'Last / 16
+       and then K * 16 < Data'Length;
 
    --  Spec_GHash_Block_From_First — the leading 16-byte block of
    --  Data, with implicit zero-pad of any short tail. Helper for the
    --  Spec_GHash_Fold recursion.
-   function Spec_GHash_Block_From_First (Data : Octet_Array)
-                                          return Block_16
+   function Spec_GHash_Block_From_First (Data : Octet_Array) return Block_16
    is (Spec_GHash_Block_K (Data, 0))
-   with Ghost,
-        Pre => Data'Length > 0
-               and then Data'Last < Integer'Last - 16;
+   with Ghost, Pre => Data'Length > 0 and then Data'Last < Integer'Last - 16;
 
    --  Spec_GHash_Fold — port of HACL\* `Vale.AES.GHash_s.ghash_LE_def`
    --  unrolled left-to-right over 16-byte blocks of Data. HACL\*'s
@@ -230,23 +225,22 @@ is
    --  block:
    --      Y_i = (Y_{i-1} xor block_i) · H        (mod p)
    function Spec_GHash_Fold
-     (H    : Block_16;
-      Data : Octet_Array;
-      Y    : Block_16) return Block_16
-   is
-     (if Data'Length = 0 then Y
-      elsif Data'Length <= 16 then
-        Spec_GF128_Mul
-          (Spec_Xor_Block (Y, Spec_GHash_Block_From_First (Data)), H)
-      else
-        Spec_GHash_Fold
-          (H,
-           Data (Data'First + 16 .. Data'Last),
-           Spec_GF128_Mul
-             (Spec_Xor_Block (Y, Spec_GHash_Block_From_First (Data)), H)))
+     (H : Block_16; Data : Octet_Array; Y : Block_16) return Block_16
+   is (if Data'Length = 0
+       then Y
+       elsif Data'Length <= 16
+       then
+         Spec_GF128_Mul
+           (Spec_Xor_Block (Y, Spec_GHash_Block_From_First (Data)), H)
+       else
+         Spec_GHash_Fold
+           (H,
+            Data (Data'First + 16 .. Data'Last),
+            Spec_GF128_Mul
+              (Spec_Xor_Block (Y, Spec_GHash_Block_From_First (Data)), H)))
    with
      Ghost,
-     Pre => Data'Last < Integer'Last - 16,
+     Pre                => Data'Last < Integer'Last - 16,
      Subprogram_Variant => (Decreases => Data'Length);
 
    --  Spec_Inc32 — port of `Vale.AES.GCTR_s.inc32` with constant 1.
@@ -256,23 +250,29 @@ is
    --  1; if it wraps, byte 15 += 1; etc., stopping at byte 13.
    --  The high 12 bytes (1..12) are unchanged.
    function Spec_Inc32_Step
-     (V    : Block_16;
-      Idx  : Integer;
-      Carr : Interfaces.Unsigned_8) return Block_16
-   is
-     (if Idx < 13 or else Carr = 0 then V
-      else
-        Spec_Inc32_Step
-          ((V with delta Idx =>
-              Octet ((Interfaces.Unsigned_16 (V (Idx))
-                       + Interfaces.Unsigned_16 (Carr)) and 16#FF#)),
-           Idx - 1,
-           (if Interfaces.Unsigned_16 (V (Idx))
-                + Interfaces.Unsigned_16 (Carr) >= 256
-            then 1 else 0)))
-   with Ghost,
-        Pre => Idx in 12 .. 16,
-        Subprogram_Variant => (Decreases => Idx);
+     (V : Block_16; Idx : Integer; Carr : Interfaces.Unsigned_8)
+      return Block_16
+   is (if Idx < 13 or else Carr = 0
+       then V
+       else
+         Spec_Inc32_Step
+           ((V
+             with delta
+               Idx =>
+                 Octet
+                   ((Interfaces.Unsigned_16 (V (Idx))
+                     + Interfaces.Unsigned_16 (Carr))
+                    and 16#FF#)),
+            Idx - 1,
+            (if Interfaces.Unsigned_16 (V (Idx))
+               + Interfaces.Unsigned_16 (Carr)
+               >= 256
+             then 1
+             else 0)))
+   with
+     Ghost,
+     Pre                => Idx in 12 .. 16,
+     Subprogram_Variant => (Decreases => Idx);
 
    function Spec_Inc32 (V : Block_16) return Block_16
    is (Spec_Inc32_Step (V, 16, 1))
@@ -282,28 +282,26 @@ is
    --  12-byte IV branch (`8 * length iv = 96`):
    --      j0_BE = iv || 0x00000001
    function Spec_Build_J0 (Nonce : Octet_Array) return Block_16
-   is
-     (Block_16'
-        (1  => Nonce (Nonce'First),
-         2  => Nonce (Nonce'First + 1),
-         3  => Nonce (Nonce'First + 2),
-         4  => Nonce (Nonce'First + 3),
-         5  => Nonce (Nonce'First + 4),
-         6  => Nonce (Nonce'First + 5),
-         7  => Nonce (Nonce'First + 6),
-         8  => Nonce (Nonce'First + 7),
-         9  => Nonce (Nonce'First + 8),
-         10 => Nonce (Nonce'First + 9),
-         11 => Nonce (Nonce'First + 10),
-         12 => Nonce (Nonce'First + 11),
-         13 => 0,
-         14 => 0,
-         15 => 0,
-         16 => 1))
+   is (Block_16'
+         (1  => Nonce (Nonce'First),
+          2  => Nonce (Nonce'First + 1),
+          3  => Nonce (Nonce'First + 2),
+          4  => Nonce (Nonce'First + 3),
+          5  => Nonce (Nonce'First + 4),
+          6  => Nonce (Nonce'First + 5),
+          7  => Nonce (Nonce'First + 6),
+          8  => Nonce (Nonce'First + 7),
+          9  => Nonce (Nonce'First + 8),
+          10 => Nonce (Nonce'First + 9),
+          11 => Nonce (Nonce'First + 10),
+          12 => Nonce (Nonce'First + 11),
+          13 => 0,
+          14 => 0,
+          15 => 0,
+          16 => 1))
    with
      Ghost,
-     Pre => Nonce'Length = 12
-            and then Nonce'Last < Integer'Last - 16;
+     Pre => Nonce'Length = 12 and then Nonce'Last < Integer'Last - 16;
 
    --  Spec_U64_BE — eight-byte big-endian serialisation of a 64-bit
    --  unsigned integer. Used for the AAD/CT length tail of GHASH
@@ -319,20 +317,18 @@ is
           4 => Octet (Interfaces.Shift_Right (N, 32) and 16#FF#),
           5 => Octet (Interfaces.Shift_Right (N, 24) and 16#FF#),
           6 => Octet (Interfaces.Shift_Right (N, 16) and 16#FF#),
-          7 => Octet (Interfaces.Shift_Right (N,  8) and 16#FF#),
+          7 => Octet (Interfaces.Shift_Right (N, 8) and 16#FF#),
           8 => Octet (N and 16#FF#)));
 
    --  Spec_Mac_Length — total byte length of the GHASH input layout.
    --  Not ghost: also used in the executable Build_Mac_Data Pre.
    function Spec_Mac_Length (Aad_Len, Ct_Len : Natural) return Natural
-   is
-     (Aad_Len
-      + (if Aad_Len mod 16 = 0 then 0 else 16 - (Aad_Len mod 16))
-      + Ct_Len
-      + (if Ct_Len mod 16 = 0 then 0 else 16 - (Ct_Len mod 16))
-      + 16)
-   with
-     Pre => Aad_Len <= 16640 and then Ct_Len <= 16640;
+   is (Aad_Len
+       + (if Aad_Len mod 16 = 0 then 0 else 16 - (Aad_Len mod 16))
+       + Ct_Len
+       + (if Ct_Len mod 16 = 0 then 0 else 16 - (Ct_Len mod 16))
+       + 16)
+   with Pre => Aad_Len <= 16640 and then Ct_Len <= 16640;
 
    --  Spec_Build_Mac_Data_Byte_At — byte at position I (1-based) of
    --  the GHASH input layout. Helper that defines Spec_Build_Mac_Data
@@ -342,49 +338,50 @@ is
    --  Flat if-elsif chain (no inner `declare`) so gnatprove inlines
    --  the body directly into call sites for SMT folding.
    function Spec_Build_Mac_Data_Byte_At
-     (AAD        : Octet_Array;
-      Ciphertext : Octet_Array;
-      I          : Positive)
-      return Octet
-   is
-     (if I <= AAD'Length then
-        AAD (AAD'First + (I - 1))
-      elsif I <= AAD'Length + Pad_Len (AAD'Length) then
-        Octet'(0)
-      elsif I <= AAD'Length + Pad_Len (AAD'Length) + Ciphertext'Length
-      then
-        Ciphertext
-          (Ciphertext'First
-             + (I - AAD'Length - Pad_Len (AAD'Length) - 1))
-      elsif I <= AAD'Length + Pad_Len (AAD'Length)
-                  + Ciphertext'Length
-                  + Pad_Len (Ciphertext'Length)
-      then
-        Octet'(0)
-      elsif I <= AAD'Length + Pad_Len (AAD'Length)
-                  + Ciphertext'Length
-                  + Pad_Len (Ciphertext'Length)
-                  + 8
-      then
-        Spec_U64_BE
-          (Interfaces.Unsigned_64 (AAD'Length) * 8)
-          (I - (AAD'Length + Pad_Len (AAD'Length)
-                + Ciphertext'Length
-                + Pad_Len (Ciphertext'Length)))
-      else
-        Spec_U64_BE
-          (Interfaces.Unsigned_64 (Ciphertext'Length) * 8)
-          (I - (AAD'Length + Pad_Len (AAD'Length)
-                + Ciphertext'Length
-                + Pad_Len (Ciphertext'Length)
-                + 8)))
+     (AAD : Octet_Array; Ciphertext : Octet_Array; I : Positive) return Octet
+   is (if I <= AAD'Length
+       then AAD (AAD'First + (I - 1))
+       elsif I <= AAD'Length + Pad_Len (AAD'Length)
+       then Octet'(0)
+       elsif I <= AAD'Length + Pad_Len (AAD'Length) + Ciphertext'Length
+       then
+         Ciphertext
+           (Ciphertext'First + (I - AAD'Length - Pad_Len (AAD'Length) - 1))
+       elsif I
+         <= AAD'Length
+            + Pad_Len (AAD'Length)
+            + Ciphertext'Length
+            + Pad_Len (Ciphertext'Length)
+       then Octet'(0)
+       elsif I
+         <= AAD'Length
+            + Pad_Len (AAD'Length)
+            + Ciphertext'Length
+            + Pad_Len (Ciphertext'Length)
+            + 8
+       then
+         Spec_U64_BE (Interfaces.Unsigned_64 (AAD'Length) * 8)
+           (I
+            - (AAD'Length
+               + Pad_Len (AAD'Length)
+               + Ciphertext'Length
+               + Pad_Len (Ciphertext'Length)))
+       else
+         Spec_U64_BE (Interfaces.Unsigned_64 (Ciphertext'Length) * 8)
+           (I
+            - (AAD'Length
+               + Pad_Len (AAD'Length)
+               + Ciphertext'Length
+               + Pad_Len (Ciphertext'Length)
+               + 8)))
    with
      Ghost,
-     Pre => AAD'Length <= 16640
-            and then Ciphertext'Length <= 16640
-            and then AAD'Last < Integer'Last - 16640
-            and then Ciphertext'Last < Integer'Last - 16640
-            and then I <= Spec_Mac_Length (AAD'Length, Ciphertext'Length);
+     Pre =>
+       AAD'Length <= 16640
+       and then Ciphertext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640
+       and then I <= Spec_Mac_Length (AAD'Length, Ciphertext'Length);
 
    --  Spec_Build_Mac_Data — port of the GHASH input layout used in
    --  `Vale.AES.GCM_s.gcm_encrypt_LE_def`:
@@ -394,24 +391,22 @@ is
    --  Returned as a 1-based Octet_Array of length
    --  `Spec_Mac_Length (AAD'Length, Ciphertext'Length)`.
    function Spec_Build_Mac_Data
-     (AAD        : Octet_Array;
-      Ciphertext : Octet_Array)
-      return Octet_Array
+     (AAD : Octet_Array; Ciphertext : Octet_Array) return Octet_Array
    with
      Ghost,
-     Pre  => AAD'Length <= 16640
-             and then Ciphertext'Length <= 16640
-             and then AAD'Last < Integer'Last - 16640
-             and then Ciphertext'Last < Integer'Last - 16640,
-     Post => Spec_Build_Mac_Data'Result'First = 1
-             and then Spec_Build_Mac_Data'Result'Length =
-                        Spec_Mac_Length
-                          (AAD'Length, Ciphertext'Length)
-             and then
-               (for all I in 1 ..
-                  Spec_Mac_Length (AAD'Length, Ciphertext'Length) =>
-                  Spec_Build_Mac_Data'Result (I) =
-                    Spec_Build_Mac_Data_Byte_At (AAD, Ciphertext, I));
+     Pre  =>
+       AAD'Length <= 16640
+       and then Ciphertext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640,
+     Post =>
+       Spec_Build_Mac_Data'Result'First = 1
+       and then Spec_Build_Mac_Data'Result'Length
+                = Spec_Mac_Length (AAD'Length, Ciphertext'Length)
+       and then (for all I in
+                   1 .. Spec_Mac_Length (AAD'Length, Ciphertext'Length) =>
+                   Spec_Build_Mac_Data'Result (I)
+                   = Spec_Build_Mac_Data_Byte_At (AAD, Ciphertext, I));
 
    ------------------------------------------------------------------
    --  Imperative API
@@ -428,8 +423,7 @@ is
    --  Proven at:   gnatprove --level=2 (audit-clean per §0d).
    --------------------------------------------------------------------
    procedure Increment_Counter (Counter : in out Block_16)
-   with
-     Post => Counter = Spec_Inc32 (Counter'Old);
+   with Post => Counter = Spec_Inc32 (Counter'Old);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  J0 from a 12-byte IV.
@@ -441,12 +435,9 @@ is
    --  Functional:  Out_J0 = Spec_Build_J0 (Nonce)
    --  Proven at:   gnatprove --level=2 (audit-clean per §0d)
    --------------------------------------------------------------------
-   procedure Build_J0
-     (Nonce  : Octet_Array;
-      Out_J0 : out Block_16)
+   procedure Build_J0 (Nonce : Octet_Array; Out_J0 : out Block_16)
    with
-     Pre  => Nonce'Length = 12
-             and then Nonce'Last < Integer'Last - 16,
+     Pre  => Nonce'Length = 12 and then Nonce'Last < Integer'Last - 16,
      Post => Out_J0 = Spec_Build_J0 (Nonce);
 
    --------------------------------------------------------------------
@@ -467,17 +458,19 @@ is
       Out_Buf    : out Octet_Array;
       Out_Last   : out Natural)
    with
-     Pre  => AAD'Length <= 16640
-             and then Ciphertext'Length <= 16640
-             and then AAD'Last < Integer'Last - 16640
-             and then Ciphertext'Last < Integer'Last - 16640
-             and then Out_Buf'First = 1
-             and then Out_Buf'Length >=
-               Spec_Mac_Length (AAD'Length, Ciphertext'Length),
-     Post => Out_Last = Spec_Mac_Length (AAD'Length, Ciphertext'Length)
-             and then Out_Last <= Out_Buf'Last
-             and then Out_Buf (1 .. Out_Last) =
-                        Spec_Build_Mac_Data (AAD, Ciphertext);
+     Pre  =>
+       AAD'Length <= 16640
+       and then Ciphertext'Length <= 16640
+       and then AAD'Last < Integer'Last - 16640
+       and then Ciphertext'Last < Integer'Last - 16640
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length
+                >= Spec_Mac_Length (AAD'Length, Ciphertext'Length),
+     Post =>
+       Out_Last = Spec_Mac_Length (AAD'Length, Ciphertext'Length)
+       and then Out_Last <= Out_Buf'Last
+       and then Out_Buf (1 .. Out_Last)
+                = Spec_Build_Mac_Data (AAD, Ciphertext);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  GF(2^128) bit-by-bit multiply.
@@ -504,8 +497,7 @@ is
    --  per iteration, which is well within Z3 / CVC5's reach.
    --------------------------------------------------------------------
    procedure Ghash_Mul (X : in out Block_16; Y : Block_16)
-   with
-     Post => X = Spec_GF128_Mul (X'Old, Y);
+   with Post => X = Spec_GF128_Mul (X'Old, Y);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  GHASH iteration over a multi-block input.
@@ -521,14 +513,9 @@ is
    --  built from AAD ≤ 16640 + Ciphertext ≤ 16640 (RFC 8446 max
    --  TLSCiphertext) — i.e. 16640 + 15 + 16640 + 15 + 16 = 33326.
    --------------------------------------------------------------------
-   procedure Ghash
-     (H     : Block_16;
-      Data  : Octet_Array;
-      Out_X : in out Block_16)
+   procedure Ghash (H : Block_16; Data : Octet_Array; Out_X : in out Block_16)
    with
-     Pre  =>
-       Data'Length <= 33326
-       and then Data'Last < Integer'Last - 16640,
+     Pre  => Data'Length <= 33326 and then Data'Last < Integer'Last - 16640,
      Post => Out_X = Spec_GHash_Fold (H, Data, Out_X'Old);
 
    --------------------------------------------------------------------
@@ -579,30 +566,26 @@ is
    --  becomes provable here without API changes.
    generic
       type Round_Keys is private;
-      with function Spec_Encrypt_Block
-        (RK : Round_Keys; Plaintext : Block_16) return Block_16
-      with Ghost;
-      with procedure Encrypt_Block
-        (RK        : Round_Keys;
-         Plaintext : Block_16;
-         Out_Block : out Block_16);
-   package Aes_Ctr_Pkg
-     with SPARK_Mode
-   is
+      with
+        function Spec_Encrypt_Block
+          (RK : Round_Keys; Plaintext : Block_16) return Block_16
+        with Ghost;
+      with
+        procedure Encrypt_Block
+          (RK : Round_Keys; Plaintext : Block_16; Out_Block : out Block_16);
+   package Aes_Ctr_Pkg with SPARK_Mode is
       --  Spec_Aes_Ctr — recursive ghost fold; mirrors
       --  `gctr_encrypt_LE`. Returns a 1-based Octet_Array of the same
       --  length as Input.
       function Spec_Aes_Ctr
-        (RK    : Round_Keys;
-         J     : Block_16;
-         Input : Octet_Array)
-         return Octet_Array
+        (RK : Round_Keys; J : Block_16; Input : Octet_Array) return Octet_Array
       with
         Ghost,
-        Pre  => Input'Length <= 16640
-                and then Input'Last < Integer'Last - 16640,
-        Post => Spec_Aes_Ctr'Result'First = 1
-                and then Spec_Aes_Ctr'Result'Length = Input'Length,
+        Pre                =>
+          Input'Length <= 16640 and then Input'Last < Integer'Last - 16640,
+        Post               =>
+          Spec_Aes_Ctr'Result'First = 1
+          and then Spec_Aes_Ctr'Result'Length = Input'Length,
         Subprogram_Variant => (Decreases => Input'Length);
 
       --  Functional Post (Output = Spec_Aes_Ctr (RK, Initial_J,

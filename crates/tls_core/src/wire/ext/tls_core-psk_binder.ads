@@ -3,7 +3,7 @@ with Tls_Core.Sha256;
 with Tls_Core.Suites;
 
 package Tls_Core.Psk_Binder
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Binder_Bytes is Tls_Core.Key_Sched.Max_Digest;
@@ -21,11 +21,10 @@ is
        and then PSK'Last < Integer'Last - 1024
        and then Truncated_Client_Hello'First = 1
        and then Truncated_Client_Hello'Last
-                  < Integer'Last - Tls_Core.Sha256.Block_Length
+                < Integer'Last - Tls_Core.Sha256.Block_Length
        and then Truncated_Client_Hello'Length <= Natural'Last - 9 - 64;
 
    function Verify
-     (Computed : Binder_Bytes;
-      Received : Binder_Bytes) return Boolean;
+     (Computed : Binder_Bytes; Received : Binder_Bytes) return Boolean;
 
 end Tls_Core.Psk_Binder;

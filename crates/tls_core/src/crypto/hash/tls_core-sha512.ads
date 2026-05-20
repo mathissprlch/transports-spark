@@ -28,7 +28,7 @@
 with Interfaces;
 
 package Tls_Core.Sha512
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -39,9 +39,9 @@ is
    Hash_Length  : constant := 64;    --  FIPS §6.4: 512-bit digest.
 
    subtype Block_Index is Positive range 1 .. Block_Length;
-   subtype Hash_Index  is Positive range 1 .. Hash_Length;
+   subtype Hash_Index is Positive range 1 .. Hash_Length;
 
-   subtype Block  is Octet_Array (Block_Index);
+   subtype Block is Octet_Array (Block_Index);
    subtype Digest is Octet_Array (Hash_Index);
 
    ---------------------------------------------------------------------
@@ -53,10 +53,14 @@ is
 
    --  Mirrors `Spec.SHA2.Constants.h512` (lib/Spec.SHA2.Constants.fst:96).
    Initial_State_SHA512 : constant Hash_State :=
-     (16#6A09_E667_F3BC_C908#, 16#BB67_AE85_84CA_A73B#,
-      16#3C6E_F372_FE94_F82B#, 16#A54F_F53A_5F1D_36F1#,
-      16#510E_527F_ADE6_82D1#, 16#9B05_688C_2B3E_6C1F#,
-      16#1F83_D9AB_FB41_BD6B#, 16#5BE0_CD19_137E_2179#);
+     (16#6A09_E667_F3BC_C908#,
+      16#BB67_AE85_84CA_A73B#,
+      16#3C6E_F372_FE94_F82B#,
+      16#A54F_F53A_5F1D_36F1#,
+      16#510E_527F_ADE6_82D1#,
+      16#9B05_688C_2B3E_6C1F#,
+      16#1F83_D9AB_FB41_BD6B#,
+      16#5BE0_CD19_137E_2179#);
 
    --  Number of bytes appended by FIPS 180-4 §5.1.2 padding: one
    --  0x80 byte + zeros + 16-byte length field, total a multiple
@@ -65,36 +69,34 @@ is
    --  for SHA-512).
    function Spec_Pad_Length (N : Natural) return Positive
    is (((239 - (N mod 128)) mod 128) + 17)
-   with Pre  => N <= Natural'Last - 17 - 128,
-        Post => Spec_Pad_Length'Result in 17 .. 144
-                and then (N + Spec_Pad_Length'Result) mod 128 = 0;
+   with
+     Pre  => N <= Natural'Last - 17 - 128,
+     Post =>
+       Spec_Pad_Length'Result in 17 .. 144
+       and then (N + Spec_Pad_Length'Result) mod 128 = 0;
 
    --  Update one 128-byte block on an internal state. Mirrors HACL*
    --  `Spec.SHA2.update_pre` (specs/Spec.SHA2.fst:213) for SHA2_512.
-   function Update_Block_Spec
-     (S : Hash_State;
-      B : Block) return Hash_State;
+   function Update_Block_Spec (S : Hash_State; B : Block) return Hash_State;
 
    --  Slice the I-th 128-byte block (0-based).
-   function Block_At
-     (Padded : Octet_Array;
-      I      : Natural) return Block
+   function Block_At (Padded : Octet_Array; I : Natural) return Block
    with
-     Pre => Padded'First = 1
-            and then I <= (Natural'Last - 128) / 128
-            and then I * 128 + 128 <= Padded'Length;
+     Pre =>
+       Padded'First = 1
+       and then I <= (Natural'Last - 128) / 128
+       and then I * 128 + 128 <= Padded'Length;
 
    --  Fold of Update_Block_Spec over the first N blocks. Mirrors
    --  HACL* `Lib.UpdateMulti.mk_update_multi` for SHA2_512
    --  (specs/Spec.Agile.Hash.fst:39).
    function Spec_Hash_Blocks
-     (S0     : Hash_State;
-      Padded : Octet_Array;
-      N      : Natural) return Hash_State
+     (S0 : Hash_State; Padded : Octet_Array; N : Natural) return Hash_State
    with
-     Pre => Padded'First = 1
-            and then N <= Natural'Last / 128
-            and then N * 128 <= Padded'Length,
+     Pre                =>
+       Padded'First = 1
+       and then N <= Natural'Last / 128
+       and then N * 128 <= Padded'Length,
      Subprogram_Variant => (Decreases => N);
 
    --  Build the Merkle-Damgard padding for a SHA-512 message of
@@ -105,10 +107,11 @@ is
    function Pad_SHA512 (Input : Octet_Array) return Octet_Array
    with
      Pre  => Input'Length <= Natural'Last - 17 - 128,
-     Post => Pad_SHA512'Result'First = 1
-             and then Pad_SHA512'Result'Length
-                       = Input'Length + Spec_Pad_Length (Input'Length)
-             and then Pad_SHA512'Result'Length mod 128 = 0;
+     Post =>
+       Pad_SHA512'Result'First = 1
+       and then Pad_SHA512'Result'Length
+                = Input'Length + Spec_Pad_Length (Input'Length)
+       and then Pad_SHA512'Result'Length mod 128 = 0;
 
    --  Emit hash state as 64 BE bytes. Mirrors HACL*
    --  `Spec.Agile.Hash.finish_md` for SHA2_512
@@ -119,8 +122,7 @@ is
    --  Mirrors HACL* `Spec.Agile.Hash.hash'` (specs/Spec.Agile.Hash.fst:88)
    --  for SHA2_512.
    function Spec_SHA512 (Input : Octet_Array) return Digest
-   with
-     Pre => Input'Length <= Natural'Last - 17 - 128;
+   with Pre => Input'Length <= Natural'Last - 17 - 128;
 
    ---------------------------------------------------------------------
    --  Streaming API
@@ -129,35 +131,27 @@ is
    type Context is private;
 
    procedure Init (Ctx : out Context)
-   with
-     Post => Total_Length (Ctx) = 0;
+   with Post => Total_Length (Ctx) = 0;
 
-   procedure Update
-     (Ctx  : in out Context;
-      Data : Octet_Array)
+   procedure Update (Ctx : in out Context; Data : Octet_Array)
    with
-     Pre =>
-       Total_Length (Ctx) <= Interfaces.Unsigned_64'Last
-                              - Interfaces.Unsigned_64 (Data'Length)
+     Pre  =>
+       Total_Length (Ctx)
+       <= Interfaces.Unsigned_64'Last - Interfaces.Unsigned_64 (Data'Length)
        and then Data'Last < Integer'Last - Block_Length,
      Post =>
        Total_Length (Ctx)
-         = Total_Length (Ctx'Old)
-           + Interfaces.Unsigned_64 (Data'Length);
+       = Total_Length (Ctx'Old) + Interfaces.Unsigned_64 (Data'Length);
 
-   procedure Finalize
-     (Ctx        : in out Context;
-      Out_Digest : out Digest);
+   procedure Finalize (Ctx : in out Context; Out_Digest : out Digest);
 
    --  Functional correctness: Out_Digest = Spec_SHA512 (Data).
-   procedure Hash
-     (Data       : Octet_Array;
-      Out_Digest : out Digest)
+   procedure Hash (Data : Octet_Array; Out_Digest : out Digest)
    with
-     Pre  => Interfaces.Unsigned_64 (Data'Length)
-              <= Interfaces.Unsigned_64'Last / 8
-             and then Data'Last < Integer'Last - Block_Length
-             and then Data'Length <= Natural'Last - 17 - 128,
+     Pre  =>
+       Interfaces.Unsigned_64 (Data'Length) <= Interfaces.Unsigned_64'Last / 8
+       and then Data'Last < Integer'Last - Block_Length
+       and then Data'Length <= Natural'Last - 17 - 128,
      Post => Out_Digest = Spec_SHA512 (Data);
 
    function Total_Length (Ctx : Context) return Interfaces.Unsigned_64

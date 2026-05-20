@@ -2,7 +2,7 @@ with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
 
 package body Tls_Core.Session_Ticket
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -12,8 +12,8 @@ is
    --  used by Tls_Core.Tls13_Driver and Tls_Core.Key_Update.
    ---------------------------------------------------------------------
 
-   procedure Hkdf_Expand_Label_Sha256
-     is new Tls_Core.Hkdf.Expand_Label
+   procedure Hkdf_Expand_Label_Sha256 is new
+     Tls_Core.Hkdf.Expand_Label
        (Hash_Length      => Tls_Core.Sha256.Hash_Length,
         Max_Info         => 512,
         Spec_Hmac_Expand => Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand,
@@ -36,15 +36,15 @@ is
       Out_Buf := (others => 0);
 
       --  uint32 ticket_lifetime (BE).
-      Out_Buf (1) := Octet ((Lifetime / 2 ** 24) mod 256);
-      Out_Buf (2) := Octet ((Lifetime / 2 ** 16) mod 256);
-      Out_Buf (3) := Octet ((Lifetime / 2 ** 8)  mod 256);
+      Out_Buf (1) := Octet ((Lifetime / 2**24) mod 256);
+      Out_Buf (2) := Octet ((Lifetime / 2**16) mod 256);
+      Out_Buf (3) := Octet ((Lifetime / 2**8) mod 256);
       Out_Buf (4) := Octet (Lifetime mod 256);
 
       --  uint32 ticket_age_add (BE).
-      Out_Buf (5) := Octet ((Age_Add / 2 ** 24) mod 256);
-      Out_Buf (6) := Octet ((Age_Add / 2 ** 16) mod 256);
-      Out_Buf (7) := Octet ((Age_Add / 2 ** 8)  mod 256);
+      Out_Buf (5) := Octet ((Age_Add / 2**24) mod 256);
+      Out_Buf (6) := Octet ((Age_Add / 2**16) mod 256);
+      Out_Buf (7) := Octet ((Age_Add / 2**8) mod 256);
       Out_Buf (8) := Octet (Age_Add mod 256);
 
       P := 8;
@@ -103,13 +103,13 @@ is
       Tl : Natural;  --  ticket length
       El : Natural;  --  extensions length
    begin
-      Lifetime     := 0;
-      Age_Add      := 0;
-      Nonce_First  := In_Buf'First;
-      Nonce_Last   := In_Buf'First - 1;
+      Lifetime := 0;
+      Age_Add := 0;
+      Nonce_First := In_Buf'First;
+      Nonce_Last := In_Buf'First - 1;
       Ticket_First := In_Buf'First;
-      Ticket_Last  := In_Buf'First;
-      OK           := False;
+      Ticket_Last := In_Buf'First;
+      OK := False;
 
       --  Need at least 4 + 4 + 1 + 0 + 2 + 1 + 2 = 14 bytes.
       if In_Buf'Length < 14 then
@@ -117,15 +117,17 @@ is
       end if;
 
       Lifetime :=
-        U32 (In_Buf (In_Buf'First    )) * 2 ** 24
-        + U32 (In_Buf (In_Buf'First + 1)) * 2 ** 16
-        + U32 (In_Buf (In_Buf'First + 2)) * 2 ** 8
+        U32 (In_Buf (In_Buf'First))
+        * 2**24
+        + U32 (In_Buf (In_Buf'First + 1)) * 2**16
+        + U32 (In_Buf (In_Buf'First + 2)) * 2**8
         + U32 (In_Buf (In_Buf'First + 3));
 
       Age_Add :=
-        U32 (In_Buf (In_Buf'First + 4)) * 2 ** 24
-        + U32 (In_Buf (In_Buf'First + 5)) * 2 ** 16
-        + U32 (In_Buf (In_Buf'First + 6)) * 2 ** 8
+        U32 (In_Buf (In_Buf'First + 4))
+        * 2**24
+        + U32 (In_Buf (In_Buf'First + 5)) * 2**16
+        + U32 (In_Buf (In_Buf'First + 6)) * 2**8
         + U32 (In_Buf (In_Buf'First + 7));
 
       P := In_Buf'First + 8;  --  start of nonce-length octet
@@ -143,16 +145,14 @@ is
 
       if Nl = 0 then
          Nonce_First := P + 1;     --  empty range encoded as F..F-1
-         Nonce_Last  := P;
+         Nonce_Last := P;
       else
          Nonce_First := P + 1;
-         Nonce_Last  := P + Nl;
+         Nonce_Last := P + Nl;
       end if;
       P := P + 1 + Nl;
 
-      Tl :=
-        Natural (In_Buf (P)) * 256
-        + Natural (In_Buf (P + 1));
+      Tl := Natural (In_Buf (P)) * 256 + Natural (In_Buf (P + 1));
       if Tl < 1 or else Tl > Max_Ticket_Length then
          return;
       end if;
@@ -163,12 +163,10 @@ is
       end if;
 
       Ticket_First := P + 2;
-      Ticket_Last  := P + 1 + Tl;
+      Ticket_Last := P + 1 + Tl;
       P := P + 2 + Tl;
 
-      El :=
-        Natural (In_Buf (P)) * 256
-        + Natural (In_Buf (P + 1));
+      El := Natural (In_Buf (P)) * 256 + Natural (In_Buf (P + 1));
       if El > Max_Nst_Extensions_Length then
          return;
       end if;
@@ -198,8 +196,7 @@ is
    procedure Derive_Resumption_Master_Secret_Sha256
      (Master_Secret     : Tls_Core.Key_Schedule.Secret;
       Transcript_Hash   : Tls_Core.Sha256.Digest;
-      Resumption_Secret : out Tls_Core.Key_Schedule.Secret)
-   is
+      Resumption_Secret : out Tls_Core.Key_Schedule.Secret) is
    begin
       Hkdf_Expand_Label_Sha256
         (Secret  => Master_Secret,
@@ -215,8 +212,7 @@ is
    procedure Derive_Psk_From_Ticket_Sha256
      (Resumption_Secret : Tls_Core.Key_Schedule.Secret;
       Ticket_Nonce      : Octet_Array;
-      Psk               : out Tls_Core.Key_Schedule.Secret)
-   is
+      Psk               : out Tls_Core.Key_Schedule.Secret) is
    begin
       Hkdf_Expand_Label_Sha256
         (Secret  => Resumption_Secret,

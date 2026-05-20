@@ -30,7 +30,7 @@ with Tls_Core.Session_Ticket;
 with Tls_Core.Suites;
 
 package Tls_Core.Session_Cache
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_32;
@@ -49,21 +49,21 @@ is
    --
    --  All fields are stack-allocated; no 'access types, no `new`.
    type Slot is record
-      Used              : Boolean := False;
-      Insertion_Seq     : Interfaces.Unsigned_32 := 0;
+      Used          : Boolean := False;
+      Insertion_Seq : Interfaces.Unsigned_32 := 0;
 
       --  RFC 8446 §4.6.1 fields.
-      Lifetime          : Tls_Core.Session_Ticket.U32 := 0;
-      Age_Add           : Tls_Core.Session_Ticket.U32 := 0;
+      Lifetime : Tls_Core.Session_Ticket.U32 := 0;
+      Age_Add  : Tls_Core.Session_Ticket.U32 := 0;
 
-      Ticket_Nonce_Len  : Tls_Core.Session_Ticket.Ticket_Nonce_Length := 0;
-      Ticket_Nonce      : Octet_Array
-        (1 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length) :=
+      Ticket_Nonce_Len : Tls_Core.Session_Ticket.Ticket_Nonce_Length := 0;
+      Ticket_Nonce     :
+        Octet_Array (1 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length) :=
           (others => 0);
 
-      Ticket_Len        : Natural := 0;
-      Ticket            : Octet_Array
-        (1 .. Tls_Core.Session_Ticket.Max_Ticket_Length) :=
+      Ticket_Len : Natural := 0;
+      Ticket     :
+        Octet_Array (1 .. Tls_Core.Session_Ticket.Max_Ticket_Length) :=
           (others => 0);
 
       --  Derived secret used to recompute the resumption-PSK on
@@ -73,15 +73,15 @@ is
       --  The cipher suite the original handshake negotiated. The
       --  resumption ClientHello SHOULD offer the same suite first
       --  (RFC 8446 §4.2.11).
-      Suite             : Tls_Core.Suites.Cipher_Suite_Id :=
+      Suite : Tls_Core.Suites.Cipher_Suite_Id :=
         Tls_Core.Suites.Aes_128_Gcm_Sha256;
    end record;
 
    type Slot_Array is array (Slot_Index) of Slot;
 
    type Cache is record
-      Slots         : Slot_Array;
-      Next_Seq      : Interfaces.Unsigned_32 := 1;
+      Slots    : Slot_Array;
+      Next_Seq : Interfaces.Unsigned_32 := 1;
    end record;
 
    --------------------------------------------------------------------
@@ -124,13 +124,12 @@ is
       Resumption_Secret : Tls_Core.Key_Schedule.Secret;
       Suite             : Tls_Core.Suites.Cipher_Suite_Id)
    with
-     Pre =>
-       Ticket_Nonce'Length in
-         0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
-       and then Ticket'Length in
-         1 .. Tls_Core.Session_Ticket.Max_Ticket_Length,
-     Post =>
-       (for some I in Slot_Index => C.Slots (I).Used);
+     Pre  =>
+       Ticket_Nonce'Length
+       in 0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
+       and then Ticket'Length
+                in 1 .. Tls_Core.Session_Ticket.Max_Ticket_Length,
+     Post => (for some I in Slot_Index => C.Slots (I).Used);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Look up the most-recently-inserted slot
@@ -149,11 +148,8 @@ is
    --  Proven at:   gnatprove --level=2 (audit-clean)
    --------------------------------------------------------------------
    procedure Lookup_Most_Recent
-     (C     : Cache;
-      Index : out Slot_Index;
-      Found : out Boolean)
-   with Post =>
-     (if Found then C.Slots (Index).Used);
+     (C : Cache; Index : out Slot_Index; Found : out Boolean)
+   with Post => (if Found then C.Slots (Index).Used);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Mark a slot empty. Called after using a
@@ -165,9 +161,10 @@ is
    --------------------------------------------------------------------
    procedure Invalidate (C : in out Cache; Index : Slot_Index)
    with
-     Post => not C.Slots (Index).Used
-             and then (for all I in Slot_Index =>
-                         (if I /= Index then
-                            C.Slots (I).Used = C'Old.Slots (I).Used));
+     Post =>
+       not C.Slots (Index).Used
+       and then (for all I in Slot_Index =>
+                   (if I /= Index
+                    then C.Slots (I).Used = C'Old.Slots (I).Used));
 
 end Tls_Core.Session_Cache;

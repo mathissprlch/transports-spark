@@ -12,7 +12,7 @@
 --  caller-supplied DER slice, no heap, no RFLX, no I/O.
 
 package Tls_Core.X509_Spki
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    type Key_Kind is (Unknown, Rsa, Ecdsa_P256);
@@ -38,11 +38,13 @@ is
       Key_First : out Natural;
       Key_Last  : out Natural)
    with
-     Pre  => Buf'First = 1
-             and then Buf'Length >= 2
-             and then Buf'Last < Integer'Last - 16,
+     Pre  =>
+       Buf'First = 1
+       and then Buf'Length >= 2
+       and then Buf'Last < Integer'Last - 16,
      Post =>
-       (if OK then
+       (if OK
+        then
           Kind in Rsa | Ecdsa_P256
           and then Key_First in Buf'Range
           and then Key_Last in Buf'Range
@@ -66,11 +68,13 @@ is
       Exp_First : out Natural;
       Exp_Last  : out Natural)
    with
-     Pre  => Buf'First = 1
-             and then Buf'Length >= 2
-             and then Buf'Last < Integer'Last - 16,
+     Pre  =>
+       Buf'First = 1
+       and then Buf'Length >= 2
+       and then Buf'Last < Integer'Last - 16,
      Post =>
-       (if OK then
+       (if OK
+        then
           Mod_First in Buf'Range
           and then Mod_Last in Buf'Range
           and then Mod_First <= Mod_Last

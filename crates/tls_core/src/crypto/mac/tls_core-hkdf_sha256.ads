@@ -24,7 +24,7 @@
 with Tls_Core.Sha256;
 
 package Tls_Core.Hkdf_Sha256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Octet;
@@ -52,20 +52,19 @@ is
       Counter     : Octet;
       First_Block : Boolean) return Tls_Core.Sha256.Digest
    with
-     Pre => PRK'Length = Hash_Length
-            and then PRK'Last < Integer'Last - 1024
-            and then Info'Last < Integer'Last - 1024
-            and then Info'Length <= 1024;
+     Pre =>
+       PRK'Length = Hash_Length
+       and then PRK'Last < Integer'Last - 1024
+       and then Info'Last < Integer'Last - 1024
+       and then Info'Length <= 1024;
 
    --  Top-level RFC 5869 §2.3 Expand:
    --    OKM = T(1) || T(2) || ... || T(N) truncated to L bytes.
    --  Result has First = 1 and Length = L.
    function Spec_HKDF_Expand
-     (PRK  : Octet_Array;
-      Info : Octet_Array;
-      L    : Positive) return Octet_Array
+     (PRK : Octet_Array; Info : Octet_Array; L : Positive) return Octet_Array
    with
-     Pre =>
+     Pre  =>
        PRK'Length = Hash_Length
        and then L in 1 .. Max_Output
        and then Info'Length <= 1024
@@ -84,11 +83,9 @@ is
    --  Proven at:   gnatprove --level=2 (audit-clean)
    --------------------------------------------------------------------
    procedure Expand
-     (PRK  : Octet_Array;
-      Info : Octet_Array;
-      OKM  : out Octet_Array)
+     (PRK : Octet_Array; Info : Octet_Array; OKM : out Octet_Array)
    with
-     Pre =>
+     Pre  =>
        PRK'Length = Hash_Length
        and then OKM'Length in 1 .. Max_Output
        and then Info'Length <= 1024
@@ -98,18 +95,16 @@ is
      Post =>
        (for all I in 1 .. OKM'Length =>
           OKM (OKM'First + I - 1)
-            = Spec_HKDF_Expand (PRK, Info, OKM'Length)
-                (Spec_HKDF_Expand (PRK, Info, OKM'Length)'First + I - 1));
+          = Spec_HKDF_Expand (PRK, Info, OKM'Length)
+              (Spec_HKDF_Expand (PRK, Info, OKM'Length)'First + I - 1));
 
    --  Adapter matching the Hmac_Expand formal of
    --  Tls_Core.Hkdf.Expand_Label. Renames Expand under the
    --  Hmac_Expand call signature so the generic can instantiate.
    procedure Hmac_Expand
-     (Prk    : Octet_Array;
-      Info   : Octet_Array;
-      Output : out Octet_Array)
+     (Prk : Octet_Array; Info : Octet_Array; Output : out Octet_Array)
    with
-     Pre =>
+     Pre  =>
        Prk'Length = Hash_Length
        and then Output'Length in 1 .. 255 * Hash_Length
        and then Info'Length <= 1024
@@ -119,7 +114,7 @@ is
      Post =>
        (for all I in 1 .. Output'Length =>
           Output (Output'First + I - 1)
-            = Spec_HKDF_Expand (Prk, Info, Output'Length)
-                (Spec_HKDF_Expand (Prk, Info, Output'Length)'First + I - 1));
+          = Spec_HKDF_Expand (Prk, Info, Output'Length)
+              (Spec_HKDF_Expand (Prk, Info, Output'Length)'First + I - 1));
 
 end Tls_Core.Hkdf_Sha256;

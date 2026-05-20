@@ -27,7 +27,7 @@
 with Interfaces;
 
 package Tls_Core.Alert
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_8;
@@ -99,13 +99,8 @@ is
    --  Proven at:   gnatprove --level=2 (audit-clean) — body is two
    --               assignments.
    --------------------------------------------------------------------
-   procedure Encode
-     (A         : Alert;
-      Out_Bytes : out Alert_Bytes)
-   with
-     Post =>
-       Out_Bytes (1) = A.Level
-       and then Out_Bytes (2) = A.Description;
+   procedure Encode (A : Alert; Out_Bytes : out Alert_Bytes)
+   with Post => Out_Bytes (1) = A.Level and then Out_Bytes (2) = A.Description;
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  Decode 2 octets into an Alert per §6.
@@ -125,18 +120,15 @@ is
    --  is strict (§6 first paragraph: "is defined to be a 'fatal'
    --  alert" for any malformed alert).
    --------------------------------------------------------------------
-   procedure Decode
-     (In_Bytes : Octet_Array;
-      A        : out Alert;
-      OK       : out Boolean)
+   procedure Decode (In_Bytes : Octet_Array; A : out Alert; OK : out Boolean)
    with
      Post =>
-       (if In_Bytes'Length = 2 then
+       (if In_Bytes'Length = 2
+        then
           OK
-            and then A.Level = In_Bytes (In_Bytes'First)
-            and then A.Description = In_Bytes (In_Bytes'First + 1)
-        else
-          not OK);
+          and then A.Level = In_Bytes (In_Bytes'First)
+          and then A.Description = In_Bytes (In_Bytes'First + 1)
+        else not OK);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  True iff (Level, Description) is the

@@ -1,5 +1,5 @@
 package body Tls_Core.Handshake_Buffer
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    ---------------------------------------------------------------------
@@ -9,7 +9,7 @@ is
    procedure Init (B : out Buffer) is
    begin
       B.Data := (others => 0);
-      B.Len  := 0;
+      B.Len := 0;
    end Init;
 
    ---------------------------------------------------------------------
@@ -17,9 +17,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Push_Record_Bytes
-     (B     : in out Buffer;
-      Bytes : Octet_Array;
-      OK    : out Boolean)
+     (B : in out Buffer; Bytes : Octet_Array; OK : out Boolean)
    is
       New_Len : Natural;
    begin
@@ -52,9 +50,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Pop_Complete_Message
-     (B        : in out Buffer;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (B : in out Buffer; Out_Buf : out Octet_Array; Out_Last : out Natural)
    is
       Body_Len  : constant Natural := Peek_Body_Length (B);
       Total     : constant Natural := Header_Len + Body_Len;

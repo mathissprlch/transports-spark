@@ -2,7 +2,7 @@ with Ada.Unchecked_Conversion;
 with Interfaces;
 
 package body Tls_Core.P256_Field
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -20,15 +20,15 @@ is
    is (Octet_Big.To_Big_Integer (Integer (X)));
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer
-   is (Big.To_Big_Integer (2) ** (8 * N));
+   is (Big.To_Big_Integer (2)**(8 * N));
 
    function Prime_P_Spec return Big.Big_Integer
-   is
-     (Big.To_Big_Integer (2) ** 256
-      - Big.To_Big_Integer (2) ** 224
-      + Big.To_Big_Integer (2) ** 192
-      + Big.To_Big_Integer (2) ** 96
-      - Big.To_Big_Integer (1));
+   is (Big.To_Big_Integer (2)
+       **256
+       - Big.To_Big_Integer (2)**224
+       + Big.To_Big_Integer (2)**192
+       + Big.To_Big_Integer (2)**96
+       - Big.To_Big_Integer (1));
 
    function Mod_P_Spec (X : Big.Big_Integer) return Big.Big_Integer
    is (X mod Prime_P_Spec);
@@ -36,9 +36,9 @@ is
    --  Square-and-multiply over the canonical representative, walking
    --  the bits of the exponent (p-2) from MSB to LSB.
    function Spec_F_Inv (A : Big.Big_Integer) return Big.Big_Integer is
-      P     : constant Big.Big_Integer := Prime_P_Spec;
-      Two   : constant Big.Big_Integer := Big.To_Big_Integer (2);
-      Zero  : constant Big.Big_Integer := Big.To_Big_Integer (0);
+      P      : constant Big.Big_Integer := Prime_P_Spec;
+      Two    : constant Big.Big_Integer := Big.To_Big_Integer (2);
+      Zero   : constant Big.Big_Integer := Big.To_Big_Integer (0);
       Result : Big.Big_Integer := Big.To_Big_Integer (1);
       Base   : Big.Big_Integer := Mod_P_Spec (A);
       Exp    : Big.Big_Integer := P - Big.To_Big_Integer (2);
@@ -85,10 +85,8 @@ is
    subtype Acc9_Index is Natural range 0 .. 8;
    type Acc9 is array (Acc9_Index) of Integer_64;
 
-   function To_U64 is new Ada.Unchecked_Conversion
-     (Integer_64, Unsigned_64);
-   function To_I64 is new Ada.Unchecked_Conversion
-     (Unsigned_64, Integer_64);
+   function To_U64 is new Ada.Unchecked_Conversion (Integer_64, Unsigned_64);
+   function To_I64 is new Ada.Unchecked_Conversion (Unsigned_64, Integer_64);
 
    --  Arithmetic right shift on Integer_64.
    function Asr (X : Integer_64; N : Natural) return Integer_64
@@ -99,8 +97,14 @@ is
    --      0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000,
    --      0x00000000, 0x00000000, 0x00000001, 0xFFFFFFFF
    P_Limbs : constant Limbs8 :=
-     (16#FFFFFFFF#, 16#FFFFFFFF#, 16#FFFFFFFF#, 16#00000000#,
-      16#00000000#, 16#00000000#, 16#00000001#, 16#FFFFFFFF#);
+     (16#FFFFFFFF#,
+      16#FFFFFFFF#,
+      16#FFFFFFFF#,
+      16#00000000#,
+      16#00000000#,
+      16#00000000#,
+      16#00000001#,
+      16#FFFFFFFF#);
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 32 BE bytes and limbs.
@@ -111,10 +115,10 @@ is
       for I in Limb_Index loop
          --  Limb i covers bytes 32-4*i-3 .. 32-4*i (BE input).
          L (I) :=
-             Shift_Left (Unsigned_32 (B (32 - 4 * I - 3)), 24)
+           Shift_Left (Unsigned_32 (B (32 - 4 * I - 3)), 24)
            or Shift_Left (Unsigned_32 (B (32 - 4 * I - 2)), 16)
-           or Shift_Left (Unsigned_32 (B (32 - 4 * I - 1)),  8)
-           or            Unsigned_32 (B (32 - 4 * I));
+           or Shift_Left (Unsigned_32 (B (32 - 4 * I - 1)), 8)
+           or Unsigned_32 (B (32 - 4 * I));
       end loop;
    end From_Bytes;
 
@@ -123,8 +127,8 @@ is
       for I in Limb_Index loop
          B (32 - 4 * I - 3) := Octet (Shift_Right (L (I), 24) and 16#FF#);
          B (32 - 4 * I - 2) := Octet (Shift_Right (L (I), 16) and 16#FF#);
-         B (32 - 4 * I - 1) := Octet (Shift_Right (L (I),  8) and 16#FF#);
-         B (32 - 4 * I)     := Octet (L (I) and 16#FF#);
+         B (32 - 4 * I - 1) := Octet (Shift_Right (L (I), 8) and 16#FF#);
+         B (32 - 4 * I) := Octet (L (I) and 16#FF#);
       end loop;
    end To_Bytes;
 
@@ -140,10 +144,7 @@ is
       Diff   : Unsigned_64;
    begin
       for I in Limb_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (P_Limbs (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (P_Limbs (I)) - Borrow;
          T (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -182,10 +183,7 @@ is
       T      : Limbs9;
    begin
       for I in Limb_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (P_Limbs (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (P_Limbs (I)) - Borrow;
          T (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -231,10 +229,7 @@ is
       T      : Limbs8;
    begin
       for I in Limb_Index loop
-         Diff :=
-             Unsigned_64 (A (I))
-           - Unsigned_64 (B (I))
-           - Borrow;
+         Diff := Unsigned_64 (A (I)) - Unsigned_64 (B (I)) - Borrow;
          T (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
          Borrow := Shift_Right (Diff, 63) and 1;
       end loop;
@@ -244,10 +239,7 @@ is
          --  Add p back to recover the modular result.
          Carry := 0;
          for I in Limb_Index loop
-            Diff :=
-                Unsigned_64 (T (I))
-              + Unsigned_64 (P_Limbs (I))
-              + Carry;
+            Diff := Unsigned_64 (T (I)) + Unsigned_64 (P_Limbs (I)) + Carry;
             R (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
             Carry := Shift_Right (Diff, 32);
          end loop;
@@ -269,7 +261,7 @@ is
          Carry := 0;
          for J in Limb_Index loop
             Acc :=
-                Unsigned_64 (T (I + J))
+              Unsigned_64 (T (I + J))
               + Unsigned_64 (A (I)) * Unsigned_64 (B (J))
               + Carry;
             T (I + J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
@@ -297,7 +289,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Fast_Reduce (T : Limbs16; Out_R : out Limbs8) is
-      Acc : Acc9 := (others => 0);
+      Acc   : Acc9 := (others => 0);
       Carry : Integer_64;
 
       function I64 (X : Unsigned_32) return Integer_64
@@ -315,15 +307,25 @@ is
       --  Limb 0 (LSB):
       --    +S1.0=T0 +2*S2.0=0 +2*S3.0=0 +S4.0=T8 +S5.0=T9
       --    -S6.0=T11 -S7.0=T12 -S8.0=T13 -S9.0=T14
-      Acc (0) := I64 (T (0)) + I64 (T (8)) + I64 (T (9))
-                 - I64 (T (11)) - I64 (T (12))
-                 - I64 (T (13)) - I64 (T (14));
+      Acc (0) :=
+        I64 (T (0))
+        + I64 (T (8))
+        + I64 (T (9))
+        - I64 (T (11))
+        - I64 (T (12))
+        - I64 (T (13))
+        - I64 (T (14));
 
       --  Limb 1:
       --    +T1 +T9 +T10 -T12 -T13 -T14 -T15
-      Acc (1) := I64 (T (1)) + I64 (T (9)) + I64 (T (10))
-                 - I64 (T (12)) - I64 (T (13))
-                 - I64 (T (14)) - I64 (T (15));
+      Acc (1) :=
+        I64 (T (1))
+        + I64 (T (9))
+        + I64 (T (10))
+        - I64 (T (12))
+        - I64 (T (13))
+        - I64 (T (14))
+        - I64 (T (15));
 
       --  Limb 2:
       --    +T2 +T10 +T11 -T13 -T14 -T15 (S6.2=0, S8.2=0, S9.2=0)
@@ -354,55 +356,72 @@ is
       --
       --  Limb 2:
       --    +T2 +T10 +T11 -T13 -T14 -T15
-      Acc (2) := I64 (T (2)) + I64 (T (10)) + I64 (T (11))
-                 - I64 (T (13)) - I64 (T (14)) - I64 (T (15));
+      Acc (2) :=
+        I64 (T (2))
+        + I64 (T (10))
+        + I64 (T (11))
+        - I64 (T (13))
+        - I64 (T (14))
+        - I64 (T (15));
 
       --  Limb 3:
       --    +S1.3=T3 +2*S2.3=2*T11 +2*S3.3=2*T12 +S4.3=0 +S5.3=T13
       --    -S6.3=0 -S7.3=T15 -S8.3=T8 -S9.3=T9
-      Acc (3) := I64 (T (3))
-                 + 2 * I64 (T (11))
-                 + 2 * I64 (T (12))
-                 + I64 (T (13))
-                 - I64 (T (15)) - I64 (T (8)) - I64 (T (9));
+      Acc (3) :=
+        I64 (T (3))
+        + 2 * I64 (T (11))
+        + 2 * I64 (T (12))
+        + I64 (T (13))
+        - I64 (T (15))
+        - I64 (T (8))
+        - I64 (T (9));
 
       --  Limb 4:
       --    +T4 +2*T12 +2*T13 +0 +T14
       --    -0 -0 -T9 -T10
-      Acc (4) := I64 (T (4))
-                 + 2 * I64 (T (12))
-                 + 2 * I64 (T (13))
-                 + I64 (T (14))
-                 - I64 (T (9)) - I64 (T (10));
+      Acc (4) :=
+        I64 (T (4))
+        + 2 * I64 (T (12))
+        + 2 * I64 (T (13))
+        + I64 (T (14))
+        - I64 (T (9))
+        - I64 (T (10));
 
       --  Limb 5:
       --    +T5 +2*T13 +2*T14 +0 +T15
       --    -0 -0 -T10 -T11
-      Acc (5) := I64 (T (5))
-                 + 2 * I64 (T (13))
-                 + 2 * I64 (T (14))
-                 + I64 (T (15))
-                 - I64 (T (10)) - I64 (T (11));
+      Acc (5) :=
+        I64 (T (5))
+        + 2 * I64 (T (13))
+        + 2 * I64 (T (14))
+        + I64 (T (15))
+        - I64 (T (10))
+        - I64 (T (11));
 
       --  Limb 6:
       --    +T6 +2*T14 +2*T15 +T14 +T13
       --    -T8 -T9 -0 -0
-      Acc (6) := I64 (T (6))
-                 + 2 * I64 (T (14))
-                 + 2 * I64 (T (15))
-                 + I64 (T (14))
-                 + I64 (T (13))
-                 - I64 (T (8)) - I64 (T (9));
+      Acc (6) :=
+        I64 (T (6))
+        + 2 * I64 (T (14))
+        + 2 * I64 (T (15))
+        + I64 (T (14))
+        + I64 (T (13))
+        - I64 (T (8))
+        - I64 (T (9));
 
       --  Limb 7:
       --    +T7 +2*T15 +0 +T15 +T8
       --    -T10 -T11 -T12 -T13
-      Acc (7) := I64 (T (7))
-                 + 2 * I64 (T (15))
-                 + I64 (T (15))
-                 + I64 (T (8))
-                 - I64 (T (10)) - I64 (T (11))
-                 - I64 (T (12)) - I64 (T (13));
+      Acc (7) :=
+        I64 (T (7))
+        + 2 * I64 (T (15))
+        + I64 (T (15))
+        + I64 (T (8))
+        - I64 (T (10))
+        - I64 (T (11))
+        - I64 (T (12))
+        - I64 (T (13));
 
       --  Limb 8 starts at zero (overflow accumulator).
       Acc (8) := 0;
@@ -428,9 +447,7 @@ is
             S : Unsigned_64;
          begin
             for I in Limb_Index loop
-               S := Unsigned_64 (Acc (I))
-                    + Unsigned_64 (P_Limbs (I))
-                    + C;
+               S := Unsigned_64 (Acc (I)) + Unsigned_64 (P_Limbs (I)) + C;
                Acc (I) := Integer_64 (S and 16#FFFFFFFF#);
                C := Shift_Right (S, 32);
             end loop;
@@ -526,16 +543,44 @@ is
    ---------------------------------------------------------------------
 
    P_Minus_2 : constant Field :=
-     (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#01#,
-      16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#, 16#00#,
-      16#00#, 16#00#, 16#00#, 16#00#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
-      16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FD#);
+     (16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#01#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FD#);
 
    procedure Invert (A : Field; Out_C : out Field) is
-      Result : Limbs8 := (others => 0);  --  represents 1
-      Base   : Limbs8;
-      Tmp    : Limbs8;
-      Bit    : Unsigned_8;
+      Result  : Limbs8 := (others => 0);  --  represents 1
+      Base    : Limbs8;
+      Tmp     : Limbs8;
+      Bit     : Unsigned_8;
       Started : Boolean := False;
    begin
       Result (0) := 1;

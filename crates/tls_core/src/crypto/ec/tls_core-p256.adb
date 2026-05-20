@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.P256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -21,16 +21,46 @@ is
 
    function B_Coeff_Spec return Big.Big_Integer is
       Hex_BE : constant array (1 .. 32) of Octet :=
-        (16#5A#, 16#C6#, 16#35#, 16#D8#, 16#AA#, 16#3A#, 16#93#, 16#E7#,
-         16#B3#, 16#EB#, 16#BD#, 16#55#, 16#76#, 16#98#, 16#86#, 16#BC#,
-         16#65#, 16#1D#, 16#06#, 16#B0#, 16#CC#, 16#53#, 16#B0#, 16#F6#,
-         16#3B#, 16#CE#, 16#3C#, 16#3E#, 16#27#, 16#D2#, 16#60#, 16#4B#);
+        (16#5A#,
+         16#C6#,
+         16#35#,
+         16#D8#,
+         16#AA#,
+         16#3A#,
+         16#93#,
+         16#E7#,
+         16#B3#,
+         16#EB#,
+         16#BD#,
+         16#55#,
+         16#76#,
+         16#98#,
+         16#86#,
+         16#BC#,
+         16#65#,
+         16#1D#,
+         16#06#,
+         16#B0#,
+         16#CC#,
+         16#53#,
+         16#B0#,
+         16#F6#,
+         16#3B#,
+         16#CE#,
+         16#3C#,
+         16#3E#,
+         16#27#,
+         16#D2#,
+         16#60#,
+         16#4B#);
       package Octet_Big is new Big.Signed_Conversions (Int => Integer);
-      R : Big.Big_Integer := Big.To_Big_Integer (0);
+      R      : Big.Big_Integer := Big.To_Big_Integer (0);
    begin
       for I in Hex_BE'Range loop
-         R := R * Big.To_Big_Integer (256)
-              + Octet_Big.To_Big_Integer (Integer (Hex_BE (I)));
+         R :=
+           R
+           * Big.To_Big_Integer (256)
+           + Octet_Big.To_Big_Integer (Integer (Hex_BE (I)));
       end loop;
       return R;
    end B_Coeff_Spec;
@@ -43,15 +73,15 @@ is
    function Field_To_Big (F : P256_Field.Field) return Big.Big_Integer
    is (P256_Field.Mod_P_Spec (P256_Field.To_Big_Spec (F)));
 
-   function Spec_Of (P : Point) return Spec_Point is
-     ((X => Field_To_Big (P.X),
-       Y => Field_To_Big (P.Y),
-       Z => Field_To_Big (P.Z)));
+   function Spec_Of (P : Point) return Spec_Point
+   is ((X => Field_To_Big (P.X),
+        Y => Field_To_Big (P.Y),
+        Z => Field_To_Big (P.Z)));
 
-   function Spec_Infinity return Spec_Point is
-     ((X => Big.To_Big_Integer (1),
-       Y => Big.To_Big_Integer (1),
-       Z => Big.To_Big_Integer (0)));
+   function Spec_Infinity return Spec_Point
+   is ((X => Big.To_Big_Integer (1),
+        Y => Big.To_Big_Integer (1),
+        Z => Big.To_Big_Integer (0)));
 
    --  Module-level mod-p arithmetic helpers used by the spec point
    --  operations. The F\* `*%` / `+%` / `-%` reduce mod p after
@@ -77,9 +107,9 @@ is
    --  2015/1060. b_coeff is the curve parameter b mod p.
    function Spec_Point_Double (P : Spec_Point) return Spec_Point is
 
-      X  : constant Big.Big_Integer := P.X;
-      Y  : constant Big.Big_Integer := P.Y;
-      Z  : constant Big.Big_Integer := P.Z;
+      X : constant Big.Big_Integer := P.X;
+      Y : constant Big.Big_Integer := P.Y;
+      Z : constant Big.Big_Integer := P.Z;
 
       T0 : Big.Big_Integer := FMul_Spec (X, X);
       T1 : Big.Big_Integer := FMul_Spec (Y, Y);
@@ -136,7 +166,8 @@ is
       Z2 : constant Big.Big_Integer := Q.Z;
 
       T0, T1, T2, T3, T4, T5, X3, Y3, Z3 : Big.Big_Integer;
-      B : constant Big.Big_Integer := B_Coeff_Spec;
+      B                                  : constant Big.Big_Integer :=
+        B_Coeff_Spec;
    begin
       T0 := FMul_Spec (X1, X2);
       T1 := FMul_Spec (Y1, Y2);
@@ -188,9 +219,11 @@ is
    --  same affine point. Both-at-infinity is the Z = 0 case;
    --  otherwise compare cross-multiplied affine coords mod p.
    function Spec_Equiv_Point (P, Q : Spec_Point) return Boolean is
-      P_Mod : constant Big.Big_Integer := P256_Field.Prime_P_Spec;
-      Pz_Zero : constant Boolean := (P.Z mod P_Mod) = Big.To_Big_Integer (0);
-      Qz_Zero : constant Boolean := (Q.Z mod P_Mod) = Big.To_Big_Integer (0);
+      P_Mod              : constant Big.Big_Integer := P256_Field.Prime_P_Spec;
+      Pz_Zero            : constant Boolean :=
+        (P.Z mod P_Mod) = Big.To_Big_Integer (0);
+      Qz_Zero            : constant Boolean :=
+        (Q.Z mod P_Mod) = Big.To_Big_Integer (0);
       Pz2, Pz3, Qz2, Qz3 : Big.Big_Integer;
    begin
       if Pz_Zero or Qz_Zero then
@@ -200,8 +233,9 @@ is
       Pz3 := (Pz2 * P.Z) mod P_Mod;
       Qz2 := (Q.Z * Q.Z) mod P_Mod;
       Qz3 := (Qz2 * Q.Z) mod P_Mod;
-      return ((P.X * Qz2) mod P_Mod) = ((Q.X * Pz2) mod P_Mod)
-         and then ((P.Y * Qz3) mod P_Mod) = ((Q.Y * Pz3) mod P_Mod);
+      return
+        ((P.X * Qz2) mod P_Mod) = ((Q.X * Pz2) mod P_Mod)
+        and then ((P.Y * Qz3) mod P_Mod) = ((Q.Y * Pz3) mod P_Mod);
    end Spec_Equiv_Point;
 
    --  HACL\* Spec.P256.fst :  point_mul  — port. Walks the 32-byte
@@ -209,23 +243,27 @@ is
    --  Spec_Point_Add when the bit is 1, exactly matching the
    --  Montgomery-ladder semantics of Scalar_Mul below.
    function Spec_Scalar_Mult
-     (Scalar : Octet_Array;
-      P      : Spec_Point) return Spec_Point
+     (Scalar : Octet_Array; P : Spec_Point) return Spec_Point
    is
       Acc : Spec_Point := Spec_Infinity;
       Bit : Natural;
    begin
       for I in 0 .. 31 loop
          declare
-            Byte_V : constant Natural :=
-              Natural (Scalar (Scalar'First + I));
+            Byte_V : constant Natural := Natural (Scalar (Scalar'First + I));
          begin
             for B in reverse 0 .. 7 loop
                declare
                   Pow_2_B : constant Natural :=
                     (case B is
-                       when 0 => 1, when 1 => 2, when 2 => 4, when 3 => 8,
-                       when 4 => 16, when 5 => 32, when 6 => 64, when 7 => 128,
+                       when 0      => 1,
+                       when 1      => 2,
+                       when 2      => 4,
+                       when 3      => 8,
+                       when 4      => 16,
+                       when 5      => 32,
+                       when 6      => 64,
+                       when 7      => 128,
                        when others => 1);
                begin
                   Bit := (Byte_V / Pow_2_B) mod 2;
@@ -240,7 +278,6 @@ is
       return Acc;
    end Spec_Scalar_Mult;
 
-
    ---------------------------------------------------------------------
    --  Curve parameter b (NIST P-256, FIPS 186-4 §D.1.2.3).
    --
@@ -249,10 +286,38 @@ is
    ---------------------------------------------------------------------
 
    B_Param : constant Field :=
-     (16#5A#, 16#C6#, 16#35#, 16#D8#, 16#AA#, 16#3A#, 16#93#, 16#E7#,
-      16#B3#, 16#EB#, 16#BD#, 16#55#, 16#76#, 16#98#, 16#86#, 16#BC#,
-      16#65#, 16#1D#, 16#06#, 16#B0#, 16#CC#, 16#53#, 16#B0#, 16#F6#,
-      16#3B#, 16#CE#, 16#3C#, 16#3E#, 16#27#, 16#D2#, 16#60#, 16#4B#);
+     (16#5A#,
+      16#C6#,
+      16#35#,
+      16#D8#,
+      16#AA#,
+      16#3A#,
+      16#93#,
+      16#E7#,
+      16#B3#,
+      16#EB#,
+      16#BD#,
+      16#55#,
+      16#76#,
+      16#98#,
+      16#86#,
+      16#BC#,
+      16#65#,
+      16#1D#,
+      16#06#,
+      16#B0#,
+      16#CC#,
+      16#53#,
+      16#B0#,
+      16#F6#,
+      16#3B#,
+      16#CE#,
+      16#3C#,
+      16#3E#,
+      16#27#,
+      16#D2#,
+      16#60#,
+      16#4B#);
 
    ---------------------------------------------------------------------
    --  Helpers.
@@ -260,8 +325,7 @@ is
 
    function Is_Infinity (P : Point) return Boolean is
    begin
-      return Tls_Core.P256_Field.Equal_CT
-        (P.Z, Tls_Core.P256_Field.Zero);
+      return Tls_Core.P256_Field.Equal_CT (P.Z, Tls_Core.P256_Field.Zero);
    end Is_Infinity;
 
    --  Compute t = a + a (mod p) without going through the slower
@@ -288,10 +352,10 @@ is
 
    procedure Double_Point (P : Point; R : out Point) is
       Delta_F, Gamma_F, Beta_F, Alpha_F : Field;
-      T1, T2, T3, T4 : Field;
-      Eight_Beta : Field;
-      Eight_Gamma_Sq : Field;
-      Four_Beta : Field;
+      T1, T2, T3, T4                    : Field;
+      Eight_Beta                        : Field;
+      Eight_Gamma_Sq                    : Field;
+      Four_Beta                         : Field;
    begin
       if Is_Infinity (P) then
          R := Infinity;
@@ -361,8 +425,8 @@ is
 
    procedure Add_Distinct (P1, P2 : Point; R : out Point) is
       Z1Z1, Z2Z2, U1, U2, S1, S2, H, I_F, J, R_F, V : Field;
-      T1, T2, T3, T4 : Field;
-      Two_H : Field;
+      T1, T2, T3, T4                                : Field;
+      Two_H                                         : Field;
    begin
       --  Z1Z1 = Z1^2; Z2Z2 = Z2^2
       Square (P1.Z, Z1Z1);
@@ -413,8 +477,8 @@ is
 
    procedure Add_Point (P1, P2 : Point; R : out Point) is
       Z1Z1, Z2Z2, U1, U2, S1, S2 : Field;
-      T1 : Field;
-      U_Eq, S_Eq : Boolean;
+      T1                         : Field;
+      U_Eq, S_Eq                 : Boolean;
    begin
       if Is_Infinity (P1) then
          R := P2;
@@ -455,14 +519,12 @@ is
    ---------------------------------------------------------------------
 
    procedure Decode_Uncompressed
-     (Bytes : Octet_Array;
-      Out_P : out Point;
-      OK    : out Boolean)
+     (Bytes : Octet_Array; Out_P : out Point; OK : out Boolean)
    is
-      X, Y : Field;
-      Lhs, Rhs : Field;
+      X, Y                 : Field;
+      Lhs, Rhs             : Field;
       X_Cubed, Three_X, T1 : Field;
-      Three : Field := (others => 0);
+      Three                : Field := (others => 0);
    begin
       Out_P := Infinity;
       OK := False;
@@ -499,10 +561,7 @@ is
    --  Encode_Uncompressed (SEC 1 §2.3.3).
    ---------------------------------------------------------------------
 
-   procedure Encode_Uncompressed
-     (P         : Point;
-      Out_Bytes : out Octet_Array)
-   is
+   procedure Encode_Uncompressed (P : Point; Out_Bytes : out Octet_Array) is
       AX, AY : Field;
    begin
       if Is_Infinity (P) then
@@ -563,7 +622,7 @@ is
 
    procedure C_Swap_Field (A, B : in out Field; Bit : Octet) is
       Mask : constant Octet := (if Bit = 1 then 16#FF# else 16#00#);
-      T : Octet;
+      T    : Octet;
    begin
       for I in Field'Range loop
          T := (A (I) xor B (I)) and Mask;
@@ -603,15 +662,11 @@ is
    --  always P, never the identity.
    ---------------------------------------------------------------------
 
-   procedure Scalar_Mul
-     (Scalar : Octet_Array;
-      P      : Point;
-      Out_R  : out Point)
-   is
-      R0 : Point := Infinity;
-      R1 : Point := P;
+   procedure Scalar_Mul (Scalar : Octet_Array; P : Point; Out_R : out Point) is
+      R0     : Point := Infinity;
+      R1     : Point := P;
       T0, T1 : Point;
-      Bit : Octet;
+      Bit    : Octet;
       Byte_V : Unsigned_8;
    begin
       for I in 0 .. 31 loop

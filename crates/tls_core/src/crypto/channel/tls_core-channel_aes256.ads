@@ -8,7 +8,7 @@ with Tls_Core.Key_Schedule_Sha384;
 with Interfaces;
 
 package Tls_Core.Channel_Aes256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -27,8 +27,7 @@ is
    end record;
 
    procedure Init
-     (D      : out Direction;
-      Secret : Tls_Core.Key_Schedule_Sha384.Secret)
+     (D : out Direction; Secret : Tls_Core.Key_Schedule_Sha384.Secret)
    with Post => Tls_Core.Record_Layer.Seq_Of (D.Stream) = 0;
 
    --  Following miTLS' StAE pattern: every encrypt/decrypt call requires
@@ -40,12 +39,13 @@ is
       Inner_Type : Octet;
       Out_Buf    : out Octet_Array;
       Out_Last   : out Natural)
-   with Pre =>
-     Plaintext'Length in 0 .. 16384
-     and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
-     and then Out_Buf'First = 1
-     and then Tls_Core.Record_Layer.Seq_Of (D.Stream)
-              < Tls_Core.Record_Layer.Seq_Number'Last;
+   with
+     Pre =>
+       Plaintext'Length in 0 .. 16384
+       and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
+       and then Out_Buf'First = 1
+       and then Tls_Core.Record_Layer.Seq_Of (D.Stream)
+                < Tls_Core.Record_Layer.Seq_Number'Last;
 
    procedure Receive
      (D          : in out Direction;
@@ -54,12 +54,13 @@ is
       Out_Last   : out Natural;
       Inner_Type : out Octet;
       OK         : out Boolean)
-   with Pre =>
-     In_Buf'Length >= 5
-     and then In_Buf'First = 1
-     and then Out_Buf'First = 1
-     and then Out_Buf'Length >= In_Buf'Length
-     and then Tls_Core.Record_Layer.Seq_Of (D.Stream)
-              < Tls_Core.Record_Layer.Seq_Number'Last;
+   with
+     Pre =>
+       In_Buf'Length >= 5
+       and then In_Buf'First = 1
+       and then Out_Buf'First = 1
+       and then Out_Buf'Length >= In_Buf'Length
+       and then Tls_Core.Record_Layer.Seq_Of (D.Stream)
+                < Tls_Core.Record_Layer.Seq_Number'Last;
 
 end Tls_Core.Channel_Aes256;

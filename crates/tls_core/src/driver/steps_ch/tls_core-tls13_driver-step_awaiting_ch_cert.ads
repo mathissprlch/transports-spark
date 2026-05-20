@@ -1,5 +1,5 @@
 package Tls_Core.Tls13_Driver.Step_Awaiting_Ch_Cert
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    --  Cert-mode server: drive Awaiting_CH -> Awaiting_Cf.

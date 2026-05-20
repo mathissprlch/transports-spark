@@ -6,7 +6,7 @@
 --  then dump the bytes via `xxd -i test.der`.
 
 package body Tls_Core.X509
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -14,9 +14,9 @@ is
    use type Tls_Core.Octet;
 
    --  ASN.1 / DER tag bytes we care about.
-   Tag_Sequence    : constant Octet := 16#30#;
-   Tag_Bit_String  : constant Octet := 16#03#;
-   Tag_Context_0   : constant Octet := 16#A0#;
+   Tag_Sequence   : constant Octet := 16#30#;
+   Tag_Bit_String : constant Octet := 16#03#;
+   Tag_Context_0  : constant Octet := 16#A0#;
 
    --  AlgorithmIdentifier for Ed25519 with no parameters
    --  (RFC 8410 §3, OID 1.3.101.112):
@@ -24,8 +24,7 @@ is
    --  We compare this whole 7-byte TLV byte-for-byte; the OID alone
    --  (06 03 2B 65 70) is just the inner contents.
    Alg_Id_Ed25519 : constant Octet_Array (1 .. 7) :=
-     (16#30#, 16#05#,
-      16#06#, 16#03#, 16#2B#, 16#65#, 16#70#);
+     (16#30#, 16#05#, 16#06#, 16#03#, 16#2B#, 16#65#, 16#70#);
 
    ---------------------------------------------------------------------
    --  Parse a single ASN.1 DER TLV header at Buf (Pos).
@@ -94,19 +93,14 @@ is
    ---------------------------------------------------------------------
 
    function Equal_At
-     (Buf       : Octet_Array;
-      Pos       : Natural;
-      Reference : Octet_Array) return Boolean;
+     (Buf : Octet_Array; Pos : Natural; Reference : Octet_Array)
+      return Boolean;
 
    function Equal_At
-     (Buf       : Octet_Array;
-      Pos       : Natural;
-      Reference : Octet_Array) return Boolean
+     (Buf : Octet_Array; Pos : Natural; Reference : Octet_Array) return Boolean
    is
    begin
-      if Pos < Buf'First
-        or else Pos + Reference'Length - 1 > Buf'Last
-      then
+      if Pos < Buf'First or else Pos + Reference'Length - 1 > Buf'Last then
          return False;
       end if;
       for I in 0 .. Reference'Length - 1 loop
@@ -122,12 +116,12 @@ is
    ---------------------------------------------------------------------
 
    procedure Parse_Ed25519_Cert
-     (Der        : Octet_Array;
-      Tbs_First  : out Natural;
-      Tbs_Last   : out Natural;
-      Pub_Key    : out Public_Key;
-      Sig        : out Signature;
-      OK         : out Boolean)
+     (Der       : Octet_Array;
+      Tbs_First : out Natural;
+      Tbs_Last  : out Natural;
+      Pub_Key   : out Public_Key;
+      Sig       : out Signature;
+      OK        : out Boolean)
    is separate;
 
 end Tls_Core.X509;

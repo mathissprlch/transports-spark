@@ -27,8 +27,7 @@
 --  package (Mod_L_Pkg) and is fully proven for absence of runtime
 --  errors.
 
-package Tls_Core.Ed25519
-is
+package Tls_Core.Ed25519 is
 
    subtype Bytes_32 is Octet_Array (1 .. 32);
    subtype Signature is Octet_Array (1 .. 64);
@@ -44,21 +43,15 @@ is
    --  No functional Post: RFC 8032 §7.1 test vectors in
    --  tls_core_tests are the functional check.
    function Verify
-     (Public_Key : Bytes_32;
-      Message    : Octet_Array;
-      Sig        : Signature)
+     (Public_Key : Bytes_32; Message : Octet_Array; Sig : Signature)
       return Boolean;
 
    --  RFC 8032 §5.1.6: derive the public key from a 32-byte seed.
-   procedure Public_Of_Seed
-     (Seed       : Bytes_32;
-      Out_Public : out Bytes_32);
+   procedure Public_Of_Seed (Seed : Bytes_32; Out_Public : out Bytes_32);
 
    --  RFC 8032 §5.1.6: produce a 64-byte signature over Message
    --  using the 32-byte seed (Ed25519 private key).
    procedure Sign
-     (Seed    : Bytes_32;
-      Message : Octet_Array;
-      Out_Sig : out Signature);
+     (Seed : Bytes_32; Message : Octet_Array; Out_Sig : out Signature);
 
 end Tls_Core.Ed25519;

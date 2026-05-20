@@ -38,25 +38,22 @@ with Tls_Core_Config;
 with Tls_Core.Aes_Spec;
 
 package Tls_Core.Aes128
-with SPARK_Mode
+  with SPARK_Mode
 is
 
-   Block_Length : constant := 16;
-   Key_Length   : constant := 16;
+   Block_Length      : constant := 16;
+   Key_Length        : constant := 16;
    Round_Keys_Length : constant := 11 * Block_Length;  --  176
 
-   subtype Block       is Octet_Array (1 .. Block_Length);
-   subtype Key_Array   is Octet_Array (1 .. Key_Length);
-   subtype Round_Keys  is Octet_Array (1 .. Round_Keys_Length);
+   subtype Block is Octet_Array (1 .. Block_Length);
+   subtype Key_Array is Octet_Array (1 .. Key_Length);
+   subtype Round_Keys is Octet_Array (1 .. Round_Keys_Length);
 
    --  Expand the 16-byte key into 11 × 16-byte round keys.  FIPS
    --  197 §5.2 KeyExpansion (Rcon, RotWord, SubWord).  Mirrors
    --  HACL\* `aes128_key_expansion` (Spec.AES.fst:250).
-   procedure Expand_Key
-     (Key   : Key_Array;
-      Out_RK : out Round_Keys)
-   with
-     Post => Out_RK = Aes_Spec.Aes128_Key_Expansion (Key);
+   procedure Expand_Key (Key : Key_Array; Out_RK : out Round_Keys)
+   with Post => Out_RK = Aes_Spec.Aes128_Key_Expansion (Key);
 
    --  Encrypt a single 16-byte block. FIPS 197 §5.1 Cipher.  Mirrors
    --  HACL\* `aes_encrypt_block AES128` (Spec.AES.fst:306).
@@ -66,9 +63,7 @@ is
    --  transforms into one lookup, and proving table-output =
    --  spec-round-by-round is a separate lemma deferred to v0.6.
    procedure Encrypt_Block
-     (RK        : Round_Keys;
-      Plaintext : Block;
-      Out_Block : out Block)
+     (RK : Round_Keys; Plaintext : Block; Out_Block : out Block)
    with
      Post =>
        (if not Tls_Core_Config.T_Tables_Enabled
@@ -83,10 +78,7 @@ is
    --  unconditionally (no T-tables variant ships in v0.5 for the
    --  inverse direction), so the Post is unconditional.
    procedure Decrypt_Block
-     (RK         : Round_Keys;
-      Ciphertext : Block;
-      Out_Block  : out Block)
-   with
-     Post => Out_Block = Aes_Spec.Aes128_Decrypt_Block (Ciphertext, RK);
+     (RK : Round_Keys; Ciphertext : Block; Out_Block : out Block)
+   with Post => Out_Block = Aes_Spec.Aes128_Decrypt_Block (Ciphertext, RK);
 
 end Tls_Core.Aes128;

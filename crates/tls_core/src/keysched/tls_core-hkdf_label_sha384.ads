@@ -10,11 +10,11 @@ with Tls_Core.Hkdf_Sha384;
 pragma Elaborate_All (Tls_Core.Hkdf);
 
 package Tls_Core.Hkdf_Label_Sha384
-with SPARK_Mode
+  with SPARK_Mode
 is
 
-   procedure Expand_Label
-     is new Tls_Core.Hkdf.Expand_Label
+   procedure Expand_Label is new
+     Tls_Core.Hkdf.Expand_Label
        (Hash_Length      => Tls_Core.Hkdf_Sha384.Hash_Length,
         Spec_Hmac_Expand => Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand,
         Hmac_Expand      => Tls_Core.Hkdf_Sha384.Hmac_Expand);

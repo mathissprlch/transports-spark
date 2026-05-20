@@ -31,7 +31,7 @@
 with Tls_Core.Aes_Core;
 
 package Tls_Core.Aes_Hw
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    --  HW-backed full AES round. Same contract as
@@ -43,17 +43,13 @@ is
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
       Round : Tls_Core.Aes_Core.Round_Index)
-   with
-     Pre  => RK'First = 1
-             and then Round * 16 + 16 <= RK'Length;
+   with Pre => RK'First = 1 and then Round * 16 + 16 <= RK'Length;
 
    --  HW-backed final round (no MixColumns).
    procedure Hw_Final_Round
      (S     : in out Tls_Core.Aes_Core.Block;
       RK    : Octet_Array;
       Round : Tls_Core.Aes_Core.Round_Index)
-   with
-     Pre  => RK'First = 1
-             and then Round * 16 + 16 <= RK'Length;
+   with Pre => RK'First = 1 and then Round * 16 + 16 <= RK'Length;
 
 end Tls_Core.Aes_Hw;

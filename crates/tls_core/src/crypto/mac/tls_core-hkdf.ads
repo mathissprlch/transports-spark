@@ -33,9 +33,8 @@
 --  See ../../docs/wrapper-pattern.md for the RFLX + SPARK-Post
 --  approach this primitive follows.
 
-
 package Tls_Core.Hkdf
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Octet;
@@ -43,9 +42,12 @@ is
 
    --  The literal six-byte ASCII prefix per RFC 8446 §7.1.
    Tls13_Prefix : constant Octet_Array (1 .. 6) :=
-     (Character'Pos ('t'), Character'Pos ('l'),
-      Character'Pos ('s'), Character'Pos ('1'),
-      Character'Pos ('3'), Character'Pos (' '));
+     (Character'Pos ('t'),
+      Character'Pos ('l'),
+      Character'Pos ('s'),
+      Character'Pos ('1'),
+      Character'Pos ('3'),
+      Character'Pos (' '));
 
    --  Wire size of the HkdfLabel struct for given Label / Context
    --  byte counts. Two bytes for the u16 length field, one byte
@@ -54,16 +56,13 @@ is
    --  the HkdfLabel struct's TLS-PL widths (Label_Length <= 249,
    --  Context_Length <= 255).
    function Info_Size
-     (Label_Length   : Natural;
-      Context_Length : Natural)
-      return Natural
-   is (2 + 1 + Tls13_Prefix'Length + Label_Length
-       + 1 + Context_Length)
+     (Label_Length : Natural; Context_Length : Natural) return Natural
+   is (2 + 1 + Tls13_Prefix'Length + Label_Length + 1 + Context_Length)
    with
      Pre  => Label_Length <= 249 and then Context_Length <= 255,
-     Post => Info_Size'Result =
-               2 + 1 + Tls13_Prefix'Length + Label_Length
-               + 1 + Context_Length;
+     Post =>
+       Info_Size'Result
+       = 2 + 1 + Tls13_Prefix'Length + Label_Length + 1 + Context_Length;
 
    --  Build the HkdfLabel byte sequence in `Output` per §7.1.
    --
@@ -89,20 +88,18 @@ is
      Pre  =>
        Label'Length in 1 .. 249             --  ⇒ 7 <= label_bytes <= 255
        and then Context'Length in 0 .. 255
-       and then Output'Length =
-         Info_Size (Label'Length, Context'Length)
+       and then Output'Length = Info_Size (Label'Length, Context'Length)
        and then Output'First = 1
        --  Bound caller's index ranges so the loop accesses below
        --  cannot overflow Integer, even on 32-bit machines.
        and then Label'Last < Integer'Last - 256
        and then Context'Last < Integer'Last - 256,
      Post =>
-       Last = Output'Last
-       --  u16 BE Length.
-       and then Output (1) =
-         Octet (Length / Interfaces.Unsigned_16'(256))
-       and then Output (2) =
-         Octet (Length mod Interfaces.Unsigned_16'(256))
+       Last
+       = Output'Last
+         --  u16 BE Length.
+       and then Output (1) = Octet (Length / Interfaces.Unsigned_16'(256))
+       and then Output (2) = Octet (Length mod Interfaces.Unsigned_16'(256))
        --  Labelled-name length octet = "tls13 " + Label.
        and then Output (3) = Octet (Tls13_Prefix'Length + Label'Length)
        --  "tls13 " literal sits immediately after.
@@ -111,14 +108,12 @@ is
        --  Then the caller-supplied Label.
        and then (for all I in 1 .. Label'Length =>
                    Output (3 + Tls13_Prefix'Length + I)
-                     = Label (Label'First + I - 1))
+                   = Label (Label'First + I - 1))
        --  Context length octet, then Context bytes.
-       and then Output
-                  (3 + Tls13_Prefix'Length + Label'Length + 1)
+       and then Output (3 + Tls13_Prefix'Length + Label'Length + 1)
                 = Octet (Context'Length)
        and then (for all I in 1 .. Context'Length =>
-                   Output
-                     (3 + Tls13_Prefix'Length + Label'Length + 1 + I)
+                   Output (3 + Tls13_Prefix'Length + Label'Length + 1 + I)
                    = Context (Context'First + I - 1));
 
    ---------------------------------------------------------------------
@@ -131,9 +126,8 @@ is
    --  there for byte-by-byte contract.
    ---------------------------------------------------------------------
    function Built_Info_Bytes
-     (Length  : Natural;
-      Label   : Octet_Array;
-      Context : Octet_Array) return Octet_Array
+     (Length : Natural; Label : Octet_Array; Context : Octet_Array)
+      return Octet_Array
    with
      Pre  =>
        Length <= 255 * 64
@@ -143,8 +137,8 @@ is
        and then Context'Last < Integer'Last - 256,
      Post =>
        Built_Info_Bytes'Result'First = 1
-       and then Built_Info_Bytes'Result'Length =
-         Info_Size (Label'Length, Context'Length);
+       and then Built_Info_Bytes'Result'Length
+                = Info_Size (Label'Length, Context'Length);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  HKDF-Expand-Label (RFC 8446 §7.1)
@@ -178,47 +172,51 @@ is
    --------------------------------------------------------------------
    generic
       Hash_Length : Positive;
-      Max_Info    : Positive := 256;  --  ceiling on Info_Size,
-                                      --  picked to fit common
-                                      --  Label / Context shapes.
+      Max_Info : Positive := 256;  --  ceiling on Info_Size,
+      --  picked to fit common
+      --  Label / Context shapes.
 
       --  Spec ghost the caller threads in. For SHA-256 instantiations
       --  this is Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand (a real
       --  executable HACL* port — see §0d clause 4).
-      with function Spec_Hmac_Expand
-        (Prk  : Tls_Core.Octet_Array;
-         Info : Tls_Core.Octet_Array;
-         L    : Positive) return Tls_Core.Octet_Array;
+      with
+        function Spec_Hmac_Expand
+          (Prk  : Tls_Core.Octet_Array;
+           Info : Tls_Core.Octet_Array;
+           L    : Positive) return Tls_Core.Octet_Array;
 
       --  The actual Expand procedure. Its Post pins it to
       --  Spec_Hmac_Expand pointwise; see
       --  Tls_Core.Hkdf_Sha256.Hmac_Expand and
       --  Tls_Core.Hkdf_Sha384.Hmac_Expand for instances whose Post
       --  matches this signature.
-      with procedure Hmac_Expand
-        (Prk     : Tls_Core.Octet_Array;
-         Info    : Tls_Core.Octet_Array;
-         Output  : out Tls_Core.Octet_Array)
-        with Pre =>
-               Prk'Length = Hash_Length
-               and then Output'Length in 1 .. 255 * Hash_Length
-               and then Info'Length <= 1024
-               and then Prk'Last < Integer'Last - 1024
-               and then Info'Last < Integer'Last - 1024
-               and then Output'Last < Integer'Last - 1024,
-             Post =>
-               (for all I in 1 .. Output'Length =>
-                  Output (Output'First + I - 1)
-                    = Spec_Hmac_Expand (Prk, Info, Output'Length)
-                        (Spec_Hmac_Expand (Prk, Info, Output'Length)'First
-                           + I - 1));
+      with
+        procedure Hmac_Expand
+          (Prk    : Tls_Core.Octet_Array;
+           Info   : Tls_Core.Octet_Array;
+           Output : out Tls_Core.Octet_Array)
+        with
+          Pre  =>
+            Prk'Length = Hash_Length
+            and then Output'Length in 1 .. 255 * Hash_Length
+            and then Info'Length <= 1024
+            and then Prk'Last < Integer'Last - 1024
+            and then Info'Last < Integer'Last - 1024
+            and then Output'Last < Integer'Last - 1024,
+          Post =>
+            (for all I in 1 .. Output'Length =>
+               Output (Output'First + I - 1)
+               = Spec_Hmac_Expand (Prk, Info, Output'Length)
+                   (Spec_Hmac_Expand (Prk, Info, Output'Length)'First
+                    + I
+                    - 1));
    procedure Expand_Label
      (Secret  : Octet_Array;
       Label   : Octet_Array;
       Context : Octet_Array;
       Output  : out Octet_Array)
    with
-     Pre =>
+     Pre  =>
        Secret'Length = Hash_Length
        and then Label'Length in 1 .. 249
        and then Context'Length in 0 .. 255
@@ -235,14 +233,16 @@ is
        --  §7.1-encoded info to the RFC 8446 wire shape; the
        --  Hmac_Expand Post pins the expand to the HACL\* spec.
        (for all I in 1 .. Output'Length =>
-          Output (Output'First + I - 1) =
-            Spec_Hmac_Expand
+          Output (Output'First + I - 1)
+          = Spec_Hmac_Expand
               (Secret,
                Built_Info_Bytes (Output'Length, Label, Context),
                Output'Length)
-                (Spec_Hmac_Expand
-                   (Secret,
-                    Built_Info_Bytes (Output'Length, Label, Context),
-                    Output'Length)'First + I - 1));
+                 (Spec_Hmac_Expand
+                    (Secret,
+                     Built_Info_Bytes (Output'Length, Label, Context),
+                     Output'Length)'First
+                  + I
+                  - 1));
 
 end Tls_Core.Hkdf;

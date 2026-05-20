@@ -1,5 +1,5 @@
 package Tls_Core.Tls13_Driver.Step_Hrr
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    procedure Handle_Sh_Or_Hrr

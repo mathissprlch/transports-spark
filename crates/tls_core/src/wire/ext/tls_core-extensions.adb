@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.Extensions
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -9,19 +9,15 @@ is
    use Interfaces;
 
    procedure Put_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      V       : Unsigned_16)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; V : Unsigned_16)
    with
-     Pre =>
+     Pre  =>
        Out_Buf'First = 1
        and then Cursor + 2 <= Out_Buf'Length
        and then Cursor in Natural,
      Post => Cursor = Cursor'Old + 2;
    procedure Put_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      V       : Unsigned_16)
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; V : Unsigned_16)
    is
    begin
       Out_Buf (Cursor + 1) := Octet (Shift_Right (V, 8) and 16#FF#);
@@ -46,32 +42,30 @@ is
       --  host_name length + bytes.
       Put_U16 (Out_Buf, Cursor, Unsigned_16 (Host_Name'Length));
       for I in 0 .. Host_Name'Length - 1 loop
-         Out_Buf (Cursor + 1 + I) :=
-           Host_Name (Host_Name'First + I);
+         Out_Buf (Cursor + 1 + I) := Host_Name (Host_Name'First + I);
       end loop;
       Cursor := Cursor + Host_Name'Length;
       Out_Last := Cursor;
    end Encode_Server_Name;
 
    procedure Decode_Server_Name
-     (Buf            : Octet_Array;
-      OK             : out Boolean;
-      Host_First     : out Natural;
-      Host_Last      : out Natural)
+     (Buf        : Octet_Array;
+      OK         : out Boolean;
+      Host_First : out Natural;
+      Host_Last  : out Natural)
    is
       List_Len : Natural;
       Cursor   : Natural := 0;
    begin
       OK := False;
       Host_First := 0;
-      Host_Last  := 0;
+      Host_Last := 0;
 
       if Buf'Length < 5 then
          return;
       end if;
       List_Len :=
-        Natural (Buf (Buf'First + 0)) * 256
-        + Natural (Buf (Buf'First + 1));
+        Natural (Buf (Buf'First + 0)) * 256 + Natural (Buf (Buf'First + 1));
       Cursor := 2;
       if Cursor + List_Len /= Buf'Length then
          return;
@@ -86,7 +80,8 @@ is
       end if;
       declare
          Name_Len : constant Natural :=
-           Natural (Buf (Buf'First + Cursor)) * 256
+           Natural (Buf (Buf'First + Cursor))
+           * 256
            + Natural (Buf (Buf'First + Cursor + 1));
       begin
          Cursor := Cursor + 2;
@@ -97,7 +92,7 @@ is
             return;
          end if;
          Host_First := Buf'First + Cursor;
-         Host_Last  := Buf'First + Cursor + Name_Len - 1;
+         Host_Last := Buf'First + Cursor + Name_Len - 1;
          OK := True;
       end;
    end Decode_Server_Name;
@@ -122,19 +117,17 @@ is
      (Buf         : Octet_Array;
       OK          : out Boolean;
       Names_First : out Natural;
-      Names_Last  : out Natural)
-   is
+      Names_Last  : out Natural) is
    begin
       OK := False;
       Names_First := 0;
-      Names_Last  := 0;
+      Names_Last := 0;
       if Buf'Length < 2 then
          return;
       end if;
       declare
          List_Len : constant Natural :=
-           Natural (Buf (Buf'First + 0)) * 256
-           + Natural (Buf (Buf'First + 1));
+           Natural (Buf (Buf'First + 0)) * 256 + Natural (Buf (Buf'First + 1));
       begin
          if 2 + List_Len /= Buf'Length then
             return;
@@ -143,16 +136,15 @@ is
             return;
          end if;
          Names_First := Buf'First + 2;
-         Names_Last  := Buf'First + 1 + List_Len;
+         Names_Last := Buf'First + 1 + List_Len;
          OK := True;
       end;
    end Decode_Alpn;
 
    procedure Append_Alpn_Name
-     (Name     : Octet_Array;
-      Out_Buf  : in out Octet_Array;
-      Cursor   : in out Natural)
-   is
+     (Name    : Octet_Array;
+      Out_Buf : in out Octet_Array;
+      Cursor  : in out Natural) is
    begin
       Out_Buf (Cursor + 1) := Octet (Name'Length);
       for I in 1 .. Name'Length loop

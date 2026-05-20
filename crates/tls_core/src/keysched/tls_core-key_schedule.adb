@@ -3,7 +3,7 @@ with Tls_Core.Hmac_Sha256;
 with Tls_Core.Hkdf_Sha256;
 
 package body Tls_Core.Key_Schedule
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -13,15 +13,10 @@ is
    ---------------------------------------------------------------------
 
    procedure Extract
-     (Salt   : Octet_Array;
-      IKM    : Octet_Array;
-      Out_PRK : out Secret)
-   is
+     (Salt : Octet_Array; IKM : Octet_Array; Out_PRK : out Secret) is
    begin
       Tls_Core.Hmac_Sha256.Compute
-        (Key     => Salt,
-         Message => IKM,
-         Out_Tag => Out_PRK);
+        (Key => Salt, Message => IKM, Out_Tag => Out_PRK);
    end Extract;
 
    ---------------------------------------------------------------------
@@ -31,17 +26,17 @@ is
    --  Max_Info = 512 covers the worst-case label/context shape
    --    (Label'Length=249, Context=32) → Info_Size = 291,
    --  with headroom for SHA-384 contexts later.
-   procedure Hkdf_Expand_Label_Sha256
-     is new Tls_Core.Hkdf.Expand_Label
+   procedure Hkdf_Expand_Label_Sha256 is new
+     Tls_Core.Hkdf.Expand_Label
        (Hash_Length      => Tls_Core.Sha256.Hash_Length,
         Max_Info         => 512,
         Spec_Hmac_Expand => Tls_Core.Hkdf_Sha256.Spec_HKDF_Expand,
         Hmac_Expand      => Tls_Core.Hkdf_Sha256.Hmac_Expand);
 
    procedure Derive_Secret
-     (Secret_In : Secret;
-      Label     : Octet_Array;
-      Messages  : Octet_Array;
+     (Secret_In  : Secret;
+      Label      : Octet_Array;
+      Messages   : Octet_Array;
       Out_Secret : out Secret)
    is
       Transcript_Hash : Tls_Core.Sha256.Digest;

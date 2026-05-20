@@ -1,22 +1,19 @@
 package body Tls_Core.Hello.Prims
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Octet;
 
    procedure W_U8
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Value   : Octet) is
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Octet) is
    begin
       Cursor := Cursor + 1;
       Out_Buf (Cursor) := Value;
    end W_U8;
 
    procedure W_U16
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Value   : Natural) is
+     (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Natural)
+   is
    begin
       Cursor := Cursor + 1;
       Out_Buf (Cursor) := Octet (Value / 256);
@@ -27,8 +24,7 @@ is
    procedure W_Bytes
      (Out_Buf : in out Octet_Array;
       Cursor  : in out Natural;
-      Bytes   : Octet_Array)
-   is
+      Bytes   : Octet_Array) is
    begin
       if Bytes'Length > 0 then
          Out_Buf (Cursor + 1 .. Cursor + Bytes'Length) := Bytes;
@@ -37,20 +33,17 @@ is
    end W_Bytes;
 
    procedure Patch_U16
-     (Out_Buf : in out Octet_Array;
-      At_Pos  : Natural;
-      Value   : Natural) is
+     (Out_Buf : in out Octet_Array; At_Pos : Natural; Value : Natural) is
    begin
-      Out_Buf (At_Pos)     := Octet (Value / 256);
+      Out_Buf (At_Pos) := Octet (Value / 256);
       Out_Buf (At_Pos + 1) := Octet (Value mod 256);
    end Patch_U16;
 
    procedure Encode_Extension
-     (Out_Buf : in out Octet_Array;
-      Cursor  : in out Natural;
-      Ext_Type : Natural;
-      Body_Bytes : Octet_Array)
-   is
+     (Out_Buf    : in out Octet_Array;
+      Cursor     : in out Natural;
+      Ext_Type   : Natural;
+      Body_Bytes : Octet_Array) is
    begin
       W_U16 (Out_Buf, Cursor, Ext_Type);
       W_U16 (Out_Buf, Cursor, Body_Bytes'Length);
@@ -94,17 +87,17 @@ is
    end R_U16;
 
    procedure Find_Extension
-     (In_Bytes  : Octet_Array;
-      Pos       : Natural;
-      End_Pos   : Natural;
-      Ext_Type  : Natural;
+     (In_Bytes   : Octet_Array;
+      Pos        : Natural;
+      End_Pos    : Natural;
+      Ext_Type   : Natural;
       Body_First : out Natural;
       Body_Last  : out Natural;
-      OK        : out Boolean)
+      OK         : out Boolean)
    is
-      P : Natural := Pos;
-      T : Natural;
-      L : Natural;
+      P       : Natural := Pos;
+      T       : Natural;
+      L       : Natural;
       Read_OK : Boolean := True;
    begin
       Body_First := 0;

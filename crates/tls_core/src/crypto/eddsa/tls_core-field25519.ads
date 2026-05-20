@@ -37,7 +37,7 @@ with Interfaces;
 with Ada.Numerics.Big_Numbers.Big_Integers;
 
 package Tls_Core.Field25519
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Integer_64;
@@ -69,18 +69,17 @@ is
    with Ghost, Global => null;
 
    function Pow_2_16 (N : Natural) return Big.Big_Integer
-   with Ghost, Global => null,
-        Pre  => N <= 16;
+   with Ghost, Global => null, Pre => N <= 16;
 
-   function To_Big_Up_To
-     (F : Felt; N : Natural) return Big.Big_Integer
-   is
-     (if N = 0 then Big.To_Big_Integer (0)
-      else To_Big_Up_To (F, N - 1) + Limb_Big (F (N - 1)) * Pow_2_16 (N - 1))
-   with Ghost,
-        Global => null,
-        Pre => N <= 16,
-        Subprogram_Variant => (Decreases => N);
+   function To_Big_Up_To (F : Felt; N : Natural) return Big.Big_Integer
+   is (if N = 0
+       then Big.To_Big_Integer (0)
+       else To_Big_Up_To (F, N - 1) + Limb_Big (F (N - 1)) * Pow_2_16 (N - 1))
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N <= 16,
+     Subprogram_Variant => (Decreases => N);
 
    function To_Big_Spec (F : Felt) return Big.Big_Integer
    is (To_Big_Up_To (F, 16))
@@ -88,17 +87,21 @@ is
 
    --  p = 2^255 - 19, the Curve25519 base-field prime.
    function Prime_P_Spec return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Prime_P_Spec'Result > Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Post   => Prime_P_Spec'Result > Big.To_Big_Integer (0);
 
    --  Canonical residue mod p.
    function Mod_P_Spec (X : Big.Big_Integer) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range
-                  (Mod_P_Spec'Result,
-                   Big.To_Big_Integer (0),
-                   Prime_P_Spec - Big.To_Big_Integer (1));
-
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Mod_P_Spec'Result,
+          Big.To_Big_Integer (0),
+          Prime_P_Spec - Big.To_Big_Integer (1));
 
    --  Equivalence mod p.
    function Equiv_Spec (A, B : Big.Big_Integer) return Boolean
@@ -122,12 +125,10 @@ is
    --      To_Big_Spec (O) = To_Big_Spec (A) + To_Big_Spec (B)
    --  exactly (no reduction).
    procedure F_Add (O : out Felt; A, B : Felt)
-   with Post =>
-     To_Big_Spec (O) = To_Big_Spec (A) + To_Big_Spec (B);
+   with Post => To_Big_Spec (O) = To_Big_Spec (A) + To_Big_Spec (B);
 
    procedure F_Sub (O : out Felt; A, B : Felt)
-   with Post =>
-     To_Big_Spec (O) = To_Big_Spec (A) - To_Big_Spec (B);
+   with Post => To_Big_Spec (O) = To_Big_Spec (A) - To_Big_Spec (B);
 
    --  Multiply mod p, with two carry passes producing canonical-
    --  ish output. F_Sqr(o, a) = F_Mul(o, a, a).
@@ -135,16 +136,12 @@ is
    --  Post: To_Big_Spec (O) ≡ To_Big_Spec (A) * To_Big_Spec (B)
    --  modulo p.  This is the F\*  fmul  spec.
    procedure F_Mul (O : out Felt; A, B : Felt)
-   with Post =>
-     Equiv_Spec
-       (To_Big_Spec (O),
-        To_Big_Spec (A) * To_Big_Spec (B));
+   with
+     Post => Equiv_Spec (To_Big_Spec (O), To_Big_Spec (A) * To_Big_Spec (B));
 
    procedure F_Sqr (O : out Felt; A : Felt)
-   with Post =>
-     Equiv_Spec
-       (To_Big_Spec (O),
-        To_Big_Spec (A) * To_Big_Spec (A));
+   with
+     Post => Equiv_Spec (To_Big_Spec (O), To_Big_Spec (A) * To_Big_Spec (A));
 
    --  Inverse mod p via Fermat: a^(p-2). Uses the standard
    --  exponent walk (squaring 254 times, with multiplies inserted
@@ -155,12 +152,12 @@ is
    --  multiplicative inverse of To_Big_Spec (I_Val) mod p when
    --  I_Val is non-zero mod p.
    procedure F_Inv (O : out Felt; I_Val : Felt)
-   with Post =>
-     (if not Equiv_Spec (To_Big_Spec (I_Val), Big.To_Big_Integer (0))
-      then
-        Equiv_Spec
-          (To_Big_Spec (O) * To_Big_Spec (I_Val),
-           Big.To_Big_Integer (1)));
+   with
+     Post =>
+       (if not Equiv_Spec (To_Big_Spec (I_Val), Big.To_Big_Integer (0))
+        then
+          Equiv_Spec
+            (To_Big_Spec (O) * To_Big_Spec (I_Val), Big.To_Big_Integer (1)));
 
    --  z^((p-5)/8). Used by Ed25519 point decompression to recover
    --  x from y via the Tonelli-style square root for p ≡ 5 mod 8.
@@ -171,9 +168,7 @@ is
    --  Constant-time conditional swap. Swap_Bit = 1 swaps every
    --  limb of P and Q; Swap_Bit = 0 leaves them untouched. No
    --  branches dependent on Swap_Bit.
-   procedure C_Swap
-     (P, Q     : in out Felt;
-      Swap_Bit : Interfaces.Integer_64);
+   procedure C_Swap (P, Q : in out Felt; Swap_Bit : Interfaces.Integer_64);
 
    --  Final reduction mod p, then serialise to 32 LE bytes.
    procedure Pack (O : out Bytes_32; N : Felt);
@@ -192,11 +187,8 @@ is
    --  extraction reuses them; both are bit-pattern operations on
    --  Integer_64 with no semantic content beyond the obvious.
    function Asr
-     (X : Interfaces.Integer_64; N : Natural)
-      return Interfaces.Integer_64;
+     (X : Interfaces.Integer_64; N : Natural) return Interfaces.Integer_64;
 
-   function And_64
-     (X, Y : Interfaces.Integer_64)
-      return Interfaces.Integer_64;
+   function And_64 (X, Y : Interfaces.Integer_64) return Interfaces.Integer_64;
 
 end Tls_Core.Field25519;

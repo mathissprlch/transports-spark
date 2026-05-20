@@ -18,12 +18,12 @@
 with Tls_Core.Aes128;
 
 package Tls_Core.Aead_Aes128_Gcm
-with SPARK_Mode
+  with SPARK_Mode
 is
 
-   subtype Key_Array   is Tls_Core.Aes128.Key_Array;
+   subtype Key_Array is Tls_Core.Aes128.Key_Array;
    subtype Nonce_Array is Octet_Array (1 .. 12);
-   subtype Tag_Array   is Octet_Array (1 .. 16);
+   subtype Tag_Array is Octet_Array (1 .. 16);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  AES-128-GCM AEAD Seal.

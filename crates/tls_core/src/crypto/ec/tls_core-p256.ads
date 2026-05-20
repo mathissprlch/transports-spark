@@ -54,7 +54,7 @@ with Ada.Numerics.Big_Numbers.Big_Integers;
 with Tls_Core.P256_Field;
 
 package Tls_Core.P256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -99,8 +99,10 @@ is
 
    --  Identity / point at infinity in the Big_Integer view.
    function Spec_Infinity return Spec_Point
-   with Ghost, Global => null,
-        Post => Spec_Infinity'Result.Z = Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Post   => Spec_Infinity'Result.Z = Big.To_Big_Integer (0);
 
    --  HACL\* Spec.P256.PointOps.fst :  point_double / point_add  —
    --  ported with operations evaluated mod p via P256_Field
@@ -124,10 +126,8 @@ is
    --  Spec.P256.Lemmas to the windowed `exp_fw` on the canonical
    --  residue.) Real computable Big_Integer body, no stub.
    function Spec_Scalar_Mult
-     (Scalar : Octet_Array;
-      P      : Spec_Point) return Spec_Point
-   with Ghost, Global => null,
-        Pre => Scalar'Length = 32;
+     (Scalar : Octet_Array; P : Spec_Point) return Spec_Point
+   with Ghost, Global => null, Pre => Scalar'Length = 32;
 
    --  No functional Posts on Encode / Decode / Add_Points /
    --  To_Affine_X yet: the verification dividend lives in the
@@ -138,18 +138,14 @@ is
    --  iff the decoded affine (x, y) satisfies y^2 = x^3 - 3x + b
    --  over GF(p) and 0 <= x < p, 0 <= y < p.
    procedure Decode_Uncompressed
-     (Bytes : Octet_Array;
-      Out_P : out Point;
-      OK    : out Boolean)
+     (Bytes : Octet_Array; Out_P : out Point; OK : out Boolean)
    with Pre => Bytes'Length = 65;
 
    --  SEC 1 §2.3.3: 0x04 || X || Y for finite points; the all-zero
    --  encoding is reserved for the point at infinity in this
    --  module (callers must check OK from the decode side; encode
    --  of infinity yields a zero buffer).
-   procedure Encode_Uncompressed
-     (P         : Point;
-      Out_Bytes : out Octet_Array)
+   procedure Encode_Uncompressed (P : Point; Out_Bytes : out Octet_Array)
    with Pre => Out_Bytes'Length = 65;
 
    --  --------------------------------------------------------------
@@ -169,28 +165,21 @@ is
    --              Assume, no annotation suppressing VCs). RFC 6979
    --              §A.2.5 P-256 KAT exercises the chain end-to-end.
    --  --------------------------------------------------------------
-   procedure Scalar_Mul
-     (Scalar : Octet_Array;
-      P      : Point;
-      Out_R  : out Point)
-   with Pre => Scalar'Length = 32,
-        Post =>
-          Spec_Equiv_Point
-            (Spec_Of (Out_R),
-             Spec_Scalar_Mult (Scalar, Spec_Of (P)));
+   procedure Scalar_Mul (Scalar : Octet_Array; P : Point; Out_R : out Point)
+   with
+     Pre  => Scalar'Length = 32,
+     Post =>
+       Spec_Equiv_Point
+         (Spec_Of (Out_R), Spec_Scalar_Mult (Scalar, Spec_Of (P)));
 
    --  Recover the affine X coordinate of a non-identity point.
    --  Used by ECDH to extract the shared secret X (RFC 8446 §4.2.8.2).
-   procedure To_Affine_X
-     (P      : Point;
-      Out_X  : out Field);
+   procedure To_Affine_X (P : Point; Out_X : out Field);
 
    --  Group law: R = P1 + P2 over the curve. Handles identity,
    --  equal-and-add (doubles) and inverse-and-add (yields infinity).
    --  Used by ECDSA verify to form u1*G + u2*Q.
-   procedure Add_Points
-     (P1, P2 : Point;
-      Out_R  : out Point);
+   procedure Add_Points (P1, P2 : Point; Out_R : out Point);
 
    --  True iff P is the point at infinity.
    function Is_Infinity (P : Point) return Boolean;
@@ -215,14 +204,72 @@ private
 
    --  Generator in Jacobian (Gx, Gy, 1).
    Generator : constant Point :=
-     (X => (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
-            16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
-            16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
-            16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#),
-      Y => (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
-            16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
-            16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
-            16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#),
+     (X =>
+        (16#6B#,
+         16#17#,
+         16#D1#,
+         16#F2#,
+         16#E1#,
+         16#2C#,
+         16#42#,
+         16#47#,
+         16#F8#,
+         16#BC#,
+         16#E6#,
+         16#E5#,
+         16#63#,
+         16#A4#,
+         16#40#,
+         16#F2#,
+         16#77#,
+         16#03#,
+         16#7D#,
+         16#81#,
+         16#2D#,
+         16#EB#,
+         16#33#,
+         16#A0#,
+         16#F4#,
+         16#A1#,
+         16#39#,
+         16#45#,
+         16#D8#,
+         16#98#,
+         16#C2#,
+         16#96#),
+      Y =>
+        (16#4F#,
+         16#E3#,
+         16#42#,
+         16#E2#,
+         16#FE#,
+         16#1A#,
+         16#7F#,
+         16#9B#,
+         16#8E#,
+         16#E7#,
+         16#EB#,
+         16#4A#,
+         16#7C#,
+         16#0F#,
+         16#9E#,
+         16#16#,
+         16#2B#,
+         16#CE#,
+         16#33#,
+         16#57#,
+         16#6B#,
+         16#31#,
+         16#5E#,
+         16#CE#,
+         16#CB#,
+         16#B6#,
+         16#40#,
+         16#68#,
+         16#37#,
+         16#BF#,
+         16#51#,
+         16#F5#),
       Z => Tls_Core.P256_Field.One);
 
    pragma Warnings (On, "array aggregate using () is an obsolescent syntax");

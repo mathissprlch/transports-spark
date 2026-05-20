@@ -11,7 +11,7 @@
 with Interfaces;
 
 package Tls_Core.Cert_Verify
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_16;
@@ -54,14 +54,13 @@ is
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
    with
-     Pre =>
+     Pre  =>
        Cert_Data'Length in 1 .. 16#FFFFFF# - 5
        and then Cert_Data'Last < Integer'Last - 16#FFFFFF#
        and then Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 32
        and then Out_Buf'Length >= 1 + 3 + 3 + Cert_Data'Length + 2,
-     Post =>
-       Out_Last = 1 + 3 + 3 + Cert_Data'Length + 2;
+     Post => Out_Last = 1 + 3 + 3 + Cert_Data'Length + 2;
 
    --  Decode the body of a Certificate handshake message containing
    --  exactly one end-entity certificate. Returns OK = False on any
@@ -96,14 +95,13 @@ is
       Out_Buf    : out Octet_Array;
       Out_Last   : out Natural)
    with
-     Pre =>
+     Pre  =>
        Signature'Length in 1 .. 65535
        and then Signature'Last < Integer'Last - 65535
        and then Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 32
        and then Out_Buf'Length >= 4 + Signature'Length,
-     Post =>
-       Out_Last = 4 + Signature'Length;
+     Post => Out_Last = 4 + Signature'Length;
 
    procedure Decode_Body
      (Buf        : Octet_Array;
@@ -129,14 +127,13 @@ is
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural)
    with
-     Pre =>
+     Pre  =>
        Transcript_Hash'Length in 1 .. 64
        and then Transcript_Hash'Last < Integer'Last - 64
        and then Out_Buf'First = 1
        and then Out_Buf'Last < Integer'Last - 256
        and then Out_Buf'Length >= 64 + 33 + 1 + Transcript_Hash'Length,
-     Post =>
-       Out_Last = 64 + 33 + 1 + Transcript_Hash'Length;
+     Post => Out_Last = 64 + 33 + 1 + Transcript_Hash'Length;
 
    ---------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  DER-encode an ECDSA Sig-Value SEQUENCE.
@@ -159,11 +156,9 @@ is
    --  least 72 bytes long.
    ---------------------------------------------------------------------
    procedure Encode_Ecdsa_Sig_Der
-     (R, S     : Octet_Array;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (R, S : Octet_Array; Out_Buf : out Octet_Array; Out_Last : out Natural)
    with
-     Pre =>
+     Pre  =>
        R'First = 1
        and then R'Length = 32
        and then S'First = 1
@@ -171,7 +166,6 @@ is
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 72
        and then Out_Buf'Last <= Integer'Last - 35,
-     Post =>
-       Out_Last in 8 .. 72;
+     Post => Out_Last in 8 .. 72;
 
 end Tls_Core.Cert_Verify;

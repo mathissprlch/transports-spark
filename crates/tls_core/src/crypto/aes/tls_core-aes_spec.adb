@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.Aes_Spec
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -27,93 +27,539 @@ is
    ---------------------------------------------------------------------
 
    S_Box : constant array (Octet) of Octet :=
-     (16#63#, 16#7C#, 16#77#, 16#7B#, 16#F2#, 16#6B#, 16#6F#, 16#C5#,
-      16#30#, 16#01#, 16#67#, 16#2B#, 16#FE#, 16#D7#, 16#AB#, 16#76#,
-      16#CA#, 16#82#, 16#C9#, 16#7D#, 16#FA#, 16#59#, 16#47#, 16#F0#,
-      16#AD#, 16#D4#, 16#A2#, 16#AF#, 16#9C#, 16#A4#, 16#72#, 16#C0#,
-      16#B7#, 16#FD#, 16#93#, 16#26#, 16#36#, 16#3F#, 16#F7#, 16#CC#,
-      16#34#, 16#A5#, 16#E5#, 16#F1#, 16#71#, 16#D8#, 16#31#, 16#15#,
-      16#04#, 16#C7#, 16#23#, 16#C3#, 16#18#, 16#96#, 16#05#, 16#9A#,
-      16#07#, 16#12#, 16#80#, 16#E2#, 16#EB#, 16#27#, 16#B2#, 16#75#,
-      16#09#, 16#83#, 16#2C#, 16#1A#, 16#1B#, 16#6E#, 16#5A#, 16#A0#,
-      16#52#, 16#3B#, 16#D6#, 16#B3#, 16#29#, 16#E3#, 16#2F#, 16#84#,
-      16#53#, 16#D1#, 16#00#, 16#ED#, 16#20#, 16#FC#, 16#B1#, 16#5B#,
-      16#6A#, 16#CB#, 16#BE#, 16#39#, 16#4A#, 16#4C#, 16#58#, 16#CF#,
-      16#D0#, 16#EF#, 16#AA#, 16#FB#, 16#43#, 16#4D#, 16#33#, 16#85#,
-      16#45#, 16#F9#, 16#02#, 16#7F#, 16#50#, 16#3C#, 16#9F#, 16#A8#,
-      16#51#, 16#A3#, 16#40#, 16#8F#, 16#92#, 16#9D#, 16#38#, 16#F5#,
-      16#BC#, 16#B6#, 16#DA#, 16#21#, 16#10#, 16#FF#, 16#F3#, 16#D2#,
-      16#CD#, 16#0C#, 16#13#, 16#EC#, 16#5F#, 16#97#, 16#44#, 16#17#,
-      16#C4#, 16#A7#, 16#7E#, 16#3D#, 16#64#, 16#5D#, 16#19#, 16#73#,
-      16#60#, 16#81#, 16#4F#, 16#DC#, 16#22#, 16#2A#, 16#90#, 16#88#,
-      16#46#, 16#EE#, 16#B8#, 16#14#, 16#DE#, 16#5E#, 16#0B#, 16#DB#,
-      16#E0#, 16#32#, 16#3A#, 16#0A#, 16#49#, 16#06#, 16#24#, 16#5C#,
-      16#C2#, 16#D3#, 16#AC#, 16#62#, 16#91#, 16#95#, 16#E4#, 16#79#,
-      16#E7#, 16#C8#, 16#37#, 16#6D#, 16#8D#, 16#D5#, 16#4E#, 16#A9#,
-      16#6C#, 16#56#, 16#F4#, 16#EA#, 16#65#, 16#7A#, 16#AE#, 16#08#,
-      16#BA#, 16#78#, 16#25#, 16#2E#, 16#1C#, 16#A6#, 16#B4#, 16#C6#,
-      16#E8#, 16#DD#, 16#74#, 16#1F#, 16#4B#, 16#BD#, 16#8B#, 16#8A#,
-      16#70#, 16#3E#, 16#B5#, 16#66#, 16#48#, 16#03#, 16#F6#, 16#0E#,
-      16#61#, 16#35#, 16#57#, 16#B9#, 16#86#, 16#C1#, 16#1D#, 16#9E#,
-      16#E1#, 16#F8#, 16#98#, 16#11#, 16#69#, 16#D9#, 16#8E#, 16#94#,
-      16#9B#, 16#1E#, 16#87#, 16#E9#, 16#CE#, 16#55#, 16#28#, 16#DF#,
-      16#8C#, 16#A1#, 16#89#, 16#0D#, 16#BF#, 16#E6#, 16#42#, 16#68#,
-      16#41#, 16#99#, 16#2D#, 16#0F#, 16#B0#, 16#54#, 16#BB#, 16#16#);
+     (16#63#,
+      16#7C#,
+      16#77#,
+      16#7B#,
+      16#F2#,
+      16#6B#,
+      16#6F#,
+      16#C5#,
+      16#30#,
+      16#01#,
+      16#67#,
+      16#2B#,
+      16#FE#,
+      16#D7#,
+      16#AB#,
+      16#76#,
+      16#CA#,
+      16#82#,
+      16#C9#,
+      16#7D#,
+      16#FA#,
+      16#59#,
+      16#47#,
+      16#F0#,
+      16#AD#,
+      16#D4#,
+      16#A2#,
+      16#AF#,
+      16#9C#,
+      16#A4#,
+      16#72#,
+      16#C0#,
+      16#B7#,
+      16#FD#,
+      16#93#,
+      16#26#,
+      16#36#,
+      16#3F#,
+      16#F7#,
+      16#CC#,
+      16#34#,
+      16#A5#,
+      16#E5#,
+      16#F1#,
+      16#71#,
+      16#D8#,
+      16#31#,
+      16#15#,
+      16#04#,
+      16#C7#,
+      16#23#,
+      16#C3#,
+      16#18#,
+      16#96#,
+      16#05#,
+      16#9A#,
+      16#07#,
+      16#12#,
+      16#80#,
+      16#E2#,
+      16#EB#,
+      16#27#,
+      16#B2#,
+      16#75#,
+      16#09#,
+      16#83#,
+      16#2C#,
+      16#1A#,
+      16#1B#,
+      16#6E#,
+      16#5A#,
+      16#A0#,
+      16#52#,
+      16#3B#,
+      16#D6#,
+      16#B3#,
+      16#29#,
+      16#E3#,
+      16#2F#,
+      16#84#,
+      16#53#,
+      16#D1#,
+      16#00#,
+      16#ED#,
+      16#20#,
+      16#FC#,
+      16#B1#,
+      16#5B#,
+      16#6A#,
+      16#CB#,
+      16#BE#,
+      16#39#,
+      16#4A#,
+      16#4C#,
+      16#58#,
+      16#CF#,
+      16#D0#,
+      16#EF#,
+      16#AA#,
+      16#FB#,
+      16#43#,
+      16#4D#,
+      16#33#,
+      16#85#,
+      16#45#,
+      16#F9#,
+      16#02#,
+      16#7F#,
+      16#50#,
+      16#3C#,
+      16#9F#,
+      16#A8#,
+      16#51#,
+      16#A3#,
+      16#40#,
+      16#8F#,
+      16#92#,
+      16#9D#,
+      16#38#,
+      16#F5#,
+      16#BC#,
+      16#B6#,
+      16#DA#,
+      16#21#,
+      16#10#,
+      16#FF#,
+      16#F3#,
+      16#D2#,
+      16#CD#,
+      16#0C#,
+      16#13#,
+      16#EC#,
+      16#5F#,
+      16#97#,
+      16#44#,
+      16#17#,
+      16#C4#,
+      16#A7#,
+      16#7E#,
+      16#3D#,
+      16#64#,
+      16#5D#,
+      16#19#,
+      16#73#,
+      16#60#,
+      16#81#,
+      16#4F#,
+      16#DC#,
+      16#22#,
+      16#2A#,
+      16#90#,
+      16#88#,
+      16#46#,
+      16#EE#,
+      16#B8#,
+      16#14#,
+      16#DE#,
+      16#5E#,
+      16#0B#,
+      16#DB#,
+      16#E0#,
+      16#32#,
+      16#3A#,
+      16#0A#,
+      16#49#,
+      16#06#,
+      16#24#,
+      16#5C#,
+      16#C2#,
+      16#D3#,
+      16#AC#,
+      16#62#,
+      16#91#,
+      16#95#,
+      16#E4#,
+      16#79#,
+      16#E7#,
+      16#C8#,
+      16#37#,
+      16#6D#,
+      16#8D#,
+      16#D5#,
+      16#4E#,
+      16#A9#,
+      16#6C#,
+      16#56#,
+      16#F4#,
+      16#EA#,
+      16#65#,
+      16#7A#,
+      16#AE#,
+      16#08#,
+      16#BA#,
+      16#78#,
+      16#25#,
+      16#2E#,
+      16#1C#,
+      16#A6#,
+      16#B4#,
+      16#C6#,
+      16#E8#,
+      16#DD#,
+      16#74#,
+      16#1F#,
+      16#4B#,
+      16#BD#,
+      16#8B#,
+      16#8A#,
+      16#70#,
+      16#3E#,
+      16#B5#,
+      16#66#,
+      16#48#,
+      16#03#,
+      16#F6#,
+      16#0E#,
+      16#61#,
+      16#35#,
+      16#57#,
+      16#B9#,
+      16#86#,
+      16#C1#,
+      16#1D#,
+      16#9E#,
+      16#E1#,
+      16#F8#,
+      16#98#,
+      16#11#,
+      16#69#,
+      16#D9#,
+      16#8E#,
+      16#94#,
+      16#9B#,
+      16#1E#,
+      16#87#,
+      16#E9#,
+      16#CE#,
+      16#55#,
+      16#28#,
+      16#DF#,
+      16#8C#,
+      16#A1#,
+      16#89#,
+      16#0D#,
+      16#BF#,
+      16#E6#,
+      16#42#,
+      16#68#,
+      16#41#,
+      16#99#,
+      16#2D#,
+      16#0F#,
+      16#B0#,
+      16#54#,
+      16#BB#,
+      16#16#);
 
    Inv_S_Box : constant array (Octet) of Octet :=
-     (16#52#, 16#09#, 16#6A#, 16#D5#, 16#30#, 16#36#, 16#A5#, 16#38#,
-      16#BF#, 16#40#, 16#A3#, 16#9E#, 16#81#, 16#F3#, 16#D7#, 16#FB#,
-      16#7C#, 16#E3#, 16#39#, 16#82#, 16#9B#, 16#2F#, 16#FF#, 16#87#,
-      16#34#, 16#8E#, 16#43#, 16#44#, 16#C4#, 16#DE#, 16#E9#, 16#CB#,
-      16#54#, 16#7B#, 16#94#, 16#32#, 16#A6#, 16#C2#, 16#23#, 16#3D#,
-      16#EE#, 16#4C#, 16#95#, 16#0B#, 16#42#, 16#FA#, 16#C3#, 16#4E#,
-      16#08#, 16#2E#, 16#A1#, 16#66#, 16#28#, 16#D9#, 16#24#, 16#B2#,
-      16#76#, 16#5B#, 16#A2#, 16#49#, 16#6D#, 16#8B#, 16#D1#, 16#25#,
-      16#72#, 16#F8#, 16#F6#, 16#64#, 16#86#, 16#68#, 16#98#, 16#16#,
-      16#D4#, 16#A4#, 16#5C#, 16#CC#, 16#5D#, 16#65#, 16#B6#, 16#92#,
-      16#6C#, 16#70#, 16#48#, 16#50#, 16#FD#, 16#ED#, 16#B9#, 16#DA#,
-      16#5E#, 16#15#, 16#46#, 16#57#, 16#A7#, 16#8D#, 16#9D#, 16#84#,
-      16#90#, 16#D8#, 16#AB#, 16#00#, 16#8C#, 16#BC#, 16#D3#, 16#0A#,
-      16#F7#, 16#E4#, 16#58#, 16#05#, 16#B8#, 16#B3#, 16#45#, 16#06#,
-      16#D0#, 16#2C#, 16#1E#, 16#8F#, 16#CA#, 16#3F#, 16#0F#, 16#02#,
-      16#C1#, 16#AF#, 16#BD#, 16#03#, 16#01#, 16#13#, 16#8A#, 16#6B#,
-      16#3A#, 16#91#, 16#11#, 16#41#, 16#4F#, 16#67#, 16#DC#, 16#EA#,
-      16#97#, 16#F2#, 16#CF#, 16#CE#, 16#F0#, 16#B4#, 16#E6#, 16#73#,
-      16#96#, 16#AC#, 16#74#, 16#22#, 16#E7#, 16#AD#, 16#35#, 16#85#,
-      16#E2#, 16#F9#, 16#37#, 16#E8#, 16#1C#, 16#75#, 16#DF#, 16#6E#,
-      16#47#, 16#F1#, 16#1A#, 16#71#, 16#1D#, 16#29#, 16#C5#, 16#89#,
-      16#6F#, 16#B7#, 16#62#, 16#0E#, 16#AA#, 16#18#, 16#BE#, 16#1B#,
-      16#FC#, 16#56#, 16#3E#, 16#4B#, 16#C6#, 16#D2#, 16#79#, 16#20#,
-      16#9A#, 16#DB#, 16#C0#, 16#FE#, 16#78#, 16#CD#, 16#5A#, 16#F4#,
-      16#1F#, 16#DD#, 16#A8#, 16#33#, 16#88#, 16#07#, 16#C7#, 16#31#,
-      16#B1#, 16#12#, 16#10#, 16#59#, 16#27#, 16#80#, 16#EC#, 16#5F#,
-      16#60#, 16#51#, 16#7F#, 16#A9#, 16#19#, 16#B5#, 16#4A#, 16#0D#,
-      16#2D#, 16#E5#, 16#7A#, 16#9F#, 16#93#, 16#C9#, 16#9C#, 16#EF#,
-      16#A0#, 16#E0#, 16#3B#, 16#4D#, 16#AE#, 16#2A#, 16#F5#, 16#B0#,
-      16#C8#, 16#EB#, 16#BB#, 16#3C#, 16#83#, 16#53#, 16#99#, 16#61#,
-      16#17#, 16#2B#, 16#04#, 16#7E#, 16#BA#, 16#77#, 16#D6#, 16#26#,
-      16#E1#, 16#69#, 16#14#, 16#63#, 16#55#, 16#21#, 16#0C#, 16#7D#);
+     (16#52#,
+      16#09#,
+      16#6A#,
+      16#D5#,
+      16#30#,
+      16#36#,
+      16#A5#,
+      16#38#,
+      16#BF#,
+      16#40#,
+      16#A3#,
+      16#9E#,
+      16#81#,
+      16#F3#,
+      16#D7#,
+      16#FB#,
+      16#7C#,
+      16#E3#,
+      16#39#,
+      16#82#,
+      16#9B#,
+      16#2F#,
+      16#FF#,
+      16#87#,
+      16#34#,
+      16#8E#,
+      16#43#,
+      16#44#,
+      16#C4#,
+      16#DE#,
+      16#E9#,
+      16#CB#,
+      16#54#,
+      16#7B#,
+      16#94#,
+      16#32#,
+      16#A6#,
+      16#C2#,
+      16#23#,
+      16#3D#,
+      16#EE#,
+      16#4C#,
+      16#95#,
+      16#0B#,
+      16#42#,
+      16#FA#,
+      16#C3#,
+      16#4E#,
+      16#08#,
+      16#2E#,
+      16#A1#,
+      16#66#,
+      16#28#,
+      16#D9#,
+      16#24#,
+      16#B2#,
+      16#76#,
+      16#5B#,
+      16#A2#,
+      16#49#,
+      16#6D#,
+      16#8B#,
+      16#D1#,
+      16#25#,
+      16#72#,
+      16#F8#,
+      16#F6#,
+      16#64#,
+      16#86#,
+      16#68#,
+      16#98#,
+      16#16#,
+      16#D4#,
+      16#A4#,
+      16#5C#,
+      16#CC#,
+      16#5D#,
+      16#65#,
+      16#B6#,
+      16#92#,
+      16#6C#,
+      16#70#,
+      16#48#,
+      16#50#,
+      16#FD#,
+      16#ED#,
+      16#B9#,
+      16#DA#,
+      16#5E#,
+      16#15#,
+      16#46#,
+      16#57#,
+      16#A7#,
+      16#8D#,
+      16#9D#,
+      16#84#,
+      16#90#,
+      16#D8#,
+      16#AB#,
+      16#00#,
+      16#8C#,
+      16#BC#,
+      16#D3#,
+      16#0A#,
+      16#F7#,
+      16#E4#,
+      16#58#,
+      16#05#,
+      16#B8#,
+      16#B3#,
+      16#45#,
+      16#06#,
+      16#D0#,
+      16#2C#,
+      16#1E#,
+      16#8F#,
+      16#CA#,
+      16#3F#,
+      16#0F#,
+      16#02#,
+      16#C1#,
+      16#AF#,
+      16#BD#,
+      16#03#,
+      16#01#,
+      16#13#,
+      16#8A#,
+      16#6B#,
+      16#3A#,
+      16#91#,
+      16#11#,
+      16#41#,
+      16#4F#,
+      16#67#,
+      16#DC#,
+      16#EA#,
+      16#97#,
+      16#F2#,
+      16#CF#,
+      16#CE#,
+      16#F0#,
+      16#B4#,
+      16#E6#,
+      16#73#,
+      16#96#,
+      16#AC#,
+      16#74#,
+      16#22#,
+      16#E7#,
+      16#AD#,
+      16#35#,
+      16#85#,
+      16#E2#,
+      16#F9#,
+      16#37#,
+      16#E8#,
+      16#1C#,
+      16#75#,
+      16#DF#,
+      16#6E#,
+      16#47#,
+      16#F1#,
+      16#1A#,
+      16#71#,
+      16#1D#,
+      16#29#,
+      16#C5#,
+      16#89#,
+      16#6F#,
+      16#B7#,
+      16#62#,
+      16#0E#,
+      16#AA#,
+      16#18#,
+      16#BE#,
+      16#1B#,
+      16#FC#,
+      16#56#,
+      16#3E#,
+      16#4B#,
+      16#C6#,
+      16#D2#,
+      16#79#,
+      16#20#,
+      16#9A#,
+      16#DB#,
+      16#C0#,
+      16#FE#,
+      16#78#,
+      16#CD#,
+      16#5A#,
+      16#F4#,
+      16#1F#,
+      16#DD#,
+      16#A8#,
+      16#33#,
+      16#88#,
+      16#07#,
+      16#C7#,
+      16#31#,
+      16#B1#,
+      16#12#,
+      16#10#,
+      16#59#,
+      16#27#,
+      16#80#,
+      16#EC#,
+      16#5F#,
+      16#60#,
+      16#51#,
+      16#7F#,
+      16#A9#,
+      16#19#,
+      16#B5#,
+      16#4A#,
+      16#0D#,
+      16#2D#,
+      16#E5#,
+      16#7A#,
+      16#9F#,
+      16#93#,
+      16#C9#,
+      16#9C#,
+      16#EF#,
+      16#A0#,
+      16#E0#,
+      16#3B#,
+      16#4D#,
+      16#AE#,
+      16#2A#,
+      16#F5#,
+      16#B0#,
+      16#C8#,
+      16#EB#,
+      16#BB#,
+      16#3C#,
+      16#83#,
+      16#53#,
+      16#99#,
+      16#61#,
+      16#17#,
+      16#2B#,
+      16#04#,
+      16#7E#,
+      16#BA#,
+      16#77#,
+      16#D6#,
+      16#26#,
+      16#E1#,
+      16#69#,
+      16#14#,
+      16#63#,
+      16#55#,
+      16#21#,
+      16#0C#,
+      16#7D#);
 
-   function Sub_Byte (B : Octet) return Octet is (S_Box (B));
+   function Sub_Byte (B : Octet) return Octet
+   is (S_Box (B));
 
-   function Inv_Sub_Byte (B : Octet) return Octet is (Inv_S_Box (B));
+   function Inv_Sub_Byte (B : Octet) return Octet
+   is (Inv_S_Box (B));
 
    function Spec_Xtime (B : Octet) return Octet
-   is
-     (if (B and 16#80#) /= 0
-        then (Octet (Shift_Left (Unsigned_8 (B), 1))) xor 16#1B#
-        else (Octet (Shift_Left (Unsigned_8 (B), 1))));
+   is (if (B and 16#80#) /= 0
+       then (Octet (Shift_Left (Unsigned_8 (B), 1))) xor 16#1B#
+       else (Octet (Shift_Left (Unsigned_8 (B), 1))));
 
-   function Mix_Col_Byte
-     (A, B, C, D : Octet;
-      Row        : Natural) return Octet
-   is
-     (case Row is
-        when 0 => Spec_Xtime (A) xor (Spec_Xtime (B) xor B) xor C xor D,
-        when 1 => A xor Spec_Xtime (B) xor (Spec_Xtime (C) xor C) xor D,
-        when 2 => A xor B xor Spec_Xtime (C) xor (Spec_Xtime (D) xor D),
-        when 3 => (Spec_Xtime (A) xor A) xor B xor C xor Spec_Xtime (D),
-        when others => 0);
+   function Mix_Col_Byte (A, B, C, D : Octet; Row : Natural) return Octet
+   is (case Row is
+         when 0      => Spec_Xtime (A) xor (Spec_Xtime (B) xor B) xor C xor D,
+         when 1      => A xor Spec_Xtime (B) xor (Spec_Xtime (C) xor C) xor D,
+         when 2      => A xor B xor Spec_Xtime (C) xor (Spec_Xtime (D) xor D),
+         when 3      => (Spec_Xtime (A) xor A) xor B xor C xor Spec_Xtime (D),
+         when others => 0);
 
    ---------------------------------------------------------------------
    --  GF(2^8) helpers — `xtime` doubles a byte modulo the AES
@@ -122,36 +568,39 @@ is
    ---------------------------------------------------------------------
 
    function Xtime (B : Octet) return Octet
-   is
-     (if (B and 16#80#) /= 0
-        then (Octet (Shift_Left (Unsigned_8 (B), 1))) xor 16#1B#
-        else (Octet (Shift_Left (Unsigned_8 (B), 1))));
+   is (if (B and 16#80#) /= 0
+       then (Octet (Shift_Left (Unsigned_8 (B), 1))) xor 16#1B#
+       else (Octet (Shift_Left (Unsigned_8 (B), 1))));
 
    --  GF(2^8) multiplication. Used in Inv_Mix_Columns where the
    --  column matrix has entries 0x09, 0x0B, 0x0D, 0x0E. We expand
    --  these as fixed XOR-of-Xtime chains rather than a generic loop
    --  to keep the body literal and obvious.
 
-   function Mul02 (B : Octet) return Octet is (Xtime (B));
+   function Mul02 (B : Octet) return Octet
+   is (Xtime (B));
 
-   function Mul04 (B : Octet) return Octet is (Xtime (Xtime (B)));
+   function Mul04 (B : Octet) return Octet
+   is (Xtime (Xtime (B)));
 
-   function Mul08 (B : Octet) return Octet is (Xtime (Xtime (Xtime (B))));
+   function Mul08 (B : Octet) return Octet
+   is (Xtime (Xtime (Xtime (B))));
 
    --  9 = 8 ⊕ 1
-   function Mul09 (B : Octet) return Octet is (Mul08 (B) xor B);
+   function Mul09 (B : Octet) return Octet
+   is (Mul08 (B) xor B);
 
    --  11 (0x0B) = 8 ⊕ 2 ⊕ 1
-   function Mul0B (B : Octet) return Octet is
-     (Mul08 (B) xor Mul02 (B) xor B);
+   function Mul0B (B : Octet) return Octet
+   is (Mul08 (B) xor Mul02 (B) xor B);
 
    --  13 (0x0D) = 8 ⊕ 4 ⊕ 1
-   function Mul0D (B : Octet) return Octet is
-     (Mul08 (B) xor Mul04 (B) xor B);
+   function Mul0D (B : Octet) return Octet
+   is (Mul08 (B) xor Mul04 (B) xor B);
 
    --  14 (0x0E) = 8 ⊕ 4 ⊕ 2
-   function Mul0E (B : Octet) return Octet is
-     (Mul08 (B) xor Mul04 (B) xor Mul02 (B));
+   function Mul0E (B : Octet) return Octet
+   is (Mul08 (B) xor Mul04 (B) xor Mul02 (B));
 
    ---------------------------------------------------------------------
    --  Sub_Bytes / Inv_Sub_Bytes — HACL\* `subBytes` (line 67) and
@@ -196,23 +645,18 @@ is
    --  The "other rows unchanged" clause is expressed as: every
    --  output index whose row /= I keeps the input value.
    function Shift_Row
-     (I     : Natural;
-      Shift : Natural;
-      S     : Block_16) return Block_16
-   with Pre  => I in 1 .. 3 and then Shift in 1 .. 3,
-        Post =>
-          (for all C in 0 .. 3 =>
-             Shift_Row'Result (I + 1 + 4 * C) =
-               S (I + 1 + 4 * ((C + Shift) mod 4)))
-          and then
-          (for all J in Block_16'Range =>
-             (if (J - 1) mod 4 /= I then
-                Shift_Row'Result (J) = S (J)));
+     (I : Natural; Shift : Natural; S : Block_16) return Block_16
+   with
+     Pre  => I in 1 .. 3 and then Shift in 1 .. 3,
+     Post =>
+       (for all C in 0 .. 3 =>
+          Shift_Row'Result (I + 1 + 4 * C)
+          = S (I + 1 + 4 * ((C + Shift) mod 4)))
+       and then (for all J in Block_16'Range =>
+                   (if (J - 1) mod 4 /= I then Shift_Row'Result (J) = S (J)));
 
    function Shift_Row
-     (I     : Natural;
-      Shift : Natural;
-      S     : Block_16) return Block_16
+     (I : Natural; Shift : Natural; S : Block_16) return Block_16
    is
       Out_S : Block_16 := S;
       --  Read the four bytes of row I in shifted column order.
@@ -221,17 +665,14 @@ is
       Tmp2  : constant Octet := S (I + 1 + 4 * ((Shift + 2) mod 4));
       Tmp3  : constant Octet := S (I + 1 + 4 * ((Shift + 3) mod 4));
    begin
-      Out_S (I + 1)      := Tmp0;
-      Out_S (I + 1 + 4)  := Tmp1;
-      Out_S (I + 1 + 8)  := Tmp2;
+      Out_S (I + 1) := Tmp0;
+      Out_S (I + 1 + 4) := Tmp1;
+      Out_S (I + 1 + 8) := Tmp2;
       Out_S (I + 1 + 12) := Tmp3;
       pragma Assert (Out_S (I + 1) = S (I + 1 + 4 * (Shift mod 4)));
-      pragma Assert
-        (Out_S (I + 1 + 4) = S (I + 1 + 4 * ((Shift + 1) mod 4)));
-      pragma Assert
-        (Out_S (I + 1 + 8) = S (I + 1 + 4 * ((Shift + 2) mod 4)));
-      pragma Assert
-        (Out_S (I + 1 + 12) = S (I + 1 + 4 * ((Shift + 3) mod 4)));
+      pragma Assert (Out_S (I + 1 + 4) = S (I + 1 + 4 * ((Shift + 1) mod 4)));
+      pragma Assert (Out_S (I + 1 + 8) = S (I + 1 + 4 * ((Shift + 2) mod 4)));
+      pragma Assert (Out_S (I + 1 + 12) = S (I + 1 + 4 * ((Shift + 3) mod 4)));
       return Out_S;
    end Shift_Row;
 
@@ -240,84 +681,92 @@ is
    begin
       T1 := Shift_Row (1, 1, S);
       --  T1: row 1 shifted, rows 0/2/3 still equal S.
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T1 (1 + 1 + 4 * C) = S (1 + 1 + 4 * ((C + 1) mod 4)));
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T1 (4 * C + 1) = S (4 * C + 1));      --  row 0 untouched
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T1 (4 * C + 3) = S (4 * C + 3));      --  row 2 untouched
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T1 (4 * C + 4) = S (4 * C + 4));      --  row 3 untouched
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T1 (1 + 1 + 4 * C) = S (1 + 1 + 4 * ((C + 1) mod 4)));
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T1 (4 * C + 1) = S (4 * C + 1));      --  row 0 untouched
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T1 (4 * C + 3) = S (4 * C + 3));      --  row 2 untouched
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T1 (4 * C + 4) = S (4 * C + 4));      --  row 3 untouched
 
       T2 := Shift_Row (2, 2, T1);
       --  T2: row 2 shifted relative to T1 (which has row 2 = S row 2).
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T2 (4 * C + 1) = S (4 * C + 1));      --  row 0 untouched
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T2 (1 + 1 + 4 * C) = S (1 + 1 + 4 * ((C + 1) mod 4)));
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T2 (2 + 1 + 4 * C) = S (2 + 1 + 4 * ((C + 2) mod 4)));
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T2 (4 * C + 4) = S (4 * C + 4));      --  row 3 untouched
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T2 (4 * C + 1) = S (4 * C + 1));      --  row 0 untouched
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T2 (1 + 1 + 4 * C) = S (1 + 1 + 4 * ((C + 1) mod 4)));
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T2 (2 + 1 + 4 * C) = S (2 + 1 + 4 * ((C + 2) mod 4)));
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T2 (4 * C + 4) = S (4 * C + 4));      --  row 3 untouched
 
       T := Shift_Row (3, 3, T2);
 
       --  Stage the unified Post expression by separately asserting
       --  each row, then conjoining.  The single quantifier over both
       --  C and R confuses the prover; per-row quantifiers do not.
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T (4 * C + 1) = S (4 * ((C + 0) mod 4) + 0 + 1));  --  row 0
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T (4 * C + 2) =
-             S (4 * ((C + 1) mod 4) + 1 + 1));               --  row 1
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T (4 * C + 3) =
-             S (4 * ((C + 2) mod 4) + 2 + 1));               --  row 2
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           T (4 * C + 4) =
-             S (4 * ((C + 3) mod 4) + 3 + 1));               --  row 3
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T (4 * C + 1) = S (4 * ((C + 0) mod 4) + 0 + 1));  --  row 0
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T (4 * C + 2)
+             = S (4 * ((C + 1) mod 4) + 1 + 1));               --  row 1
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T (4 * C + 3)
+             = S (4 * ((C + 2) mod 4) + 2 + 1));               --  row 2
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             T (4 * C + 4)
+             = S (4 * ((C + 3) mod 4) + 3 + 1));               --  row 3
 
       --  Chain the four per-row asserts into the unified
       --  for-all-C-and-R form.  SPARK's SMT backend does not
       --  combine universal quantifiers from separate hypotheses
       --  by default, so we manually instantiate at each (C, R).
       for C in 0 .. 3 loop
-         pragma Assert
-           (T (4 * C + 0 + 1) = S (4 * ((C + 0) mod 4) + 0 + 1));
-         pragma Assert
-           (T (4 * C + 1 + 1) = S (4 * ((C + 1) mod 4) + 1 + 1));
-         pragma Assert
-           (T (4 * C + 2 + 1) = S (4 * ((C + 2) mod 4) + 2 + 1));
-         pragma Assert
-           (T (4 * C + 3 + 1) = S (4 * ((C + 3) mod 4) + 3 + 1));
-         pragma Assert
-           (for all R in 0 .. 3 =>
-              T (4 * C + R + 1) =
-                S (4 * ((C + R) mod 4) + R + 1));
-         pragma Loop_Invariant
-           (for all C2 in 0 .. C =>
-              (for all R in 0 .. 3 =>
-                 T (4 * C2 + R + 1) =
-                   S (4 * ((C2 + R) mod 4) + R + 1)));
+         pragma Assert (T (4 * C + 0 + 1) = S (4 * ((C + 0) mod 4) + 0 + 1));
+         pragma Assert (T (4 * C + 1 + 1) = S (4 * ((C + 1) mod 4) + 1 + 1));
+         pragma Assert (T (4 * C + 2 + 1) = S (4 * ((C + 2) mod 4) + 2 + 1));
+         pragma Assert (T (4 * C + 3 + 1) = S (4 * ((C + 3) mod 4) + 3 + 1));
+         pragma
+           Assert
+             (for all R in 0 .. 3 =>
+                T (4 * C + R + 1) = S (4 * ((C + R) mod 4) + R + 1));
+         pragma
+           Loop_Invariant
+             (for all C2 in 0 .. C =>
+                (for all R in 0 .. 3 =>
+                   T (4 * C2 + R + 1) = S (4 * ((C2 + R) mod 4) + R + 1)));
       end loop;
 
-      pragma Assert
-        (for all C in 0 .. 3 =>
-           (for all R in 0 .. 3 =>
-              T (4 * C + R + 1) =
-                S (4 * ((C + R) mod 4) + R + 1)));
+      pragma
+        Assert
+          (for all C in 0 .. 3 =>
+             (for all R in 0 .. 3 =>
+                T (4 * C + R + 1) = S (4 * ((C + R) mod 4) + R + 1)));
       return T;
    end Shift_Rows;
 
@@ -345,16 +794,16 @@ is
    --  the same column are obtained by rotating the inputs:
    --    row r of column = Mix4 (s_r, s_(r+1), s_(r+2), s_(r+3))
    --  Implemented as Mix_Col_Byte at row 0 — same value.
-   function Mix4 (S0, S1, S2, S3 : Octet) return Octet is
-     (Mix_Col_Byte (S0, S1, S2, S3, 0));
+   function Mix4 (S0, S1, S2, S3 : Octet) return Octet
+   is (Mix_Col_Byte (S0, S1, S2, S3, 0));
 
    --  Inv_Mix4 — HACL\* `inv_mix4` (line 101).
    --  14*s0 + 11*s1 + 13*s2 + 9*s3 (FIPS 197 §5.3.3).
-   function Inv_Mix4 (S0, S1, S2, S3 : Octet) return Octet is
-     (Mul0E (S0) xor Mul0B (S1) xor Mul0D (S2) xor Mul09 (S3));
+   function Inv_Mix4 (S0, S1, S2, S3 : Octet) return Octet
+   is (Mul0E (S0) xor Mul0B (S1) xor Mul0D (S2) xor Mul09 (S3));
 
    function Mix_Columns (S : Block_16) return Block_16 is
-      Out_S : Block_16 := S;
+      Out_S          : Block_16 := S;
       S0, S1, S2, S3 : Octet;
    begin
       for Col in 0 .. 3 loop
@@ -376,41 +825,59 @@ is
          --  so Mix4 (a, b, c, d) (which is row 0 over (a, b, c, d))
          --  equals Mix_Col_Byte over (s0, s1, s2, s3) at the
          --  appropriate rotated row.
-         pragma Assert
-           (Mix4 (S0, S1, S2, S3) = Mix_Col_Byte (S0, S1, S2, S3, 0));
-         pragma Assert
-           (Mix4 (S1, S2, S3, S0) = Mix_Col_Byte (S0, S1, S2, S3, 1));
-         pragma Assert
-           (Mix4 (S2, S3, S0, S1) = Mix_Col_Byte (S0, S1, S2, S3, 2));
-         pragma Assert
-           (Mix4 (S3, S0, S1, S2) = Mix_Col_Byte (S0, S1, S2, S3, 3));
+         pragma
+           Assert (Mix4 (S0, S1, S2, S3) = Mix_Col_Byte (S0, S1, S2, S3, 0));
+         pragma
+           Assert (Mix4 (S1, S2, S3, S0) = Mix_Col_Byte (S0, S1, S2, S3, 1));
+         pragma
+           Assert (Mix4 (S2, S3, S0, S1) = Mix_Col_Byte (S0, S1, S2, S3, 2));
+         pragma
+           Assert (Mix4 (S3, S0, S1, S2) = Mix_Col_Byte (S0, S1, S2, S3, 3));
 
-         pragma Loop_Invariant
-           (for all K in 0 .. Col =>
-              Out_S (4 * K + 1) =
-                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
-                              S (4 * K + 3), S (4 * K + 4), 0)
-              and then Out_S (4 * K + 2) =
-                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
-                              S (4 * K + 3), S (4 * K + 4), 1)
-              and then Out_S (4 * K + 3) =
-                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
-                              S (4 * K + 3), S (4 * K + 4), 2)
-              and then Out_S (4 * K + 4) =
-                Mix_Col_Byte (S (4 * K + 1), S (4 * K + 2),
-                              S (4 * K + 3), S (4 * K + 4), 3));
-         pragma Loop_Invariant
-           (for all K in Col + 1 .. 3 =>
-              Out_S (4 * K + 1) = S (4 * K + 1)
-              and then Out_S (4 * K + 2) = S (4 * K + 2)
-              and then Out_S (4 * K + 3) = S (4 * K + 3)
-              and then Out_S (4 * K + 4) = S (4 * K + 4));
+         pragma
+           Loop_Invariant
+             (for all K in 0 .. Col =>
+                Out_S (4 * K + 1)
+                = Mix_Col_Byte
+                    (S (4 * K + 1),
+                     S (4 * K + 2),
+                     S (4 * K + 3),
+                     S (4 * K + 4),
+                     0)
+                and then Out_S (4 * K + 2)
+                         = Mix_Col_Byte
+                             (S (4 * K + 1),
+                              S (4 * K + 2),
+                              S (4 * K + 3),
+                              S (4 * K + 4),
+                              1)
+                and then Out_S (4 * K + 3)
+                         = Mix_Col_Byte
+                             (S (4 * K + 1),
+                              S (4 * K + 2),
+                              S (4 * K + 3),
+                              S (4 * K + 4),
+                              2)
+                and then Out_S (4 * K + 4)
+                         = Mix_Col_Byte
+                             (S (4 * K + 1),
+                              S (4 * K + 2),
+                              S (4 * K + 3),
+                              S (4 * K + 4),
+                              3));
+         pragma
+           Loop_Invariant
+             (for all K in Col + 1 .. 3 =>
+                Out_S (4 * K + 1) = S (4 * K + 1)
+                and then Out_S (4 * K + 2) = S (4 * K + 2)
+                and then Out_S (4 * K + 3) = S (4 * K + 3)
+                and then Out_S (4 * K + 4) = S (4 * K + 4));
       end loop;
       return Out_S;
    end Mix_Columns;
 
    function Inv_Mix_Columns (S : Block_16) return Block_16 is
-      Out_S : Block_16 := S;
+      Out_S          : Block_16 := S;
       S0, S1, S2, S3 : Octet;
    begin
       for Col in 0 .. 3 loop
@@ -430,10 +897,7 @@ is
    --  Add_Round_Key — HACL\* `addRoundKey` (line 154).
    ---------------------------------------------------------------------
 
-   function Add_Round_Key
-     (Key   : Block_16;
-      State : Block_16) return Block_16
-   is
+   function Add_Round_Key (Key : Block_16; State : Block_16) return Block_16 is
       Out_S : Block_16 := State;
    begin
       for I in Block_16'Range loop
@@ -447,10 +911,7 @@ is
    --  aes_dec_last.
    ---------------------------------------------------------------------
 
-   function Aes_Enc
-     (Key   : Block_16;
-      State : Block_16) return Block_16
-   is
+   function Aes_Enc (Key : Block_16; State : Block_16) return Block_16 is
       T : Block_16 := State;
    begin
       T := Sub_Bytes (T);
@@ -460,10 +921,7 @@ is
       return T;
    end Aes_Enc;
 
-   function Aes_Enc_Last
-     (Key   : Block_16;
-      State : Block_16) return Block_16
-   is
+   function Aes_Enc_Last (Key : Block_16; State : Block_16) return Block_16 is
       T : Block_16 := State;
    begin
       T := Sub_Bytes (T);
@@ -483,10 +941,7 @@ is
    --  the same round-key array produced by Expand_Key.  Both
    --  variants compute the inverse of Cipher; FIPS 197 §5.3 proves
    --  the equivalence.
-   function Aes_Dec
-     (Key   : Block_16;
-      State : Block_16) return Block_16
-   is
+   function Aes_Dec (Key : Block_16; State : Block_16) return Block_16 is
       T : Block_16 := State;
    begin
       T := Inv_Sub_Bytes (T);
@@ -496,10 +951,7 @@ is
       return T;
    end Aes_Dec;
 
-   function Aes_Dec_Last
-     (Key   : Block_16;
-      State : Block_16) return Block_16
-   is
+   function Aes_Dec_Last (Key : Block_16; State : Block_16) return Block_16 is
       T : Block_16 := State;
    begin
       T := Inv_Sub_Bytes (T);
@@ -513,18 +965,14 @@ is
    --  the expanded key array.  R is the round number (0..Nr).
    ---------------------------------------------------------------------
 
-   function Round_Key
-     (Xkey  : Octet_Array;
-      Round : Natural) return Block_16
+   function Round_Key (Xkey : Octet_Array; Round : Natural) return Block_16
    with
-     Pre => Xkey'First = 1
-            and then Round <= 14
-            and then Round * 16 + 16 <= Xkey'Length;
+     Pre =>
+       Xkey'First = 1
+       and then Round <= 14
+       and then Round * 16 + 16 <= Xkey'Length;
 
-   function Round_Key
-     (Xkey  : Octet_Array;
-      Round : Natural) return Block_16
-   is
+   function Round_Key (Xkey : Octet_Array; Round : Natural) return Block_16 is
       Out_K : Block_16;
    begin
       for I in Block_16'Range loop
@@ -540,8 +988,7 @@ is
    ---------------------------------------------------------------------
 
    function Aes128_Encrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes128_Xkey) return Block_16
+     (Input : Block_16; Xkey : Aes128_Xkey) return Block_16
    is
       State : Block_16 := Input;
    begin
@@ -554,8 +1001,7 @@ is
    end Aes128_Encrypt_Block;
 
    function Aes128_Decrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes128_Xkey) return Block_16
+     (Input : Block_16; Xkey : Aes128_Xkey) return Block_16
    is
       State : Block_16 := Input;
    begin
@@ -572,8 +1018,7 @@ is
    end Aes128_Decrypt_Block;
 
    function Aes256_Encrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes256_Xkey) return Block_16
+     (Input : Block_16; Xkey : Aes256_Xkey) return Block_16
    is
       State : Block_16 := Input;
    begin
@@ -586,8 +1031,7 @@ is
    end Aes256_Encrypt_Block;
 
    function Aes256_Decrypt_Block
-     (Input : Block_16;
-      Xkey  : Aes256_Xkey) return Block_16
+     (Input : Block_16; Xkey : Aes256_Xkey) return Block_16
    is
       State : Block_16 := Input;
    begin
@@ -624,13 +1068,21 @@ is
    --  Index 0 is unused (HACL spec line 191 uses 0x8d there as a
    --  base-of-recursion — never indexed in the expansion path).
    Rcon : constant array (1 .. 10) of Octet :=
-     (16#01#, 16#02#, 16#04#, 16#08#, 16#10#,
-      16#20#, 16#40#, 16#80#, 16#1B#, 16#36#);
+     (16#01#,
+      16#02#,
+      16#04#,
+      16#08#,
+      16#10#,
+      16#20#,
+      16#40#,
+      16#80#,
+      16#1B#,
+      16#36#);
 
    function Aes128_Key_Expansion (Key : Aes128_Key) return Aes128_Xkey is
-      Out_K : Aes128_Xkey := (others => 0);
+      Out_K                      : Aes128_Xkey := (others => 0);
       Temp0, Temp1, Temp2, Temp3 : Octet;
-      Tmp_T : Octet;
+      Tmp_T                      : Octet;
    begin
       --  Words 0..3 = original key.
       for I in 1 .. 16 loop
@@ -666,9 +1118,9 @@ is
    end Aes128_Key_Expansion;
 
    function Aes256_Key_Expansion (Key : Aes256_Key) return Aes256_Xkey is
-      Out_K : Aes256_Xkey := (others => 0);
+      Out_K                      : Aes256_Xkey := (others => 0);
       Temp0, Temp1, Temp2, Temp3 : Octet;
-      Tmp_T : Octet;
+      Tmp_T                      : Octet;
    begin
       for I in 1 .. 32 loop
          Out_K (I) := Key (I);

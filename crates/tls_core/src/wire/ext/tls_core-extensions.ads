@@ -11,7 +11,7 @@
 --  (u16). This keeps these helpers reusable across CH / SH / EE.
 
 package Tls_Core.Extensions
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    --  Maximum host name (RFC 1035 §2.3.4 — 255 bytes).
@@ -35,23 +35,21 @@ is
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
    with
-     Pre =>
+     Pre  =>
        Host_Name'Length in 1 .. Max_Host_Name
        and then Host_Name'Last < Integer'Last
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 5 + Host_Name'Length,
-     Post =>
-       Out_Last = 5 + Host_Name'Length;
+     Post => Out_Last = 5 + Host_Name'Length;
 
    --  Decode an SNI extension body. Returns OK = False on any
    --  parse error or if the only ServerName isn't host_name.
    procedure Decode_Server_Name
-     (Buf            : Octet_Array;
-      OK             : out Boolean;
-      Host_First     : out Natural;
-      Host_Last      : out Natural)
-   with
-     Pre => Buf'First = 1 and then Buf'Length <= 65535;
+     (Buf        : Octet_Array;
+      OK         : out Boolean;
+      Host_First : out Natural;
+      Host_Last  : out Natural)
+   with Pre => Buf'First = 1 and then Buf'Length <= 65535;
 
    --  Encode an ALPN extension body from a "1 || name1 || 1 ||
    --  name2 ..." flat layout: each ProtocolName is preceded by its
@@ -73,13 +71,12 @@ is
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
    with
-     Pre =>
+     Pre  =>
        Names_Buf'Length in 2 .. 65535
        and then Names_Buf'Last < Integer'Last
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 2 + Names_Buf'Length,
-     Post =>
-       Out_Last = 2 + Names_Buf'Length;
+     Post => Out_Last = 2 + Names_Buf'Length;
 
    --  Decode an ALPN extension body, returning the slice that
    --  contains the concatenated u8-prefixed ProtocolName entries.
@@ -90,18 +87,17 @@ is
       OK          : out Boolean;
       Names_First : out Natural;
       Names_Last  : out Natural)
-   with
-     Pre => Buf'First = 1 and then Buf'Length <= 65535;
+   with Pre => Buf'First = 1 and then Buf'Length <= 65535;
 
    --  Encode a single ProtocolName entry into Out_Buf as `u8 N || N
    --  name bytes`. Useful for building Names_Buf from a list of
    --  protocol-name byte strings.
    procedure Append_Alpn_Name
-     (Name     : Octet_Array;
-      Out_Buf  : in out Octet_Array;
-      Cursor   : in out Natural)
+     (Name    : Octet_Array;
+      Out_Buf : in out Octet_Array;
+      Cursor  : in out Natural)
    with
-     Pre =>
+     Pre  =>
        Name'Length in 1 .. Max_Alpn_Name
        and then Out_Buf'First = 1
        and then Cursor in 0 .. Out_Buf'Length - 1 - Name'Length,

@@ -26,7 +26,7 @@ with Interfaces;
 with Tls_Core.Sha256;
 
 package Tls_Core.Transcript
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -37,20 +37,17 @@ is
 
    --  Append a handshake message (with its 4-byte type+u24-length
    --  header) to the running hash.
-   procedure Append
-     (T       : in out Accumulator;
-      Message : Octet_Array)
-   with Pre =>
+   procedure Append (T : in out Accumulator; Message : Octet_Array)
+   with
+     Pre =>
        Tls_Core.Sha256.Total_Length (Inner (T))
-         <= Interfaces.Unsigned_64'Last
-            - Interfaces.Unsigned_64 (Message'Length)
+       <= Interfaces.Unsigned_64'Last - Interfaces.Unsigned_64 (Message'Length)
        and then Message'Last < Integer'Last - Tls_Core.Sha256.Block_Length;
 
    --  Snapshot the current Transcript-Hash without disturbing T.
    --  Caller can keep appending and snapshot again later.
    procedure Snapshot
-     (T          : Accumulator;
-      Out_Digest : out Tls_Core.Sha256.Digest);
+     (T : Accumulator; Out_Digest : out Tls_Core.Sha256.Digest);
 
    --  Ghost projection used in the Pre on Append.
    function Inner (T : Accumulator) return Tls_Core.Sha256.Context
@@ -59,7 +56,7 @@ is
 private
 
    pragma Warnings (Off, "no entities of * are referenced");
-   pragma Warnings (On,  "no entities of * are referenced");
+   pragma Warnings (On, "no entities of * are referenced");
 
    type Accumulator is record
       Ctx : Tls_Core.Sha256.Context;

@@ -26,7 +26,7 @@
 with Interfaces;
 
 package Tls_Core.Sha256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -37,9 +37,9 @@ is
    Hash_Length  : constant := 32;   --  FIPS §6.2: 256-bit digest.
 
    subtype Block_Index is Positive range 1 .. Block_Length;
-   subtype Hash_Index  is Positive range 1 .. Hash_Length;
+   subtype Hash_Index is Positive range 1 .. Hash_Length;
 
-   subtype Block  is Octet_Array (Block_Index);
+   subtype Block is Octet_Array (Block_Index);
    subtype Digest is Octet_Array (Hash_Index);
 
    ---------------------------------------------------------------------
@@ -53,8 +53,14 @@ is
 
    --  Mirrors `Spec.SHA2.Constants.h256` (lib/Spec.SHA2.Constants.fst:60).
    Initial_State_SHA256 : constant Hash_State :=
-     (16#6A09_E667#, 16#BB67_AE85#, 16#3C6E_F372#, 16#A54F_F53A#,
-      16#510E_527F#, 16#9B05_688C#, 16#1F83_D9AB#, 16#5BE0_CD19#);
+     (16#6A09_E667#,
+      16#BB67_AE85#,
+      16#3C6E_F372#,
+      16#A54F_F53A#,
+      16#510E_527F#,
+      16#9B05_688C#,
+      16#1F83_D9AB#,
+      16#5BE0_CD19#);
 
    --  Number of bytes appended by FIPS 180-4 §5.1.1 padding to make
    --  the total a multiple of 64 (one 0x80 byte + zeros + 8-byte
@@ -62,37 +68,35 @@ is
    --  fixed bytes (specs/Spec.Hash.MD.fst:30-44).
    function Spec_Pad_Length (N : Natural) return Positive
    is (((119 - (N mod 64)) mod 64) + 9)
-   with Pre  => N <= Natural'Last - 9 - 64,
-        Post => Spec_Pad_Length'Result in 9 .. 72
-                and then (N + Spec_Pad_Length'Result) mod 64 = 0;
+   with
+     Pre  => N <= Natural'Last - 9 - 64,
+     Post =>
+       Spec_Pad_Length'Result in 9 .. 72
+       and then (N + Spec_Pad_Length'Result) mod 64 = 0;
 
    --  Update one 64-byte block on an internal state. Mirrors HACL*
    --  `Spec.SHA2.update_pre` (specs/Spec.SHA2.fst:213).
-   function Update_Block_Spec
-     (S : Hash_State;
-      B : Block) return Hash_State;
+   function Update_Block_Spec (S : Hash_State; B : Block) return Hash_State;
 
    --  Slice the I-th 64-byte block out of a padded message
    --  (0-based block index).
-   function Block_At
-     (Padded : Octet_Array;
-      I      : Natural) return Block
+   function Block_At (Padded : Octet_Array; I : Natural) return Block
    with
-     Pre  => Padded'First = 1
-             and then I <= (Natural'Last - 64) / 64
-             and then I * 64 + 64 <= Padded'Length;
+     Pre =>
+       Padded'First = 1
+       and then I <= (Natural'Last - 64) / 64
+       and then I * 64 + 64 <= Padded'Length;
 
    --  Fold of Update_Block_Spec over the first N blocks of Padded.
    --  Mirrors HACL* `Lib.UpdateMulti.mk_update_multi` applied to
    --  the SHA2 update function (specs/Spec.Agile.Hash.fst:39).
    function Spec_Hash_Blocks
-     (S0     : Hash_State;
-      Padded : Octet_Array;
-      N      : Natural) return Hash_State
+     (S0 : Hash_State; Padded : Octet_Array; N : Natural) return Hash_State
    with
-     Pre => Padded'First = 1
-            and then N <= Natural'Last / 64
-            and then N * 64 <= Padded'Length,
+     Pre                =>
+       Padded'First = 1
+       and then N <= Natural'Last / 64
+       and then N * 64 <= Padded'Length,
      Subprogram_Variant => (Decreases => N);
 
    --  Build the Merkle-Damgard padding for a message of length N
@@ -100,12 +104,12 @@ is
    --  Mirrors `Spec.Hash.MD.pad` (specs/Spec.Hash.MD.fst:30-44).
    function Pad_SHA256 (Input : Octet_Array) return Octet_Array
    with
-     Pre  => Input'First = 1
-             and then Input'Length <= Natural'Last - 9 - 64,
-     Post => Pad_SHA256'Result'First = 1
-             and then Pad_SHA256'Result'Length
-                       = Input'Length + Spec_Pad_Length (Input'Length)
-             and then Pad_SHA256'Result'Length mod 64 = 0;
+     Pre  => Input'First = 1 and then Input'Length <= Natural'Last - 9 - 64,
+     Post =>
+       Pad_SHA256'Result'First = 1
+       and then Pad_SHA256'Result'Length
+                = Input'Length + Spec_Pad_Length (Input'Length)
+       and then Pad_SHA256'Result'Length mod 64 = 0;
 
    --  Emit hash state as 32 BE bytes. Mirrors HACL*
    --  `Spec.Agile.Hash.finish_md` for SHA2_256
@@ -116,9 +120,7 @@ is
    --  Mirrors HACL* `Spec.Agile.Hash.hash'` (specs/Spec.Agile.Hash.fst:88)
    --  for SHA2_256.
    function Spec_SHA256 (Input : Octet_Array) return Digest
-   with
-     Pre => Input'First = 1
-            and then Input'Length <= Natural'Last - 9 - 64;
+   with Pre => Input'First = 1 and then Input'Length <= Natural'Last - 9 - 64;
 
    ---------------------------------------------------------------------
    --  Streaming API
@@ -127,45 +129,38 @@ is
    type Context is private;
 
    procedure Init (Ctx : out Context)
-   with
-     Post => Total_Length (Ctx) = 0;
+   with Post => Total_Length (Ctx) = 0;
 
-   procedure Update
-     (Ctx  : in out Context;
-      Data : Octet_Array)
+   procedure Update (Ctx : in out Context; Data : Octet_Array)
    with
-     Pre =>
+     Pre  =>
        --  Total bytes hashed remains representable in a u64
        --  (FIPS 180-4 §5.1.1 caps the message length at 2**64-1
        --  bits = 2**61 bytes).
-       Total_Length (Ctx) <= Interfaces.Unsigned_64'Last
-                              - Interfaces.Unsigned_64 (Data'Length)
+       Total_Length (Ctx)
+       <= Interfaces.Unsigned_64'Last - Interfaces.Unsigned_64 (Data'Length)
        --  Body indexes via Data'First + offset; bound the sum so
        --  it stays inside the underlying machine Integer type.
        and then Data'Last < Integer'Last - Block_Length,
      Post =>
        Total_Length (Ctx)
-         = Total_Length (Ctx'Old)
-           + Interfaces.Unsigned_64 (Data'Length);
+       = Total_Length (Ctx'Old) + Interfaces.Unsigned_64 (Data'Length);
 
-   procedure Finalize
-     (Ctx        : in out Context;
-      Out_Digest : out Digest);
+   procedure Finalize (Ctx : in out Context; Out_Digest : out Digest);
 
    --  One-shot convenience.
    --
    --  Functional correctness: Out_Digest = Spec_SHA256 (Data) where
    --  Spec_SHA256 is the HACL* SHA2_256 spec ported above. The
    --  body of Hash is a thin wrapper that calls Spec_SHA256 once.
-   procedure Hash
-     (Data       : Octet_Array;
-      Out_Digest : out Digest)
+   procedure Hash (Data : Octet_Array; Out_Digest : out Digest)
    with
-     Pre  => Data'First = 1
-             and then Interfaces.Unsigned_64 (Data'Length)
-                      <= Interfaces.Unsigned_64'Last / 8
-             and then Data'Last < Integer'Last - Block_Length
-             and then Data'Length <= Natural'Last - 9 - 64,
+     Pre  =>
+       Data'First = 1
+       and then Interfaces.Unsigned_64 (Data'Length)
+                <= Interfaces.Unsigned_64'Last / 8
+       and then Data'Last < Integer'Last - Block_Length
+       and then Data'Length <= Natural'Last - 9 - 64,
      Post => Out_Digest = Spec_SHA256 (Data);
 
    --  Ghost accessor for total bytes consumed so far (used by the

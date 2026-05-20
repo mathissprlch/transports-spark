@@ -14,11 +14,11 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Record_Layer;
 
 package Tls_Core.Traffic_Keys
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Aead_Key is Octet_Array (1 .. 32);
-   subtype Aead_Iv  is Tls_Core.Record_Layer.IV_Array;
+   subtype Aead_Iv is Tls_Core.Record_Layer.IV_Array;
 
    --  Compute (write_key, write_iv) for a single direction from
    --  the corresponding traffic secret. RFC 8446 §7.3 derivation

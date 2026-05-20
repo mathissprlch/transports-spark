@@ -25,7 +25,7 @@
 with GNAT.Sockets;
 
 package Tls_Core.Tcp_Transport
-with SPARK_Mode => Off
+  with SPARK_Mode => Off
 is
 
    --  A connected TCP endpoint (either side of an established link).
@@ -33,18 +33,13 @@ is
 
    --  Open a blocking TCP connection to `Host:Port`. Raises
    --  Connect_Error on DNS, refused, or unreachable failures.
-   procedure Connect
-     (Chan : in out Channel;
-      Host : String;
-      Port : Natural);
+   procedure Connect (Chan : in out Channel; Host : String; Port : Natural);
 
    function Is_Open (Chan : Channel) return Boolean;
 
    --  Send all of `Data` synchronously. Raises Send_Error on
    --  short-write or socket error.
-   procedure Send_All
-     (Chan : Channel;
-      Data : Octet_Array)
+   procedure Send_All (Chan : Channel; Data : Octet_Array)
    with Pre => Is_Open (Chan);
 
    --  Read exactly `Buffer'Length` bytes (loops over Receive_Socket
@@ -52,15 +47,11 @@ is
    --  Success := False on EOF before the buffer was filled or any
    --  socket error.
    procedure Recv_All
-     (Chan    : Channel;
-      Buffer  : out Octet_Array;
-      Success : out Boolean)
+     (Chan : Channel; Buffer : out Octet_Array; Success : out Boolean)
    with Pre => Is_Open (Chan);
 
    procedure Close (Chan : in out Channel)
-   with
-     Pre  => Is_Open (Chan),
-     Post => not Is_Open (Chan);
+   with Pre => Is_Open (Chan), Post => not Is_Open (Chan);
 
    --  Server side: a Listener owns a bound + listening TCP socket.
    --  Listen on `Host:Port`. Use Port = 0 to let the OS pick a free
@@ -69,10 +60,7 @@ is
    --  accepted connection.
    type Listener is limited private;
 
-   procedure Listen
-     (L    : in out Listener;
-      Host : String;
-      Port : Natural);
+   procedure Listen (L : in out Listener; Host : String; Port : Natural);
 
    function Is_Listening (L : Listener) return Boolean;
 
@@ -82,17 +70,11 @@ is
    function Bound_Port (L : Listener) return Natural
    with Pre => Is_Listening (L);
 
-   procedure Accept_One
-     (L    : in out Listener;
-      Chan : in out Channel)
-   with
-     Pre  => Is_Listening (L),
-     Post => Is_Open (Chan);
+   procedure Accept_One (L : in out Listener; Chan : in out Channel)
+   with Pre => Is_Listening (L), Post => Is_Open (Chan);
 
    procedure Stop (L : in out Listener)
-   with
-     Pre  => Is_Listening (L),
-     Post => not Is_Listening (L);
+   with Pre => Is_Listening (L), Post => not Is_Listening (L);
 
    function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type
    with Pre => Is_Open (Chan);

@@ -24,7 +24,7 @@ with Tls_Core.Record_Layer;
 with Tls_Core.Traffic_Keys;
 
 package Tls_Core.Channel
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_64;
@@ -40,9 +40,7 @@ is
 
    --  Initialise a Direction from a traffic secret. Derives
    --  (write_key, write_iv) per RFC 8446 §7.3 and resets Seq=0.
-   procedure Init
-     (D      : out Direction;
-      Secret : Tls_Core.Key_Schedule.Secret)
+   procedure Init (D : out Direction; Secret : Tls_Core.Key_Schedule.Secret)
    with Post => Stream_Seq (D) = 0;
 
    --  TLS 1.3 inner content types per RFC 8446 §5.2 / IANA registry.
@@ -63,7 +61,8 @@ is
       Inner_Type : Octet;
       Out_Buf    : out Octet_Array;
       Out_Last   : out Natural)
-   with Pre =>
+   with
+     Pre =>
        Plaintext'Length in 0 .. 16384
        and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
        and then Out_Buf'First = 1;
@@ -74,7 +73,8 @@ is
       Plaintext : Octet_Array;
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
-   with Pre =>
+   with
+     Pre =>
        Plaintext'Length in 1 .. 16384
        and then Out_Buf'Length >= 5 + Plaintext'Length + 1 + 16
        and then Out_Buf'First = 1;
@@ -89,7 +89,8 @@ is
       Out_Last   : out Natural;
       Inner_Type : out Octet;
       OK         : out Boolean)
-   with Pre =>
+   with
+     Pre =>
        In_Buf'Length >= 5 + 1 + 16
        and then Out_Buf'Length + 5 + 1 + 16 >= In_Buf'Length
        and then Out_Buf'First = 1;
@@ -102,7 +103,8 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural;
       OK       : out Boolean)
-   with Pre =>
+   with
+     Pre =>
        In_Buf'Length >= 5 + 1 + 16
        and then Out_Buf'Length + 5 + 1 + 16 >= In_Buf'Length
        and then Out_Buf'First = 1;

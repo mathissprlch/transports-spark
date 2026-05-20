@@ -30,7 +30,7 @@
 --               (parser-combinator pattern; ranges over a fixed buffer).
 
 package Tls_Core.Cert
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -51,20 +51,20 @@ is
    --  San_Present = False means the cert has no SubjectAltName
    --  extension; San_First/Last are then 0 and must not be read.
    type Parsed_Cert is record
-      Tbs_First    : Natural := 0;
-      Tbs_Last     : Natural := 0;
+      Tbs_First : Natural := 0;
+      Tbs_Last  : Natural := 0;
 
-      Spki_First   : Natural := 0;  --  SubjectPublicKeyInfo SEQUENCE
-      Spki_Last    : Natural := 0;  --  (with its outer tag+length)
+      Spki_First : Natural := 0;  --  SubjectPublicKeyInfo SEQUENCE
+      Spki_Last  : Natural := 0;  --  (with its outer tag+length)
 
-      Sig_Alg      : Signature_Alg := Unknown;
+      Sig_Alg : Signature_Alg := Unknown;
 
       --  Raw signature value bytes (after the leading "unused bits"
       --  byte of the BIT STRING; for ECDSA this is the DER-encoded
       --  Ecdsa-Sig-Value SEQUENCE { r INTEGER, s INTEGER }; for
       --  RSA-PSS this is the 256-byte big-endian signature).
-      Sig_First    : Natural := 0;
-      Sig_Last     : Natural := 0;
+      Sig_First : Natural := 0;
+      Sig_Last  : Natural := 0;
 
       Issuer_First : Natural := 0;
       Issuer_Last  : Natural := 0;
@@ -75,9 +75,9 @@ is
       --  Body of the SubjectAltName OCTET STRING, i.e. the inner
       --  SEQUENCE OF GeneralName. Walk Tls_Core.Cert.Match_DNS_SAN
       --  to test whether a DNS-name is present.
-      San_Present  : Boolean := False;
-      San_First    : Natural := 0;
-      San_Last     : Natural := 0;
+      San_Present : Boolean := False;
+      San_First   : Natural := 0;
+      San_Last    : Natural := 0;
    end record;
 
    ---------------------------------------------------------------------
@@ -93,34 +93,35 @@ is
    --  Der'Range and First <= Last; the SAN span is meaningful only
    --  when San_Present is True.
    ---------------------------------------------------------------------
-   procedure Parse
-     (Der : Octet_Array;
-      P   : out Parsed_Cert;
-      OK  : out Boolean)
+   procedure Parse (Der : Octet_Array; P : out Parsed_Cert; OK : out Boolean)
    with
-     Pre  => Der'First = 1
-             and then Der'Length >= 16
-             and then Der'Last < Integer'Last - 16,
-     Post => (if OK then
-                P.Tbs_First in Der'Range
-                and then P.Tbs_Last in Der'Range
-                and then P.Tbs_First <= P.Tbs_Last
-                and then P.Spki_First in Der'Range
-                and then P.Spki_Last in Der'Range
-                and then P.Spki_First <= P.Spki_Last
-                and then P.Sig_First in Der'Range
-                and then P.Sig_Last in Der'Range
-                and then P.Sig_First <= P.Sig_Last
-                and then P.Issuer_First in Der'Range
-                and then P.Issuer_Last in Der'Range
-                and then P.Issuer_First <= P.Issuer_Last
-                and then P.Subject_First in Der'Range
-                and then P.Subject_Last in Der'Range
-                and then P.Subject_First <= P.Subject_Last
-                and then (if P.San_Present then
-                            P.San_First in Der'Range
-                            and then P.San_Last in Der'Range
-                            and then P.San_First <= P.San_Last));
+     Pre  =>
+       Der'First = 1
+       and then Der'Length >= 16
+       and then Der'Last < Integer'Last - 16,
+     Post =>
+       (if OK
+        then
+          P.Tbs_First in Der'Range
+          and then P.Tbs_Last in Der'Range
+          and then P.Tbs_First <= P.Tbs_Last
+          and then P.Spki_First in Der'Range
+          and then P.Spki_Last in Der'Range
+          and then P.Spki_First <= P.Spki_Last
+          and then P.Sig_First in Der'Range
+          and then P.Sig_Last in Der'Range
+          and then P.Sig_First <= P.Sig_Last
+          and then P.Issuer_First in Der'Range
+          and then P.Issuer_Last in Der'Range
+          and then P.Issuer_First <= P.Issuer_Last
+          and then P.Subject_First in Der'Range
+          and then P.Subject_Last in Der'Range
+          and then P.Subject_First <= P.Subject_Last
+          and then (if P.San_Present
+                    then
+                      P.San_First in Der'Range
+                      and then P.San_Last in Der'Range
+                      and then P.San_First <= P.San_Last));
 
    ---------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Match a DNS hostname against the SAN body.
@@ -140,12 +141,12 @@ is
    --  this is a hostname matcher.
    ---------------------------------------------------------------------
    function Match_DNS_SAN
-     (San_Body : Octet_Array;
-      Hostname : Octet_Array) return Boolean
+     (San_Body : Octet_Array; Hostname : Octet_Array) return Boolean
    with
-     Pre => San_Body'First = 1
-            and then Hostname'First = 1
-            and then San_Body'Last < Integer'Last - 16
-            and then Hostname'Last < Integer'Last - 16;
+     Pre =>
+       San_Body'First = 1
+       and then Hostname'First = 1
+       and then San_Body'Last < Integer'Last - 16
+       and then Hostname'Last < Integer'Last - 16;
 
 end Tls_Core.Cert;

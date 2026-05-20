@@ -34,7 +34,7 @@
 with Interfaces;
 
 package Tls_Core.Record_Layer
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Octet;
@@ -53,11 +53,7 @@ is
 
    --  The Ith byte (1..8, big-endian) of a u64 sequence number.
    function Seq_Byte (S : Seq_Number; I : Positive) return Octet
-   is (Octet
-         (Interfaces.Shift_Right
-            (S,
-             Natural (8 * (8 - I)))
-          and 16#FF#))
+   is (Octet (Interfaces.Shift_Right (S, Natural (8 * (8 - I))) and 16#FF#))
    with Pre => I in 1 .. 8;
 
    ---------------------------------------------------------------------
@@ -75,9 +71,8 @@ is
    with
      Post =>
        (for all I in 1 .. 4 => Nonce'Result (I) = IV (I))
-       and then
-       (for all I in 5 .. 12 =>
-          Nonce'Result (I) = (IV (I) xor Seq_Byte (S, I - 4)));
+       and then (for all I in 5 .. 12 =>
+                   Nonce'Result (I) = (IV (I) xor Seq_Byte (S, I - 4)));
 
    ---------------------------------------------------------------------
    --  Lemma — distinct sequence numbers give distinct nonces.
@@ -89,12 +84,8 @@ is
    --  rests on, mirroring miTLS' nonce-freshness invariant.
    ---------------------------------------------------------------------
 
-   procedure Lemma_Nonce_Injective
-     (IV : IV_Array; A, B : Seq_Number)
-   with
-     Ghost,
-     Pre  => A /= B,
-     Post => Nonce (IV, A) /= Nonce (IV, B);
+   procedure Lemma_Nonce_Injective (IV : IV_Array; A, B : Seq_Number)
+   with Ghost, Pre => A /= B, Post => Nonce (IV, A) /= Nonce (IV, B);
 
    ---------------------------------------------------------------------
    --  Stream — per-direction record-layer state.
@@ -120,9 +111,7 @@ is
    with Ghost;
 
    procedure Init (S : out Stream; IV : IV_Array)
-   with
-     Post => Seq_Of (S) = 0
-             and then IV_Of (S) = IV;
+   with Post => Seq_Of (S) = 0 and then IV_Of (S) = IV;
 
    --  Advance the sequence counter by one. Refused (precondition
    --  violation) if seq has saturated; the upper layer must rekey
@@ -130,19 +119,19 @@ is
    procedure Bump (S : in out Stream)
    with
      Pre  => Seq_Of (S) < Seq_Number'Last,
-     Post => Seq_Of (S) = Seq_Of (S'Old) + 1
-             and then IV_Of (S) = IV_Of (S'Old);
+     Post =>
+       Seq_Of (S) = Seq_Of (S'Old) + 1 and then IV_Of (S) = IV_Of (S'Old);
 
    --  After Bump, the stream's next nonce differs from the one it
    --  would have produced before the bump. Surfaced for callers
    --  who want to assert "no two sealed records share a nonce".
-   procedure Lemma_Bump_Fresh_Nonce
-     (S_Before, S_After : Stream)
+   procedure Lemma_Bump_Fresh_Nonce (S_Before, S_After : Stream)
    with
      Ghost,
-     Pre  => Seq_Of (S_Before) < Seq_Number'Last
-             and then Seq_Of (S_After) = Seq_Of (S_Before) + 1
-             and then IV_Of (S_After) = IV_Of (S_Before),
+     Pre  =>
+       Seq_Of (S_Before) < Seq_Number'Last
+       and then Seq_Of (S_After) = Seq_Of (S_Before) + 1
+       and then IV_Of (S_After) = IV_Of (S_Before),
      Post => Next_Nonce (S_After) /= Next_Nonce (S_Before);
 
    ---------------------------------------------------------------------
@@ -160,21 +149,23 @@ is
    generic
       type Key_Type is private;
       type Tag_Type is private;
-      with procedure Seal
-        (Key        : Key_Type;
-         Nonce      : IV_Array;
-         AAD        : Octet_Array;
-         Plaintext  : Octet_Array;
-         Ciphertext : out Octet_Array;
-         Tag        : out Tag_Type);
-      with procedure Open
-        (Key        : Key_Type;
-         Nonce      : IV_Array;
-         AAD        : Octet_Array;
-         Ciphertext : Octet_Array;
-         Tag        : Tag_Type;
-         Plaintext  : out Octet_Array;
-         OK         : out Boolean);
+      with
+        procedure Seal
+          (Key        : Key_Type;
+           Nonce      : IV_Array;
+           AAD        : Octet_Array;
+           Plaintext  : Octet_Array;
+           Ciphertext : out Octet_Array;
+           Tag        : out Tag_Type);
+      with
+        procedure Open
+          (Key        : Key_Type;
+           Nonce      : IV_Array;
+           AAD        : Octet_Array;
+           Ciphertext : Octet_Array;
+           Tag        : Tag_Type;
+           Plaintext  : out Octet_Array;
+           OK         : out Boolean);
    package Aead is
 
       procedure Seal_Record
@@ -185,15 +176,16 @@ is
          Ciphertext : out Octet_Array;
          Tag        : out Tag_Type)
       with
-        Pre  => Seq_Of (S) < Seq_Number'Last
-                and then Ciphertext'Length = Plaintext'Length
-                and then AAD'Length <= 16640
-                and then Plaintext'Length <= 16640
-                and then AAD'Last < Integer'Last - 16640
-                and then Plaintext'Last < Integer'Last - 16640
-                and then Ciphertext'Last < Integer'Last - 16640,
-        Post => Seq_Of (S) = Seq_Of (S'Old) + 1
-                and then IV_Of (S) = IV_Of (S'Old);
+        Pre  =>
+          Seq_Of (S) < Seq_Number'Last
+          and then Ciphertext'Length = Plaintext'Length
+          and then AAD'Length <= 16640
+          and then Plaintext'Length <= 16640
+          and then AAD'Last < Integer'Last - 16640
+          and then Plaintext'Last < Integer'Last - 16640
+          and then Ciphertext'Last < Integer'Last - 16640,
+        Post =>
+          Seq_Of (S) = Seq_Of (S'Old) + 1 and then IV_Of (S) = IV_Of (S'Old);
 
       procedure Open_Record
         (S          : in out Stream;
@@ -204,15 +196,16 @@ is
          Plaintext  : out Octet_Array;
          OK         : out Boolean)
       with
-        Pre  => Seq_Of (S) < Seq_Number'Last
-                and then Plaintext'Length = Ciphertext'Length
-                and then AAD'Length <= 16640
-                and then Ciphertext'Length <= 16640
-                and then AAD'Last < Integer'Last - 16640
-                and then Ciphertext'Last < Integer'Last - 16640
-                and then Plaintext'Last < Integer'Last - 16640,
-        Post => Seq_Of (S) = Seq_Of (S'Old) + 1
-                and then IV_Of (S) = IV_Of (S'Old);
+        Pre  =>
+          Seq_Of (S) < Seq_Number'Last
+          and then Plaintext'Length = Ciphertext'Length
+          and then AAD'Length <= 16640
+          and then Ciphertext'Length <= 16640
+          and then AAD'Last < Integer'Last - 16640
+          and then Ciphertext'Last < Integer'Last - 16640
+          and then Plaintext'Last < Integer'Last - 16640,
+        Post =>
+          Seq_Of (S) = Seq_Of (S'Old) + 1 and then IV_Of (S) = IV_Of (S'Old);
 
    end Aead;
 
@@ -223,7 +216,9 @@ private
       Seq : Seq_Number := 0;
    end record;
 
-   function Seq_Of (S : Stream) return Seq_Number is (S.Seq);
-   function IV_Of (S : Stream) return IV_Array is (S.IV);
+   function Seq_Of (S : Stream) return Seq_Number
+   is (S.Seq);
+   function IV_Of (S : Stream) return IV_Array
+   is (S.IV);
 
 end Tls_Core.Record_Layer;

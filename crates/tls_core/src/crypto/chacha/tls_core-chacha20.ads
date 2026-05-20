@@ -22,7 +22,7 @@
 with Interfaces;
 
 package Tls_Core.Chacha20
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_32;
@@ -34,9 +34,9 @@ is
    Nonce_Length : constant := 12;
    Block_Length : constant := 64;
 
-   subtype Key_Array     is Octet_Array (1 .. Key_Length);
-   subtype Nonce_Array   is Octet_Array (1 .. Nonce_Length);
-   subtype Block_Array   is Octet_Array (1 .. Block_Length);
+   subtype Key_Array is Octet_Array (1 .. Key_Length);
+   subtype Nonce_Array is Octet_Array (1 .. Nonce_Length);
+   subtype Block_Array is Octet_Array (1 .. Block_Length);
 
    --------------------------------------------------------------------
    --  Ghost specification — pure executable mirror of HACL* spec.
@@ -55,38 +55,35 @@ is
    --  scalar value that is then split into 4 little-endian bytes).
    --  Mirrors HACL*  chacha20_core (return value, indexed).
    function Spec_State_Word
-     (Key     : Key_Array;
-      Nonce   : Nonce_Array;
-      Counter : Word;
-      I       : Natural) return Word
-   with Ghost,
-        Pre => I <= 15;
+     (Key : Key_Array; Nonce : Nonce_Array; Counter : Word; I : Natural)
+      return Word
+   with Ghost, Pre => I <= 15;
 
    --  Single ChaCha20 keystream block (64 bytes).
    --  Spec mirror: Spec.Chacha20.fst : chacha20_core + uints_to_bytes_le.
    function Spec_Block_Bytes
-     (Key     : Key_Array;
-      Nonce   : Nonce_Array;
-      Counter : Word) return Block_Array
+     (Key : Key_Array; Nonce : Nonce_Array; Counter : Word) return Block_Array
    with
      Ghost,
      Post =>
        (for all J in 0 .. 15 =>
           Spec_Block_Bytes'Result (4 * J + 1)
-            = Octet (Spec_State_Word (Key, Nonce, Counter, J)
-                     and 16#FF#)
+          = Octet (Spec_State_Word (Key, Nonce, Counter, J) and 16#FF#)
           and then Spec_Block_Bytes'Result (4 * J + 2)
-            = Octet (Interfaces.Shift_Right
-                       (Spec_State_Word (Key, Nonce, Counter, J), 8)
-                     and 16#FF#)
+                   = Octet
+                       (Interfaces.Shift_Right
+                          (Spec_State_Word (Key, Nonce, Counter, J), 8)
+                        and 16#FF#)
           and then Spec_Block_Bytes'Result (4 * J + 3)
-            = Octet (Interfaces.Shift_Right
-                       (Spec_State_Word (Key, Nonce, Counter, J), 16)
-                     and 16#FF#)
+                   = Octet
+                       (Interfaces.Shift_Right
+                          (Spec_State_Word (Key, Nonce, Counter, J), 16)
+                        and 16#FF#)
           and then Spec_Block_Bytes'Result (4 * J + 4)
-            = Octet (Interfaces.Shift_Right
-                       (Spec_State_Word (Key, Nonce, Counter, J), 24)
-                     and 16#FF#));
+                   = Octet
+                       (Interfaces.Shift_Right
+                          (Spec_State_Word (Key, Nonce, Counter, J), 24)
+                        and 16#FF#));
 
    --  XOR keystream with Input starting at the given block counter.
    --  Mirrors Spec.Chacha20.fst : chacha20_encrypt_bytes (init >>
@@ -106,14 +103,14 @@ is
      Post =>
        Spec_Chacha20'Result'First = 1
        and then Spec_Chacha20'Result'Length = Input'Length
-       and then
-       (for all J in 1 .. Input'Length =>
-          Spec_Chacha20'Result (J)
-            = (Input (Input'First + J - 1)
-               xor Spec_Block_Bytes
-                     (Key, Nonce,
-                      Counter + Word ((J - 1) / Block_Length))
-                     (((J - 1) mod Block_Length) + 1)));
+       and then (for all J in 1 .. Input'Length =>
+                   Spec_Chacha20'Result (J)
+                   = (Input (Input'First + J - 1)
+                      xor Spec_Block_Bytes
+                            (Key,
+                             Nonce,
+                             Counter + Word ((J - 1) / Block_Length))
+                               (((J - 1) mod Block_Length) + 1)));
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  ChaCha20 block function (RFC 8439 §2.3).
@@ -129,8 +126,7 @@ is
       Nonce     : Nonce_Array;
       Counter   : Word;
       Out_Block : out Block_Array)
-   with
-     Post => Out_Block = Spec_Block_Bytes (Key, Nonce, Counter);
+   with Post => Out_Block = Spec_Block_Bytes (Key, Nonce, Counter);
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  ChaCha20 stream encryption (RFC 8439 §2.4).
@@ -151,11 +147,10 @@ is
       Input           : Octet_Array;
       Output          : out Octet_Array)
    with
-     Pre =>
+     Pre  =>
        Output'Length = Input'Length
-       and then Input'Last  < Integer'Last - Block_Length
+       and then Input'Last < Integer'Last - Block_Length
        and then Output'Last < Integer'Last - Block_Length,
-     Post =>
-       Output = Spec_Chacha20 (Key, Nonce, Initial_Counter, Input);
+     Post => Output = Spec_Chacha20 (Key, Nonce, Initial_Counter, Input);
 
 end Tls_Core.Chacha20;

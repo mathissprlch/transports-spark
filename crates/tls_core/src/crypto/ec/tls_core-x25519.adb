@@ -1,7 +1,7 @@
 with Interfaces;
 
 package body Tls_Core.X25519
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -27,7 +27,7 @@ is
    function Spec_Decode_Scalar (Scalar : Bytes_32) return Bytes_32 is
       Z : Bytes_32 := Scalar;
    begin
-      Z (1)  := Z (1) and 16#F8#;
+      Z (1) := Z (1) and 16#F8#;
       Z (32) := (Z (32) and 16#7F#) or 16#40#;
       return Z;
    end Spec_Decode_Scalar;
@@ -38,16 +38,16 @@ is
    ---------------------------------------------------------------------
 
    function Spec_Decode_Point (U_Coord : Bytes_32) return Big.Big_Integer is
-      Sum : Big.Big_Integer := Big.To_Big_Integer (0);
+      Sum   : Big.Big_Integer := Big.To_Big_Integer (0);
       Two_8 : constant Big.Big_Integer := Big.To_Big_Integer (256);
-      Pow : Big.Big_Integer := Big.To_Big_Integer (1);
+      Pow   : Big.Big_Integer := Big.To_Big_Integer (1);
    begin
       for I in U_Coord'Range loop
          Sum := Sum + Big.To_Big_Integer (Integer (U_Coord (I))) * Pow;
          Pow := Pow * Two_8;
       end loop;
       --  Mask high bit (mod 2^255) and then mod prime.
-      Sum := Sum mod (Big.To_Big_Integer (2) ** 255);
+      Sum := Sum mod (Big.To_Big_Integer (2)**255);
       Sum := Sum mod Field25519.Prime_P_Spec;
       return Sum;
    end Spec_Decode_Point;
@@ -101,8 +101,7 @@ is
    ---------------------------------------------------------------------
 
    function Spec_Montgomery_Ladder
-     (Init   : Big.Big_Integer;
-      Scalar : Bytes_32) return Big.Big_Integer
+     (Init : Big.Big_Integer; Scalar : Bytes_32) return Big.Big_Integer
    is
       P : constant Big.Big_Integer := Field25519.Prime_P_Spec;
 
@@ -113,31 +112,33 @@ is
       Z3 : Big.Big_Integer := Big.To_Big_Integer (1);
       X1 : constant Big.Big_Integer := Init;
 
-      Swap_Bit : Natural := 0;
-      Bit      : Natural;
-      A, B, C, D, DA, CB, AA, BB, E, E121665, X2_New, Z2_New :
-         Big.Big_Integer;
-      C_121665 : constant Big.Big_Integer := Big.To_Big_Integer (121665);
+      Swap_Bit                                               : Natural := 0;
+      Bit                                                    : Natural;
+      A, B, C, D, DA, CB, AA, BB, E, E121665, X2_New, Z2_New : Big.Big_Integer;
+      C_121665                                               :
+        constant Big.Big_Integer := Big.To_Big_Integer (121665);
 
-      procedure CSwap (S : Natural)
-      with Post => True
-      is
+      procedure CSwap (S : Natural) with Post => True is
          T : Big.Big_Integer;
       begin
          if S = 1 then
-            T := X2; X2 := X3; X3 := T;
-            T := Z2; Z2 := Z3; Z3 := T;
+            T := X2;
+            X2 := X3;
+            X3 := T;
+            T := Z2;
+            Z2 := Z3;
+            Z3 := T;
          end if;
       end CSwap;
 
    begin
       for I in reverse 0 .. 254 loop
          declare
-            Pow_Tab : constant array (Natural range 0 .. 7) of Natural :=
+            Pow_Tab  : constant array (Natural range 0 .. 7) of Natural :=
               (1, 2, 4, 8, 16, 32, 64, 128);
             Byte_Idx : constant Positive := 1 + I / 8;
             Bit_Pos  : constant Natural range 0 .. 7 := I mod 8;
-            Byte_Val : constant Natural  := Natural (Scalar (Byte_Idx));
+            Byte_Val : constant Natural := Natural (Scalar (Byte_Idx));
             Pow      : constant Positive := Pow_Tab (Bit_Pos);
          begin
             Bit := (Byte_Val / Pow) mod 2;
@@ -147,15 +148,15 @@ is
          Swap_Bit := Bit;
 
          --  add_and_double, all reductions mod p:
-         A  := (X2 + Z2) mod P;
-         B  := ((X2 - Z2) mod P + P) mod P;
-         C  := (X3 + Z3) mod P;
-         D  := ((X3 - Z3) mod P + P) mod P;
+         A := (X2 + Z2) mod P;
+         B := ((X2 - Z2) mod P + P) mod P;
+         C := (X3 + Z3) mod P;
+         D := ((X3 - Z3) mod P + P) mod P;
          DA := (D * A) mod P;
          CB := (C * B) mod P;
          AA := (A * A) mod P;
          BB := (B * B) mod P;
-         E  := ((AA - BB) mod P + P) mod P;
+         E := ((AA - BB) mod P + P) mod P;
          E121665 := (E * C_121665) mod P;
 
          X2_New := (AA * BB) mod P;
@@ -165,8 +166,7 @@ is
 
          declare
             X3_Sum : constant Big.Big_Integer := (DA + CB) mod P;
-            X3_Sub : constant Big.Big_Integer :=
-              ((DA - CB) mod P + P) mod P;
+            X3_Sub : constant Big.Big_Integer := ((DA - CB) mod P + P) mod P;
          begin
             X3 := (X3_Sum * X3_Sum) mod P;
             Z3 := (((X3_Sub * X3_Sub) mod P) * X1) mod P;
@@ -210,19 +210,17 @@ is
    ---------------------------------------------------------------------
 
    procedure Scalar_Mult
-     (Scalar  : Bytes_32;
-      U_Coord : Bytes_32;
-      Out_Q   : out Bytes_32)
+     (Scalar : Bytes_32; U_Coord : Bytes_32; Out_Q : out Bytes_32)
    is
-      Z : Bytes_32;
-      X : Felt;
-      A : Felt := (others => 0);
-      B : Felt;
-      C : Felt := (others => 0);
-      D : Felt := (others => 0);
-      E : Felt;
-      F : Felt;
-      R : Integer_64;
+      Z      : Bytes_32;
+      X      : Felt;
+      A      : Felt := (others => 0);
+      B      : Felt;
+      C      : Felt := (others => 0);
+      D      : Felt := (others => 0);
+      E      : Felt;
+      F      : Felt;
+      R      : Integer_64;
       T1, T2 : Felt;
    begin
       --  Clamp the scalar per §5 Decode_Scalar.
@@ -236,29 +234,47 @@ is
       D (0) := 1;
 
       for I in reverse 0 .. 254 loop
-         R := Integer_64
-           ((Shift_Right (Unsigned_8 (Z (1 + I / 8)),
-                          Natural (I mod 8))) and 1);
+         R :=
+           Integer_64
+             ((Shift_Right (Unsigned_8 (Z (1 + I / 8)), Natural (I mod 8)))
+              and 1);
          C_Swap (A, B, R);
          C_Swap (C, D, R);
          F_Add (E, A, C);
-         F_Sub (T1, A, C); A := T1;
-         F_Add (T1, B, D); C := T1;
-         F_Sub (T1, B, D); B := T1;
-         F_Mul (T1, E, E); D := T1;
-         F_Mul (T1, A, A); F := T1;
-         F_Mul (T2, C, A); A := T2;
-         F_Mul (T2, B, E); C := T2;
-         F_Add (T1, A, C); E := T1;
-         F_Sub (T1, A, C); A := T1;
-         F_Mul (T1, A, A); B := T1;
-         F_Sub (T1, D, F); C := T1;
-         F_Mul (T2, C, C_121665); A := T2;
-         F_Add (T1, A, D); A := T1;
-         F_Mul (T2, C, A); C := T2;
-         F_Mul (T2, D, F); A := T2;
-         F_Mul (T2, B, X); D := T2;
-         F_Mul (T1, E, E); B := T1;
+         F_Sub (T1, A, C);
+         A := T1;
+         F_Add (T1, B, D);
+         C := T1;
+         F_Sub (T1, B, D);
+         B := T1;
+         F_Mul (T1, E, E);
+         D := T1;
+         F_Mul (T1, A, A);
+         F := T1;
+         F_Mul (T2, C, A);
+         A := T2;
+         F_Mul (T2, B, E);
+         C := T2;
+         F_Add (T1, A, C);
+         E := T1;
+         F_Sub (T1, A, C);
+         A := T1;
+         F_Mul (T1, A, A);
+         B := T1;
+         F_Sub (T1, D, F);
+         C := T1;
+         F_Mul (T2, C, C_121665);
+         A := T2;
+         F_Add (T1, A, D);
+         A := T1;
+         F_Mul (T2, C, A);
+         C := T2;
+         F_Mul (T2, D, F);
+         A := T2;
+         F_Mul (T2, B, X);
+         D := T2;
+         F_Mul (T1, E, E);
+         B := T1;
          C_Swap (A, B, R);
          C_Swap (C, D, R);
       end loop;
@@ -272,9 +288,7 @@ is
    --  Derive_Public — base point u-coordinate is 9 (LE).
    ---------------------------------------------------------------------
 
-   procedure Derive_Public
-     (Private_Key : Bytes_32;
-      Out_Public  : out Bytes_32)
+   procedure Derive_Public (Private_Key : Bytes_32; Out_Public : out Bytes_32)
    is
       Base : constant Bytes_32 := (1 => 9, others => 0);
    begin

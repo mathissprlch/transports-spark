@@ -53,7 +53,7 @@ with Tls_Core.Key_Schedule;
 with Tls_Core.Sha256;
 
 package Tls_Core.Session_Ticket
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Interfaces.Unsigned_32;
@@ -90,17 +90,29 @@ is
    --  Resumption-master-secret derivation label, RFC 8446 §7.1.
    --  ASCII "res master" (10 bytes).
    Res_Master_Label : constant Octet_Array (1 .. 10) :=
-     (Character'Pos ('r'), Character'Pos ('e'), Character'Pos ('s'),
+     (Character'Pos ('r'),
+      Character'Pos ('e'),
+      Character'Pos ('s'),
       Character'Pos (' '),
-      Character'Pos ('m'), Character'Pos ('a'), Character'Pos ('s'),
-      Character'Pos ('t'), Character'Pos ('e'), Character'Pos ('r'));
+      Character'Pos ('m'),
+      Character'Pos ('a'),
+      Character'Pos ('s'),
+      Character'Pos ('t'),
+      Character'Pos ('e'),
+      Character'Pos ('r'));
 
    --  PSK-from-ticket label, RFC 8446 §4.6.1.
    --  ASCII "resumption" (10 bytes).
    Resumption_Label : constant Octet_Array (1 .. 10) :=
-     (Character'Pos ('r'), Character'Pos ('e'), Character'Pos ('s'),
-      Character'Pos ('u'), Character'Pos ('m'), Character'Pos ('p'),
-      Character'Pos ('t'), Character'Pos ('i'), Character'Pos ('o'),
+     (Character'Pos ('r'),
+      Character'Pos ('e'),
+      Character'Pos ('s'),
+      Character'Pos ('u'),
+      Character'Pos ('m'),
+      Character'Pos ('p'),
+      Character'Pos ('t'),
+      Character'Pos ('i'),
+      Character'Pos ('o'),
       Character'Pos ('n'));
 
    --------------------------------------------------------------------
@@ -124,18 +136,16 @@ is
       Out_Buf      : out Octet_Array;
       Out_Last     : out Natural)
    with
-     Pre =>
+     Pre  =>
        Out_Buf'First = 1
        and then Ticket_Nonce'Length in 0 .. Max_Ticket_Nonce_Length
        and then Ticket'Length in 1 .. Max_Ticket_Length
-       and then Out_Buf'Length >=
-         4 + 4 + 1 + Ticket_Nonce'Length
-         + 2 + Ticket'Length + 2,
+       and then Out_Buf'Length
+                >= 4 + 4 + 1 + Ticket_Nonce'Length + 2 + Ticket'Length + 2,
      Post =>
        Out_Last in 0 .. Out_Buf'Last
-       and then Out_Last =
-         4 + 4 + 1 + Ticket_Nonce'Length
-         + 2 + Ticket'Length + 2;
+       and then Out_Last
+                = 4 + 4 + 1 + Ticket_Nonce'Length + 2 + Ticket'Length + 2;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Decode the NewSessionTicket body.
@@ -162,11 +172,10 @@ is
       Ticket_Last  : out Integer;
       OK           : out Boolean)
    with
-     Pre  =>
-       In_Buf'First = 1
-       and then In_Buf'Length <= Max_Nst_Body_Length,
+     Pre  => In_Buf'First = 1 and then In_Buf'Length <= Max_Nst_Body_Length,
      Post =>
-       (if OK then
+       (if OK
+        then
           Nonce_First in In_Buf'First .. In_Buf'Last + 1
           and then Nonce_Last in In_Buf'First - 1 .. In_Buf'Last
           and then Nonce_Last >= Nonce_First - 1

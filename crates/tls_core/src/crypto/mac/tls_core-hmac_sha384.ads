@@ -13,7 +13,7 @@
 with Tls_Core.Sha384;
 
 package Tls_Core.Hmac_Sha384
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Tag is Tls_Core.Sha384.Digest;
@@ -23,17 +23,15 @@ is
    ---------------------------------------------------------------------
 
    function Spec_Wrap_Key (Key : Octet_Array) return Tls_Core.Sha384.Block
-   with
-     Pre => Key'Length <= 1024
-            and then Key'Last < Integer'Last - 1024;
+   with Pre => Key'Length <= 1024 and then Key'Last < Integer'Last - 1024;
 
    function Spec_HMAC_SHA384
-     (Key     : Octet_Array;
-      Message : Octet_Array) return Tag
+     (Key : Octet_Array; Message : Octet_Array) return Tag
    with
-     Pre => Key'Length <= 1024
-            and then Key'Last < Integer'Last - 1024
-            and then Message'Last < Integer'Last - 1024;
+     Pre =>
+       Key'Length <= 1024
+       and then Key'Last < Integer'Last - 1024
+       and then Message'Last < Integer'Last - 1024;
 
    --------------------------------------------------------------------
    --  [VERIFIED — PLATINUM]  HMAC-SHA-384 (RFC 2104, FIPS 198-1)
@@ -44,15 +42,12 @@ is
    --  Proven at:   gnatprove --level=2 (audit-clean)
    --------------------------------------------------------------------
    procedure Compute
-     (Key     : Octet_Array;
-      Message : Octet_Array;
-      Out_Tag : out Tag)
+     (Key : Octet_Array; Message : Octet_Array; Out_Tag : out Tag)
    with
-     Pre =>
+     Pre  =>
        Key'Length <= 1024
        and then Key'Last < Integer'Last - 1024
        and then Message'Last < Integer'Last - 1024,
-     Post =>
-       Out_Tag = Spec_HMAC_SHA384 (Key, Message);
+     Post => Out_Tag = Spec_HMAC_SHA384 (Key, Message);
 
 end Tls_Core.Hmac_Sha384;

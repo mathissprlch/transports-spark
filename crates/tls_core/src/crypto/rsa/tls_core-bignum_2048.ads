@@ -42,7 +42,7 @@ with Ada.Numerics.Big_Numbers.Big_Integers;
 with Interfaces;
 
 package Tls_Core.Bignum_2048
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -84,16 +84,20 @@ is
 
    --  Octet → Big_Integer, used to assemble Bn_V byte-by-byte.
    function Byte_Big (X : Octet) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range (Byte_Big'Result,
-                              Big.To_Big_Integer (0),
-                              Big.To_Big_Integer (255));
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Byte_Big'Result, Big.To_Big_Integer (0), Big.To_Big_Integer (255));
 
    --  2 ** (8 * N). Bounded so it stays within reasonable proof depth.
    function Pow_2_8 (N : Natural) return Big.Big_Integer
-   with Ghost, Global => null,
-        Pre  => N <= Byte_Length,
-        Post => Pow_2_8'Result > Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Pre    => N <= Byte_Length,
+     Post   => Pow_2_8'Result > Big.To_Big_Integer (0);
 
    --  Σ_{i=0..N-1} B (256 - i) * 2^(8*i) — integer value of the low
    --  N bytes of the BE 256-byte Bigint, expressed as a recursive
@@ -101,33 +105,31 @@ is
    --  is the inductive non-negativity statement: each summand is a
    --  non-negative byte times a positive power of two, and the base
    --  case is 0.
-   function To_Big_Up_To
-     (B : Bigint; N : Natural) return Big.Big_Integer
-   is
-     (if N = 0 then Big.To_Big_Integer (0)
-      else
-        To_Big_Up_To (B, N - 1)
-        + Byte_Big (B (Byte_Length - (N - 1))) * Pow_2_8 (N - 1))
-   with Ghost,
-        Global => null,
-        Pre  => N <= Byte_Length,
-        Post => To_Big_Up_To'Result >= Big.To_Big_Integer (0),
-        Subprogram_Variant => (Decreases => N);
+   function To_Big_Up_To (B : Bigint; N : Natural) return Big.Big_Integer
+   is (if N = 0
+       then Big.To_Big_Integer (0)
+       else
+         To_Big_Up_To (B, N - 1)
+         + Byte_Big (B (Byte_Length - (N - 1))) * Pow_2_8 (N - 1))
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N <= Byte_Length,
+     Post               => To_Big_Up_To'Result >= Big.To_Big_Integer (0),
+     Subprogram_Variant => (Decreases => N);
 
    --  Integer interpretation of the 256-byte big-endian Bigint
    --  (HACL\*  `eval_bn`).
    function Bn_V (B : Bigint) return Big.Big_Integer
    is (To_Big_Up_To (B, Byte_Length))
-   with Ghost, Global => null,
-        Post => Bn_V'Result >= Big.To_Big_Integer (0);
+   with Ghost, Global => null, Post => Bn_V'Result >= Big.To_Big_Integer (0);
 
    --  Spec for modular multiplication: (A * B) mod N when N > 0,
    --  zero otherwise (mirroring the ads degenerate-case contract).
-   function Spec_Mod_Mul
-     (A, B, N : Big.Big_Integer) return Big.Big_Integer
-   is
-     (if N <= Big.To_Big_Integer (0) then Big.To_Big_Integer (0)
-      else (A * B) mod N)
+   function Spec_Mod_Mul (A, B, N : Big.Big_Integer) return Big.Big_Integer
+   is (if N <= Big.To_Big_Integer (0)
+       then Big.To_Big_Integer (0)
+       else (A * B) mod N)
    with Ghost, Global => null;
 
    --  Spec for modular exponentiation: square-and-multiply over the
@@ -143,16 +145,19 @@ is
    --  Big_Integer modular-exponentiation result, in [0, N).
    function Spec_Mod_Exp
      (Base, Exp, N : Big.Big_Integer) return Big.Big_Integer
-   with Ghost, Global => null,
-        Pre  => Base >= Big.To_Big_Integer (0)
-                and then Exp >= Big.To_Big_Integer (0)
-                and then N  >= Big.To_Big_Integer (0),
-        Post =>
-          Spec_Mod_Exp'Result >= Big.To_Big_Integer (0)
-          and then
-          (if N <= Big.To_Big_Integer (1)
-              or else N mod Big.To_Big_Integer (2) = Big.To_Big_Integer (0)
-           then Spec_Mod_Exp'Result = Big.To_Big_Integer (0));
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Base >= Big.To_Big_Integer (0)
+       and then Exp >= Big.To_Big_Integer (0)
+       and then N >= Big.To_Big_Integer (0),
+     Post   =>
+       Spec_Mod_Exp'Result >= Big.To_Big_Integer (0)
+       and then (if N <= Big.To_Big_Integer (1)
+                   or else N mod Big.To_Big_Integer (2)
+                           = Big.To_Big_Integer (0)
+                 then Spec_Mod_Exp'Result = Big.To_Big_Integer (0));
 
    --  Inverse of `Bn_V` for non-negative integers in [0, 2^2048):
    --  produces the canonical 256-byte big-endian buffer whose
@@ -167,8 +172,7 @@ is
    --  into local scope; the Post-only formulation here would force
    --  every call to depend on the lemma.
    function Big_To_Bigint (X : Big.Big_Integer) return Bigint
-   with Ghost, Global => null,
-        Pre  => X >= Big.To_Big_Integer (0);
+   with Ghost, Global => null, Pre => X >= Big.To_Big_Integer (0);
 
    --  Round-trip lemma: encoding and decoding a 256-byte BE Bigint is
    --  the identity. This is HACL\*  `lib_intvector_intrinsics_vec_eq`
@@ -177,8 +181,7 @@ is
    --  byte loop in Big_To_Bigint vs the recursion in Bn_V); flagged
    --  per docs/conventions.md §0d clause 1 — clause-6 clean (no annotations).
    procedure Lemma_Bigint_Roundtrip (B : Bigint)
-   with Ghost, Global => null,
-        Post => Big_To_Bigint (Bn_V (B)) = B;
+   with Ghost, Global => null, Post => Big_To_Bigint (Bn_V (B)) = B;
 
    --  Composed RSAVP1 / `nat_to_bytes_be` step from HACL\*
    --  `Spec.RSAPSS.fst : rsapss_verify_`:
@@ -186,11 +189,8 @@ is
    --      let em = nat_to_bytes_be emLen m in ...
    --  Real (executable) ghost: just the composition Big_To_Bigint
    --  ∘ Spec_Mod_Exp, both of which have real bodies.
-   function Spec_Em_From_Pubkey_Sig
-     (N, E, Signature : Bigint) return Bigint
-   is
-     (Big_To_Bigint
-        (Spec_Mod_Exp (Bn_V (Signature), Bn_V (E), Bn_V (N))))
+   function Spec_Em_From_Pubkey_Sig (N, E, Signature : Bigint) return Bigint
+   is (Big_To_Bigint (Spec_Mod_Exp (Bn_V (Signature), Bn_V (E), Bn_V (N))))
    with Ghost, Global => null;
 
    ---------------------------------------------------------------------
@@ -210,8 +210,7 @@ is
    --  N must be non-zero. If N is zero the output is the zero Bigint.
    --  --------------------------------------------------------------
    procedure Mod_Mul (A, B, N : Bigint; Out_R : out Bigint)
-   with
-     Post => Bn_V (Out_R) = Spec_Mod_Mul (Bn_V (A), Bn_V (B), Bn_V (N));
+   with Post => Bn_V (Out_R) = Spec_Mod_Mul (Bn_V (A), Bn_V (B), Bn_V (N));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Base^Exp mod N.
@@ -231,8 +230,7 @@ is
    --  --------------------------------------------------------------
    procedure Mod_Exp (Base, Exp, N : Bigint; Out_R : out Bigint)
    with
-     Post => Bn_V (Out_R) =
-             Spec_Mod_Exp (Bn_V (Base), Bn_V (Exp), Bn_V (N));
+     Post => Bn_V (Out_R) = Spec_Mod_Exp (Bn_V (Base), Bn_V (Exp), Bn_V (N));
 
    --  Constant-time equality: no early exit on mismatch. Useful for
    --  signature comparison if the caller wants to avoid leaking via

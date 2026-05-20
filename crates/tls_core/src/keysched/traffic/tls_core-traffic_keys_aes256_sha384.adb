@@ -1,7 +1,7 @@
 with Tls_Core.Hkdf_Label_Sha384;
 
 package body Tls_Core.Traffic_Keys_Aes256_Sha384
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");

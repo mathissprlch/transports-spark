@@ -10,7 +10,7 @@
 --  switches in one auditable file.
 
 package Tls_Core_Config
-with SPARK_Mode, Pure
+  with SPARK_Mode, Pure
 is
 
    --  AES T-tables (FIPS 197 §5.1 round transformation as four

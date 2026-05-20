@@ -47,7 +47,7 @@
 with Ada.Numerics.Big_Numbers.Big_Integers;
 
 package Tls_Core.P256_Field
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
@@ -80,21 +80,23 @@ is
    with Ghost, Global => null;
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer
-   with Ghost, Global => null,
-        Pre  => N <= 32,
-        Post => Pow_2_8'Result > Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Pre    => N <= 32,
+     Post   => Pow_2_8'Result > Big.To_Big_Integer (0);
 
-   function To_Big_Up_To
-     (F : Field; N : Natural) return Big.Big_Integer
-   is
-     (if N = 0 then Big.To_Big_Integer (0)
-      else
-        To_Big_Up_To (F, N - 1)
-        + Byte_Big (F (32 - (N - 1))) * Pow_2_8 (N - 1))
-   with Ghost,
-        Global => null,
-        Pre => N <= 32,
-        Subprogram_Variant => (Decreases => N);
+   function To_Big_Up_To (F : Field; N : Natural) return Big.Big_Integer
+   is (if N = 0
+       then Big.To_Big_Integer (0)
+       else
+         To_Big_Up_To (F, N - 1)
+         + Byte_Big (F (32 - (N - 1))) * Pow_2_8 (N - 1))
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N <= 32,
+     Subprogram_Variant => (Decreases => N);
 
    --  Integer interpretation of the 32-byte big-endian Field.
    function To_Big_Spec (F : Field) return Big.Big_Integer
@@ -104,16 +106,21 @@ is
    --  p = 2^256 - 2^224 + 2^192 + 2^96 - 1, the P-256 base-field
    --  prime (Spec.P256.PointOps.fst :  prime ).
    function Prime_P_Spec return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Prime_P_Spec'Result > Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Post   => Prime_P_Spec'Result > Big.To_Big_Integer (0);
 
    --  Canonical residue mod p.
    function Mod_P_Spec (X : Big.Big_Integer) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range
-                  (Mod_P_Spec'Result,
-                   Big.To_Big_Integer (0),
-                   Prime_P_Spec - Big.To_Big_Integer (1));
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Mod_P_Spec'Result,
+          Big.To_Big_Integer (0),
+          Prime_P_Spec - Big.To_Big_Integer (1));
 
    --  Equivalence mod p.
    function Equiv_Spec (A, B : Big.Big_Integer) return Boolean
@@ -144,11 +151,14 @@ is
    --  square-and-multiply on Big_Integer (computable, no stub —
    --  docs/conventions.md §0d clause 4).
    function Spec_F_Inv (A : Big.Big_Integer) return Big.Big_Integer
-   with Ghost, Global => null,
-        Post => Big.In_Range
-                  (Spec_F_Inv'Result,
-                   Big.To_Big_Integer (0),
-                   Prime_P_Spec - Big.To_Big_Integer (1));
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Big.In_Range
+         (Spec_F_Inv'Result,
+          Big.To_Big_Integer (0),
+          Prime_P_Spec - Big.To_Big_Integer (1));
 
    ---------------------------------------------------------------------
    --  Public field operations with functional Posts.
@@ -169,10 +179,10 @@ is
    --              clean.
    --  --------------------------------------------------------------
    procedure Add (A, B : Field; Out_C : out Field)
-   with Post =>
-     Equiv_Spec
-       (To_Big_Spec (Out_C),
-        Spec_F_Add (To_Big_Spec (A), To_Big_Spec (B)));
+   with
+     Post =>
+       Equiv_Spec
+         (To_Big_Spec (Out_C), Spec_F_Add (To_Big_Spec (A), To_Big_Spec (B)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  GF(p) subtraction for P-256.
@@ -187,10 +197,10 @@ is
    --              clean).
    --  --------------------------------------------------------------
    procedure Sub (A, B : Field; Out_C : out Field)
-   with Post =>
-     Equiv_Spec
-       (To_Big_Spec (Out_C),
-        Spec_F_Sub (To_Big_Spec (A), To_Big_Spec (B)));
+   with
+     Post =>
+       Equiv_Spec
+         (To_Big_Spec (Out_C), Spec_F_Sub (To_Big_Spec (A), To_Big_Spec (B)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  GF(p) multiplication for P-256.
@@ -206,10 +216,10 @@ is
    --              clause-6 clean).
    --  --------------------------------------------------------------
    procedure Mul (A, B : Field; Out_C : out Field)
-   with Post =>
-     Equiv_Spec
-       (To_Big_Spec (Out_C),
-        Spec_F_Mul (To_Big_Spec (A), To_Big_Spec (B)));
+   with
+     Post =>
+       Equiv_Spec
+         (To_Big_Spec (Out_C), Spec_F_Mul (To_Big_Spec (A), To_Big_Spec (B)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  GF(p) squaring for P-256.
@@ -217,10 +227,10 @@ is
    --  Same shape as Mul (A, A).
    --  --------------------------------------------------------------
    procedure Square (A : Field; Out_C : out Field)
-   with Post =>
-     Equiv_Spec
-       (To_Big_Spec (Out_C),
-        Spec_F_Mul (To_Big_Spec (A), To_Big_Spec (A)));
+   with
+     Post =>
+       Equiv_Spec
+         (To_Big_Spec (Out_C), Spec_F_Mul (To_Big_Spec (A), To_Big_Spec (A)));
 
    --  --------------------------------------------------------------
    --  [VERIFIED — AoRTE]  GF(p) inversion via Fermat (a^(p-2) mod p).
@@ -236,12 +246,12 @@ is
    --              discharged at level=2; clause-6 clean).
    --  --------------------------------------------------------------
    procedure Invert (A : Field; Out_C : out Field)
-   with Post =>
-     (if not Equiv_Spec (To_Big_Spec (A), Big.To_Big_Integer (0))
-      then
-        Equiv_Spec
-          (To_Big_Spec (Out_C) * To_Big_Spec (A),
-           Big.To_Big_Integer (1)));
+   with
+     Post =>
+       (if not Equiv_Spec (To_Big_Spec (A), Big.To_Big_Integer (0))
+        then
+          Equiv_Spec
+            (To_Big_Spec (Out_C) * To_Big_Spec (A), Big.To_Big_Integer (1)));
 
    --  Constant-time equality compare. No early exit on mismatch.
    function Equal_CT (A, B : Field) return Boolean;

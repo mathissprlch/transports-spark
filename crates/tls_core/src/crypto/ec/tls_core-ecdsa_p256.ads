@@ -19,13 +19,13 @@
 --  tests) follows §6.4.1.
 
 package Tls_Core.Ecdsa_P256
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    subtype Public_Key_Bytes is Octet_Array (1 .. 65);
-   subtype Component        is Octet_Array (1 .. 32);
+   subtype Component is Octet_Array (1 .. 32);
 
    --  ECDSA verify (FIPS 186-4 §6.4.2). No functional Post: the
    --  RFC 6979 deterministic-k vectors and §A.2.5 / A.2.6 RFC 6979
@@ -36,9 +36,10 @@ is
       R, S       : Component;
       OK         : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Last < Integer'Last - 64
-             and then Message'Length <= Natural'Last - 73;
+     Pre =>
+       Message'First = 1
+       and then Message'Last < Integer'Last - 64
+       and then Message'Length <= Natural'Last - 73;
 
    --  ECDSA sign (FIPS 186-4 §6.4.1) with a caller-supplied per-
    --  signature scalar K. K must satisfy 1 <= K < n (e.g., the
@@ -52,9 +53,10 @@ is
       Out_S       : out Component;
       OK          : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Last < Integer'Last - 64
-             and then Message'Length <= Natural'Last - 73;
+     Pre =>
+       Message'First = 1
+       and then Message'Last < Integer'Last - 64
+       and then Message'Length <= Natural'Last - 73;
 
    ---------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  RFC 6979 §3.2 deterministic K derivation
@@ -86,9 +88,10 @@ is
       Out_K       : out Component;
       OK          : out Boolean)
    with
-     Pre  => Message'First = 1
-             and then Message'Last < Integer'Last - 64
-             and then Message'Length <= Natural'Last - 73;
+     Pre =>
+       Message'First = 1
+       and then Message'Last < Integer'Last - 64
+       and then Message'Length <= Natural'Last - 73;
 
    pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
