@@ -26,7 +26,7 @@ with Tls_Core.Transcript;
 with Tls_Core.X25519;
 
 package Tls_Core.Handshake_Driver
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    type Role is (Client, Server);
@@ -59,10 +59,7 @@ is
    type Driver is private;
 
    --  Initialize for a given role with a 32-byte PSK. PSK_KE mode.
-   procedure Init
-     (D    : out Driver;
-      For_Role : Role;
-      PSK  : Octet_Array)
+   procedure Init (D : out Driver; For_Role : Role; PSK : Octet_Array)
    with Pre => PSK'Length = 32 and then PSK'Last < Integer'Last - 1024;
 
    --  Initialize for ECDHE mode. The caller supplies the X25519
@@ -70,18 +67,16 @@ is
    --  embeds it in the outgoing Hello, and on receipt of the peer
    --  Hello extracts the peer public + computes the shared secret.
    procedure Init_Ecdhe
-     (D            : out Driver;
-      For_Role     : Role;
-      Private_Key  : Tls_Core.X25519.Bytes_32);
+     (D : out Driver; For_Role : Role; Private_Key : Tls_Core.X25519.Bytes_32);
 
    --  Server-side cert mode. The driver embeds the Ed25519 public
    --  key (derived from `Sign_Seed`) in a synthetic Certificate
    --  message, signs the transcript with `Sign_Seed` and emits
    --  the result as CertificateVerify per RFC 8446 §4.4.3.
    procedure Init_Ecdhe_With_Cert
-     (D            : out Driver;
-      Private_Key  : Tls_Core.X25519.Bytes_32;
-      Sign_Seed    : Tls_Core.Ed25519.Bytes_32);
+     (D           : out Driver;
+      Private_Key : Tls_Core.X25519.Bytes_32;
+      Sign_Seed   : Tls_Core.Ed25519.Bytes_32);
 
    --  Client-side cert-verifying mode. `Trusted_Pub_Key` is the
    --  Ed25519 public key the client expects to see in the server's
@@ -101,11 +96,12 @@ is
    --  When state hits Done, traffic secrets are populated and
    --  Get_Secrets can be called.
    procedure Step
-     (D         : in out Driver;
-      In_Bytes  : Octet_Array;
-      Out_Buf   : out Octet_Array;
-      Out_Last  : out Natural)
-   with Pre =>
+     (D        : in out Driver;
+      In_Bytes : Octet_Array;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
+   with
+     Pre =>
        In_Bytes'Length in 0 .. 1024
        and then In_Bytes'Last < Integer'Last - 1024
        and then Out_Buf'Length >= 256
@@ -116,8 +112,7 @@ is
 
    --  After Done: copy out the four traffic secrets.
    procedure Get_Secrets
-     (D       : Driver;
-      Out_Sec : out Tls_Core.Handshake.Traffic_Secrets)
+     (D : Driver; Out_Sec : out Tls_Core.Handshake.Traffic_Secrets)
    with Pre => Current_State (D) = Done;
 
 private
@@ -126,38 +121,39 @@ private
    subtype Hello_Bytes is Octet_Array (1 .. 1024);
 
    type Driver is record
-      My_Role          : Role := Client;
-      My_Mode          : Mode := PSK_KE;
-      Cur_State        : State := Idle;
-      Hash_Ctx         : Tls_Core.Transcript.Accumulator;
-      PSK              : PSK_Bytes := (others => 0);
+      My_Role   : Role := Client;
+      My_Mode   : Mode := PSK_KE;
+      Cur_State : State := Idle;
+      Hash_Ctx  : Tls_Core.Transcript.Accumulator;
+      PSK       : PSK_Bytes := [others => 0];
 
       --  ECDHE state — populated only when My_Mode in {ECDHE, ECDHE_With_Cert}.
-      My_Priv          : Tls_Core.X25519.Bytes_32 := (others => 0);
-      My_Pub           : Tls_Core.X25519.Bytes_32 := (others => 0);
-      Peer_Pub         : Tls_Core.X25519.Bytes_32 := (others => 0);
-      Shared           : Tls_Core.X25519.Bytes_32 := (others => 0);
+      My_Priv  : Tls_Core.X25519.Bytes_32 := [others => 0];
+      My_Pub   : Tls_Core.X25519.Bytes_32 := [others => 0];
+      Peer_Pub : Tls_Core.X25519.Bytes_32 := [others => 0];
+      Shared   : Tls_Core.X25519.Bytes_32 := [others => 0];
 
       --  Cert-mode state — populated only when My_Mode = ECDHE_With_Cert.
-      Sign_Seed        : Tls_Core.Ed25519.Bytes_32 := (others => 0);
-      Sign_Pub         : Tls_Core.Ed25519.Bytes_32 := (others => 0);
-      Trusted_Pub      : Tls_Core.Ed25519.Bytes_32 := (others => 0);
+      Sign_Seed   : Tls_Core.Ed25519.Bytes_32 := [others => 0];
+      Sign_Pub    : Tls_Core.Ed25519.Bytes_32 := [others => 0];
+      Trusted_Pub : Tls_Core.Ed25519.Bytes_32 := [others => 0];
 
       --  We retain the recorded ClientHello and ServerHello bytes
       --  (and the peer Finished bytes) so the §7.1 schedule can
       --  re-key using the exact transcripts the peers exchanged.
-      CH_Buf           : Hello_Bytes := (others => 0);
-      CH_Len           : Natural := 0;
-      SH_Buf           : Hello_Bytes := (others => 0);
-      SH_Len           : Natural := 0;
-      SF_Buf           : Hello_Bytes := (others => 0);
-      SF_Len           : Natural := 0;
+      CH_Buf : Hello_Bytes := [others => 0];
+      CH_Len : Natural := 0;
+      SH_Buf : Hello_Bytes := [others => 0];
+      SH_Len : Natural := 0;
+      SF_Buf : Hello_Bytes := [others => 0];
+      SF_Len : Natural := 0;
 
       --  Filled when state becomes Done.
-      Secrets_Set      : Boolean := False;
-      Secrets          : Tls_Core.Handshake.Traffic_Secrets;
+      Secrets_Set : Boolean := False;
+      Secrets     : Tls_Core.Handshake.Traffic_Secrets;
    end record;
 
-   function Current_State (D : Driver) return State is (D.Cur_State);
+   function Current_State (D : Driver) return State
+   is (D.Cur_State);
 
 end Tls_Core.Handshake_Driver;

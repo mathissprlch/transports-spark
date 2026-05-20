@@ -1,17 +1,16 @@
-with Tls_Core.Hmac_Sha256;
 with Tls_Core.Key_Sched;
 
 package body Tls_Core.Tls13_Driver.Helpers
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    procedure Prime_Driver_Defaults (D : in out Driver) is
-      Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      Zero_Digest : constant Tls_Core.Key_Sched.Max_Digest := (others => 0);
+      Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      Zero_Digest : constant Tls_Core.Key_Sched.Max_Digest := [others => 0];
    begin
       D.Suite := Tls_Core.Suites.Chacha20_Poly1305_Sha256;
-      D.C_Hs_Sec  := Zero_Secret;
-      D.S_Hs_Sec  := Zero_Secret;
+      D.C_Hs_Sec := Zero_Secret;
+      D.S_Hs_Sec := Zero_Secret;
       D.Hs_Secret := Zero_Secret;
       D.Expected_Cf := Zero_Digest;
       D.App_C_Ap := Zero_Secret;
@@ -23,17 +22,16 @@ is
       Tls_Core.Key_Sched.Init_Hs_Channel
         (Tls_Core.Suites.Chacha20_Poly1305_Sha256, D.Hs_Out_Dir, Zero_Secret);
       Tls_Core.Key_Sched.Init_Hs_Channel
-        (Tls_Core.Suites.Chacha20_Poly1305_Sha256, D.Hs_In_Dir,  Zero_Secret);
+        (Tls_Core.Suites.Chacha20_Poly1305_Sha256, D.Hs_In_Dir, Zero_Secret);
    end Prime_Driver_Defaults;
 
    procedure Build_Plaintext_Alert
      (Level       : Octet;
       Description : Octet;
       Out_Buf     : out Octet_Array;
-      Out_Last    : out Natural)
-   is
+      Out_Last    : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Rec_Type_Alert;
       Out_Buf (2) := 16#03#;
       Out_Buf (3) := 16#03#;
@@ -60,15 +58,15 @@ is
         (Dir,
          Body_Bytes,
          Tls_Core.Aead_Channel.Inner_Type_Alert,
-         Out_Buf, Out_Last);
+         Out_Buf,
+         Out_Last);
    end Build_Encrypted_Alert;
 
    procedure Fail_Plaintext
      (D           : in out Driver;
       Description : Octet;
       Out_Buf     : out Octet_Array;
-      Out_Last    : out Natural)
-   is
+      Out_Last    : out Natural) is
    begin
       Build_Plaintext_Alert
         (Tls_Core.Alert.Level_Fatal, Description, Out_Buf, Out_Last);
@@ -80,16 +78,17 @@ is
      (D           : in out Driver;
       Description : Octet;
       Out_Buf     : out Octet_Array;
-      Out_Last    : out Natural)
-   is
+      Out_Last    : out Natural) is
    begin
       Build_Encrypted_Alert
-        (D.Hs_Out_Dir, Tls_Core.Alert.Level_Fatal, Description,
-         Out_Buf, Out_Last);
+        (D.Hs_Out_Dir,
+         Tls_Core.Alert.Level_Fatal,
+         Description,
+         Out_Buf,
+         Out_Last);
       D.Last_Alert := Description;
       D.Cur_State := Failed;
    end Fail_Encrypted;
-
 
    procedure Encode_Hs_Message
      (Msg_Type   : Octet;
@@ -99,7 +98,7 @@ is
    is
       Len : constant Natural := Body_Bytes'Length;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Msg_Type;
       Out_Buf (2) := Octet ((Len / 65536) mod 256);
       Out_Buf (3) := Octet ((Len / 256) mod 256);
@@ -117,7 +116,7 @@ is
    is
       Len : constant Natural := Hs_Bytes'Length;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Rec_Type_Handshake;
       Out_Buf (2) := 16#03#;
       Out_Buf (3) := 16#03#;
@@ -133,6 +132,7 @@ is
          when Server =>
             Tls_Core.Key_Sched.Init_Hs_Channel
               (D.Suite, D.App_Out_Dir, D.App_S_Ap);
+
          when Client =>
             Tls_Core.Key_Sched.Init_Hs_Channel
               (D.Suite, D.App_Out_Dir, D.App_C_Ap);

@@ -1,10 +1,8 @@
 with Tls_Core.Sha256;
 
 package body Tls_Core.Handshake_Driver
-with SPARK_Mode
+  with SPARK_Mode
 is
-
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -25,11 +23,12 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Handshake
-     (Type_Of : Octet;
-      Body_Bytes   : Octet_Array;
-      Buf     : out Octet_Array;
-      Last    : out Natural)
-   with Pre =>
+     (Type_Of    : Octet;
+      Body_Bytes : Octet_Array;
+      Buf        : out Octet_Array;
+      Last       : out Natural)
+   with
+     Pre =>
        Body_Bytes'Length <= 16#FFFFFF#
        and then Buf'First = 1
        and then Buf'Length >= 4 + Body_Bytes'Length;
@@ -49,14 +48,42 @@ is
    is
       --  "TLS 1.3, server CertificateVerify" — 33 bytes.
       Ctx_Str : constant Octet_Array (1 .. 33) :=
-        (16#54#, 16#4C#, 16#53#, 16#20#, 16#31#, 16#2E#, 16#33#, 16#2C#,
-         16#20#, 16#73#, 16#65#, 16#72#, 16#76#, 16#65#, 16#72#, 16#20#,
-         16#43#, 16#65#, 16#72#, 16#74#, 16#69#, 16#66#, 16#69#, 16#63#,
-         16#61#, 16#74#, 16#65#, 16#56#, 16#65#, 16#72#, 16#69#, 16#66#,
-         16#79#);
+        [16#54#,
+         16#4C#,
+         16#53#,
+         16#20#,
+         16#31#,
+         16#2E#,
+         16#33#,
+         16#2C#,
+         16#20#,
+         16#73#,
+         16#65#,
+         16#72#,
+         16#76#,
+         16#65#,
+         16#72#,
+         16#20#,
+         16#43#,
+         16#65#,
+         16#72#,
+         16#74#,
+         16#69#,
+         16#66#,
+         16#69#,
+         16#63#,
+         16#61#,
+         16#74#,
+         16#65#,
+         16#56#,
+         16#65#,
+         16#72#,
+         16#69#,
+         16#66#,
+         16#79#];
    begin
-      Out_Bytes := (others => 0);
-      Out_Bytes (1 .. 64) := (others => 16#20#);
+      Out_Bytes := [others => 0];
+      Out_Bytes (1 .. 64) := [others => 16#20#];
       Out_Bytes (65 .. 97) := Ctx_Str;
       Out_Bytes (98) := 16#00#;
       Out_Bytes (99 .. 130) := Transcript_Hash;
@@ -64,14 +91,14 @@ is
    end Build_Cert_Verify_Sig_Material;
 
    procedure Encode_Handshake
-     (Type_Of : Octet;
-      Body_Bytes   : Octet_Array;
-      Buf     : out Octet_Array;
-      Last    : out Natural)
+     (Type_Of    : Octet;
+      Body_Bytes : Octet_Array;
+      Buf        : out Octet_Array;
+      Last       : out Natural)
    is
       Len_24 : constant Natural := Body_Bytes'Length;
    begin
-      Buf := (others => 0);
+      Buf := [others => 0];
       Buf (1) := Type_Of;
       Buf (2) := Octet ((Len_24 / 65536) mod 256);
       Buf (3) := Octet ((Len_24 / 256) mod 256);
@@ -86,34 +113,33 @@ is
    --  Init
    ---------------------------------------------------------------------
 
-   procedure Init
-     (D        : out Driver;
-      For_Role : Role;
-      PSK      : Octet_Array)
-   is
+   procedure Init (D : out Driver; For_Role : Role; PSK : Octet_Array) is
    begin
       D.My_Role := For_Role;
       D.My_Mode := PSK_KE;
       D.PSK := PSK;
-      D.My_Priv := (others => 0);
-      D.My_Pub := (others => 0);
-      D.Peer_Pub := (others => 0);
-      D.Shared := (others => 0);
-      D.CH_Buf := (others => 0);
+      D.My_Priv := [others => 0];
+      D.My_Pub := [others => 0];
+      D.Peer_Pub := [others => 0];
+      D.Shared := [others => 0];
+      D.CH_Buf := [others => 0];
       D.CH_Len := 0;
-      D.SH_Buf := (others => 0);
+      D.SH_Buf := [others => 0];
       D.SH_Len := 0;
-      D.SF_Buf := (others => 0);
+      D.SF_Buf := [others => 0];
       D.SF_Len := 0;
       D.Secrets_Set := False;
-      D.Secrets.Client_Handshake := (others => 0);
-      D.Secrets.Server_Handshake := (others => 0);
-      D.Secrets.Client_App       := (others => 0);
-      D.Secrets.Server_App       := (others => 0);
+      D.Secrets.Client_Handshake := [others => 0];
+      D.Secrets.Server_Handshake := [others => 0];
+      D.Secrets.Client_App := [others => 0];
+      D.Secrets.Server_App := [others => 0];
       Tls_Core.Transcript.Init (D.Hash_Ctx);
       case For_Role is
-         when Client => D.Cur_State := Idle;
-         when Server => D.Cur_State := Awaiting_Client_Hello;
+         when Client =>
+            D.Cur_State := Idle;
+
+         when Server =>
+            D.Cur_State := Awaiting_Client_Hello;
       end case;
    end Init;
 
@@ -136,37 +162,38 @@ is
    begin
       D.My_Role := For_Role;
       D.My_Mode := My_Mode;
-      D.PSK := (others => 0);
+      D.PSK := [others => 0];
       D.My_Priv := Private_Key;
       Tls_Core.X25519.Derive_Public (Private_Key, Pub);
       D.My_Pub := Pub;
-      D.Peer_Pub := (others => 0);
-      D.Shared := (others => 0);
-      D.Sign_Seed := (others => 0);
-      D.Sign_Pub := (others => 0);
-      D.Trusted_Pub := (others => 0);
-      D.CH_Buf := (others => 0);
+      D.Peer_Pub := [others => 0];
+      D.Shared := [others => 0];
+      D.Sign_Seed := [others => 0];
+      D.Sign_Pub := [others => 0];
+      D.Trusted_Pub := [others => 0];
+      D.CH_Buf := [others => 0];
       D.CH_Len := 0;
-      D.SH_Buf := (others => 0);
+      D.SH_Buf := [others => 0];
       D.SH_Len := 0;
-      D.SF_Buf := (others => 0);
+      D.SF_Buf := [others => 0];
       D.SF_Len := 0;
       D.Secrets_Set := False;
-      D.Secrets.Client_Handshake := (others => 0);
-      D.Secrets.Server_Handshake := (others => 0);
-      D.Secrets.Client_App       := (others => 0);
-      D.Secrets.Server_App       := (others => 0);
+      D.Secrets.Client_Handshake := [others => 0];
+      D.Secrets.Server_Handshake := [others => 0];
+      D.Secrets.Client_App := [others => 0];
+      D.Secrets.Server_App := [others => 0];
       Tls_Core.Transcript.Init (D.Hash_Ctx);
       case For_Role is
-         when Client => D.Cur_State := Idle;
-         when Server => D.Cur_State := Awaiting_Client_Hello;
+         when Client =>
+            D.Cur_State := Idle;
+
+         when Server =>
+            D.Cur_State := Awaiting_Client_Hello;
       end case;
    end Init_Ecdhe_Common;
 
    procedure Init_Ecdhe
-     (D            : out Driver;
-      For_Role     : Role;
-      Private_Key  : Tls_Core.X25519.Bytes_32)
+     (D : out Driver; For_Role : Role; Private_Key : Tls_Core.X25519.Bytes_32)
    is
    begin
       Init_Ecdhe_Common (D, For_Role, ECDHE, Private_Key);
@@ -175,8 +202,7 @@ is
    procedure Init_Ecdhe_With_Cert
      (D           : out Driver;
       Private_Key : Tls_Core.X25519.Bytes_32;
-      Sign_Seed   : Tls_Core.Ed25519.Bytes_32)
-   is
+      Sign_Seed   : Tls_Core.Ed25519.Bytes_32) is
    begin
       Init_Ecdhe_Common (D, Server, ECDHE_With_Cert, Private_Key);
       D.Sign_Seed := Sign_Seed;
@@ -186,8 +212,7 @@ is
    procedure Init_Ecdhe_Verify
      (D               : out Driver;
       Private_Key     : Tls_Core.X25519.Bytes_32;
-      Trusted_Pub_Key : Tls_Core.Ed25519.Bytes_32)
-   is
+      Trusted_Pub_Key : Tls_Core.Ed25519.Bytes_32) is
    begin
       Init_Ecdhe_Common (D, Client, ECDHE_With_Cert, Private_Key);
       D.Trusted_Pub := Trusted_Pub_Key;
@@ -199,15 +224,10 @@ is
    ---------------------------------------------------------------------
 
    procedure Store
-     (Dst     : in out Hello_Bytes;
-      Dst_Len : in out Natural;
-      Src     : Octet_Array)
+     (Dst : in out Hello_Bytes; Dst_Len : in out Natural; Src : Octet_Array)
    with Pre => Src'Length <= 1024;
    procedure Store
-     (Dst     : in out Hello_Bytes;
-      Dst_Len : in out Natural;
-      Src     : Octet_Array)
-   is
+     (Dst : in out Hello_Bytes; Dst_Len : in out Natural; Src : Octet_Array) is
    begin
       if Src'Length > 0 then
          Dst (1 .. Src'Length) := Src;
@@ -221,19 +241,22 @@ is
    ---------------------------------------------------------------------
 
    procedure Compute_Secrets (D : in out Driver)
-   with Pre => D.CH_Len in 1 .. 1024
-              and then D.SH_Len in 1 .. 1024
-              and then D.SF_Len in 0 .. 1024;
+   with
+     Pre =>
+       D.CH_Len in 1 .. 1024
+       and then D.SH_Len in 1 .. 1024
+       and then D.SF_Len in 0 .. 1024;
    procedure Compute_Secrets (D : in out Driver) is
    begin
       case D.My_Mode is
-         when PSK_KE =>
+         when PSK_KE                  =>
             Tls_Core.Handshake.Derive_Psk_Secrets
               (PSK             => D.PSK,
                Client_Hello    => D.CH_Buf (1 .. D.CH_Len),
                Server_Hello    => D.SH_Buf (1 .. D.SH_Len),
                Server_Finished => D.SF_Buf (1 .. D.SF_Len),
                Out_Secrets     => D.Secrets);
+
          when ECDHE | ECDHE_With_Cert =>
             Tls_Core.Handshake.Derive_Ecdhe_Secrets
               (ECDHE_Shared    => D.Shared,
@@ -250,14 +273,14 @@ is
    ---------------------------------------------------------------------
 
    procedure Step
-     (D         : in out Driver;
-      In_Bytes  : Octet_Array;
-      Out_Buf   : out Octet_Array;
-      Out_Last  : out Natural)
+     (D        : in out Driver;
+      In_Bytes : Octet_Array;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       --  Body_Of for emitted Hellos / Finished:
@@ -271,14 +294,14 @@ is
       --              proof — both peers just need to agree on the
       --              transcript bytes).
       case D.Cur_State is
-         when Idle =>
+         when Idle                  =>
             if D.My_Role = Client then
                declare
-                  Body_Of : constant Octet_Array :=
-                    (if D.My_Mode = ECDHE
-                       or else D.My_Mode = ECDHE_With_Cert
-                     then D.My_Pub else D.PSK);
-                  Wire    : Octet_Array (1 .. 4 + Body_Of'Length);
+                  Body_Of   : constant Octet_Array :=
+                    (if D.My_Mode = ECDHE or else D.My_Mode = ECDHE_With_Cert
+                     then D.My_Pub
+                     else D.PSK);
+                  Wire      : Octet_Array (1 .. 4 + Body_Of'Length);
                   Wire_Last : Natural;
                begin
                   Encode_Handshake (HS_Client_Hello, Body_Of, Wire, Wire_Last);
@@ -299,9 +322,7 @@ is
 
                --  ECDHE / ECDHE_With_Cert: extract peer's public key
                --  from CH body and compute the shared secret.
-               if D.My_Mode = ECDHE
-                 or else D.My_Mode = ECDHE_With_Cert
-               then
+               if D.My_Mode = ECDHE or else D.My_Mode = ECDHE_With_Cert then
                   for I in 1 .. 32 loop
                      D.Peer_Pub (I) := In_Bytes (In_Bytes'First + 4 + I - 1);
                   end loop;
@@ -312,22 +333,21 @@ is
                end if;
 
                declare
-                  Body_Of : constant Octet_Array :=
-                    (if D.My_Mode = ECDHE
-                       or else D.My_Mode = ECDHE_With_Cert
+                  Body_Of  : constant Octet_Array :=
+                    (if D.My_Mode = ECDHE or else D.My_Mode = ECDHE_With_Cert
                      then D.My_Pub
                      else D.PSK);
-                  Sh_Wire   : Octet_Array (1 .. 4 + Body_Of'Length);
-                  Sh_Last   : Natural;
-                  Fin_Body  : constant Octet_Array := D.PSK;
-                  Sf_Wire   : Octet_Array (1 .. 4 + Fin_Body'Length);
-                  Sf_Last   : Natural;
+                  Sh_Wire  : Octet_Array (1 .. 4 + Body_Of'Length);
+                  Sh_Last  : Natural;
+                  Fin_Body : constant Octet_Array := D.PSK;
+                  Sf_Wire  : Octet_Array (1 .. 4 + Fin_Body'Length);
+                  Sf_Last  : Natural;
 
                   --  Cert + CV are only used in ECDHE_With_Cert.
-                  Cert_Wire   : Octet_Array (1 .. 4 + 32);
-                  Cert_Last   : Natural := 0;
-                  Cv_Wire     : Octet_Array (1 .. 4 + 64);
-                  Cv_Last     : Natural := 0;
+                  Cert_Wire : Octet_Array (1 .. 4 + 32);
+                  Cert_Last : Natural := 0;
+                  Cv_Wire   : Octet_Array (1 .. 4 + 64);
+                  Cv_Last   : Natural := 0;
 
                   Cursor : Natural;
                begin
@@ -346,7 +366,7 @@ is
                      Tls_Core.Transcript.Append (D.Hash_Ctx, Cert_Wire);
 
                      declare
-                        Snap : Tls_Core.Sha256.Digest;
+                        Snap         : Tls_Core.Sha256.Digest;
                         Sig_Material : Octet_Array (1 .. 130);
                         Sig_Last     : Natural;
                         Sig          : Tls_Core.Ed25519.Signature;
@@ -355,17 +375,14 @@ is
                         Build_Cert_Verify_Sig_Material
                           (Snap, Sig_Material, Sig_Last);
                         Tls_Core.Ed25519.Sign
-                          (D.Sign_Seed,
-                           Sig_Material (1 .. Sig_Last),
-                           Sig);
-                        Encode_Handshake (HS_Certificate_Verify, Sig,
-                                          Cv_Wire, Cv_Last);
+                          (D.Sign_Seed, Sig_Material (1 .. Sig_Last), Sig);
+                        Encode_Handshake
+                          (HS_Certificate_Verify, Sig, Cv_Wire, Cv_Last);
                      end;
                      Tls_Core.Transcript.Append (D.Hash_Ctx, Cv_Wire);
                   end if;
 
-                  Encode_Handshake
-                    (HS_Finished, Fin_Body, Sf_Wire, Sf_Last);
+                  Encode_Handshake (HS_Finished, Fin_Body, Sf_Wire, Sf_Last);
                   Tls_Core.Transcript.Append (D.Hash_Ctx, Sf_Wire);
                   Store (D.SF_Buf, D.SF_Len, Sf_Wire);
 
@@ -398,10 +415,11 @@ is
             if D.My_Role = Client and then In_Bytes'Length > 8 then
                declare
                   Sh_Body_Len : constant Natural :=
-                    Natural (In_Bytes (In_Bytes'First + 1)) * 65536
+                    Natural (In_Bytes (In_Bytes'First + 1))
+                    * 65536
                     + Natural (In_Bytes (In_Bytes'First + 2)) * 256
                     + Natural (In_Bytes (In_Bytes'First + 3));
-                  Sh_End : constant Natural :=
+                  Sh_End      : constant Natural :=
                     In_Bytes'First + 4 + Sh_Body_Len - 1;
                begin
                   if Sh_Body_Len <= 1024
@@ -411,8 +429,8 @@ is
                      declare
                         Sh_Bytes : constant Octet_Array :=
                           In_Bytes (In_Bytes'First .. Sh_End);
-                        Cursor : Natural := Sh_End + 1;
-                        Cert_OK : Boolean := True;
+                        Cursor   : Natural := Sh_End + 1;
+                        Cert_OK  : Boolean := True;
                      begin
                         --  ECDHE / ECDHE_With_Cert: SH body holds peer pubkey.
                         if (D.My_Mode = ECDHE
@@ -442,10 +460,11 @@ is
                            else
                               declare
                                  Cert_Body_Len : constant Natural :=
-                                   Natural (In_Bytes (Cursor + 1)) * 65536
+                                   Natural (In_Bytes (Cursor + 1))
+                                   * 65536
                                    + Natural (In_Bytes (Cursor + 2)) * 256
                                    + Natural (In_Bytes (Cursor + 3));
-                                 Cert_End : constant Natural :=
+                                 Cert_End      : constant Natural :=
                                    Cursor + 4 + Cert_Body_Len - 1;
                               begin
                                  if Cert_Body_Len /= 32
@@ -457,7 +476,7 @@ is
                                     --  pin against Trusted_Pub.
                                     for I in 1 .. 32 loop
                                        if In_Bytes (Cursor + 4 + I - 1)
-                                            /= D.Trusted_Pub (I)
+                                         /= D.Trusted_Pub (I)
                                        then
                                           Cert_OK := False;
                                        end if;
@@ -476,16 +495,17 @@ is
                              and then In_Bytes (Cursor) = HS_Certificate_Verify
                            then
                               declare
-                                 Cv_Body_Len : constant Natural :=
-                                   Natural (In_Bytes (Cursor + 1)) * 65536
+                                 Cv_Body_Len  : constant Natural :=
+                                   Natural (In_Bytes (Cursor + 1))
+                                   * 65536
                                    + Natural (In_Bytes (Cursor + 2)) * 256
                                    + Natural (In_Bytes (Cursor + 3));
-                                 Cv_End : constant Natural :=
+                                 Cv_End       : constant Natural :=
                                    Cursor + 4 + Cv_Body_Len - 1;
-                                 Snap : Tls_Core.Sha256.Digest;
+                                 Snap         : Tls_Core.Sha256.Digest;
                                  Sig_Material : Octet_Array (1 .. 130);
-                                 Sig_Last : Natural;
-                                 Sig : Tls_Core.Ed25519.Signature;
+                                 Sig_Last     : Natural;
+                                 Sig          : Tls_Core.Ed25519.Signature;
                               begin
                                  if Cv_Body_Len /= 64
                                    or else Cv_End > In_Bytes'Last
@@ -505,9 +525,9 @@ is
                                          In_Bytes (Cursor + 4 + I - 1);
                                     end loop;
                                     if not Tls_Core.Ed25519.Verify
-                                         (D.Trusted_Pub,
-                                          Sig_Material (1 .. Sig_Last),
-                                          Sig)
+                                             (D.Trusted_Pub,
+                                              Sig_Material (1 .. Sig_Last),
+                                              Sig)
                                     then
                                        Cert_OK := False;
                                     end if;
@@ -546,14 +566,14 @@ is
                D.Cur_State := Failed;
             end if;
 
-         when Awaiting_Finished =>
+         when Awaiting_Finished     =>
             if D.My_Role = Client then
                --  Client emits its Finished in this step (no peer
                --  input is expected — secrets were derived in the
                --  Awaiting_Server_Hello step).
                declare
-                  Body_Of : constant Octet_Array := D.PSK;
-                  Wire    : Octet_Array (1 .. 4 + Body_Of'Length);
+                  Body_Of   : constant Octet_Array := D.PSK;
+                  Wire      : Octet_Array (1 .. 4 + Body_Of'Length);
                   Wire_Last : Natural;
                begin
                   Encode_Handshake (HS_Finished, Body_Of, Wire, Wire_Last);
@@ -574,7 +594,7 @@ is
                end if;
             end if;
 
-         when Done | Failed =>
+         when Done | Failed         =>
             null;
       end case;
 
@@ -586,9 +606,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Get_Secrets
-     (D       : Driver;
-      Out_Sec : out Tls_Core.Handshake.Traffic_Secrets)
-   is
+     (D : Driver; Out_Sec : out Tls_Core.Handshake.Traffic_Secrets) is
    begin
       Out_Sec := D.Secrets;
    end Get_Secrets;

@@ -16,7 +16,7 @@
 with Interfaces;
 
 package Tls_Core
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Octet is Interfaces.Unsigned_8;

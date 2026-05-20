@@ -7,16 +7,14 @@
 with Tls_Core.Sha384;
 
 package Tls_Core.Key_Schedule_Sha384
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Secret is Tls_Core.Sha384.Digest;
 
    --  No functional Posts: same SHA-256 key-schedule rationale.
    procedure Extract
-     (Salt    : Octet_Array;
-      IKM     : Octet_Array;
-      Out_PRK : out Secret)
+     (Salt : Octet_Array; IKM : Octet_Array; Out_PRK : out Secret)
    with
      Pre =>
        Salt'Length = Tls_Core.Sha384.Hash_Length
@@ -33,7 +31,6 @@ is
      Pre =>
        Label'Length in 1 .. 249
        and then Label'Last < Integer'Last - 256
-       and then Messages'Last
-                  < Integer'Last - Tls_Core.Sha384.Block_Length;
+       and then Messages'Last < Integer'Last - Tls_Core.Sha384.Block_Length;
 
 end Tls_Core.Key_Schedule_Sha384;

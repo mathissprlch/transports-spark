@@ -1,8 +1,6 @@
 package body Tls_Core.Transport
-with SPARK_Mode => Off
+  with SPARK_Mode => Off
 is
-
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Maximum wire bytes a single TLS 1.3 record can occupy:
    --  5-byte TLSCiphertext header + 16384 max plaintext + 16-byte
@@ -23,11 +21,11 @@ is
       Role_Of : Role;
       Secrets : Tls_Core.Handshake.Traffic_Secrets) is
    begin
-      P.My_Role       := Role_Of;
-      P.Outbound      := (others => 0);
+      P.My_Role := Role_Of;
+      P.Outbound := [others => 0];
       P.Outbound_Last := 0;
-      P.Inbound       := (others => 0);
-      P.Inbound_Last  := 0;
+      P.Inbound := [others => 0];
+      P.Inbound_Last := 0;
 
       case Role_Of is
          when Client =>
@@ -35,6 +33,7 @@ is
             --  decrypts server→client with Server_App.
             Tls_Core.Channel.Init (P.Send_Dir, Secrets.Client_App);
             Tls_Core.Channel.Init (P.Recv_Dir, Secrets.Server_App);
+
          when Server =>
             --  Server is the mirror.
             Tls_Core.Channel.Init (P.Send_Dir, Secrets.Server_App);
@@ -47,11 +46,8 @@ is
    --  the produced wire bytes to the outbound queue.
    ---------------------------------------------------------------------
 
-   procedure Send
-     (P         : in out Pipe;
-      Plaintext : Octet_Array)
-   is
-      Wire     : Octet_Array (1 .. Max_Record_Wire) := (others => 0);
+   procedure Send (P : in out Pipe; Plaintext : Octet_Array) is
+      Wire     : Octet_Array (1 .. Max_Record_Wire) := [others => 0];
       Wire_Len : Natural := 0;
    begin
       Tls_Core.Channel.Send
@@ -75,9 +71,7 @@ is
    --  Inject — append peer-produced wire bytes to the inbound queue.
    ---------------------------------------------------------------------
 
-   procedure Inject
-     (P     : in out Pipe;
-      Bytes : Octet_Array) is
+   procedure Inject (P : in out Pipe; Bytes : Octet_Array) is
    begin
       if Bytes'Length = 0 then
          return;
@@ -95,13 +89,11 @@ is
    ---------------------------------------------------------------------
 
    procedure Drain
-     (P        : in out Pipe;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (P : in out Pipe; Out_Buf : out Octet_Array; Out_Last : out Natural)
    is
       Take : constant Natural := P.Outbound_Last;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if Take = 0 then
@@ -120,7 +112,7 @@ is
       Out_Last := Take;
 
       --  Reset the outbound queue.
-      P.Outbound      := (others => 0);
+      P.Outbound := [others => 0];
       P.Outbound_Last := 0;
    end Drain;
 
@@ -134,12 +126,11 @@ is
      (P        : in out Pipe;
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural;
-      OK       : out Boolean)
-   is
+      OK       : out Boolean) is
    begin
-      Out_Buf  := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
-      OK       := False;
+      OK := False;
 
       --  Need at least a header + tag's worth of bytes.
       if P.Inbound_Last < Min_Record_Wire then
@@ -158,17 +149,14 @@ is
       begin
          --  Sanity: fragment must include the AEAD tag (16) and the
          --  full record must be present in the queue.
-         if Frag_Len < 16
-           or else 5 + Frag_Len > P.Inbound_Last
-         then
+         if Frag_Len < 16 or else 5 + Frag_Len > P.Inbound_Last then
             return;
          end if;
 
          Wire_Len := 5 + Frag_Len;
 
          declare
-            Local_Out  : Octet_Array (1 .. Out_Buf'Length) :=
-              (others => 0);
+            Local_Out  : Octet_Array (1 .. Out_Buf'Length) := (others => 0);
             Local_Last : Natural := 0;
             Local_OK   : Boolean := False;
          begin
@@ -194,7 +182,7 @@ is
                  Local_Out (1 .. Local_Last);
             end if;
             Out_Last := Local_Last;
-            OK       := True;
+            OK := True;
 
             --  Drop the consumed wire bytes off the front of the
             --  inbound queue, slide the rest down.
@@ -204,9 +192,8 @@ is
             end if;
             --  Zero the now-unused tail so we don't leak old
             --  ciphertext into later Inject's wire view.
-            P.Inbound
-              (P.Inbound_Last - Wire_Len + 1 .. P.Inbound_Last) :=
-                (others => 0);
+            P.Inbound (P.Inbound_Last - Wire_Len + 1 .. P.Inbound_Last) :=
+              [others => 0];
             P.Inbound_Last := P.Inbound_Last - Wire_Len;
          end;
       end;

@@ -32,6 +32,9 @@ endif
 #  `gnatprove` on the Docker CI image where it sits on PATH:
 #  `GNATPROVE=gnatprove make prove`.
 GNATPROVE ?= /Users/mathis/.alire/bin/gnatprove
+#  gnatformat (Ada formatter). Override to plain `gnatformat` on the
+#  Docker CI image where it sits on PATH: `GNATFORMAT=gnatformat make ...`.
+GNATFORMAT ?= /Users/mathis/.alire/bin/gnatformat
 PROVE_LEVEL ?= 2
 SOAK_ITERS ?= 100
 SOAK_QUICK_ITERS := 10
@@ -48,6 +51,7 @@ EXAMPLES_GEN := crates/examples/generated
 
 .PHONY: all build clean help \
         tls-build tls-test tls-perf tls-prove tls-prove-l3 \
+        tls-format tls-format-check \
         prove prove-quick prove-coverage \
         tls-soak tls-soak-quick tls-audit tls-bare \
         tls-interop tls-interop-openssl tls-interop-rustls tls-interop-go \
@@ -179,6 +183,23 @@ tls-prove: tls-audit
 
 tls-prove-l3:
 	@$(MAKE) tls-prove PROVE_LEVEL=3
+
+# Format the hand-written tls_core sources with gnatformat (UTF-8).
+# generated/ is left as RecordFlux emits it. Run via `alr exec` so the
+# toolchain resolves; gnatformat must be given by absolute path.
+TLS_FMT_SRC := $(shell find $(CURDIR)/crates/tls_core/src \( -name '*.ads' -o -name '*.adb' \) ! -name 'tls_core_config.ads')
+
+tls-format:
+	@$(ALR_ENV) alr -C crates/tls_core exec -- \
+	  $(GNATFORMAT) -P $(CURDIR)/crates/tls_core/tls_core.gpr \
+	  --charset utf-8 $(TLS_FMT_SRC)
+
+# CI gate: exit 1 if any source is not already gnatformat-clean.
+tls-format-check:
+	@$(ALR_ENV) alr -C crates/tls_core exec -- \
+	  $(GNATFORMAT) -P $(CURDIR)/crates/tls_core/tls_core.gpr \
+	  --charset utf-8 --check $(TLS_FMT_SRC)
+	@echo "gnatformat: all tls_core sources are formatted."
 
 # Full-stack proof sweep via the workspace umbrella. -U makes
 # gnatprove walk every with'd subproject; one process, one

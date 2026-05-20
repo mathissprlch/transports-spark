@@ -22,7 +22,7 @@
 with Tls_Core.Sha256;
 
 package Tls_Core.Key_Schedule
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    subtype Secret is Tls_Core.Sha256.Digest;
@@ -38,9 +38,7 @@ is
    --  content is not formalized. TLS 1.3 RFC 8448 test vectors
    --  exercise the composed key-schedule end-to-end.
    procedure Extract
-     (Salt   : Octet_Array;
-      IKM    : Octet_Array;
-      Out_PRK : out Secret)
+     (Salt : Octet_Array; IKM : Octet_Array; Out_PRK : out Secret)
    with
      Pre =>
        Salt'Length = Tls_Core.Sha256.Hash_Length
@@ -54,16 +52,15 @@ is
    --
    --  No functional Post: see comment above on Extract.
    procedure Derive_Secret
-     (Secret_In : Secret;
-      Label     : Octet_Array;
-      Messages  : Octet_Array;
+     (Secret_In  : Secret;
+      Label      : Octet_Array;
+      Messages   : Octet_Array;
       Out_Secret : out Secret)
    with
      Pre =>
        Label'Length in 1 .. 249
        and then Label'Last < Integer'Last - 256
-       and then Messages'Last
-                  < Integer'Last - Tls_Core.Sha256.Block_Length;
+       and then Messages'Last < Integer'Last - Tls_Core.Sha256.Block_Length;
 
 private
 

@@ -27,7 +27,7 @@ with Tls_Core.Channel;
 with Tls_Core.Handshake;
 
 package Tls_Core.Transport
-with SPARK_Mode => Off
+  with SPARK_Mode => Off
 is
 
    --  An in-process two-direction TLS pipe. Client and server each
@@ -48,25 +48,19 @@ is
    --  Send: encrypt one record and append wire bytes to the pipe's
    --  outbound buffer. Receive (on the peer's Pipe instance) parses
    --  the next record from its inbound buffer and decrypts.
-   procedure Send
-     (P         : in out Pipe;
-      Plaintext : Octet_Array)
+   procedure Send (P : in out Pipe; Plaintext : Octet_Array)
    with Pre => Plaintext'Length in 1 .. 16384;
 
    --  Hand the bytes that another peer's Send produced back into
    --  this peer for Receive to consume. (Models the network: the
    --  other side sent these bytes, this side now has them.)
-   procedure Inject
-     (P     : in out Pipe;
-      Bytes : Octet_Array);
+   procedure Inject (P : in out Pipe; Bytes : Octet_Array);
 
    --  Take the next outbound wire bytes since the last Drain. Caller
    --  is responsible for delivering them to the peer (e.g. via the
    --  peer's Inject).
    procedure Drain
-     (P        : in out Pipe;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural);
+     (P : in out Pipe; Out_Buf : out Octet_Array; Out_Last : out Natural);
 
    --  Pop one decrypted record from the inbound buffer. Sets OK = False
    --  if no full record is available or the AEAD verify fails.
@@ -86,7 +80,7 @@ private
    subtype Wire_Buffer is Octet_Array (1 .. Buffer_Capacity);
 
    type Pipe is limited record
-      My_Role  : Role := Client;
+      My_Role : Role := Client;
 
       --  Send_Dir encrypts outbound plaintext (Client uses
       --  Client_App secret, Server uses Server_App).
@@ -97,11 +91,11 @@ private
       Recv_Dir : Tls_Core.Channel.Direction;
 
       --  Bytes Send'd but not yet Drain'd.
-      Outbound      : Wire_Buffer := (others => 0);
+      Outbound      : Wire_Buffer := [others => 0];
       Outbound_Last : Natural := 0;
 
       --  Bytes Inject'd but not yet Receive'd.
-      Inbound      : Wire_Buffer := (others => 0);
+      Inbound      : Wire_Buffer := [others => 0];
       Inbound_Last : Natural := 0;
    end record;
 

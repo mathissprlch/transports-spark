@@ -43,18 +43,16 @@ with Tls_Core.Cert_Chain;
 with Tls_Core.Handshake_Buffer;
 with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Sched;
-with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
 with Tls_Core.Record_Layer;
 with Tls_Core.Session_Cache;
 with Tls_Core.Session_Ticket;
-with Tls_Core.Sha256;
 with Tls_Core.Suites;
 with Tls_Core.Transcript;
 with Tls_Core.Transcript_Sha384;
 
 package Tls_Core.Tls13_Driver
-with SPARK_Mode
+  with SPARK_Mode
 is
 
    use type Tls_Core.Suites.Cipher_Suite_Id;
@@ -62,7 +60,6 @@ is
    pragma Unevaluated_Use_Of_Old (Allow);
 
    use type Tls_Core.Octet;
-   use type Tls_Core.Suites.Cipher_Suite_Id;
    use type Tls_Core.Suites.U16;
    use type Tls_Core.Record_Layer.Seq_Number;
 
@@ -93,7 +90,7 @@ is
       Awaiting_Cf,         --  Server sent SH+EE+SF; awaiting client Finished.
       Done,
       Closed,             --  Graceful shutdown — close_notify sent or
-                          --  received after Done. RFC 8446 §6.1.
+      --  received after Done. RFC 8446 §6.1.
       Failed);
 
    --  RFC 8446 §2.2 handshake mode.  The state machine is the same
@@ -159,12 +156,12 @@ is
    --               record fields only.
    --------------------------------------------------------------------
    procedure Init_Psk_Server_With_Hrr
-     (D                 : out Driver;
-      PSK               : Octet_Array;
-      Psk_Identity      : Octet_Array;
-      Ecdhe_Priv        : Octet_Array;
-      Demanded_Group    : Tls_Core.Suites.U16;
-      Cookie            : Octet_Array)
+     (D              : out Driver;
+      PSK            : Octet_Array;
+      Psk_Identity   : Octet_Array;
+      Ecdhe_Priv     : Octet_Array;
+      Demanded_Group : Tls_Core.Suites.U16;
+      Cookie         : Octet_Array)
    with
      Pre =>
        PSK'Length = 32
@@ -221,11 +218,11 @@ is
        and then Cert_Chain_Bytes'Length in 1 .. 4096
        and then Chain_Spec.Count in 1 .. Tls_Core.Cert_Chain.Max_Chain_Depth
        and then (for all I in 1 .. Chain_Spec.Count =>
-                    Chain_Spec.Entries (I).First in Cert_Chain_Bytes'Range
-                    and then Chain_Spec.Entries (I).Last
-                             in Cert_Chain_Bytes'Range
-                    and then Chain_Spec.Entries (I).First
-                             <= Chain_Spec.Entries (I).Last)
+                   Chain_Spec.Entries (I).First in Cert_Chain_Bytes'Range
+                   and then Chain_Spec.Entries (I).Last
+                            in Cert_Chain_Bytes'Range
+                   and then Chain_Spec.Entries (I).First
+                            <= Chain_Spec.Entries (I).Last)
        and then Sign_Priv_Key'Length = 32
        and then Sig_Alg = Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256
        and then Ecdhe_Priv'Length = 32;
@@ -259,11 +256,11 @@ is
        and then Trust_Anchor_Bytes'Length in 16 .. 4096
        and then Trust_Spec.Count in 1 .. Tls_Core.Cert_Chain.Max_Trust_Roots
        and then (for all I in 1 .. Trust_Spec.Count =>
-                    Trust_Spec.Entries (I).First in Trust_Anchor_Bytes'Range
-                    and then Trust_Spec.Entries (I).Last
-                             in Trust_Anchor_Bytes'Range
-                    and then Trust_Spec.Entries (I).First
-                             <= Trust_Spec.Entries (I).Last)
+                   Trust_Spec.Entries (I).First in Trust_Anchor_Bytes'Range
+                   and then Trust_Spec.Entries (I).Last
+                            in Trust_Anchor_Bytes'Range
+                   and then Trust_Spec.Entries (I).First
+                            <= Trust_Spec.Entries (I).Last)
        and then Hostname'Length <= 255
        and then Ecdhe_Priv'Length = 32;
 
@@ -289,9 +286,7 @@ is
    --  Setting an empty Hostname (length 0) clears the field — no
    --  SNI extension is emitted.
    --------------------------------------------------------------------
-   procedure Set_Sni_Hostname
-     (D        : in out Driver;
-      Hostname : Octet_Array)
+   procedure Set_Sni_Hostname (D : in out Driver; Hostname : Octet_Array)
    with Pre => Hostname'Length <= 255;
 
    --  Read back the SNI hostname currently stored on the driver
@@ -299,9 +294,7 @@ is
    --  the server-side CH parse). Out_Last is the number of bytes
    --  written to Out (0 if no SNI was set or seen).
    procedure Sni_Hostname
-     (D        : Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural)
    with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 255;
 
    --------------------------------------------------------------------
@@ -320,31 +313,23 @@ is
    --  a v0.5 follow-up; for now Selected_Alpn returns whatever
    --  the local side decided / saw most recently).
    --------------------------------------------------------------------
-   procedure Set_Alpn_Offers
-     (D     : in out Driver;
-      Names : Octet_Array)
+   procedure Set_Alpn_Offers (D : in out Driver; Names : Octet_Array)
    with Pre => Names'Length in 0 | 2 .. 255;
 
    --  Read back the offers (client side: what was sent;
    --  server side: what was received in CH).
    procedure Alpn_Offers
-     (D        : Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural)
    with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 256;
 
    --  Server side: pick a single ProtocolName from the offered list
    --  to advertise back in EE. Client side: read what the server
    --  picked (filled in by the EE-handling Step branch).
-   procedure Set_Selected_Alpn
-     (D    : in out Driver;
-      Name : Octet_Array)
+   procedure Set_Selected_Alpn (D : in out Driver; Name : Octet_Array)
    with Pre => Name'Length <= 64;
 
    procedure Selected_Alpn
-     (D        : Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural)
    with Pre => Out_Buf'First = 1 and then Out_Buf'Length >= 64;
 
    --  Drive one flight. Caller hands in the bytes received over
@@ -356,18 +341,17 @@ is
    --  PSK_KE transitions are exercised end-to-end via the
    --  RFC 8448 PSK vector at the test-harness level.
    procedure Step
-     (D         : in out Driver;
-      In_Bytes  : Octet_Array;
-      Out_Buf   : out Octet_Array;
-      Out_Last  : out Natural)
+     (D        : in out Driver;
+      In_Bytes : Octet_Array;
+      Out_Buf  : out Octet_Array;
+      Out_Last : out Natural)
    with
      Pre  =>
        In_Bytes'First = 1
        and then In_Bytes'Length <= 16640 + 5
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 4096,
-     Post =>
-       Out_Last in 0 .. Out_Buf'Last;
+     Post => Out_Last in 0 .. Out_Buf'Last;
 
    function Current_State (D : Driver) return State;
 
@@ -413,16 +397,14 @@ is
    --               2-byte alert, calls Aead_Channel.Send.
    --------------------------------------------------------------------
    procedure Send_Close_Notify
-     (D        : in out Driver;
-      Out_Buf  : out Octet_Array;
-      Out_Last : out Natural)
+     (D : in out Driver; Out_Buf : out Octet_Array; Out_Last : out Natural)
    with
      Pre =>
        Current_State (D) = Done
        and then App_Secrets_Set (D)
        and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
                  or else Selected_Suite (D)
-                           = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+                         = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 5 + 2 + 1 + 16;
 
@@ -449,7 +431,7 @@ is
        (Current_State (D) in Idle | Awaiting_CH | Done)
        and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
                  or else Selected_Suite (D)
-                           = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+                         = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then (if Current_State (D) = Done then App_Secrets_Set (D))
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 5 + 2 + 1 + 16;
@@ -497,7 +479,7 @@ is
        Current_State (D) = Done
        and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
                  or else Selected_Suite (D)
-                           = Tls_Core.Suites.Aes_128_Gcm_Sha256)
+                         = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then not Out_Dir'Constrained
        and then not In_Dir'Constrained;
 
@@ -538,15 +520,13 @@ is
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 64
        and then (Request_Update = Tls_Core.Key_Update.Update_Not_Requested
-                 or else Request_Update =
-                           Tls_Core.Key_Update.Update_Requested)
-       and then (Selected_Suite (D) =
-                   Tls_Core.Suites.Chacha20_Poly1305_Sha256
-                 or else Selected_Suite (D) =
-                   Tls_Core.Suites.Aes_128_Gcm_Sha256)
+                 or else Request_Update = Tls_Core.Key_Update.Update_Requested)
+       and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D)
+                         = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then Out_Dir.Suite = Selected_Suite (D)
        and then Tls_Core.Aead_Channel.Seq_Of (Out_Dir)
-                  < Tls_Core.Record_Layer.Seq_Number'Last,
+                < Tls_Core.Record_Layer.Seq_Number'Last,
      Post =>
        Out_Last in 0 .. Out_Buf'Last
        and then Out_Dir.Suite = Out_Dir.Suite'Old;
@@ -582,15 +562,13 @@ is
       Want_Reply   : out Boolean;
       OK           : out Boolean)
    with
-     Pre =>
+     Pre  =>
        Current_State (D) = Done
-       and then (Selected_Suite (D) =
-                   Tls_Core.Suites.Chacha20_Poly1305_Sha256
-                 or else Selected_Suite (D) =
-                   Tls_Core.Suites.Aes_128_Gcm_Sha256)
+       and then (Selected_Suite (D) = Tls_Core.Suites.Chacha20_Poly1305_Sha256
+                 or else Selected_Suite (D)
+                         = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then In_Dir.Suite = Selected_Suite (D),
-     Post =>
-       In_Dir.Suite = In_Dir.Suite'Old;
+     Post => In_Dir.Suite = In_Dir.Suite'Old;
 
    --------------------------------------------------------------------
    --  Session resumption — RFC 8446 §4.6.1 NewSessionTicket and
@@ -660,21 +638,20 @@ is
       Out_Buf      : out Octet_Array;
       Out_Last     : out Natural)
    with
-     Pre =>
+     Pre  =>
        Current_State (D) = Done
        and then Resumption_Master_Secret_Available (D)
        and then Out_Buf'First = 1
        and then Out_Buf'Length >= 2048
-       and then Ticket_Nonce'Length in
-         0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
-       and then Ticket_Bytes'Length in
-         1 .. Tls_Core.Session_Ticket.Max_Ticket_Length
+       and then Ticket_Nonce'Length
+                in 0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
+       and then Ticket_Bytes'Length
+                in 1 .. Tls_Core.Session_Ticket.Max_Ticket_Length
        and then Out_Dir.Suite = Selected_Suite (D)
        and then (Out_Dir.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
-                 or else Out_Dir.Suite =
-                           Tls_Core.Suites.Aes_128_Gcm_Sha256)
+                 or else Out_Dir.Suite = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then Tls_Core.Aead_Channel.Seq_Of (Out_Dir)
-                  < Tls_Core.Record_Layer.Seq_Number'Last,
+                < Tls_Core.Record_Layer.Seq_Number'Last,
      Post =>
        Out_Last in 0 .. Out_Buf'Last
        and then Out_Dir.Suite = Out_Dir.Suite'Old;
@@ -709,19 +686,17 @@ is
       Record_Bytes : Octet_Array;
       OK           : out Boolean)
    with
-     Pre =>
+     Pre  =>
        Current_State (D) = Done
        and then Resumption_Master_Secret_Available (D)
        and then Record_Bytes'First = 1
        and then Record_Bytes'Length in (5 + 1 + 16) .. 4096
        and then In_Dir.Suite = Selected_Suite (D)
        and then (In_Dir.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
-                 or else In_Dir.Suite =
-                           Tls_Core.Suites.Aes_128_Gcm_Sha256)
+                 or else In_Dir.Suite = Tls_Core.Suites.Aes_128_Gcm_Sha256)
        and then Tls_Core.Aead_Channel.Seq_Of (In_Dir)
-                  < Tls_Core.Record_Layer.Seq_Number'Last,
-     Post =>
-       In_Dir.Suite = In_Dir.Suite'Old;
+                < Tls_Core.Record_Layer.Seq_Number'Last,
+     Post => In_Dir.Suite = In_Dir.Suite'Old;
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Post-handshake message demux (RFC 8446
@@ -761,16 +736,16 @@ is
    --              dispatch + delegation to existing primitives.
    --------------------------------------------------------------------
    procedure Process_Post_Handshake_Plaintext
-     (D            : Driver;
-      Plaintext    : Octet_Array;
-      Inner_Type   : Octet;
-      In_Dir       : in out Tls_Core.Aead_Channel.Direction;
-      Recv_Secret  : in out Tls_Core.Key_Sched.Max_Secret;
-      Cache        : in out Tls_Core.Session_Cache.Cache;
-      Saw_Nst      : out Boolean;
+     (D             : Driver;
+      Plaintext     : Octet_Array;
+      Inner_Type    : Octet;
+      In_Dir        : in out Tls_Core.Aead_Channel.Direction;
+      Recv_Secret   : in out Tls_Core.Key_Sched.Max_Secret;
+      Cache         : in out Tls_Core.Session_Cache.Cache;
+      Saw_Nst       : out Boolean;
       Saw_KeyUpdate : out Boolean;
-      Want_Reply   : out Boolean;
-      OK           : out Boolean)
+      Want_Reply    : out Boolean;
+      OK            : out Boolean)
    with
      Pre =>
        Current_State (D) = Done
@@ -779,8 +754,7 @@ is
        and then Plaintext'Length <= 4096
        and then In_Dir.Suite = Selected_Suite (D)
        and then (In_Dir.Suite = Tls_Core.Suites.Chacha20_Poly1305_Sha256
-                 or else In_Dir.Suite =
-                           Tls_Core.Suites.Aes_128_Gcm_Sha256);
+                 or else In_Dir.Suite = Tls_Core.Suites.Aes_128_Gcm_Sha256);
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Initialise as a resumption client. The PSK
@@ -808,31 +782,30 @@ is
    --  larger for some peers).
    --------------------------------------------------------------------
    procedure Init_Psk_Resumption_Client
-     (D    : out Driver;
-      Slot : Tls_Core.Session_Cache.Slot)
+     (D : out Driver; Slot : Tls_Core.Session_Cache.Slot)
    with
      Pre =>
        Slot.Used
        and then Slot.Ticket_Len in 1 .. 1024
-       and then Slot.Ticket_Nonce_Len in
-         0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length;
+       and then Slot.Ticket_Nonce_Len
+                in 0 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length;
 
 private
 
-   subtype Psk_Bytes  is Octet_Array (1 .. 32);
+   subtype Psk_Bytes is Octet_Array (1 .. 32);
    --  1024 mirrors Tls_Core.Hello.Psk_Identity_Len upper bound; sized
    --  for production NewSessionTicket (~190 B openssl, larger for
    --  some peers).  Driver-private state.
    subtype Identity_Bytes is Octet_Array (1 .. 1024);
 
    type Driver is record
-      My_Role     : Role := Server;
-      Cur_State   : State := Awaiting_CH;
+      My_Role      : Role := Server;
+      Cur_State    : State := Awaiting_CH;
       Hash_Ctx     : Tls_Core.Transcript.Accumulator;
       Hash_Ctx_384 : Tls_Core.Transcript_Sha384.Accumulator;
 
-      PSK         : Psk_Bytes := (others => 0);
-      Identity    : Identity_Bytes := (others => 0);
+      PSK          : Psk_Bytes := [others => 0];
+      Identity     : Identity_Bytes := [others => 0];
       Identity_Len : Natural := 0;
 
       --  RFC 8446 §4.2.11.2: resumption-PSK uses the "res binder"
@@ -847,7 +820,7 @@ private
       --  the client may have sent an empty session_id (gnutls does
       --  by default; openssl/mbedtls send a 32-byte random and
       --  abort the handshake if the SH doesn't echo it back).
-      Session_Id_Echo     : Octet_Array (1 .. 32) := (others => 0);
+      Session_Id_Echo     : Octet_Array (1 .. 32) := [others => 0];
       Session_Id_Echo_Len : Natural := 0;
 
       --  X25519 ECDHE state (RFC 8446 §4.2.8 + §7.1 mode 3).
@@ -863,52 +836,52 @@ private
       --                   threaded into Handshake-Secret HKDF-Extract
       --                   as the IKM (replaces the all-zeros IKM that
       --                   psk_ke / mode 1 would have used).
-      My_Ecdhe_Priv  : Octet_Array (1 .. 32) := (others => 0);
-      My_Ecdhe_Pub   : Octet_Array (1 .. 32) := (others => 0);
-      Peer_Ecdhe_Pub : Octet_Array (1 .. 32) := (others => 0);
-      Ecdhe_Shared   : Octet_Array (1 .. 32) := (others => 0);
+      My_Ecdhe_Priv  : Octet_Array (1 .. 32) := [others => 0];
+      My_Ecdhe_Pub   : Octet_Array (1 .. 32) := [others => 0];
+      Peer_Ecdhe_Pub : Octet_Array (1 .. 32) := [others => 0];
+      Ecdhe_Shared   : Octet_Array (1 .. 32) := [others => 0];
 
       --  Negotiated cipher suite. Default value is meaningless
       --  until Step transitions out of Idle / Awaiting_CH.
-      Suite       : Tls_Core.Suites.Cipher_Suite_Id :=
+      Suite : Tls_Core.Suites.Cipher_Suite_Id :=
         Tls_Core.Suites.Chacha20_Poly1305_Sha256;
 
       --  Aead_Channel directions for handshake encryption
       --  (post-SH). Variant-record state pinned by Suite.
-      Hs_Out_Dir  : Tls_Core.Aead_Channel.Direction;
-      Hs_In_Dir   : Tls_Core.Aead_Channel.Direction;
+      Hs_Out_Dir : Tls_Core.Aead_Channel.Direction;
+      Hs_In_Dir  : Tls_Core.Aead_Channel.Direction;
 
       --  Saved handshake-stage state used after Awaiting_CH. v0.5
       --  internal-key-schedule path is SHA-256-only, so secrets and
       --  digests are sized for SHA-256. AES-256-GCM-SHA384 negotiation
       --  is therefore not yet completable through Step (see Wall-hit
       --  note in package comment).
-      C_Hs_Sec    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      S_Hs_Sec    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      Hs_Secret   : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      C_Hs_Sec  : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      S_Hs_Sec  : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      Hs_Secret : Tls_Core.Key_Sched.Max_Secret := [others => 0];
 
       --  Expected client Finished verify_data, computed at the
       --  moment server Finished is sent — saved here so the
       --  Awaiting_Cf path can do a constant-time compare against
       --  the decrypted body.
-      Expected_Cf : Tls_Core.Key_Sched.Max_Digest := (others => 0);
+      Expected_Cf : Tls_Core.Key_Sched.Max_Digest := [others => 0];
 
       --  Application-data secrets (filled at the same time, used
       --  via Open_App_Directions after Done).
-      App_C_Ap    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      App_S_Ap    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      App_Set     : Boolean := False;
+      App_C_Ap : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      App_S_Ap : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      App_Set  : Boolean := False;
 
       --  Master_Secret saved at the moment the application-traffic
       --  secrets are derived, so the Awaiting_Cf branch (server) and
       --  the inline post-Finished branch (client) can compute
       --  resumption_master_secret over CH..CF.
-      Master_Sec     : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      Master_Set     : Boolean := False;
+      Master_Sec : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      Master_Set : Boolean := False;
 
       --  resumption_master_secret per RFC 8446 §7.1 — derived after
       --  client Finished is appended to the transcript (CH..CF).
-      Res_Master_Sec : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      Res_Master_Sec : Tls_Core.Key_Sched.Max_Secret := [others => 0];
       Res_Master_Set : Boolean := False;
 
       --  HelloRetryRequest fields (RFC 8446 §4.1.4 / §4.4.1).
@@ -934,13 +907,12 @@ private
       --  Cookie bytes (server: emitted in HRR, validated against
       --  CH2's echo; client: stored after HRR receipt, echoed in
       --  CH2). Cookie_Len is 0..Max_Cookie_Length.
-      Hrr_Demand  : Boolean := False;
-      Hrr_Sent    : Boolean := False;
-      Hrr_Aware   : Boolean := False;
-      Hrr_Seen    : Boolean := False;
-      Hrr_Group   : Tls_Core.Suites.U16 :=
-        Tls_Core.Suites.Group_Secp256r1;
-      Hrr_Cookie  : Tls_Core.Hello_Retry.Cookie_Bytes := (others => 0);
+      Hrr_Demand     : Boolean := False;
+      Hrr_Sent       : Boolean := False;
+      Hrr_Aware      : Boolean := False;
+      Hrr_Seen       : Boolean := False;
+      Hrr_Group      : Tls_Core.Suites.U16 := Tls_Core.Suites.Group_Secp256r1;
+      Hrr_Cookie     : Tls_Core.Hello_Retry.Cookie_Bytes := [others => 0];
       Hrr_Cookie_Len : Natural := 0;
 
       --  Saved CH1-transcript hash, computed at the moment HRR is
@@ -949,7 +921,7 @@ private
       --  freshly-Init'd Transcript accumulator before appending HRR
       --  + CH2 + the rest of the handshake. Kept after transcript
       --  rebuild for diagnostic / test introspection.
-      Hrr_Ch1_Hash : Tls_Core.Key_Sched.Max_Digest := (others => 0);
+      Hrr_Ch1_Hash : Tls_Core.Key_Sched.Max_Digest := [others => 0];
 
       --  True once the handshake-stage Aead_Channel directions
       --  have been initialised with real (non-zero) traffic secrets.
@@ -957,7 +929,7 @@ private
       Hs_Keys_Set : Boolean := False;
 
       --  Last AlertDescription this driver emitted or recorded.
-      Last_Alert  : Octet := Tls_Core.Alert.Desc_Internal_Error;
+      Last_Alert : Octet := Tls_Core.Alert.Desc_Internal_Error;
 
       --  Application-data direction reused by Send_Close_Notify /
       --  Send_Fatal_Alert post-Done.
@@ -975,7 +947,7 @@ private
       --  The buffer is reset (Init) at construction and any time
       --  the driver transitions through a state that doesn't
       --  preserve message-boundary continuity (e.g. HRR rebuild).
-      Hs_In_Buf   : Tls_Core.Handshake_Buffer.Buffer;
+      Hs_In_Buf : Tls_Core.Handshake_Buffer.Buffer;
 
       --  RFC 6066 §3 / RFC 8446 §4.2.10 — Server Name Indication.
       --  Client sets this via Set_Sni_Hostname before the first Step;
@@ -983,7 +955,7 @@ private
       --  Server populates Sni_Hostname from the inbound CH if a
       --  server_name extension was present (Sni_Len = 0 otherwise).
       --  Max 255 bytes per RFC 1035 §2.3.4.
-      Sni_Hostname : Octet_Array (1 .. 255) := (others => 0);
+      Sni_Hostname : Octet_Array (1 .. 255) := [others => 0];
       Sni_Len      : Natural := 0;
 
       --  RFC 7301 + RFC 8446 §4.2 — ALPN.  Pre-flattened
@@ -993,9 +965,9 @@ private
       --  Selected_Alpn (server's pick from this list, emitted in
       --  EE) is a separate field — Selected_Alpn_Len = 0 until
       --  the server side picks one.
-      Alpn_Offers     : Octet_Array (1 .. 256) := (others => 0);
-      Alpn_Offers_Len : Natural := 0;
-      Selected_Alpn     : Octet_Array (1 .. 64) := (others => 0);
+      Alpn_Offers       : Octet_Array (1 .. 256) := [others => 0];
+      Alpn_Offers_Len   : Natural := 0;
+      Selected_Alpn     : Octet_Array (1 .. 64) := [others => 0];
       Selected_Alpn_Len : Natural range 0 .. 64 := 0;
 
       --  RFC 8446 §4.4.2 / §4.4.3 cert-mode state.  Default is
@@ -1009,36 +981,40 @@ private
       --  into it (leaf at index 1, intermediates at 2.., optional
       --  root anchor hint at the end).  Server emits these in the
       --  §4.4.2 certificate_list.
-      Cert_Chain_Bytes : Octet_Array (1 .. 4096) := (others => 0);
+      Cert_Chain_Bytes : Octet_Array (1 .. 4096) := [others => 0];
       Cert_Chain_Len   : Natural := 0;
       Cert_Chain_Spec  : Tls_Core.Cert_Chain.Chain;
       --  ECDSA-P256 private scalar — used for the §4.4.3 signature
       --  on the post-Cert transcript hash.  Sig_Alg encodes which
       --  signature scheme to advertise / use; v0.5 = 0x0403 only.
-      Server_Sign_Priv : Octet_Array (1 .. 32) := (others => 0);
+      Server_Sign_Priv : Octet_Array (1 .. 32) := [others => 0];
       Sig_Alg          : Tls_Core.Suites.U16 :=
         Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256;
 
       --  Client-side cert-mode state — trust anchors used for chain
       --  validation (Cert_Chain.Authenticate_Server).  Hostname re-
       --  uses Sni_Hostname / Sni_Len above.
-      Trust_Anchor_Bytes : Octet_Array (1 .. 4096) := (others => 0);
+      Trust_Anchor_Bytes : Octet_Array (1 .. 4096) := [others => 0];
       Trust_Anchor_Len   : Natural := 0;
       Trust_Anchor_Spec  : Tls_Core.Cert_Chain.Trust_Store;
    end record;
 
-   function Current_State (D : Driver) return State is (D.Cur_State);
+   function Current_State (D : Driver) return State
+   is (D.Cur_State);
 
    function Selected_Suite (D : Driver) return Tls_Core.Suites.Cipher_Suite_Id
    is (D.Suite);
 
-   function Last_Alert_Description (D : Driver) return Octet is (D.Last_Alert);
+   function Last_Alert_Description (D : Driver) return Octet
+   is (D.Last_Alert);
 
-   function App_Secrets_Set (D : Driver) return Boolean is (D.App_Set);
+   function App_Secrets_Set (D : Driver) return Boolean
+   is (D.App_Set);
 
    function Resumption_Master_Secret_Available (D : Driver) return Boolean
    is (D.Res_Master_Set);
 
-   function Mode (D : Driver) return Driver_Mode is (D.Mode);
+   function Mode (D : Driver) return Driver_Mode
+   is (D.Mode);
 
 end Tls_Core.Tls13_Driver;

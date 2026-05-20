@@ -3,27 +3,20 @@ with Tls_Core.Hmac_Sha384;
 with Tls_Core.Hkdf_Sha384;
 
 package body Tls_Core.Key_Schedule_Sha384
-with SPARK_Mode
+  with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
-
    procedure Extract
-     (Salt    : Octet_Array;
-      IKM     : Octet_Array;
-      Out_PRK : out Secret)
-   is
+     (Salt : Octet_Array; IKM : Octet_Array; Out_PRK : out Secret) is
    begin
       Tls_Core.Hmac_Sha384.Compute
-        (Key     => Salt,
-         Message => IKM,
-         Out_Tag => Out_PRK);
+        (Key => Salt, Message => IKM, Out_Tag => Out_PRK);
    end Extract;
 
    --  Max_Info = 512 covers worst-case label (249) + context (48)
    --  with headroom.
-   procedure Hkdf_Expand_Label_Sha384
-     is new Tls_Core.Hkdf.Expand_Label
+   procedure Hkdf_Expand_Label_Sha384 is new
+     Tls_Core.Hkdf.Expand_Label
        (Hash_Length      => Tls_Core.Sha384.Hash_Length,
         Max_Info         => 512,
         Spec_Hmac_Expand => Tls_Core.Hkdf_Sha384.Spec_HKDF_Expand,

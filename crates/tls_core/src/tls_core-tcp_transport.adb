@@ -1,7 +1,7 @@
 with Ada.Streams;
 
 package body Tls_Core.Tcp_Transport
-with SPARK_Mode => Off
+  with SPARK_Mode => Off
 is
 
    --  GNAT.Sockets is not SPARK; the wrapper API is consumed from
@@ -14,17 +14,14 @@ is
    --  Is_Open
    ---------------------------------------------------------------------
 
-   function Is_Open (Chan : Channel) return Boolean is (Chan.Open);
+   function Is_Open (Chan : Channel) return Boolean
+   is (Chan.Open);
 
    ---------------------------------------------------------------------
    --  Connect
    ---------------------------------------------------------------------
 
-   procedure Connect
-     (Chan : in out Channel;
-      Host : String;
-      Port : Natural)
-   is
+   procedure Connect (Chan : in out Channel; Host : String; Port : Natural) is
       use GNAT.Sockets;
       Address : constant Sock_Addr_Type :=
         (Family => Family_Inet,
@@ -39,7 +36,8 @@ is
          begin
             Close_Socket (Chan.Socket);
          exception
-            when others => null;
+            when others =>
+               null;
          end;
          Chan.Open := False;
          raise Connect_Error;
@@ -49,14 +47,10 @@ is
    --  Send_All — write the whole buffer or raise Send_Error.
    ---------------------------------------------------------------------
 
-   procedure Send_All
-     (Chan : Channel;
-      Data : Octet_Array)
-   is
+   procedure Send_All (Chan : Channel; Data : Octet_Array) is
       use Ada.Streams;
-      Buf  : Stream_Element_Array
-        (1 .. Stream_Element_Offset (Data'Length));
-      Last : Stream_Element_Offset;
+      Buf    : Stream_Element_Array (1 .. Stream_Element_Offset (Data'Length));
+      Last   : Stream_Element_Offset;
       Cursor : Stream_Element_Offset := Buf'First;
    begin
       if Data'Length = 0 then
@@ -89,9 +83,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Recv_All
-     (Chan    : Channel;
-      Buffer  : out Octet_Array;
-      Success : out Boolean)
+     (Chan : Channel; Buffer : out Octet_Array; Success : out Boolean)
    is
       use Ada.Streams;
       Total  : constant Stream_Element_Offset :=
@@ -100,7 +92,7 @@ is
       Cursor : Stream_Element_Offset := Buf'First;
       Last   : Stream_Element_Offset;
    begin
-      Buffer  := (others => 0);
+      Buffer := [others => 0];
       Success := False;
       if Buffer'Length = 0 then
          Success := True;
@@ -140,7 +132,8 @@ is
       begin
          GNAT.Sockets.Close_Socket (Chan.Socket);
       exception
-         when others => null;
+         when others =>
+            null;
       end;
       Chan.Open := False;
    end Close;
@@ -149,32 +142,28 @@ is
    --  Listener side
    ---------------------------------------------------------------------
 
-   function Is_Listening (L : Listener) return Boolean is (L.Listening);
+   function Is_Listening (L : Listener) return Boolean
+   is (L.Listening);
 
-   function Bound_Port (L : Listener) return Natural is (L.Port);
+   function Bound_Port (L : Listener) return Natural
+   is (L.Port);
 
-   procedure Listen
-     (L    : in out Listener;
-      Host : String;
-      Port : Natural)
-   is
+   procedure Listen (L : in out Listener; Host : String; Port : Natural) is
       use GNAT.Sockets;
       Address : constant Sock_Addr_Type :=
         (Family => Family_Inet,
-         Addr   => (if Host = "0.0.0.0" then Any_Inet_Addr
-                    else Inet_Addr (Host)),
+         Addr   =>
+           (if Host = "0.0.0.0" then Any_Inet_Addr else Inet_Addr (Host)),
          Port   => Port_Type (Port));
    begin
       Create_Socket (L.Socket, Family_Inet, Socket_Stream);
-      Set_Socket_Option
-        (L.Socket, Socket_Level, (Reuse_Address, True));
+      Set_Socket_Option (L.Socket, Socket_Level, (Reuse_Address, True));
       Bind_Socket (L.Socket, Address);
       Listen_Socket (L.Socket, 8);
       --  Read back the actual bound port — Get_Socket_Name reflects
       --  the kernel-assigned port when caller passed Port = 0.
       declare
-         Bound : constant Sock_Addr_Type :=
-           Get_Socket_Name (L.Socket);
+         Bound : constant Sock_Addr_Type := Get_Socket_Name (L.Socket);
       begin
          L.Port := Natural (Bound.Port);
       end;
@@ -184,16 +173,14 @@ is
          begin
             Close_Socket (L.Socket);
          exception
-            when others => null;
+            when others =>
+               null;
          end;
          L.Listening := False;
          raise Connect_Error;
    end Listen;
 
-   procedure Accept_One
-     (L    : in out Listener;
-      Chan : in out Channel)
-   is
+   procedure Accept_One (L : in out Listener; Chan : in out Channel) is
       use GNAT.Sockets;
       Peer : Sock_Addr_Type;
    begin
@@ -210,12 +197,13 @@ is
       begin
          GNAT.Sockets.Close_Socket (L.Socket);
       exception
-         when others => null;
+         when others =>
+            null;
       end;
       L.Listening := False;
    end Stop;
 
-   function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type is
-     (Chan.Socket);
+   function Native_Socket (Chan : Channel) return GNAT.Sockets.Socket_Type
+   is (Chan.Socket);
 
 end Tls_Core.Tcp_Transport;

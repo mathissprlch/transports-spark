@@ -112,6 +112,12 @@ RUN --mount=type=cache,target=/root/.cache/alire,sharing=locked \
     alr -n install --prefix=/usr/local gnatprove \
  && gnatprove --version | head -1
 
+# gnatformat — Ada formatter, same install pattern so the Makefile
+# (with GNATFORMAT=gnatformat) picks it up for `make tls-format-check`.
+RUN --mount=type=cache,target=/root/.cache/alire,sharing=locked \
+    alr -n install --prefix=/usr/local gnatformat_bin \
+ && gnatformat --version | head -1
+
 # ──────────────────────────────────────────────────────────────
 # Stage 2 — deps: warm the Alire crate cache for our manifests
 # ──────────────────────────────────────────────────────────────
@@ -201,6 +207,7 @@ COPY . .
 
 # gnatprove on PATH from base stage; let the Makefile pick it up.
 ENV GNATPROVE=gnatprove
+ENV GNATFORMAT=gnatformat
 
 # Build the v0.5+ crates we care about for the CI image:
 #   * tls_core / tls_transport / tls_interop  — interop matrix harness
@@ -260,6 +267,7 @@ LABEL org.opencontainers.image.source="https://github.com/mathissprlch/transport
 
 WORKDIR /work
 ENV GNATPROVE=gnatprove
+ENV GNATFORMAT=gnatformat
 
 # Default: print the available targets and stop.  Specific
 # subcommands are invoked via `docker run img <make-target>`.
