@@ -4,7 +4,6 @@
 --  Spec mirror: miTLS src/tls/MiTLS.Parsers.ClientHello
 --  Standard:    RFC 8446 §4.1.2
 
-
 package Tls_Core.Client_Hello_Rflx
   with SPARK_Mode
 is

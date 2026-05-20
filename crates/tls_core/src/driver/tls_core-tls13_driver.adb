@@ -12,8 +12,6 @@ package body Tls_Core.Tls13_Driver
   with SPARK_Mode
 is
 
-
-
    use Helpers;
 
    procedure Init_Psk_Server

@@ -6,7 +6,6 @@ package body Tls_Core.Key_Schedule
   with SPARK_Mode
 is
 
-
    ---------------------------------------------------------------------
    --  Extract — HKDF-Extract = HMAC-Hash(salt, IKM).
    ---------------------------------------------------------------------

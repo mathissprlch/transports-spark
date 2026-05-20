@@ -4,7 +4,6 @@ package body Tls_Core.Channel
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    --  TLS 1.3 §5.2 record-layer envelope opaque_type values.

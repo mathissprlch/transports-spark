@@ -4,7 +4,6 @@ package body Tls_Core.X25519
   with SPARK_Mode
 is
 
-
    use Interfaces;
    use Tls_Core.Field25519;
 

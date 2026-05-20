@@ -4,7 +4,6 @@ package body Tls_Core.Handshake_Driver
   with SPARK_Mode
 is
 
-
    use type Tls_Core.Octet;
 
    --  Wire framing for PSK_KE only: we model each Handshake as a

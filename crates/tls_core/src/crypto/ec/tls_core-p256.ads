@@ -57,7 +57,6 @@ package Tls_Core.P256
   with SPARK_Mode
 is
 
-
    subtype Field is Tls_Core.P256_Field.Field;
 
    type Point is private;
@@ -185,8 +184,6 @@ is
 
 private
 
-
-
    type Point is record
       X : Tls_Core.P256_Field.Field;
       Y : Tls_Core.P256_Field.Field;
@@ -268,6 +265,5 @@ private
          16#51#,
          16#F5#],
       Z => Tls_Core.P256_Field.One);
-
 
 end Tls_Core.P256;

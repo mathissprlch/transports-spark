@@ -46,7 +46,6 @@ package Tls_Core.Rsa_Pss
   with SPARK_Mode
 is
 
-
    --  Make bitwise/relational operators on Octet (Unsigned_8) visible
    --  in Pre/Post expressions below.
    use type Interfaces.Unsigned_8;
@@ -318,6 +317,5 @@ is
        and then Message'Length <= Natural'Last - 17 - 128
        and then Message'Last < Integer'Last - 128
        and then Salt'Length = 48;
-
 
 end Tls_Core.Rsa_Pss;

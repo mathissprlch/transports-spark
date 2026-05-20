@@ -7,7 +7,6 @@ package body Tls_Core.Rsa_Pss
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    ---------------------------------------------------------------------
@@ -539,6 +538,5 @@ is
       Tls_Core.Bignum_2048.Lemma_Bigint_Roundtrip (M);
       Emsa_Pss_Verify_Sha384 (Message, M, OK);
    end Verify_Sha384;
-
 
 end Tls_Core.Rsa_Pss;

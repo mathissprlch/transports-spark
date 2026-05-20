@@ -11,7 +11,6 @@ package body Tls_Core.Psk_Binder
   with SPARK_Mode
 is
 
-
    use type Tls_Core.Octet;
    use type Tls_Core.Suites.Cipher_Suite_Id;
 

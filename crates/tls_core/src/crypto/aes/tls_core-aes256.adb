@@ -4,7 +4,6 @@ package body Tls_Core.Aes256
   with SPARK_Mode
 is
 
-
    ---------------------------------------------------------------------
    --  Expand_Key — body is a one-liner over the platinum spec.
    ---------------------------------------------------------------------

@@ -6,7 +6,6 @@ package body Tls_Core.Key_Update
   with SPARK_Mode
 is
 
-
    --  Wrap the SHA-256 Expand_Label here (matches the pattern in
    --  Tls_Core.Traffic_Keys). For SHA-384 we re-use the existing
    --  Tls_Core.Hkdf_Label_Sha384.Expand_Label instance.

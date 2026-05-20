@@ -2,7 +2,6 @@ package body Tls_Core.Cert_Verify
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    --  RFC 8446 §4.4.3 — fixed prefix bytes for the CertVerify

@@ -4,7 +4,6 @@ package body Tls_Core.Aead_Chacha20_Poly1305
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    ---------------------------------------------------------------------

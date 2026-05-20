@@ -48,8 +48,7 @@ is
       Sid_Last   : out Natural;
       Ext_First  : out Natural;
       Ext_Last   : out Natural;
-      OK         : out Boolean)
-   is
+      OK         : out Boolean) is
    begin
       Random := [others => 0];
       Suite_Code := 0;
@@ -244,7 +243,8 @@ is
                return;
             end if;
             declare
-               Ext_Copy     : constant Octet_Array (1 .. Ext_Len) := Local (Ef .. El);
+               Ext_Copy     : constant Octet_Array (1 .. Ext_Len) :=
+                 Local (Ef .. El);
                Ks_Ef, Ks_El : Natural;
                Ks_Found     : Boolean;
             begin

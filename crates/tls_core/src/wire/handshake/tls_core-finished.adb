@@ -6,7 +6,6 @@ package body Tls_Core.Finished
   with SPARK_Mode
 is
 
-
    --  Slice 1's Expand_Label generic, instantiated against
    --  slice 7's HMAC-SHA-256 primitive.
    procedure Hkdf_Expand_Label_Sha256 is new
@@ -25,7 +24,14 @@ is
       Empty_Ctx    : constant Octet_Array (1 .. 0) := [others => 0];
       Label        : constant Octet_Array (1 .. 8) :=
       --  "finished"
-        [16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#];
+        [16#66#,
+         16#69#,
+         16#6E#,
+         16#69#,
+         16#73#,
+         16#68#,
+         16#65#,
+         16#64#];
    begin
       --  finished_key = HKDF-Expand-Label(BaseKey, "finished", "", 32)
       Hkdf_Expand_Label_Sha256

@@ -1,4 +1,3 @@
-
 package body Tls_Core.Hello_Retry
   with SPARK_Mode
 is

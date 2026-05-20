@@ -42,12 +42,10 @@ package Tls_Core.P256_Order
   with SPARK_Mode
 is
 
-
    subtype Scalar is Octet_Array (1 .. 32);
 
    Zero : constant Scalar := [others => 0];
    One  : constant Scalar := [1 .. 31 => 0, 32 => 1];
-
 
    ---------------------------------------------------------------------
    --  Ghost spec layer.

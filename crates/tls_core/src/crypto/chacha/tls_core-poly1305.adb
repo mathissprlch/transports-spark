@@ -4,7 +4,6 @@ is
 
    use Interfaces;
 
-
    --  Limb_Index / Limbs are now declared in the spec so functional
    --  Posts on the private helpers can reference As_Nat5 / Feval5.
 

@@ -9,7 +9,6 @@ package body Tls_Core.X509
   with SPARK_Mode
 is
 
-
    use type Tls_Core.Octet;
 
    --  ASN.1 / DER tag bytes we care about.

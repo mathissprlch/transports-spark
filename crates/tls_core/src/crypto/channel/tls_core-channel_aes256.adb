@@ -1,8 +1,6 @@
-
 package body Tls_Core.Channel_Aes256
   with SPARK_Mode
 is
-
 
    use Interfaces;
 

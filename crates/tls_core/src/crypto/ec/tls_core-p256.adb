@@ -4,7 +4,6 @@ package body Tls_Core.P256
   with SPARK_Mode
 is
 
-
    use Interfaces;
    use Tls_Core.P256_Field;
 
@@ -255,14 +254,14 @@ is
                declare
                   Pow_2_B : constant Natural :=
                     (case B is
-                       when 0      => 1,
-                       when 1      => 2,
-                       when 2      => 4,
-                       when 3      => 8,
-                       when 4      => 16,
-                       when 5      => 32,
-                       when 6      => 64,
-                       when 7      => 128);
+                       when 0 => 1,
+                       when 1 => 2,
+                       when 2 => 4,
+                       when 3 => 8,
+                       when 4 => 16,
+                       when 5 => 32,
+                       when 6 => 64,
+                       when 7 => 128);
                begin
                   Bit := (Byte_V / Pow_2_B) mod 2;
                end;

@@ -4,7 +4,6 @@ package body Tls_Core.Traffic_Keys_Aes256_Sha384
   with SPARK_Mode
 is
 
-
    Key_Label : constant Octet_Array (1 .. 3) :=
      [16#6B#, 16#65#, 16#79#];  --  "key"
    Iv_Label  : constant Octet_Array (1 .. 2) :=

@@ -5,7 +5,6 @@ package body Tls_Core.P256_Field
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    ---------------------------------------------------------------------

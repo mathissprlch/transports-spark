@@ -4,7 +4,6 @@ package body Tls_Core.Extensions
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    procedure Put_U16

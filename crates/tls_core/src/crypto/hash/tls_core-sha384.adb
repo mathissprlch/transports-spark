@@ -4,7 +4,6 @@ is
 
    use Interfaces;
 
-
    ---------------------------------------------------------------------
    --  Round constants K[0..79] — identical to SHA-512.
    --  HACL* `Spec.SHA2.Constants.k384_512` (lib/Spec.SHA2.Constants.fst:27).

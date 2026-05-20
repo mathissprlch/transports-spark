@@ -4,7 +4,6 @@ package body Tls_Core.Aes_Core
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    ---------------------------------------------------------------------

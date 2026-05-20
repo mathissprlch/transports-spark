@@ -22,7 +22,6 @@ package Tls_Core.Ecdsa_P256
   with SPARK_Mode
 is
 
-
    subtype Public_Key_Bytes is Octet_Array (1 .. 65);
    subtype Component is Octet_Array (1 .. 32);
 
@@ -91,6 +90,5 @@ is
        Message'First = 1
        and then Message'Last < Integer'Last - 64
        and then Message'Length <= Natural'Last - 73;
-
 
 end Tls_Core.Ecdsa_P256;

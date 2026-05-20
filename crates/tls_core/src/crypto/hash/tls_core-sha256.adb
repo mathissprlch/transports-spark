@@ -4,7 +4,6 @@ is
 
    use Interfaces;
 
-
    ---------------------------------------------------------------------
    --  FIPS 180-4 §4.2.2 round constants K[0..63] —
    --  HACL* `Spec.SHA2.Constants.k224_256` (lib/Spec.SHA2.Constants.fst:24).

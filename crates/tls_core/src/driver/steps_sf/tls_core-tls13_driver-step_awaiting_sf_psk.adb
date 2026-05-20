@@ -10,7 +10,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Sf_Psk
   with SPARK_Mode
 is
 
-
    procedure Handle
      (D        : in out Driver;
       In_Bytes : Octet_Array;
@@ -30,9 +29,9 @@ is
 
          --  Used to derive c_hs / s_hs after parsing SH.
 
-         Th_After_Sh  : Tls_Core.Key_Sched.Max_Digest;
-         Th_After_Ee  : Tls_Core.Key_Sched.Max_Digest;
-         Th_After_Sf  : Tls_Core.Key_Sched.Max_Digest;
+         Th_After_Sh : Tls_Core.Key_Sched.Max_Digest;
+         Th_After_Ee : Tls_Core.Key_Sched.Max_Digest;
+         Th_After_Sf : Tls_Core.Key_Sched.Max_Digest;
       begin
          --  Step 1: parse SH TLSPlaintext.
          if Cursor + 4 > In_Bytes'Last

@@ -45,7 +45,6 @@ package Tls_Core.Bignum_2048
   with SPARK_Mode
 is
 
-
    --  Make the `=` operator on Octet (Interfaces.Unsigned_8) directly
    --  visible inside `Post` expressions in this spec.
    use type Interfaces.Unsigned_8;
@@ -57,7 +56,6 @@ is
    --  Bigint (256) is the least significant.
 
    Zero : constant Bigint := [others => 0];
-
 
    ---------------------------------------------------------------------
    --  Ghost spec layer.

@@ -5,7 +5,6 @@ with Tls_Core.Sha512;
 
 package body Tls_Core.Ed25519 is
 
-
    use Interfaces;
    use Tls_Core.Field25519;
 

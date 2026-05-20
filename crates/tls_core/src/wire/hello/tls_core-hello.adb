@@ -5,7 +5,6 @@ package body Tls_Core.Hello
   with SPARK_Mode
 is
 
-
    use type Tls_Core.Octet;
 
    --  Constants for the cipher suite + named group we negotiate.

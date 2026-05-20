@@ -2,8 +2,6 @@ package body Tls_Core.Gcm_Core
   with SPARK_Mode
 is
 
-
-
    ---------------------------------------------------------------------
    --  Forward declaration: Lemma_GF128_Mul_From_Eq is needed by
    --  Spec_GF128_Mul's body. See its full body further down.
@@ -276,7 +274,6 @@ is
    --  using the Eq congruence lemma to handle the aggregate-equality
    --  step Block_16'(others => 0) = Zero.
    ---------------------------------------------------------------------
-
 
    ---------------------------------------------------------------------
    --  Lemma_GF128_Mul_From_Base — restate the base case of

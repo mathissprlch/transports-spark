@@ -6,7 +6,6 @@ is
 
    use type Interfaces.Unsigned_8;
 
-
    Block_Length : constant := Tls_Core.Sha256.Block_Length;
    Hash_Length  : constant := Tls_Core.Sha256.Hash_Length;
 

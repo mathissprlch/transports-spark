@@ -4,7 +4,6 @@ package body Tls_Core.Ghash_Table
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    --  rem_4bit table — see OpenSSL gcm128.c. Bytes 1 and 2 of the

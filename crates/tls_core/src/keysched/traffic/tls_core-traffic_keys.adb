@@ -5,7 +5,6 @@ package body Tls_Core.Traffic_Keys
   with SPARK_Mode
 is
 
-
    procedure Hkdf_Expand_Label_Sha256 is new
      Tls_Core.Hkdf.Expand_Label
        (Hash_Length      => 32,

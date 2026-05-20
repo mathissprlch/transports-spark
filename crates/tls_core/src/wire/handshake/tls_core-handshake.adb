@@ -2,7 +2,6 @@ package body Tls_Core.Handshake
   with SPARK_Mode
 is
 
-
    procedure Derive_Psk_Secrets
      (PSK             : Octet_Array;
       Client_Hello    : Octet_Array;

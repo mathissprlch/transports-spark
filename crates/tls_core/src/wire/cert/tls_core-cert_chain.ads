@@ -32,7 +32,6 @@ package Tls_Core.Cert_Chain
   with SPARK_Mode
 is
 
-
    --  Maximum supported chain depth (leaf + intermediates). Real
    --  Web PKI chains rarely exceed 4; we cap at 6 to be generous
    --  while keeping the validator's working-set bounded.

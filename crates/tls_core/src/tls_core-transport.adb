@@ -2,7 +2,6 @@ package body Tls_Core.Transport
   with SPARK_Mode => Off
 is
 
-
    --  Maximum wire bytes a single TLS 1.3 record can occupy:
    --  5-byte TLSCiphertext header + 16384 max plaintext + 16-byte
    --  AEAD tag. The Send pre-condition caps plaintext at 16384.

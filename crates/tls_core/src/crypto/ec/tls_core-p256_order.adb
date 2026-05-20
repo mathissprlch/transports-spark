@@ -4,7 +4,6 @@ package body Tls_Core.P256_Order
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    ---------------------------------------------------------------------

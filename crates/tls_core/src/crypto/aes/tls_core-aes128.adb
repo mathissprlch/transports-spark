@@ -4,7 +4,6 @@ package body Tls_Core.Aes128
   with SPARK_Mode
 is
 
-
    ---------------------------------------------------------------------
    --  Expand_Key — FIPS 197 §5.2 KeyExpansion (Nk = 4, Nr = 10).
    --  Body is a one-liner over the platinum spec; the Post

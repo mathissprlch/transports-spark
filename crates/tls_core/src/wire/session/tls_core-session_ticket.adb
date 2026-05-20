@@ -5,7 +5,6 @@ package body Tls_Core.Session_Ticket
   with SPARK_Mode
 is
 
-
    ---------------------------------------------------------------------
    --  HKDF-Expand-Label, SHA-256-pinned. Same instantiation pattern
    --  used by Tls_Core.Tls13_Driver and Tls_Core.Key_Update.

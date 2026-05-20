@@ -4,7 +4,6 @@ package body Tls_Core.Hkdf_Sha256
   with SPARK_Mode
 is
 
-
    ---------------------------------------------------------------------
    --  Spec_HKDF_Expand_Block — single T(i) computation.
    --

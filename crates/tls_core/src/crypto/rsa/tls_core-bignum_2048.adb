@@ -6,7 +6,6 @@ package body Tls_Core.Bignum_2048
   with SPARK_Mode
 is
 
-
    use Interfaces;
 
    ---------------------------------------------------------------------

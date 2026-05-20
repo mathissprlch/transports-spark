@@ -96,7 +96,6 @@ is
    --  this layer's point of view.
    ---------------------------------------------------------------------
 
-
    type Stream is private;
 
    function Seq_Of (S : Stream) return Seq_Number

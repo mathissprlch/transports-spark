@@ -5,7 +5,6 @@ package body Tls_Core.Aead_Aes128_Gcm
   with SPARK_Mode
 is
 
-
    use type Tls_Core.Octet;
 
    subtype Block_16 is Tls_Core.Aes_Core.Block;

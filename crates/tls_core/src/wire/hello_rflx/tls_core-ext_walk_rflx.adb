@@ -67,8 +67,7 @@ is
                  Natural (Ext.Get_Length (Ext_Ctx));
                Byte_Off : Natural;
             begin
-               if FF < RFLX.RFLX_Types.Bit_Index'Last - 8
-               then
+               if FF < RFLX.RFLX_Types.Bit_Index'Last - 8 then
                   Byte_Off := Natural (FF) / 8 + 1;
                   if Byte_Off >= 1
                     and then DL_Val <= Ext_Bytes'Length

@@ -4,7 +4,6 @@ package body Tls_Core.Hkdf_Sha384
   with SPARK_Mode
 is
 
-
    function Spec_HKDF_Expand_Block
      (PRK         : Octet_Array;
       Info        : Octet_Array;

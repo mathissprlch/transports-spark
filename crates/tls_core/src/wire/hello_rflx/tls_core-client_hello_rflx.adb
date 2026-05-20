@@ -408,7 +408,8 @@ is
             return;
          end if;
          declare
-            Ext_Blob   : constant Octet_Array (1 .. Ext_Len) := In_Bytes (Ef .. El);
+            Ext_Blob   : constant Octet_Array (1 .. Ext_Len) :=
+              In_Bytes (Ef .. El);
             Ks_F, Ks_L : Natural;
             Ks_Found   : Boolean;
             Sa_F, Sa_L : Natural;
