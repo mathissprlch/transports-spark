@@ -42,10 +42,10 @@ project Examples is
          when "release" =>
             for Default_Switches ("Ada") use
               ("-g", "-O2", "-gnatn",
-               "-gnatwa", "-gnatyM100");
+               "-gnat2022", "-gnatwa", "-gnatyM100");
          when "debug" =>
             for Default_Switches ("Ada") use
-              ("-g", "-O0", "-gnatwa", "-gnatVa",
+              ("-g", "-O0", "-gnat2022", "-gnatwa", "-gnatVa",
                "-gnatyM100", "-gnata");
       end case;
    end Compiler;
