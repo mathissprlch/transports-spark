@@ -1,5 +1,3 @@
-with RFLX.Http2_Parameters;
-
 package body Http2_Core.Wire
 with SPARK_Mode
 is
@@ -28,20 +26,6 @@ is
    --      starting at At_Idx; expressed as subtraction so the
    --      precondition itself never evaluates At_Idx + N)
    --    * V is bounded to the wire-field width
-
-   procedure Put_U8
-     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
-   with
-     Pre => Buffer /= null
-            and then At_Idx in Buffer.all'Range
-            and then V <= 16#FF#;
-
-   procedure Put_U8
-     (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
-   is
-   begin
-      Buffer (At_Idx) := U8 (V);
-   end Put_U8;
 
    procedure Put_Be16
      (Buffer : Bytes_Ptr; At_Idx : Index; V : Bit_Len)
@@ -198,7 +182,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Settings
-     (Buffer : in out Bytes_Ptr;
+     (Buffer : Bytes_Ptr;
       Last   :    out Index;
       Params : Settings_List)
    is
@@ -220,7 +204,7 @@ is
    end Encode_Settings;
 
    procedure Encode_Settings_Ack
-     (Buffer : in out Bytes_Ptr;
+     (Buffer : Bytes_Ptr;
       Last   :    out Index)
    is
    begin
@@ -279,7 +263,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Ping
-     (Buffer       : in out Bytes_Ptr;
+     (Buffer       : Bytes_Ptr;
       Last         :    out Index;
       Opaque_Data  : RFLX.RFLX_Types.Bytes;
       Ack          : Boolean := False)
@@ -299,7 +283,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Rst_Stream
-     (Buffer     : in out Bytes_Ptr;
+     (Buffer     : Bytes_Ptr;
       Last       :    out Index;
       Stream_Id  : Bit_Len;
       Error_Code : Bit_Len)
@@ -317,7 +301,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Window_Update
-     (Buffer    : in out Bytes_Ptr;
+     (Buffer    : Bytes_Ptr;
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Increment : Bit_Len)
@@ -348,7 +332,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Goaway
-     (Buffer         : in out Bytes_Ptr;
+     (Buffer         : Bytes_Ptr;
       Last           :    out Index;
       Last_Stream_Id : Bit_Len;
       Error_Code     : Bit_Len;
@@ -380,7 +364,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Headers
-     (Buffer    : in out Bytes_Ptr;
+     (Buffer    : Bytes_Ptr;
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Fragment  : RFLX.RFLX_Types.Bytes;
@@ -405,7 +389,7 @@ is
    end Encode_Headers;
 
    procedure Encode_Continuation
-     (Buffer    : in out Bytes_Ptr;
+     (Buffer    : Bytes_Ptr;
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Fragment  : RFLX.RFLX_Types.Bytes;
@@ -432,7 +416,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Data
-     (Buffer     : in out Bytes_Ptr;
+     (Buffer     : Bytes_Ptr;
       Last       :    out Index;
       Stream_Id  : Bit_Len;
       Payload    : RFLX.RFLX_Types.Bytes;

@@ -6,8 +6,6 @@ separate (Http2_Core.Mux_Server)
 procedure Accept_And_Serve_Multi_Bidi_Stream
   (L : in out Listener) is
 
-   use type RFLX.RFLX_Types.Index;
-
    procedure Deliver
      (L : in out Listener; Chan : Transport.Channel;
       Slot : Positive; Message : RFLX.RFLX_Types.Bytes);

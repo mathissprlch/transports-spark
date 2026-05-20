@@ -38,7 +38,7 @@ library project Http2_Core is
                   --  runtime). Matches the contracts SPARK proof
                   --  discharged at level 2.
                   for Default_Switches ("Ada") use
-                    ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
+                    ("-g", "-O0", "-gnatwae", "-gnatVa", "-gnatyM100",
                      "-gnata");
                when "release" =>
                   --  Hosted release: -O2 + assertions OFF. RFLX's
@@ -48,7 +48,7 @@ library project Http2_Core is
                   --  cost ~76 % of CPU (see profile in commit
                   --  history). Skipping them gives ~10x throughput.
                   for Default_Switches ("Ada") use
-                    ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
+                    ("-O2", "-gnatwae", "-gnatVa", "-gnatyM100",
                      "-gnatp",
                      "-ffunction-sections", "-fdata-sections");
             end case;
@@ -56,17 +56,17 @@ library project Http2_Core is
             case Build_Mode is
                when "debug" =>
                   for Default_Switches ("Ada") use
-                    ("-gnat2022", "-g", "-O0", "-gnatwa", "-gnatVa",
+                    ("-gnat2022", "-g", "-O0", "-gnatwae", "-gnatVa",
                      "-gnatyM120", "-gnata");
                when "release" =>
                   for Default_Switches ("Ada") use
-                    ("-gnat2022", "-O2", "-gnatwa", "-gnatVa",
+                    ("-gnat2022", "-O2", "-gnatwae", "-gnatVa",
                      "-gnatyM120", "-gnatp",
                      "-ffunction-sections", "-fdata-sections");
             end case;
          when "bare" =>
             for Default_Switches ("Ada") use
-              ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
+              ("-O2", "-gnatwae", "-gnatVa", "-gnatyM100",
                "-ffunction-sections", "-fdata-sections");
       end case;
    end Compiler;
