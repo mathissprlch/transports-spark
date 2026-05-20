@@ -13,7 +13,7 @@ library project Protobuf_Core is
       for Default_Switches ("Ada") use
         ("-g",
          "-O0",
-         "-gnatwa",
+         "-gnat2022", "-gnatwa",
          "-gnatVa",
          "-gnatyM100",
          "-gnata");
