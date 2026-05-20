@@ -5,7 +5,6 @@ procedure Step
    Out_Buf  : out Octet_Array;
    Out_Last : out Natural)
 is
-   Cur_State_Old : constant State := D.Cur_State;
 begin
    Out_Buf := [others => 0];
    Out_Last := 0;

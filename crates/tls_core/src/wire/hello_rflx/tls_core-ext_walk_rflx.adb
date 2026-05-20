@@ -9,7 +9,6 @@ is
 
    use type RFLX.RFLX_Types.Bit_Length;
    use type RFLX.RFLX_Types.Index;
-   use type RFLX.TLS_Extensions.Extension_Type;
    use type RFLX.RFLX_Types.Bytes_Ptr;
 
    procedure Walk_Find

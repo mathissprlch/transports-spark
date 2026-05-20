@@ -1,4 +1,3 @@
-with Tls_Core.Hmac_Sha256;
 with Tls_Core.Key_Sched;
 
 package body Tls_Core.Tls13_Driver.Helpers

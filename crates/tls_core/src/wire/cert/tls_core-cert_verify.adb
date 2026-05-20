@@ -4,7 +4,6 @@ is
 
 
    use Interfaces;
-   use type Tls_Core.Octet;
 
    --  RFC 8446 §4.4.3 — fixed prefix bytes for the CertVerify
    --  signed content. 64 spaces, then either the server or client

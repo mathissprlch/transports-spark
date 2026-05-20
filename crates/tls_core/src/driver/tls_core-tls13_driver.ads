@@ -43,12 +43,10 @@ with Tls_Core.Cert_Chain;
 with Tls_Core.Handshake_Buffer;
 with Tls_Core.Hello_Retry;
 with Tls_Core.Key_Sched;
-with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Update;
 with Tls_Core.Record_Layer;
 with Tls_Core.Session_Cache;
 with Tls_Core.Session_Ticket;
-with Tls_Core.Sha256;
 with Tls_Core.Suites;
 with Tls_Core.Transcript;
 with Tls_Core.Transcript_Sha384;
@@ -62,7 +60,6 @@ is
    pragma Unevaluated_Use_Of_Old (Allow);
 
    use type Tls_Core.Octet;
-   use type Tls_Core.Suites.Cipher_Suite_Id;
    use type Tls_Core.Suites.U16;
    use type Tls_Core.Record_Layer.Seq_Number;
 

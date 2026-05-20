@@ -12,7 +12,6 @@ with Tls_Core.Sha384;
 package body Tls_Core.Key_Sched
   with SPARK_Mode
 is
-   use type Tls_Core.Suites.Cipher_Suite_Id;
 
    Derived_Lab    : constant Octet_Array (1 .. 7) :=
      [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];

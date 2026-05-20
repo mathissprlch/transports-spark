@@ -1,10 +1,8 @@
-with Interfaces;
 
 package body Tls_Core.Hello_Retry
   with SPARK_Mode
 is
 
-   use type Interfaces.Unsigned_8;
    use type Tls_Core.Suites.U16;
 
    --  Extension type constants for HRR (RFC 8446 §4.2).

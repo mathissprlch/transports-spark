@@ -1,4 +1,3 @@
-with Interfaces;
 
 package body Tls_Core.Channel_Aes128
   with SPARK_Mode
@@ -6,7 +5,6 @@ is
 
 
    use Interfaces;
-   use type Tls_Core.Octet;
 
    Application_Data  : constant Octet := 16#17#;
    Legacy_Version_Hi : constant Octet := 16#03#;

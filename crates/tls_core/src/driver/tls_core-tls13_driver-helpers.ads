@@ -1,8 +1,6 @@
 with Tls_Core.Aead_Channel;
-with Tls_Core.Channel;
 with Tls_Core.Hkdf;
 with Tls_Core.Hkdf_Sha256;
-with Tls_Core.Key_Schedule;
 with Tls_Core.Record_Layer;
 with Tls_Core.Sha256;
 

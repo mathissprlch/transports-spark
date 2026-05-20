@@ -2,7 +2,6 @@ package body Tls_Core.Hello.Prims
   with SPARK_Mode
 is
 
-   use type Tls_Core.Octet;
 
    procedure W_U8
      (Out_Buf : in out Octet_Array; Cursor : in out Natural; Value : Octet) is

@@ -1,5 +1,4 @@
 with Tls_Core.Ext_Walk_Rflx;
-with RFLX.RFLX_Builtin_Types;
 with RFLX.RFLX_Types;
 with RFLX.Client_Hello.Message;
 
@@ -8,7 +7,6 @@ package body Tls_Core.Client_Hello_Rflx
 is
 
    use type RFLX.RFLX_Types.Bit_Length;
-   use type RFLX.RFLX_Types.Base_Integer;
    use type RFLX.RFLX_Types.Index;
 
    function Rflx_Validate_Ch (In_Bytes : Octet_Array) return Boolean

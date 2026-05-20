@@ -1,13 +1,7 @@
 with Tls_Core.Aead_Channel;
-with Tls_Core.Alert;
-with Tls_Core.Cert;
-with Tls_Core.Cert_Verify;
-with Tls_Core.Ecdsa_P256;
 with Tls_Core.Hello;
 with Tls_Core.Hello_Retry;
-with Tls_Core.Key_Schedule;
 with Tls_Core.Psk_Binder;
-with Tls_Core.Session_Ticket;
 with Tls_Core.X25519;
 with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
@@ -17,7 +11,6 @@ package body Tls_Core.Tls13_Driver.Step_Hrr
 is
 
 
-   use type Tls_Core.Octet;
 
    procedure Handle_Sh_Or_Hrr
      (D        : in out Driver;
@@ -96,7 +89,6 @@ is
             Hrr_Cookie        : Tls_Core.Hello_Retry.Cookie_Bytes;
             Hrr_Cookie_Length : Natural;
             Hrr_OK            : Boolean;
-            use type Tls_Core.Suites.U16;
          begin
             if Hrr_Body_L > In_Bytes'Last then
                D.Cur_State := Failed;
@@ -505,8 +497,6 @@ is
          Sh_Record_Last : Natural;
          Server_Random  : constant Tls_Core.Hello.Random_Bytes :=
            [others => 16#5E#];
-         Zero32         : constant Octet_Array (1 .. 32) := [others => 0];
-         Empty          : constant Octet_Array (1 .. 0) := [others => 0];
          Derived_Label  : constant Octet_Array (1 .. 7) :=
            [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
          C_Hs_Label     : constant Octet_Array (1 .. 12) :=
@@ -535,8 +525,6 @@ is
             16#66#,
             16#69#,
             16#63#];
-         Early_Secret   : Tls_Core.Key_Sched.Max_Secret;
-         Derived_1      : Tls_Core.Key_Sched.Max_Secret;
          Hs_Secret      : Tls_Core.Key_Sched.Max_Secret;
          C_Hs_Sec       : Tls_Core.Key_Sched.Max_Secret;
          S_Hs_Sec       : Tls_Core.Key_Sched.Max_Secret;
@@ -584,9 +572,6 @@ is
             Fin_Rec       : Octet_Array (1 .. 256) := [others => 0];
             Fin_Rec_Last  : Natural;
             Th_After_SF   : Tls_Core.Key_Sched.Max_Digest;
-            Empty_Hash    : Tls_Core.Key_Sched.Max_Digest;
-            Empty_In      : constant Octet_Array (1 .. 0) := [others => 0];
-            Derived_2_Sec : Tls_Core.Key_Sched.Max_Secret;
             Master_Secret : Tls_Core.Key_Sched.Max_Secret;
             Zero_Secret   : constant Tls_Core.Key_Sched.Max_Secret :=
               [others => 0];

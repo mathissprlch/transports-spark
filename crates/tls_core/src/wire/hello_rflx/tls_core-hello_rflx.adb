@@ -8,7 +8,6 @@ package body Tls_Core.Hello_Rflx
 is
 
    use type RFLX.RFLX_Types.Bit_Length;
-   use type RFLX.RFLX_Types.Base_Integer;
 
    function Rflx_Validate (In_Bytes : Octet_Array) return Boolean
    with Pre => In_Bytes'First = 1 and then In_Bytes'Length >= 40
@@ -51,7 +50,6 @@ is
       Ext_Last   : out Natural;
       OK         : out Boolean)
    is
-      use type Tls_Core.Suites.U16;
    begin
       Random := [others => 0];
       Suite_Code := 0;
@@ -168,7 +166,6 @@ is
    procedure Lemma_Round_Trip
      (Random : Random_Bytes; Suite_Code : Tls_Core.Suites.U16)
    is
-      use type Tls_Core.Suites.U16;
       Buf      : Octet_Array (1 .. 256) := [others => 0];
       Enc_Last : Natural;
    begin

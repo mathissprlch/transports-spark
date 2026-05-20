@@ -1,5 +1,4 @@
 with Tls_Core.Aead_Channel;
-with Tls_Core.Session_Ticket;
 with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
 

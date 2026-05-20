@@ -1,9 +1,7 @@
 with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
 with Tls_Core.Handshake_Buffer;
-with Tls_Core.Hello;
 with Tls_Core.Hello_Rflx;
-with Tls_Core.Key_Schedule;
 with Tls_Core.Key_Sched;
 with Tls_Core.X25519;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
@@ -31,9 +29,6 @@ is
          Cursor : Natural := In_Bytes'First;
 
          --  Used to derive c_hs / s_hs after parsing SH.
-         Empty_Hash  : Tls_Core.Key_Sched.Max_Digest;
-         Empty_In    : constant Octet_Array (1 .. 0) := [others => 0];
-         Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := [others => 0];
          Derived_Lab : constant Octet_Array (1 .. 7) :=
            [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
          C_Hs_Lab    : constant Octet_Array (1 .. 12) :=
@@ -89,8 +84,6 @@ is
             16#69#,
             16#63#];
 
-         Early_Secret : Tls_Core.Key_Sched.Max_Secret;
-         Derived_1    : Tls_Core.Key_Sched.Max_Secret;
          Th_After_Sh  : Tls_Core.Key_Sched.Max_Digest;
          Th_After_Ee  : Tls_Core.Key_Sched.Max_Digest;
          Th_After_Sf  : Tls_Core.Key_Sched.Max_Digest;
@@ -103,7 +96,6 @@ is
             return;
          end if;
          declare
-            use type Tls_Core.Suites.U16;
             Sh_Rec_Len : constant Natural :=
               Natural (In_Bytes (Cursor + 3))
               * 256

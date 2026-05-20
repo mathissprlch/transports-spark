@@ -11,7 +11,6 @@ package Tls_Core.Client_Hello_Rflx
 is
 
    use type Tls_Core.Octet;
-   use type Tls_Core.Suites.U16;
 
    subtype Random_Bytes is Octet_Array (1 .. 32);
 

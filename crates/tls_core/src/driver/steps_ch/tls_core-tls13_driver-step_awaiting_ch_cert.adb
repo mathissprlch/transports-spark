@@ -1,8 +1,6 @@
 with Interfaces;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Alert;
-with Tls_Core.Cert;
-with Tls_Core.Cert_Chain;
 with Tls_Core.Client_Hello_Rflx;
 with Tls_Core.Cert_Verify;
 with Tls_Core.Ecdsa_P256;
@@ -16,7 +14,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Ch_Cert
 is
 
 
-   use type Tls_Core.Octet;
 
    procedure Handle
      (D        : in out Driver;
@@ -144,7 +141,6 @@ is
             end;
             pragma Assert (Suites_L <= In_Bytes'Last);
             declare
-               use type Tls_Core.Suites.U16;
                Found : Boolean := False;
                Code  : Tls_Core.Suites.U16;
                Q     : Natural := Suites_F;

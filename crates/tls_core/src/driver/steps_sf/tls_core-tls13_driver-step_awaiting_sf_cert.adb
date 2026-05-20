@@ -4,10 +4,7 @@ with Tls_Core.Alert;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Cert_Verify;
 with Tls_Core.Handshake_Buffer;
-with Tls_Core.Hello;
 with Tls_Core.Hello_Rflx;
-with Tls_Core.Key_Schedule;
-with Tls_Core.Session_Ticket;
 with Tls_Core.X25519;
 with Tls_Core.Key_Sched;
 with Tls_Core.Tls13_Driver.Helpers; use Tls_Core.Tls13_Driver.Helpers;
@@ -39,10 +36,7 @@ is
       declare
          Cursor : Natural := In_Bytes'First;
 
-         Empty_In    : constant Octet_Array (1 .. 0) := [others => 0];
          Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := [others => 0];
-         Zero32      : constant Octet_Array (1 .. 32) := [others => 0];
-         Empty_Hash  : Tls_Core.Key_Sched.Max_Digest;
 
          Th_After_Sh   : Tls_Core.Key_Sched.Max_Digest;
          Th_After_Cert : Tls_Core.Key_Sched.Max_Digest;
@@ -63,7 +57,6 @@ is
             return;
          end if;
          declare
-            use type Tls_Core.Suites.U16;
             Sh_Rec_Len : constant Natural :=
               Natural (In_Bytes (Cursor + 3))
               * 256
@@ -371,7 +364,6 @@ is
                            Sig_Scheme   : Interfaces.Unsigned_16;
                            Sig_F, Sig_L : Natural;
                            Body_Bytes   : Octet_Array (1 .. Msg_Last - 4);
-                           use type Interfaces.Unsigned_16;
                         begin
                            Body_Bytes := Msg_Buf (5 .. Msg_Last);
                            Tls_Core.Cert_Verify.Decode_Body

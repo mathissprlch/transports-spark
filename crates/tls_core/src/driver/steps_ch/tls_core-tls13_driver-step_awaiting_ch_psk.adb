@@ -132,7 +132,6 @@ is
                D.Ecdhe_Shared := Shared;
             end;
             declare
-               use type Tls_Core.Suites.U16;
                Found : Boolean := False;
                Code  : Tls_Core.Suites.U16;
                Q     : Natural := Suites_F;
@@ -168,7 +167,6 @@ is
                Abs_Id_F   : constant Natural := Id_F;
                Abs_Id_L   : constant Natural := Id_L;
                Abs_Bf     : constant Natural := Bf;
-               Abs_Bl     : constant Natural := Bl;
                Abs_T_Last : constant Natural := T_Last;
 
                Identity_OK : Boolean := True;
