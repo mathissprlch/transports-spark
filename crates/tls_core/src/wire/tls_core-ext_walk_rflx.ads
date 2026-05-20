@@ -49,7 +49,20 @@ is
       Found          : out Boolean)
    with
      Pre => Ext_Bytes'First = 1 and then Ext_Bytes'Length >= 4
-            and then Ext_Bytes'Last < Natural'Last / 2;
+            and then Ext_Bytes'Last < Natural'Last / 2,
+     Post =>
+       (if Found then
+          Sig_Algs_First >= 3
+          and then Sig_Algs_Last <= Ext_Bytes'Length
+          and then Sig_Algs_First <= Sig_Algs_Last
+          --  At least one 2-byte SignatureScheme.
+          and then Sig_Algs_Last - Sig_Algs_First + 1 >= 2
+          --  Functional (RFC 8446 §4.2.3 SignatureSchemeList): the u16
+          --  length prefix immediately preceding the returned body
+          --  equals the body's byte-length.
+          and then Natural (Ext_Bytes (Sig_Algs_First - 2)) * 256
+                   + Natural (Ext_Bytes (Sig_Algs_First - 1))
+                   = Sig_Algs_Last - Sig_Algs_First + 1);
 
    procedure Find_Key_Share_X25519_Sh
      (Ext_Bytes       : Octet_Array;
@@ -74,6 +87,22 @@ is
       Found           : out Boolean)
    with
      Pre => Ext_Bytes'First = 1 and then Ext_Bytes'Length >= 4
-            and then Ext_Bytes'Last < Natural'Last / 2;
+            and then Ext_Bytes'Last < Natural'Last / 2,
+     Post =>
+       (if Found then
+          Binder_First >= 2
+          and then Binder_Last <= Ext_Bytes'Length
+          and then Binder_First <= Binder_Last
+          --  A binder is an HMAC output: at least 32 bytes.
+          and then Binder_Last - Binder_First + 1 >= 32
+          --  Functional (RFC 8446 §4.2.11.2 PskBinderEntry): the u8
+          --  length octet immediately preceding the returned binder
+          --  equals the binder's byte-length.
+          and then Natural (Ext_Bytes (Binder_First - 1))
+                   = Binder_Last - Binder_First + 1
+          --  Truncated_Last is the byte before the binders list — the
+          --  truncation point for the §4.4.1 binder transcript hash —
+          --  and therefore precedes the binder value itself.
+          and then Truncated_Last < Binder_First);
 
 end Tls_Core.Ext_Walk_Rflx;
