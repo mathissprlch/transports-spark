@@ -75,125 +75,14 @@ is
      (Cert_Data : Octet_Array;
       Out_Buf   : out Octet_Array;
       Out_Last  : out Natural)
-   is
-      Cursor : Natural := 0;
-      Cert_List_Body_Len : constant Natural := 3 + Cert_Data'Length + 2;
-   begin
-      Out_Buf := (others => 0);
-      --  request_context length = 0.
-      Out_Buf (Cursor + 1) := 0;
-      Cursor := Cursor + 1;
-      --  certificate_list u24 length.
-      Put_U24 (Out_Buf, Cursor, Cert_List_Body_Len);
-      --  cert_data u24 length.
-      Put_U24 (Out_Buf, Cursor, Cert_Data'Length);
-      --  cert_data bytes.
-      for I in 1 .. Cert_Data'Length loop
-         Out_Buf (Cursor + I) := Cert_Data (Cert_Data'First + I - 1);
-      end loop;
-      Cursor := Cursor + Cert_Data'Length;
-      --  extensions u16 length = 0.
-      Put_U16 (Out_Buf, Cursor, 0);
-      Out_Last := Cursor;
-   end Encode_Body_Single;
+   is separate;
 
    procedure Decode_Body_Single
      (Buf        : Octet_Array;
       OK         : out Boolean;
       Cert_First : out Natural;
       Cert_Last  : out Natural)
-   is
-      Cursor : Natural := 0;
-   begin
-      OK := False;
-      Cert_First := 0;
-      Cert_Last  := 0;
-      if Buf'Length < 1 + 3 + 3 + 1 + 2 then
-         return;
-      end if;
-      --  request_context: must be empty (length byte = 0)
-      if Buf (Buf'First) /= 0 then
-         return;
-      end if;
-      Cursor := 1;
-      --  certificate_list u24 length
-      declare
-         List_Len : constant Natural :=
-           Natural (Buf (Buf'First + Cursor)) * 16#10000#
-           + Natural (Buf (Buf'First + Cursor + 1)) * 16#100#
-           + Natural (Buf (Buf'First + Cursor + 2));
-      begin
-         Cursor := Cursor + 3;
-         if 1 + 3 + List_Len /= Buf'Length then
-            return;
-         end if;
-         if List_Len < 3 + 1 + 2 then
-            return;
-         end if;
-         --  RFC 8446 §4.4.2: certificate_list is a sequence of
-         --  CertificateEntry records (u24 cert_data_len + bytes +
-         --  u16 extensions_len).  The FIRST entry is the leaf the
-         --  server vouches for; subsequent entries are intermediate
-         --  CAs (and possibly the root, depending on peer).  v0.5
-         --  validates leaf-vs-trust-anchor only, but we MUST accept
-         --  the multi-entry list because openssl/gnutls/wolfSSL all
-         --  emit the full chain by default.  Capture the leaf
-         --  indices, then walk past any remaining entries to verify
-         --  the list is well-formed and consumes exactly List_Len.
-         declare
-            First_Pass : Boolean := True;
-            List_End   : constant Natural := Cursor + List_Len;
-         begin
-            while Cursor < List_End loop
-               if Cursor + 3 + 2 > List_End then
-                  return;
-               end if;
-               declare
-                  Cert_Len : constant Natural :=
-                    Natural (Buf (Buf'First + Cursor)) * 16#10000#
-                    + Natural (Buf (Buf'First + Cursor + 1)) * 16#100#
-                    + Natural (Buf (Buf'First + Cursor + 2));
-               begin
-                  Cursor := Cursor + 3;
-                  if Cert_Len = 0 then
-                     return;
-                  end if;
-                  if Cursor + Cert_Len + 2 > List_End then
-                     return;
-                  end if;
-                  if First_Pass then
-                     Cert_First := Buf'First + Cursor;
-                     Cert_Last  := Buf'First + Cursor + Cert_Len - 1;
-                     First_Pass := False;
-                  end if;
-                  Cursor := Cursor + Cert_Len;
-                  --  extensions u16 length — we accept zero only;
-                  --  per-cert extensions are server-side OCSP /
-                  --  SCT and we don't process them in v0.5.
-                  declare
-                     Ext_Len : constant Natural :=
-                       Natural (Buf (Buf'First + Cursor)) * 256
-                       + Natural (Buf (Buf'First + Cursor + 1));
-                  begin
-                     if Ext_Len /= 0 then
-                        return;
-                     end if;
-                     Cursor := Cursor + 2;
-                  end;
-               end;
-            end loop;
-            --  Must consume exactly List_Len bytes.
-            if Cursor /= List_End then
-               return;
-            end if;
-            if First_Pass then
-               --  Empty list: no leaf — fail.
-               return;
-            end if;
-         end;
-      end;
-      OK := True;
-   end Decode_Body_Single;
+   is separate;
 
    procedure Encode_Body
      (Sig_Scheme : Unsigned_16;
@@ -219,63 +108,14 @@ is
       Sig_Scheme : out Unsigned_16;
       Sig_First  : out Natural;
       Sig_Last   : out Natural)
-   is
-   begin
-      OK := False;
-      Sig_Scheme := 0;
-      Sig_First := 0;
-      Sig_Last  := 0;
-      if Buf'Length < 4 then
-         return;
-      end if;
-      Sig_Scheme :=
-        Unsigned_16 (Buf (Buf'First)) * 256
-        + Unsigned_16 (Buf (Buf'First + 1));
-      declare
-         Sig_Len : constant Natural :=
-           Natural (Buf (Buf'First + 2)) * 256
-           + Natural (Buf (Buf'First + 3));
-      begin
-         if 4 + Sig_Len /= Buf'Length then
-            return;
-         end if;
-         if Sig_Len = 0 then
-            return;
-         end if;
-         Sig_First := Buf'First + 4;
-         Sig_Last  := Buf'First + 4 + Sig_Len - 1;
-         OK := True;
-      end;
-   end Decode_Body;
+   is separate;
 
    procedure Build_Signed_Content
      (Side            : Cert_Verify_Side;
       Transcript_Hash : Octet_Array;
       Out_Buf         : out Octet_Array;
       Out_Last        : out Natural)
-   is
-   begin
-      Out_Buf := (others => 0);
-      --  64 spaces.
-      for I in 1 .. 64 loop
-         Out_Buf (I) := 16#20#;
-      end loop;
-      --  Side-specific prefix.
-      case Side is
-         when Server =>
-            Out_Buf (65 .. 65 + 32) := Server_Prefix;
-         when Client =>
-            Out_Buf (65 .. 65 + 32) := Client_Prefix;
-      end case;
-      --  Separator 0x00.
-      Out_Buf (98) := 16#00#;
-      --  Transcript hash.
-      for I in 1 .. Transcript_Hash'Length loop
-         Out_Buf (98 + I) :=
-           Transcript_Hash (Transcript_Hash'First + I - 1);
-      end loop;
-      Out_Last := 98 + Transcript_Hash'Length;
-   end Build_Signed_Content;
+   is separate;
 
    ---------------------------------------------------------------------
    --  Encode_Ecdsa_Sig_Der
@@ -304,71 +144,12 @@ is
      (Value   : Octet_Array;
       Out_Buf : in out Octet_Array;
       Cursor  : in out Natural)
-   is
-      Cursor_Start  : constant Natural := Cursor;
-      First_Nonzero : Natural := 1;
-      Need_Pad      : Boolean;
-      Body_Len      : Natural;
-   begin
-      while First_Nonzero <= 32
-        and then Value (First_Nonzero) = 0
-      loop
-         pragma Loop_Invariant (First_Nonzero in 1 .. 32);
-         First_Nonzero := First_Nonzero + 1;
-      end loop;
-      if First_Nonzero > 32 then
-         --  All zeros: emit INTEGER 0x00 (tag + len 1 + 0x00).
-         Out_Buf (Cursor + 1) := 16#02#;
-         Out_Buf (Cursor + 2) := 16#01#;
-         Out_Buf (Cursor + 3) := 16#00#;
-         Cursor := Cursor + 3;
-         return;
-      end if;
-      Need_Pad := (Value (First_Nonzero) and 16#80#) /= 0;
-      Body_Len :=
-        (32 - First_Nonzero + 1) + (if Need_Pad then 1 else 0);
-      pragma Assert (Body_Len in 1 .. 33);
-      Out_Buf (Cursor + 1) := 16#02#;
-      Out_Buf (Cursor + 2) := Octet (Body_Len);
-      Cursor := Cursor + 2;
-      if Need_Pad then
-         Cursor := Cursor + 1;
-         Out_Buf (Cursor) := 16#00#;
-      end if;
-      pragma Assert
-        (Cursor <= Cursor_Start + 3
-         and then Cursor_Start + Body_Len + 2 <= Cursor_Start + 35);
-      for I in First_Nonzero .. 32 loop
-         pragma Loop_Invariant
-           (I in First_Nonzero .. 32
-            and then Cursor in Cursor_Start + 2 .. Cursor_Start + 34
-            and then Cursor - Cursor_Start + (32 - I + 1) <= 35
-            and then Cursor < Out_Buf'Last);
-         Cursor := Cursor + 1;
-         Out_Buf (Cursor) := Value (I);
-      end loop;
-      pragma Assert (Cursor in Cursor_Start + 3 .. Cursor_Start + 35);
-   end Append_Der_Integer;
+   is separate;
 
    procedure Encode_Ecdsa_Sig_Der
      (R, S     : Octet_Array;
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural)
-   is
-      Cursor : Natural := 2;  --  reserve bytes 1..2 for SEQUENCE header
-   begin
-      Out_Buf := (others => 0);
-      Cursor := 2;
-      Append_Der_Integer (R, Out_Buf, Cursor);
-      pragma Assert (Cursor <= 37);
-      Append_Der_Integer (S, Out_Buf, Cursor);
-      pragma Assert (Cursor <= 72);
-      Out_Buf (1) := 16#30#;
-      --  SEQUENCE body length = total - 2-byte header. Cursor - 2
-      --  is bounded by 70 (worst case 35 + 35), well under 0x7F so a
-      --  single-byte short-form length suffices.
-      Out_Buf (2) := Octet (Cursor - 2);
-      Out_Last := Cursor;
-   end Encode_Ecdsa_Sig_Der;
+   is separate;
 
 end Tls_Core.Cert_Verify;
