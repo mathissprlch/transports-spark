@@ -1,7 +1,8 @@
 --  Tls_Core.Finished — TLS 1.3 Finished message MAC (RFC 8446 §4.4.4).
 --
 --    finished_key = HKDF-Expand-Label(BaseKey, "finished", "", Hash.length)
---    verify_data  = HMAC(finished_key, Transcript-Hash(Handshake context, Certificate*, CertificateVerify*))
+--    verify_data  = HMAC(finished_key,
+--      Transcript-Hash(Handshake context, Certificate*, CertificateVerify*))
 --
 --  Where BaseKey is:
 --    * server_handshake_traffic_secret  for the server's Finished

@@ -497,34 +497,6 @@ is
          Sh_Record_Last : Natural;
          Server_Random  : constant Tls_Core.Hello.Random_Bytes :=
            [others => 16#5E#];
-         Derived_Label  : constant Octet_Array (1 .. 7) :=
-           [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
-         C_Hs_Label     : constant Octet_Array (1 .. 12) :=
-           [16#63#,
-            16#20#,
-            16#68#,
-            16#73#,
-            16#20#,
-            16#74#,
-            16#72#,
-            16#61#,
-            16#66#,
-            16#66#,
-            16#69#,
-            16#63#];
-         S_Hs_Label     : constant Octet_Array (1 .. 12) :=
-           [16#73#,
-            16#20#,
-            16#68#,
-            16#73#,
-            16#20#,
-            16#74#,
-            16#72#,
-            16#61#,
-            16#66#,
-            16#66#,
-            16#69#,
-            16#63#];
          Hs_Secret      : Tls_Core.Key_Sched.Max_Secret;
          C_Hs_Sec       : Tls_Core.Key_Sched.Max_Secret;
          S_Hs_Sec       : Tls_Core.Key_Sched.Max_Secret;
@@ -573,36 +545,6 @@ is
             Fin_Rec_Last  : Natural;
             Th_After_SF   : Tls_Core.Key_Sched.Max_Digest;
             Master_Secret : Tls_Core.Key_Sched.Max_Secret;
-            Zero_Secret   : constant Tls_Core.Key_Sched.Max_Secret :=
-              [others => 0];
-            Derived_Lab   : constant Octet_Array (1 .. 7) :=
-              [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
-            C_Ap_Lab      : constant Octet_Array (1 .. 12) :=
-              [16#63#,
-               16#20#,
-               16#61#,
-               16#70#,
-               16#20#,
-               16#74#,
-               16#72#,
-               16#61#,
-               16#66#,
-               16#66#,
-               16#69#,
-               16#63#];
-            S_Ap_Lab      : constant Octet_Array (1 .. 12) :=
-              [16#73#,
-               16#20#,
-               16#61#,
-               16#70#,
-               16#20#,
-               16#74#,
-               16#72#,
-               16#61#,
-               16#66#,
-               16#66#,
-               16#69#,
-               16#63#];
          begin
             Encode_Hs_Message (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append

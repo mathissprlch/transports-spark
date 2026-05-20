@@ -111,7 +111,7 @@ is
       Z : constant Big.Big_Integer := P.Z;
 
       T0 : Big.Big_Integer := FMul_Spec (X, X);
-      T1 : Big.Big_Integer := FMul_Spec (Y, Y);
+      T1 : constant Big.Big_Integer := FMul_Spec (Y, Y);
       T2 : Big.Big_Integer := FMul_Spec (Z, Z);
       T3 : Big.Big_Integer := FMul_Spec (X, Y);
       T4 : Big.Big_Integer;
@@ -262,8 +262,7 @@ is
                        when 4      => 16,
                        when 5      => 32,
                        when 6      => 64,
-                       when 7      => 128,
-                       when others => 1);
+                       when 7      => 128);
                begin
                   Bit := (Byte_V / Pow_2_B) mod 2;
                end;

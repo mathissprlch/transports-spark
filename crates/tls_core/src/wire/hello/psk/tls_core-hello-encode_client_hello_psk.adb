@@ -14,7 +14,6 @@ is
    Ext_Body_Start : Natural;
 begin
    Out_Buf := [others => 0];
-   Truncated_Last := 0;
 
    --  legacy_version, random, session_id (empty), cipher_suites,
    --  legacy_compression_methods.

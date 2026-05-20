@@ -15,7 +15,6 @@ is
    Ext_Body_Start : Natural;
 begin
    Out_Buf := [others => 0];
-   Truncated_Last := 0;
 
    W_U8 (Out_Buf, Cursor, 16#03#);
    W_U8 (Out_Buf, Cursor, 16#03#);

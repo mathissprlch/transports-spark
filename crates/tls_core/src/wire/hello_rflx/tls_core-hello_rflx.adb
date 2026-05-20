@@ -28,7 +28,7 @@ is
          pragma Loop_Invariant (K in 1 .. Last_Idx);
          Buf (K) := RFLX.RFLX_Types.Byte (In_Bytes (Natural (K)));
       end loop;
-      if Last_Idx >= RFLX.RFLX_Types.Index'Last then
+      if Last_Idx = RFLX.RFLX_Types.Index'Last then
          RFLX.RFLX_Types.Free (Buf);
          return False;
       end if;
@@ -225,7 +225,7 @@ is
       end if;
 
       declare
-         Local : Octet_Array (1 .. In_Bytes'Length) := In_Bytes;
+         Local : constant Octet_Array (1 .. In_Bytes'Length) := In_Bytes;
       begin
          Decode_Server_Hello_Fields
            (Local, Rnd, Suite, Sf, Sl, Ef, El, Fields_OK);
@@ -244,7 +244,7 @@ is
                return;
             end if;
             declare
-               Ext_Copy     : Octet_Array (1 .. Ext_Len) := Local (Ef .. El);
+               Ext_Copy     : constant Octet_Array (1 .. Ext_Len) := Local (Ef .. El);
                Ks_Ef, Ks_El : Natural;
                Ks_Found     : Boolean;
             begin

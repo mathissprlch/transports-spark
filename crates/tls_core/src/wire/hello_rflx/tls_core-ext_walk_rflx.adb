@@ -68,7 +68,6 @@ is
                Byte_Off : Natural;
             begin
                if FF < RFLX.RFLX_Types.Bit_Index'Last - 8
-                 and then Natural (FF) / 8 < Natural'Last
                then
                   Byte_Off := Natural (FF) / 8 + 1;
                   if Byte_Off >= 1

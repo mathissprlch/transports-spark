@@ -3,7 +3,6 @@ package body Tls_Core.Gcm_Core
 is
 
 
-   use Interfaces;
 
    ---------------------------------------------------------------------
    --  Forward declaration: Lemma_GF128_Mul_From_Eq is needed by
@@ -49,7 +48,6 @@ is
       for I in 1 .. Total loop
          Result (I) := Spec_Build_Mac_Data_Byte_At (AAD, Ciphertext, I);
          pragma Loop_Invariant (Result'First = 1);
-         pragma Loop_Invariant (Result'Last = Total);
          pragma
            Loop_Invariant
              (for all K in 1 .. I =>
@@ -279,21 +277,6 @@ is
    --  step Block_16'(others => 0) = Zero.
    ---------------------------------------------------------------------
 
-   procedure Lemma_Spec_GF128_Mul_Equals_Target (X, Y, Zero : Block_16)
-   with
-     Ghost,
-     Pre  => Zero = Zero_Block,
-     Post => Spec_GF128_Mul (X, Y) = Spec_GF128_Mul_From (X, Zero, Y, 0);
-
-   procedure Lemma_Spec_GF128_Mul_Equals_Target (X, Y, Zero : Block_16) is
-   begin
-      --  Spec_GF128_Mul's Post gives us
-      --      Spec_GF128_Mul (X, Y) = Spec_GF128_Mul_From (X, Zero_Block, Y, 0)
-      --  Then by congruence with Zero = Zero_Block, the RHS equals
-      --  Spec_GF128_Mul_From (X, Zero, Y, 0).
-      Lemma_GF128_Mul_From_Eq
-        (V1 => X, V2 => X, Z1 => Zero_Block, Z2 => Zero, Y_Arg => Y, K => 0);
-   end Lemma_Spec_GF128_Mul_Equals_Target;
 
    ---------------------------------------------------------------------
    --  Lemma_GF128_Mul_From_Base — restate the base case of
