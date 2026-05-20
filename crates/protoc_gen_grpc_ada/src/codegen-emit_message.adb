@@ -1,4 +1,3 @@
-with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Codegen.Emit_Message_Bounded;
 with Codegen.Naming;
 with Interfaces;

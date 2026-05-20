@@ -19,9 +19,7 @@ with Interfaces;
 with RFLX.RFLX_Types;
 
 package Protobuf_Core.Wire
-with
-  SPARK_Mode,
-  Always_Terminates
+  with SPARK_Mode, Always_Terminates
 is
 
    use type RFLX.RFLX_Types.Index;
@@ -56,21 +54,25 @@ is
       OK     : out Boolean)
    with
      Pre  => First in Buffer'Range,
-     Post => (if OK then Last in First .. Buffer'Last
-                       and then Last - First < Max_Varint_Bytes
-                    else Last = First);
+     Post =>
+       (if OK
+        then
+          Last in First .. Buffer'Last and then Last - First < Max_Varint_Bytes
+        else Last = First);
 
    procedure Decode_Varint
-     (Input  : Bytes;
-      First  : Index;
-      Value  : out Interfaces.Unsigned_64;
-      Last   : out Index;
-      OK     : out Boolean)
+     (Input : Bytes;
+      First : Index;
+      Value : out Interfaces.Unsigned_64;
+      Last  : out Index;
+      OK    : out Boolean)
    with
      Pre  => First in Input'Range,
-     Post => (if OK then Last in First .. Input'Last
-                       and then Last - First < Max_Varint_Bytes
-                    else Last = First);
+     Post =>
+       (if OK
+        then
+          Last in First .. Input'Last and then Last - First < Max_Varint_Bytes
+        else Last = First);
 
    ----------------------------------------------------------------
    --  Tag = (Field_Number << 3) | Wire_Type  (varint-encoded)
@@ -85,9 +87,11 @@ is
       OK        : out Boolean)
    with
      Pre  => First in Buffer'Range and then Wire <= 7,
-     Post => (if OK then Last in First .. Buffer'Last
-                       and then Last - First < Max_Varint_Bytes
-                    else Last = First);
+     Post =>
+       (if OK
+        then
+          Last in First .. Buffer'Last and then Last - First < Max_Varint_Bytes
+        else Last = First);
 
    procedure Decode_Tag
      (Input     : Bytes;
@@ -98,9 +102,11 @@ is
       OK        : out Boolean)
    with
      Pre  => First in Input'Range,
-     Post => (if OK then Last in First .. Input'Last
-                       and then Last - First < Max_Varint_Bytes
-                    else Last = First);
+     Post =>
+       (if OK
+        then
+          Last in First .. Input'Last and then Last - First < Max_Varint_Bytes
+        else Last = First);
 
    ----------------------------------------------------------------
    --  String / bytes field (wire type Length_Delim).
@@ -119,8 +125,7 @@ is
       OK        : out Boolean)
    with
      Pre  => First in Buffer'Range,
-     Post => (if OK then Last in First .. Buffer'Last
-                    else Last = First);
+     Post => (if OK then Last in First .. Buffer'Last else Last = First);
 
    procedure Decode_String_Value
      (Input      : Bytes;
@@ -131,8 +136,11 @@ is
       OK         : out Boolean)
    with
      Pre  => First in Input'Range and then Value'Length > 0,
-     Post => (if OK then Last in First .. Input'Last
-                       and then Value_Last in 0 | Value'First .. Value'Last
-                    else Last = First and then Value_Last = 0);
+     Post =>
+       (if OK
+        then
+          Last in First .. Input'Last
+          and then Value_Last in 0 | Value'First .. Value'Last
+        else Last = First and then Value_Last = 0);
 
 end Protobuf_Core.Wire;

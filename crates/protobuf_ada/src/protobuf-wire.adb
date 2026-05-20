@@ -520,7 +520,6 @@ package body Protobuf.Wire is
       Value  : out Protobuf.IO.Octet_Array;
       Last   : out Protobuf.IO.Octet_Offset)
    is
-      use type Protobuf.IO.Octet_Offset;
       Length : Protobuf.IO.Octet_Count;
    begin
       Decode_Length_Delim_Length (C, Buffer, Length);

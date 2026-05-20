@@ -1,5 +1,5 @@
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
-with Interfaces;             use Interfaces;
+with Interfaces;            use Interfaces;
 with Protobuf.Wire;
 
 package body Protobuf.Descriptor is
@@ -28,32 +28,25 @@ package body Protobuf.Descriptor is
       Cursor : in out Protobuf.IO.Read_Cursor) return Protobuf.IO.Octet_Array;
 
    procedure Decode_Field
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Field_Descriptor);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Field_Descriptor);
 
    procedure Decode_Enum_Value
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Enum_Value);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Enum_Value);
 
    procedure Decode_Enum
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Enum_Descriptor);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Enum_Descriptor);
 
    procedure Decode_Message
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Message_Descriptor);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Message_Descriptor);
 
    procedure Decode_Method
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Method_Descriptor);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Method_Descriptor);
 
    procedure Decode_Service
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Service_Descriptor);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Service_Descriptor);
 
    procedure Decode_File
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out File_Descriptor);
+     (Buffer : Protobuf.IO.Octet_Array; Result : out File_Descriptor);
 
    ---------------------
    -- Bytes_To_String --
@@ -63,8 +56,8 @@ package body Protobuf.Descriptor is
       Result : String (1 .. Natural (B'Length));
    begin
       for I in Result'Range loop
-         Result (I) := Character'Val
-           (B (B'First + Protobuf.IO.Octet_Offset (I - 1)));
+         Result (I) :=
+           Character'Val (B (B'First + Protobuf.IO.Octet_Offset (I - 1)));
       end loop;
       return Result;
    end Bytes_To_String;
@@ -79,9 +72,9 @@ package body Protobuf.Descriptor is
       Length : Protobuf.IO.Octet_Count;
    begin
       Protobuf.Wire.Decode_Length_Delim_Length (Cursor, Buffer, Length);
-      return To_Unbounded_String
-        (Bytes_To_String
-           (Protobuf.IO.Take_Slice (Cursor, Buffer, Length)));
+      return
+        To_Unbounded_String
+          (Bytes_To_String (Protobuf.IO.Take_Slice (Cursor, Buffer, Length)));
    end Read_String;
 
    ---------------
@@ -130,8 +123,7 @@ package body Protobuf.Descriptor is
    -- Decode_Field --
 
    procedure Decode_Field
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Field_Descriptor)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Field_Descriptor)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -142,17 +134,29 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1  => Result.Field_Name := Read_String (Buffer, Cursor);
-            when 3  => Result.Number     := Read_Int32  (Buffer, Cursor);
-            when 4  =>
+            when 1      =>
+               Result.Field_Name := Read_String (Buffer, Cursor);
+
+            when 3      =>
+               Result.Number := Read_Int32 (Buffer, Cursor);
+
+            when 4      =>
                Protobuf.Wire.Decode_Varint_64 (Cursor, Buffer, V);
                Result.Label := Field_Label'Enum_Val (V);
-            when 5  =>
+
+            when 5      =>
                Protobuf.Wire.Decode_Varint_64 (Cursor, Buffer, V);
                Result.Field_Kind := Field_Type'Enum_Val (V);
-            when 6  => Result.Type_Name       := Read_String (Buffer, Cursor);
-            when 9  => Result.Oneof_Index     := Read_Int32  (Buffer, Cursor);
-            when 17 => Result.Proto3_Optional := Read_Bool   (Buffer, Cursor);
+
+            when 6      =>
+               Result.Type_Name := Read_String (Buffer, Cursor);
+
+            when 9      =>
+               Result.Oneof_Index := Read_Int32 (Buffer, Cursor);
+
+            when 17     =>
+               Result.Proto3_Optional := Read_Bool (Buffer, Cursor);
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -163,8 +167,7 @@ package body Protobuf.Descriptor is
    -- Decode_Enum_Value --
 
    procedure Decode_Enum_Value
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Enum_Value)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Enum_Value)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -174,8 +177,12 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1 => Result.Value_Name := Read_String (Buffer, Cursor);
-            when 2 => Result.Number     := Read_Int32  (Buffer, Cursor);
+            when 1      =>
+               Result.Value_Name := Read_String (Buffer, Cursor);
+
+            when 2      =>
+               Result.Number := Read_Int32 (Buffer, Cursor);
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -186,8 +193,7 @@ package body Protobuf.Descriptor is
    -- Decode_Enum --
 
    procedure Decode_Enum
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Enum_Descriptor)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Enum_Descriptor)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -197,8 +203,10 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1 => Result.Enum_Name := Read_String (Buffer, Cursor);
-            when 2 =>
+            when 1      =>
+               Result.Enum_Name := Read_String (Buffer, Cursor);
+
+            when 2      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -207,6 +215,7 @@ package body Protobuf.Descriptor is
                   Decode_Enum_Value (Sub, V);
                   Result.Values.Append (V);
                end;
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -217,8 +226,7 @@ package body Protobuf.Descriptor is
    -- Decode_Message --
 
    procedure Decode_Message
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Message_Descriptor)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Message_Descriptor)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -228,8 +236,10 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1 => Result.Message_Name := Read_String (Buffer, Cursor);
-            when 2 =>
+            when 1      =>
+               Result.Message_Name := Read_String (Buffer, Cursor);
+
+            when 2      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -238,7 +248,8 @@ package body Protobuf.Descriptor is
                   Decode_Field (Sub, F);
                   Result.Fields.Append (F);
                end;
-            when 3 =>
+
+            when 3      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -248,7 +259,8 @@ package body Protobuf.Descriptor is
                   Decode_Message (Sub, M.all);
                   Result.Nested_Types.Append (M);
                end;
-            when 4 =>
+
+            when 4      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -257,7 +269,8 @@ package body Protobuf.Descriptor is
                   Decode_Enum (Sub, E);
                   Result.Enums.Append (E);
                end;
-            when 8 =>
+
+            when 8      =>
                declare
                   Sub     : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -267,18 +280,18 @@ package body Protobuf.Descriptor is
                   Oneof_N : Name;
                begin
                   while Protobuf.IO.Available (Inner_C, Sub) > 0 loop
-                     Protobuf.Wire.Decode_Tag
-                       (Inner_C, Sub, Inner_N, Inner_W);
+                     Protobuf.Wire.Decode_Tag (Inner_C, Sub, Inner_N, Inner_W);
                      case Inner_N is
-                        when 1 =>
+                        when 1      =>
                            Oneof_N := Read_String (Sub, Inner_C);
+
                         when others =>
-                           Protobuf.Wire.Skip_Field
-                             (Inner_C, Sub, Inner_W);
+                           Protobuf.Wire.Skip_Field (Inner_C, Sub, Inner_W);
                      end case;
                   end loop;
                   Result.Oneof_Decl_Names.Append (Oneof_N);
                end;
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -289,8 +302,7 @@ package body Protobuf.Descriptor is
    -- Decode_Method --
 
    procedure Decode_Method
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Method_Descriptor)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Method_Descriptor)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -300,11 +312,21 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1 => Result.Method_Name      := Read_String (Buffer, Cursor);
-            when 2 => Result.Input_Type       := Read_String (Buffer, Cursor);
-            when 3 => Result.Output_Type      := Read_String (Buffer, Cursor);
-            when 5 => Result.Client_Streaming := Read_Bool   (Buffer, Cursor);
-            when 6 => Result.Server_Streaming := Read_Bool   (Buffer, Cursor);
+            when 1      =>
+               Result.Method_Name := Read_String (Buffer, Cursor);
+
+            when 2      =>
+               Result.Input_Type := Read_String (Buffer, Cursor);
+
+            when 3      =>
+               Result.Output_Type := Read_String (Buffer, Cursor);
+
+            when 5      =>
+               Result.Client_Streaming := Read_Bool (Buffer, Cursor);
+
+            when 6      =>
+               Result.Server_Streaming := Read_Bool (Buffer, Cursor);
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -315,8 +337,7 @@ package body Protobuf.Descriptor is
    -- Decode_Service --
 
    procedure Decode_Service
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out Service_Descriptor)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out Service_Descriptor)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -326,8 +347,10 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1 => Result.Service_Name := Read_String (Buffer, Cursor);
-            when 2 =>
+            when 1      =>
+               Result.Service_Name := Read_String (Buffer, Cursor);
+
+            when 2      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -336,6 +359,7 @@ package body Protobuf.Descriptor is
                   Decode_Method (Sub, M);
                   Result.Methods.Append (M);
                end;
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -346,8 +370,7 @@ package body Protobuf.Descriptor is
    -- Decode_File --
 
    procedure Decode_File
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out File_Descriptor)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out File_Descriptor)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -357,10 +380,16 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1  => Result.File_Name    := Read_String (Buffer, Cursor);
-            when 2  => Result.Package_Name := Read_String (Buffer, Cursor);
-            when 12 => Result.Syntax       := Read_String (Buffer, Cursor);
-            when 4 =>
+            when 1      =>
+               Result.File_Name := Read_String (Buffer, Cursor);
+
+            when 2      =>
+               Result.Package_Name := Read_String (Buffer, Cursor);
+
+            when 12     =>
+               Result.Syntax := Read_String (Buffer, Cursor);
+
+            when 4      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -370,7 +399,8 @@ package body Protobuf.Descriptor is
                   Decode_Message (Sub, M.all);
                   Result.Messages.Append (M);
                end;
-            when 5 =>
+
+            when 5      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -379,7 +409,8 @@ package body Protobuf.Descriptor is
                   Decode_Enum (Sub, E);
                   Result.Enums.Append (E);
                end;
-            when 6 =>
+
+            when 6      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -388,6 +419,7 @@ package body Protobuf.Descriptor is
                   Decode_Service (Sub, S);
                   Result.Services.Append (S);
                end;
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;
@@ -398,8 +430,7 @@ package body Protobuf.Descriptor is
    -- Decode --
 
    procedure Decode
-     (Buffer : Protobuf.IO.Octet_Array;
-      Result : out File_Descriptor_Set)
+     (Buffer : Protobuf.IO.Octet_Array; Result : out File_Descriptor_Set)
    is
       use type Protobuf.IO.Octet_Count;
       Cursor : Protobuf.IO.Read_Cursor;
@@ -409,7 +440,7 @@ package body Protobuf.Descriptor is
       while Protobuf.IO.Available (Cursor, Buffer) > 0 loop
          Protobuf.Wire.Decode_Tag (Cursor, Buffer, Num, Wire);
          case Num is
-            when 1 =>
+            when 1      =>
                declare
                   Sub : constant Protobuf.IO.Octet_Array :=
                     Read_Sub_Message (Buffer, Cursor);
@@ -418,6 +449,7 @@ package body Protobuf.Descriptor is
                   Decode_File (Sub, F);
                   Result.Files.Append (F);
                end;
+
             when others =>
                Protobuf.Wire.Skip_Field (Cursor, Buffer, Wire);
          end case;

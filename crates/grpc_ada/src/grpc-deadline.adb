@@ -36,12 +36,12 @@ package body GRPC.Deadline is
       end record;
       --  Largest unit first: prefer "1H" over "3600S".
       Units : constant array (1 .. 6) of Pair :=
-        ((3_600_000_000_000, 'H'),
+        [(3_600_000_000_000, 'H'),
          (   60_000_000_000, 'M'),
          (    1_000_000_000, 'S'),
          (        1_000_000, 'm'),
          (            1_000, 'u'),
-         (                1, 'n'));
+         (                1, 'n')];
       function Img (X : Long_Long_Integer) return String is
          S : constant String := X'Image;
       begin

@@ -11,7 +11,7 @@ package body Tests.Codegen is
    use type Protobuf.IO.Octet_Count;
 
    procedure Roundtrip_Hello_Request is
-      Buffer : Protobuf.IO.Octet_Array (1 .. 256) := (others => 0);
+      Buffer : Protobuf.IO.Octet_Array (1 .. 256) := [others => 0];
       W      : Protobuf.IO.Write_Cursor;
       Sent   : Helloworld.Hello_Request.T;
       Recv   : Helloworld.Hello_Request.T;
