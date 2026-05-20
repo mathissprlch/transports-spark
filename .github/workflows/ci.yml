@@ -48,6 +48,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install "RecordFlux==0.26.0"
+          #  z3-solver (a RecordFlux dep) still does `import pkg_resources`,
+          #  which setuptools >= 81 no longer ships; pin it back so the
+          #  rflx CLI imports cleanly under Python 3.12.
+          pip install "setuptools<81"
           RFLX=rflx make rflx-gen
           echo "regenerated $(find crates/*/generated -name '*.ad[sb]' | wc -l) RFLX files"
 
