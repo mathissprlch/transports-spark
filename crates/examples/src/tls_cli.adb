@@ -52,7 +52,6 @@
 with Ada.Calendar;
 with Ada.Command_Line;
 with Ada.Exceptions;
-with Ada.Strings.Fixed;
 with Ada.Streams.Stream_IO;
 with Ada.Text_IO;
 
@@ -73,37 +72,39 @@ procedure Tls_Cli is
    use type Interfaces.Unsigned_8;
    use type Tls_Core.Tls13_Driver.State;
 
-   subtype Octet       is Tls_Core.Octet;
+   subtype Octet is Tls_Core.Octet;
    subtype Octet_Array is Tls_Core.Octet_Array;
 
    --  ===== CLI configuration =====================================
 
    type Role_Kind is (R_Client, R_Server, R_None);
-   type Mode_Kind is (M_Psk_Dhe_Ke, M_Cert_Ec, M_Cert_Rsa, M_Psk_Resume,
-                      M_None);
-   type App_Action is (A_None, A_Send_Recv, A_Echo,
-                       A_Bench_Handshake, A_Bench_Throughput);
+   type Mode_Kind is
+     (M_Psk_Dhe_Ke, M_Cert_Ec, M_Cert_Rsa, M_Psk_Resume, M_None);
+   type App_Action is
+     (A_None, A_Send_Recv, A_Echo, A_Bench_Handshake, A_Bench_Throughput);
 
-   Role        : Role_Kind := R_None;
-   Mode        : Mode_Kind := M_None;
-   Endpoint    : access String := new String'("");
-   Psk_Path    : access String := new String'("");
-   Psk_Hex     : access String := new String'("");
-   Psk_Id      : access String := new String'("Test");
-   Sni_Host    : access String := new String'("");
-   Alpn_List   : access String := new String'("");
-   Ecdhe_Path  : access String := new String'("");
-   Cert_Path   : access String := new String'("");  --  server leaf DER
-   Key_Path    : access String := new String'("");  --  server priv (32 B EC)
-   Trust_Path  : access String := new String'("");  --  client trust root DER
-   Hostname    : access String := new String'("");  --  client SAN match
-   Save_Ticket : access String := new String'("");  --  client: write Slot
-   Load_Ticket : access String := new String'("");  --  client: read Slot
-   Send_Str    : access String := new String'("");
+   Role : Role_Kind := R_None;
+   Mode : Mode_Kind := M_None;
+
+   type String_Access is access String;
+
+   Endpoint    : String_Access := new String'("");
+   Psk_Path    : String_Access := new String'("");
+   Psk_Hex     : String_Access := new String'("");
+   Psk_Id      : String_Access := new String'("Test");
+   Sni_Host    : String_Access := new String'("");
+   Alpn_List   : String_Access := new String'("");
+   Ecdhe_Path  : String_Access := new String'("");
+   Cert_Path   : String_Access := new String'("");  --  server leaf DER
+   Key_Path    : String_Access := new String'("");  --  server priv (32 B EC)
+   Trust_Path  : String_Access := new String'("");  --  client trust root DER
+   Hostname    : String_Access := new String'("");  --  client SAN match
+   Save_Ticket : String_Access := new String'("");  --  client: write Slot
+   Load_Ticket : String_Access := new String'("");  --  client: read Slot
+   Send_Str    : String_Access := new String'("");
    Recv_Len    : Natural := 0;
    Action      : App_Action := A_None;
    Quiet       : Boolean := False;
-   Bench_Iters : Positive := 100;
    Bench_Bytes : Natural := 1_048_576;
 
    Exit_Code : Integer := 0;
@@ -120,7 +121,7 @@ procedure Tls_Cli is
    begin
       Put_Line ("tls_cli: ERROR — " & Msg);
       Exit_Code := 1;
-      Aborted   := True;
+      Aborted := True;
    end Fail;
 
    procedure Usage_Error (Msg : String) is
@@ -129,7 +130,7 @@ procedure Tls_Cli is
       Put_Line ("Usage: tls_cli {client|server} [options]");
       Put_Line ("       tls_cli --help");
       Exit_Code := 2;
-      Aborted   := True;
+      Aborted := True;
    end Usage_Error;
 
    --  ===== File I/O helpers =======================================
@@ -137,7 +138,7 @@ procedure Tls_Cli is
    function Read_File (Path : String) return Octet_Array is
       use Ada.Streams;
       File   : Stream_IO.File_Type;
-      Result : Octet_Array (1 .. 65536) := (others => 0);
+      Result : Octet_Array (1 .. 65536) := [others => 0];
       Last   : Stream_Element_Offset;
    begin
       Stream_IO.Open (File, Stream_IO.In_File, Path);
@@ -174,11 +175,14 @@ procedure Tls_Cli is
          case C is
             when '0' .. '9' =>
                return Octet (Character'Pos (C) - Character'Pos ('0'));
+
             when 'a' .. 'f' =>
                return Octet (10 + Character'Pos (C) - Character'Pos ('a'));
+
             when 'A' .. 'F' =>
                return Octet (10 + Character'Pos (C) - Character'Pos ('A'));
-            when others =>
+
+            when others     =>
                raise Constraint_Error;
          end case;
       end Nibble;
@@ -188,8 +192,9 @@ procedure Tls_Cli is
       end if;
       for I in 0 .. (S'Length / 2) - 1 loop
          Result (1 + I) :=
-           Nibble (S (S'First + 2 * I)) * 16 +
-           Nibble (S (S'First + 2 * I + 1));
+           Nibble (S (S'First + 2 * I))
+           * 16
+           + Nibble (S (S'First + 2 * I + 1));
       end loop;
       return Result;
    end From_Hex;
@@ -218,24 +223,29 @@ procedure Tls_Cli is
       Put_Line ("");
       Put_Line ("MODES");
       Put_Line ("  --mode psk-dhe-ke    PSK + ECDHE (RFC 8446 §7.1 mode 3)");
-      Put_Line ("  --mode cert-ec       Cert mode, ECDSA-P256 [client/server]");
-      Put_Line ("  --mode cert-rsa      Cert mode, RSA-PSS verify only [client]");
+      Put_Line
+        ("  --mode cert-ec       Cert mode, ECDSA-P256 [client/server]");
+      Put_Line
+        ("  --mode cert-rsa      Cert mode, RSA-PSS verify only [client]");
       Put_Line ("");
       Put_Line ("PSK CONFIG");
       Put_Line ("  --psk-file FILE      32-byte PSK material (recommended)");
       Put_Line ("  --psk-hex HEX        64 hex chars (testing only)");
       Put_Line ("  --psk-id STRING      PSK identity (default ""Test"")");
       Put_Line ("");
-      Put_Line ("CERT CONFIG (TODO — driver supports it; CLI plumbing pending)");
+      Put_Line
+        ("CERT CONFIG (TODO — driver supports it; CLI plumbing pending)");
       Put_Line ("  --cert FILE.der      Server's DER-encoded leaf cert");
       Put_Line ("  --key FILE           Server's private key (32-byte raw)");
-      Put_Line ("  --trust FILE.der     Client's trust anchor (root cert DER)");
+      Put_Line
+        ("  --trust FILE.der     Client's trust anchor (root cert DER)");
       Put_Line ("  --hostname STRING    Client: SAN dNSName to validate");
       Put_Line ("");
       Put_Line ("EXTENSIONS");
       Put_Line ("  --sni HOST           ClientHello server_name (RFC 6066)");
       Put_Line ("  --alpn LIST          ALPN ProtocolName list (h2,http/1.1)");
-      Put_Line ("  --ecdhe-priv FILE    Client X25519 private scalar (32 bytes)");
+      Put_Line
+        ("  --ecdhe-priv FILE    Client X25519 private scalar (32 bytes)");
       Put_Line ("");
       Put_Line ("APP-DATA ROUND TRIP");
       Put_Line ("  --send STRING        Client: send STRING after handshake");
@@ -337,22 +347,16 @@ procedure Tls_Cli is
                Action := A_Send_Recv;
             elsif Arg = "--recv-len" then
                A := A + 1;
-               Recv_Len :=
-                 Natural'Value (Ada.Command_Line.Argument (A));
+               Recv_Len := Natural'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--echo" then
                Action := A_Echo;
             elsif Arg = "--bench-handshake" then
                Action := A_Bench_Handshake;
             elsif Arg = "--bench-throughput" then
                Action := A_Bench_Throughput;
-            elsif Arg = "--bench-iters" then
-               A := A + 1;
-               Bench_Iters :=
-                 Positive'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--bench-bytes" then
                A := A + 1;
-               Bench_Bytes :=
-                 Natural'Value (Ada.Command_Line.Argument (A));
+               Bench_Bytes := Natural'Value (Ada.Command_Line.Argument (A));
             elsif Arg = "--quiet" then
                Quiet := True;
             else
@@ -385,12 +389,12 @@ procedure Tls_Cli is
       Out_Last : out Natural;
       OK       : out Boolean)
    is
-      Header   : Octet_Array (1 .. 5) := (others => 0);
+      Header   : Octet_Array (1 .. 5) := [others => 0];
       Body_Len : Natural;
    begin
-      Out_Buf  := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
-      OK       := False;
+      OK := False;
       Tls_Core.Tcp_Transport.Recv_All (Chan, Header, OK);
       if not OK then
          return;
@@ -403,7 +407,7 @@ procedure Tls_Cli is
       Out_Buf (1 .. 5) := Header;
       if Body_Len > 0 then
          declare
-            Body_Buf : Octet_Array (1 .. Body_Len) := (others => 0);
+            Body_Buf : Octet_Array (1 .. Body_Len) := [others => 0];
          begin
             Tls_Core.Tcp_Transport.Recv_All (Chan, Body_Buf, OK);
             if not OK then
@@ -413,7 +417,7 @@ procedure Tls_Cli is
          end;
       end if;
       Out_Last := 5 + Body_Len;
-      OK       := True;
+      OK := True;
    end Read_Record;
 
    procedure Read_N_Real_Records
@@ -427,9 +431,9 @@ procedure Tls_Cli is
       Rec_Last : Natural;
       Got      : Natural := 0;
    begin
-      Acc_Buf  := (others => 0);
+      Acc_Buf := [others => 0];
       Acc_Last := 0;
-      OK       := True;
+      OK := True;
       while Got < How_Many loop
          Read_Record (Chan, Rec_Buf, Rec_Last, OK);
          if not OK or else Rec_Last < 5 then
@@ -438,6 +442,7 @@ procedure Tls_Cli is
          end if;
          if Rec_Buf (1) = Octet (16#14#) then
             null;  --  CCS dummy — RFC 8446 §5
+
          else
             if Acc_Last + Rec_Last > Acc_Buf'Length then
                OK := False;
@@ -462,7 +467,7 @@ procedure Tls_Cli is
       --  one length-prefix byte → output is at most S'Length + N
       --  where N is the number of commas + 1.  A 256-byte cap covers
       --  any realistic ALPN list and matches the driver's API bound.
-      Out_Buf : Octet_Array (1 .. 256) := (others => 0);
+      Out_Buf  : Octet_Array (1 .. 256) := [others => 0];
       Out_Last : Natural := 0;
       Start    : Positive := S'First;
    begin
@@ -503,8 +508,9 @@ procedure Tls_Cli is
             Buf : constant Octet_Array := Read_File (Psk_Path.all);
          begin
             if Buf'Length /= 32 then
-               Fail ("--psk-file must be exactly 32 bytes; got "
-                     & Natural'Image (Buf'Length));
+               Fail
+                 ("--psk-file must be exactly 32 bytes; got "
+                  & Natural'Image (Buf'Length));
                OK := False;
                return;
             end if;
@@ -545,7 +551,7 @@ procedure Tls_Cli is
          --  Default: deterministic dummy private scalar (test only).
          --  A production user would always pass --ecdhe-priv from a
          --  CSPRNG.
-         Out_Bytes := (others => 16#22#);
+         Out_Bytes := [others => 16#22#];
       end if;
    end Load_Ecdhe;
 
@@ -567,9 +573,7 @@ procedure Tls_Cli is
    --   32B  Resumption_Secret  (SHA-256 digest)
 
    procedure Save_Slot
-     (Slot : Tls_Core.Session_Cache.Slot;
-      Path : String;
-      OK   : out Boolean)
+     (Slot : Tls_Core.Session_Cache.Slot; Path : String; OK : out Boolean)
    is
       use Ada.Streams;
       use type Tls_Core.Session_Ticket.U32;
@@ -578,35 +582,42 @@ procedure Tls_Cli is
            when Tls_Core.Suites.Chacha20_Poly1305_Sha256 => 0,
            when Tls_Core.Suites.Aes_128_Gcm_Sha256       => 1,
            when Tls_Core.Suites.Aes_256_Gcm_Sha384       => 2);
-      Buf : Octet_Array (1 .. 1 + 4 + 4 + 1
-                          + Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
-                          + 2 + Tls_Core.Session_Ticket.Max_Ticket_Length
-                          + 32) := (others => 0);
-      Cursor : Natural := 0;
-      File   : Stream_IO.File_Type;
+      Buf      :
+        Octet_Array
+          (1
+           .. 1
+              + 4
+              + 4
+              + 1
+              + Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
+              + 2
+              + Tls_Core.Session_Ticket.Max_Ticket_Length
+              + 32) := [others => 0];
+      Cursor   : Natural := 0;
+      File     : Stream_IO.File_Type;
    begin
       OK := False;
-      Cursor := Cursor + 1; Buf (Cursor) := Suite_Id;
+      Cursor := Cursor + 1;
+      Buf (Cursor) := Suite_Id;
       for I in 0 .. 3 loop
          Cursor := Cursor + 1;
-         Buf (Cursor) := Octet
-           ((Slot.Lifetime / 2 ** (8 * (3 - I))) and 16#FF#);
+         Buf (Cursor) := Octet ((Slot.Lifetime / 2**(8 * (3 - I))) and 16#FF#);
       end loop;
       for I in 0 .. 3 loop
          Cursor := Cursor + 1;
-         Buf (Cursor) := Octet
-           ((Slot.Age_Add / 2 ** (8 * (3 - I))) and 16#FF#);
+         Buf (Cursor) := Octet ((Slot.Age_Add / 2**(8 * (3 - I))) and 16#FF#);
       end loop;
-      Cursor := Cursor + 1; Buf (Cursor) := Octet (Slot.Ticket_Nonce_Len);
+      Cursor := Cursor + 1;
+      Buf (Cursor) := Octet (Slot.Ticket_Nonce_Len);
       if Slot.Ticket_Nonce_Len > 0 then
          Buf (Cursor + 1 .. Cursor + Slot.Ticket_Nonce_Len) :=
            Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len);
          Cursor := Cursor + Slot.Ticket_Nonce_Len;
       end if;
-      Cursor := Cursor + 1; Buf (Cursor) :=
-        Octet (Slot.Ticket_Len / 256);
-      Cursor := Cursor + 1; Buf (Cursor) :=
-        Octet (Slot.Ticket_Len mod 256);
+      Cursor := Cursor + 1;
+      Buf (Cursor) := Octet (Slot.Ticket_Len / 256);
+      Cursor := Cursor + 1;
+      Buf (Cursor) := Octet (Slot.Ticket_Len mod 256);
       Buf (Cursor + 1 .. Cursor + Slot.Ticket_Len) :=
         Slot.Ticket (1 .. Slot.Ticket_Len);
       Cursor := Cursor + Slot.Ticket_Len;
@@ -630,60 +641,64 @@ procedure Tls_Cli is
    end Save_Slot;
 
    procedure Load_Slot
-     (Path : String;
-      Slot : out Tls_Core.Session_Cache.Slot;
-      OK   : out Boolean)
+     (Path : String; Slot : out Tls_Core.Session_Cache.Slot; OK : out Boolean)
    is
       use type Tls_Core.Session_Ticket.U32;
-      Buf : constant Octet_Array := Read_File (Path);
-      P : Natural := Buf'First;
+      Buf      : constant Octet_Array := Read_File (Path);
+      P        : Natural := Buf'First;
       Suite_Id : Octet;
-      function R_U32 (Start : Natural) return Tls_Core.Session_Ticket.U32 is
-        (Tls_Core.Session_Ticket.U32 (Buf (Start))     * 16#01000000#
-         + Tls_Core.Session_Ticket.U32 (Buf (Start + 1)) * 16#00010000#
-         + Tls_Core.Session_Ticket.U32 (Buf (Start + 2)) * 16#00000100#
-         + Tls_Core.Session_Ticket.U32 (Buf (Start + 3)));
+      function R_U32 (Start : Natural) return Tls_Core.Session_Ticket.U32
+      is (Tls_Core.Session_Ticket.U32 (Buf (Start))
+          * 16#01000000#
+          + Tls_Core.Session_Ticket.U32 (Buf (Start + 1)) * 16#00010000#
+          + Tls_Core.Session_Ticket.U32 (Buf (Start + 2)) * 16#00000100#
+          + Tls_Core.Session_Ticket.U32 (Buf (Start + 3)));
    begin
       OK := False;
       Slot := (others => <>);
       if Buf'Length < 1 + 4 + 4 + 1 + 2 + 1 + 32 then
          return;
       end if;
-      Suite_Id := Buf (P); P := P + 1;
+      Suite_Id := Buf (P);
+      P := P + 1;
       Slot.Suite :=
         (case Suite_Id is
-           when 0 => Tls_Core.Suites.Chacha20_Poly1305_Sha256,
-           when 1 => Tls_Core.Suites.Aes_128_Gcm_Sha256,
-           when 2 => Tls_Core.Suites.Aes_256_Gcm_Sha384,
+           when 0      => Tls_Core.Suites.Chacha20_Poly1305_Sha256,
+           when 1      => Tls_Core.Suites.Aes_128_Gcm_Sha256,
+           when 2      => Tls_Core.Suites.Aes_256_Gcm_Sha384,
            when others => Tls_Core.Suites.Aes_128_Gcm_Sha256);
-      Slot.Lifetime := R_U32 (P); P := P + 4;
-      Slot.Age_Add  := R_U32 (P); P := P + 4;
-      Slot.Ticket_Nonce_Len := Natural (Buf (P)); P := P + 1;
-      if Slot.Ticket_Nonce_Len
-        > Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length
-      then
+      Slot.Lifetime := R_U32 (P);
+      P := P + 4;
+      Slot.Age_Add := R_U32 (P);
+      P := P + 4;
+      Slot.Ticket_Nonce_Len := Natural (Buf (P));
+      P := P + 1;
+      if P - 1 + Slot.Ticket_Nonce_Len > Buf'Last then
          return;
       end if;
-      if P - 1 + Slot.Ticket_Nonce_Len > Buf'Last then return; end if;
       if Slot.Ticket_Nonce_Len > 0 then
          Slot.Ticket_Nonce (1 .. Slot.Ticket_Nonce_Len) :=
            Buf (P .. P + Slot.Ticket_Nonce_Len - 1);
          P := P + Slot.Ticket_Nonce_Len;
       end if;
-      if P + 1 > Buf'Last then return; end if;
-      Slot.Ticket_Len :=
-        Natural (Buf (P)) * 256 + Natural (Buf (P + 1));
+      if P + 1 > Buf'Last then
+         return;
+      end if;
+      Slot.Ticket_Len := Natural (Buf (P)) * 256 + Natural (Buf (P + 1));
       P := P + 2;
       if Slot.Ticket_Len < 1
         or else Slot.Ticket_Len > Tls_Core.Session_Ticket.Max_Ticket_Length
       then
          return;
       end if;
-      if P - 1 + Slot.Ticket_Len > Buf'Last then return; end if;
-      Slot.Ticket (1 .. Slot.Ticket_Len) :=
-        Buf (P .. P + Slot.Ticket_Len - 1);
+      if P - 1 + Slot.Ticket_Len > Buf'Last then
+         return;
+      end if;
+      Slot.Ticket (1 .. Slot.Ticket_Len) := Buf (P .. P + Slot.Ticket_Len - 1);
       P := P + Slot.Ticket_Len;
-      if P + 31 > Buf'Last then return; end if;
+      if P + 31 > Buf'Last then
+         return;
+      end if;
       Slot.Resumption_Secret := Buf (P .. P + 31);
       Slot.Used := True;
       Slot.Insertion_Seq := 1;
@@ -697,19 +712,19 @@ procedure Tls_Cli is
    --  Appendix D.4 middlebox-compat) are skipped by Read_N_Real_
    --  Records.  Driver Step expects the full flight in one call.
    procedure Run_Client
-     (Sock           : in out Tls_Core.Tcp_Transport.Channel;
+     (Sock           : Tls_Core.Tcp_Transport.Channel;
       D              : in out Tls_Core.Tls13_Driver.Driver;
       Server_Records : Positive)
    is
-      Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+      Out_Buf  : Octet_Array (1 .. 4096) := [others => 0];
       Out_Last : Natural;
-      Empty    : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty    : constant Octet_Array (1 .. 0) := [others => 0];
    begin
       Tls_Core.Tls13_Driver.Step
         (D, In_Bytes => Empty, Out_Buf => Out_Buf, Out_Last => Out_Last);
       if Out_Last = 0
         or else Tls_Core.Tls13_Driver.Current_State (D)
-                  /= Tls_Core.Tls13_Driver.Awaiting_Sf
+                /= Tls_Core.Tls13_Driver.Awaiting_Sf
       then
          Fail ("client did not produce CH or did not advance");
          return;
@@ -718,48 +733,53 @@ procedure Tls_Cli is
       Trace ("  -> sent ClientHello (" & Natural'Image (Out_Last) & " B)");
 
       declare
-         In_Buf   : Octet_Array (1 .. 16640 * 5 + 64) := (others => 0);
-         In_Last  : Natural;
-         OK       : Boolean;
-         CF_Buf   : Octet_Array (1 .. 4096) := (others => 0);
-         CF_Last  : Natural;
+         In_Buf  : Octet_Array (1 .. 16640 * 5 + 64) := [others => 0];
+         In_Last : Natural;
+         OK      : Boolean;
+         CF_Buf  : Octet_Array (1 .. 4096) := [others => 0];
+         CF_Last : Natural;
       begin
          Read_N_Real_Records (Sock, Server_Records, In_Buf, In_Last, OK);
          if not OK then
-            Fail ("could not read"
-                  & Natural'Image (Server_Records)
-                  & " server records");
+            Fail
+              ("could not read"
+               & Natural'Image (Server_Records)
+               & " server records");
             return;
          end if;
          Trace ("  <- read server flight (" & Natural'Image (In_Last) & " B)");
          Tls_Core.Tls13_Driver.Step
-           (D, In_Bytes => In_Buf (1 .. In_Last),
-            Out_Buf => CF_Buf, Out_Last => CF_Last);
+           (D,
+            In_Bytes => In_Buf (1 .. In_Last),
+            Out_Buf  => CF_Buf,
+            Out_Last => CF_Last);
          if Tls_Core.Tls13_Driver.Current_State (D)
-              /= Tls_Core.Tls13_Driver.Done
+           /= Tls_Core.Tls13_Driver.Done
          then
-            Fail ("client did not reach Done; state = "
-                  & Tls_Core.Tls13_Driver.State'Image
-                      (Tls_Core.Tls13_Driver.Current_State (D))
-                  & "; alert ="
-                  & Natural'Image
-                      (Natural (Tls_Core.Tls13_Driver
-                                 .Last_Alert_Description (D))));
+            Fail
+              ("client did not reach Done; state = "
+               & Tls_Core.Tls13_Driver.State'Image
+                   (Tls_Core.Tls13_Driver.Current_State (D))
+               & "; alert ="
+               & Natural'Image
+                   (Natural
+                      (Tls_Core.Tls13_Driver.Last_Alert_Description (D))));
             return;
          end if;
          Tls_Core.Tcp_Transport.Send_All (Sock, CF_Buf (1 .. CF_Last));
-         Trace ("  -> sent client Finished (" & Natural'Image (CF_Last) & " B)");
+         Trace
+           ("  -> sent client Finished (" & Natural'Image (CF_Last) & " B)");
       end;
    end Run_Client;
 
    procedure Run_Server
-     (Sock : in out Tls_Core.Tcp_Transport.Channel;
+     (Sock : Tls_Core.Tcp_Transport.Channel;
       D    : in out Tls_Core.Tls13_Driver.Driver)
    is
-      In_Buf   : Octet_Array (1 .. 16640 + 5) := (others => 0);
+      In_Buf   : Octet_Array (1 .. 16640 + 5) := [others => 0];
       In_Last  : Natural;
       OK       : Boolean;
-      Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+      Out_Buf  : Octet_Array (1 .. 4096) := [others => 0];
       Out_Last : Natural;
    begin
       Read_N_Real_Records (Sock, 1, In_Buf, In_Last, OK);
@@ -769,18 +789,20 @@ procedure Tls_Cli is
       end if;
       Trace ("  <- read CH (" & Natural'Image (In_Last) & " B)");
       Tls_Core.Tls13_Driver.Step
-        (D, In_Bytes => In_Buf (1 .. In_Last),
-         Out_Buf => Out_Buf, Out_Last => Out_Last);
+        (D,
+         In_Bytes => In_Buf (1 .. In_Last),
+         Out_Buf  => Out_Buf,
+         Out_Last => Out_Last);
       if Tls_Core.Tls13_Driver.Current_State (D)
-           /= Tls_Core.Tls13_Driver.Awaiting_Cf
+        /= Tls_Core.Tls13_Driver.Awaiting_Cf
       then
-         Fail ("server did not advance to Awaiting_Cf; state = "
-               & Tls_Core.Tls13_Driver.State'Image
-                   (Tls_Core.Tls13_Driver.Current_State (D))
-               & "; alert ="
-               & Natural'Image
-                   (Natural (Tls_Core.Tls13_Driver
-                              .Last_Alert_Description (D))));
+         Fail
+           ("server did not advance to Awaiting_Cf; state = "
+            & Tls_Core.Tls13_Driver.State'Image
+                (Tls_Core.Tls13_Driver.Current_State (D))
+            & "; alert ="
+            & Natural'Image
+                (Natural (Tls_Core.Tls13_Driver.Last_Alert_Description (D))));
          return;
       end if;
       Tls_Core.Tcp_Transport.Send_All (Sock, Out_Buf (1 .. Out_Last));
@@ -792,47 +814,52 @@ procedure Tls_Cli is
          return;
       end if;
       Tls_Core.Tls13_Driver.Step
-        (D, In_Bytes => In_Buf (1 .. In_Last),
-         Out_Buf => Out_Buf, Out_Last => Out_Last);
-      if Tls_Core.Tls13_Driver.Current_State (D)
-           /= Tls_Core.Tls13_Driver.Done
+        (D,
+         In_Bytes => In_Buf (1 .. In_Last),
+         Out_Buf  => Out_Buf,
+         Out_Last => Out_Last);
+      if Tls_Core.Tls13_Driver.Current_State (D) /= Tls_Core.Tls13_Driver.Done
       then
-         Fail ("server did not reach Done; state = "
-               & Tls_Core.Tls13_Driver.State'Image
-                   (Tls_Core.Tls13_Driver.Current_State (D)));
+         Fail
+           ("server did not reach Done; state = "
+            & Tls_Core.Tls13_Driver.State'Image
+                (Tls_Core.Tls13_Driver.Current_State (D)));
          return;
       end if;
       Trace ("  <- server reached Done");
    end Run_Server;
 
    procedure Run_App_Phase
-     (Sock : in out Tls_Core.Tcp_Transport.Channel;
-      D    : in out Tls_Core.Tls13_Driver.Driver)
+     (Sock : Tls_Core.Tcp_Transport.Channel; D : Tls_Core.Tls13_Driver.Driver)
    is
       Out_Dir, In_Dir : Tls_Core.Aead_Channel.Direction;
    begin
       Tls_Core.Tls13_Driver.Open_App_Directions (D, Out_Dir, In_Dir);
 
       case Action is
-         when A_Send_Recv =>
+         when A_Send_Recv        =>
             declare
-               Plaintext : constant Octet_Array := To_Bytes (Send_Str.all);
-               Wire      : Octet_Array (1 .. 4096) := (others => 0);
-               Wire_Last : Natural;
-               Reply     : Octet_Array (1 .. 4096) := (others => 0);
+               Plaintext  : constant Octet_Array := To_Bytes (Send_Str.all);
+               Wire       : Octet_Array (1 .. 4096) := [others => 0];
+               Wire_Last  : Natural;
+               Reply      : Octet_Array (1 .. 4096) := [others => 0];
                Reply_Last : Natural;
-               Got       : Octet_Array (1 .. 4096) := (others => 0);
-               Got_Last  : Natural;
-               Inner     : Octet;
-               OK        : Boolean;
+               Got        : Octet_Array (1 .. 4096) := [others => 0];
+               Got_Last   : Natural;
+               Inner      : Octet;
+               OK         : Boolean;
             begin
                Tls_Core.Aead_Channel.Send
-                 (Out_Dir, Plaintext,
+                 (Out_Dir,
+                  Plaintext,
                   Tls_Core.Aead_Channel.Inner_Type_Application_Data,
-                  Wire, Wire_Last);
+                  Wire,
+                  Wire_Last);
                Tls_Core.Tcp_Transport.Send_All (Sock, Wire (1 .. Wire_Last));
-               Trace ("  -> sent app-data (" & Natural'Image (Plaintext'Length)
-                      & " B plaintext)");
+               Trace
+                 ("  -> sent app-data ("
+                  & Natural'Image (Plaintext'Length)
+                  & " B plaintext)");
                if Recv_Len > 0 then
                   Read_Record (Sock, Reply, Reply_Last, OK);
                   if not OK or else Reply_Last < 5 then
@@ -840,26 +867,33 @@ procedure Tls_Cli is
                      return;
                   end if;
                   Tls_Core.Aead_Channel.Receive
-                    (In_Dir, Reply (1 .. Reply_Last),
-                     Got, Got_Last, Inner, OK);
+                    (In_Dir,
+                     Reply (1 .. Reply_Last),
+                     Got,
+                     Got_Last,
+                     Inner,
+                     OK);
                   if not OK then
                      Fail ("app-data decrypt failed");
                      return;
                   end if;
-                  Trace ("  <- decrypted " & Natural'Image (Got_Last)
-                         & " B reply");
+                  Trace
+                    ("  <- decrypted "
+                     & Natural'Image (Got_Last)
+                     & " B reply");
                end if;
             end;
-         when A_Echo =>
+
+         when A_Echo             =>
             declare
-               Reply     : Octet_Array (1 .. 4096) := (others => 0);
+               Reply      : Octet_Array (1 .. 4096) := [others => 0];
                Reply_Last : Natural;
-               Got       : Octet_Array (1 .. 4096) := (others => 0);
-               Got_Last  : Natural;
-               Inner     : Octet;
-               OK        : Boolean;
-               Wire      : Octet_Array (1 .. 4096) := (others => 0);
-               Wire_Last : Natural;
+               Got        : Octet_Array (1 .. 4096) := [others => 0];
+               Got_Last   : Natural;
+               Inner      : Octet;
+               OK         : Boolean;
+               Wire       : Octet_Array (1 .. 4096) := [others => 0];
+               Wire_Last  : Natural;
             begin
                Read_Record (Sock, Reply, Reply_Last, OK);
                if not OK then
@@ -867,29 +901,34 @@ procedure Tls_Cli is
                   return;
                end if;
                Tls_Core.Aead_Channel.Receive
-                 (In_Dir, Reply (1 .. Reply_Last),
-                  Got, Got_Last, Inner, OK);
+                 (In_Dir, Reply (1 .. Reply_Last), Got, Got_Last, Inner, OK);
                if not OK then
                   Fail ("server: app-data decrypt failed");
                   return;
                end if;
-               Trace ("  <- received " & Natural'Image (Got_Last)
-                      & " B; echoing back");
+               Trace
+                 ("  <- received "
+                  & Natural'Image (Got_Last)
+                  & " B; echoing back");
                Tls_Core.Aead_Channel.Send
-                 (Out_Dir, Got (1 .. Got_Last),
+                 (Out_Dir,
+                  Got (1 .. Got_Last),
                   Tls_Core.Aead_Channel.Inner_Type_Application_Data,
-                  Wire, Wire_Last);
+                  Wire,
+                  Wire_Last);
                Tls_Core.Tcp_Transport.Send_All (Sock, Wire (1 .. Wire_Last));
             end;
-         when A_Bench_Handshake =>
+
+         when A_Bench_Handshake  =>
             null;
+
          when A_Bench_Throughput =>
             declare
                use Ada.Calendar;
                Chunk   : constant Natural := 4096;
                Payload : constant Octet_Array (1 .. Chunk) :=
-                 (others => 16#42#);
-               Wire    : Octet_Array (1 .. Chunk + 256) := (others => 0);
+                 [others => 16#42#];
+               Wire    : Octet_Array (1 .. Chunk + 256) := [others => 0];
                W_Last  : Natural;
                Sent    : Natural := 0;
                T0      : constant Time := Clock;
@@ -900,9 +939,11 @@ procedure Tls_Cli is
                        Natural'Min (Chunk, Bench_Bytes - Sent);
                   begin
                      Tls_Core.Aead_Channel.Send
-                       (Out_Dir, Payload (1 .. This),
+                       (Out_Dir,
+                        Payload (1 .. This),
                         Tls_Core.Aead_Channel.Inner_Type_Application_Data,
-                        Wire, W_Last);
+                        Wire,
+                        W_Last);
                      Tls_Core.Tcp_Transport.Send_All
                        (Sock, Wire (1 .. W_Last));
                      Sent := Sent + This;
@@ -910,19 +951,22 @@ procedure Tls_Cli is
                end loop;
                declare
                   Elapsed : constant Duration := Clock - T0;
-                  Mib     : constant Float :=
-                    Float (Sent) / 1_048_576.0;
+                  Mib     : constant Float := Float (Sent) / 1_048_576.0;
                   Mib_S   : constant Float :=
                     Mib / Float'Max (Float (Elapsed), 1.0e-9);
                begin
                   Ada.Text_IO.Put_Line
                     ("BENCH_THROUGHPUT:"
-                     & Natural'Image (Sent) & " B in"
-                     & Duration'Image (Elapsed) & " s ="
-                     & Integer'Image (Integer (Mib_S)) & " MiB/s");
+                     & Natural'Image (Sent)
+                     & " B in"
+                     & Duration'Image (Elapsed)
+                     & " s ="
+                     & Integer'Image (Integer (Mib_S))
+                     & " MiB/s");
                end;
             end;
-         when A_None =>
+
+         when A_None             =>
             null;
       end case;
    end Run_App_Phase;
@@ -939,15 +983,16 @@ begin
    declare
       Colon : constant Natural := Find_Colon (Endpoint.all);
       Host  : constant String :=
-        (if Colon = 0 then Endpoint.all
+        (if Colon = 0
+         then Endpoint.all
          else Endpoint (Endpoint'First .. Colon - 1));
       Port  : constant Natural :=
-        (if Colon = 0 then 4433
-         else Natural'Value
-                (Endpoint (Colon + 1 .. Endpoint'Last)));
-      Sock : Tls_Core.Tcp_Transport.Channel;
-      Lstn : Tls_Core.Tcp_Transport.Listener;
-      D    : Tls_Core.Tls13_Driver.Driver;
+        (if Colon = 0
+         then 4433
+         else Natural'Value (Endpoint (Colon + 1 .. Endpoint'Last)));
+      Sock  : Tls_Core.Tcp_Transport.Channel;
+      Lstn  : Tls_Core.Tcp_Transport.Listener;
+      D     : Tls_Core.Tls13_Driver.Driver;
    begin
       if Role = R_Client then
          Trace ("tls_cli client: " & Host & ":" & Natural'Image (Port));
@@ -955,8 +1000,10 @@ begin
       else
          Trace ("tls_cli server: bind " & Host & ":" & Natural'Image (Port));
          Tls_Core.Tcp_Transport.Listen (Lstn, Host, Port);
-         Trace ("  (bound port =" & Natural'Image
-                  (Tls_Core.Tcp_Transport.Bound_Port (Lstn)) & ")");
+         Trace
+           ("  (bound port ="
+            & Natural'Image (Tls_Core.Tcp_Transport.Bound_Port (Lstn))
+            & ")");
          Tls_Core.Tcp_Transport.Accept_One (Lstn, Sock);
          Trace ("  <- client connected");
       end if;
@@ -965,8 +1012,8 @@ begin
       case Mode is
          when M_Psk_Dhe_Ke =>
             declare
-               Psk_Bytes   : Octet_Array (1 .. 32) := (others => 0);
-               Ecdhe_Bytes : Octet_Array (1 .. 32) := (others => 0);
+               Psk_Bytes   : Octet_Array (1 .. 32) := [others => 0];
+               Ecdhe_Bytes : Octet_Array (1 .. 32) := [others => 0];
                OK          : Boolean;
             begin
                Load_Psk (Psk_Bytes, OK);
@@ -993,9 +1040,10 @@ begin
                     (D, Psk_Bytes, To_Bytes (Psk_Id.all), Ecdhe_Bytes);
                end if;
             end;
-         when M_Cert_Ec =>
+
+         when M_Cert_Ec    =>
             declare
-               Ecdhe_Bytes : Octet_Array (1 .. 32) := (others => 0);
+               Ecdhe_Bytes : Octet_Array (1 .. 32) := [others => 0];
                OK          : Boolean;
             begin
                Load_Ecdhe (Ecdhe_Bytes, OK);
@@ -1053,7 +1101,8 @@ begin
                         goto Cleanup;
                      end if;
                      if Key_Bytes'Length /= 32 then
-                        Fail ("--key must be exactly 32 bytes (raw EC scalar)");
+                        Fail
+                          ("--key must be exactly 32 bytes (raw EC scalar)");
                         goto Cleanup;
                      end if;
                      Chain_Spec.Count := 1;
@@ -1070,10 +1119,13 @@ begin
                   end;
                end if;
             end;
-         when M_Cert_Rsa =>
-            Fail ("--mode cert-rsa: server-side RSA-PSS signing not in "
-                  & "v0.5 driver scope (verify path only). Use cert-ec.");
+
+         when M_Cert_Rsa   =>
+            Fail
+              ("--mode cert-rsa: server-side RSA-PSS signing not in "
+               & "v0.5 driver scope (verify path only). Use cert-ec.");
             goto Cleanup;
+
          when M_Psk_Resume =>
             --  Resumption-PSK client: load Slot from --load-ticket
             --  and feed it to Init_Psk_Resumption_Client.  Server
@@ -1097,10 +1149,10 @@ begin
                   goto Cleanup;
                end if;
                Tls_Core.Tls13_Driver.Init_Psk_Resumption_Client
-                 (D    => D,
-                  Slot => Slot);
+                 (D => D, Slot => Slot);
             end;
-         when M_None =>
+
+         when M_None       =>
             Usage_Error ("must specify --mode");
             goto Cleanup;
       end case;
@@ -1108,11 +1160,13 @@ begin
       --  Run the handshake.  PSK server flight = 3 records (SH+EE+SF);
       --  cert server flight = 5 records (SH+EE+Cert+CV+SF).
       if Role = R_Client then
-         Run_Client (Sock, D,
-                     Server_Records =>
-                       (case Mode is
-                          when M_Psk_Dhe_Ke | M_Psk_Resume => 3,
-                          when others                      => 5));
+         Run_Client
+           (Sock,
+            D,
+            Server_Records =>
+              (case Mode is
+                 when M_Psk_Dhe_Ke | M_Psk_Resume => 3,
+                 when others                      => 5));
       else
          Run_Server (Sock, D);
       end if;
@@ -1129,11 +1183,11 @@ begin
       then
          declare
             Out_Dir, In_Dir : Tls_Core.Aead_Channel.Direction;
-            Cache : Tls_Core.Session_Cache.Cache;
-            Rec_Buf : Octet_Array (1 .. 4096) := (others => 0);
-            Rec_Last : Natural;
-            OK : Boolean;
-            NST_OK : Boolean := False;
+            Cache           : Tls_Core.Session_Cache.Cache;
+            Rec_Buf         : Octet_Array (1 .. 4096) := [others => 0];
+            Rec_Last        : Natural;
+            OK              : Boolean;
+            NST_OK          : Boolean := False;
          begin
             Tls_Core.Session_Cache.Init (Cache);
             Tls_Core.Tls13_Driver.Open_App_Directions
@@ -1160,14 +1214,14 @@ begin
                      declare
                         Saved : Boolean;
                      begin
-                        Save_Slot (Cache.Slots (Index),
-                                   Save_Ticket.all, Saved);
+                        Save_Slot
+                          (Cache.Slots (Index), Save_Ticket.all, Saved);
                         if Saved then
-                           Trace ("  <- captured NST; ticket="
-                                  & Natural'Image
-                                       (Cache.Slots (Index).Ticket_Len)
-                                  & " B → "
-                                  & Save_Ticket.all);
+                           Trace
+                             ("  <- captured NST; ticket="
+                              & Natural'Image (Cache.Slots (Index).Ticket_Len)
+                              & " B → "
+                              & Save_Ticket.all);
                         else
                            Trace ("  (NST captured; save_slot failed)");
                         end if;
@@ -1186,14 +1240,16 @@ begin
       --  be needed depending on the test; can be added behind a flag).
       if not Aborted and then Role = R_Client then
          declare
-            CN_Buf  : Octet_Array (1 .. 256) := (others => 0);
+            CN_Buf  : Octet_Array (1 .. 256) := [others => 0];
             CN_Last : Natural;
          begin
             Tls_Core.Tls13_Driver.Send_Close_Notify (D, CN_Buf, CN_Last);
             if CN_Last > 0 then
                Tls_Core.Tcp_Transport.Send_All (Sock, CN_Buf (1 .. CN_Last));
-               Trace ("  -> sent close_notify (" & Natural'Image (CN_Last)
-                      & " B)");
+               Trace
+                 ("  -> sent close_notify ("
+                  & Natural'Image (CN_Last)
+                  & " B)");
             end if;
          end;
       end if;
@@ -1202,8 +1258,7 @@ begin
       if Tls_Core.Tcp_Transport.Is_Open (Sock) then
          Tls_Core.Tcp_Transport.Close (Sock);
       end if;
-      if Role = R_Server
-        and then Tls_Core.Tcp_Transport.Is_Listening (Lstn)
+      if Role = R_Server and then Tls_Core.Tcp_Transport.Is_Listening (Lstn)
       then
          Tls_Core.Tcp_Transport.Stop (Lstn);
       end if;
@@ -1212,12 +1267,14 @@ begin
    if not Aborted then
       Trace ("tls_cli: OK");
    end if;
-   Ada.Command_Line.Set_Exit_Status
-     (Ada.Command_Line.Exit_Status (Exit_Code));
+   Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Exit_Status (Exit_Code));
 
 exception
    when E : others =>
-      Put_Line ("tls_cli: exception " & Ada.Exceptions.Exception_Name (E)
-                & " — " & Ada.Exceptions.Exception_Message (E));
+      Put_Line
+        ("tls_cli: exception "
+         & Ada.Exceptions.Exception_Name (E)
+         & " — "
+         & Ada.Exceptions.Exception_Message (E));
       Ada.Command_Line.Set_Exit_Status (1);
 end Tls_Cli;

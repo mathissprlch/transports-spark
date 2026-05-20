@@ -553,7 +553,7 @@ procedure Tls_Interop is
            To_String (Log_Dir) & "/psk32.bin";
          FD : File_Descriptor;
          Buf : array (1 .. 32) of Character :=
-           (others => Character'Val (16#42#));
+           [others => Character'Val (16#42#)];
          N : Integer;
       begin
          FD := Create_File (Path, Binary);
@@ -566,8 +566,8 @@ procedure Tls_Interop is
    end Init_Run;
 
    Peers : constant array (1 .. 7) of Peer_Kind :=
-     (Openssl, Boringssl, Go_Lang, Rustls,
-      Gnutls, Mbedtls, Wolfssl);
+     [Openssl, Boringssl, Go_Lang, Rustls,
+      Gnutls, Mbedtls, Wolfssl];
 
 begin
    Parse_Args;
@@ -617,14 +617,14 @@ begin
          All_Feat : Feature_Array (1 .. Feature_Kind'Pos (Feature_Kind'Last) + 1);
          NF : Natural := 0;
          Tput_Feat : constant Feature_Array :=
-           (Cert_Ec_Chacha20,
+           [Cert_Ec_Chacha20,
             Cert_Ec_Aes128,
             Cert_Ec_Aes256,
             Psk_External_Chacha20,
             Psk_External_Aes128,
-            Psk_External_Aes256);
+            Psk_External_Aes256];
          Ref_Peers : constant Peer_Array :=
-           (Openssl, Go_Lang, Mbedtls, Gnutls);
+           [Openssl, Go_Lang, Mbedtls, Gnutls];
          Ref_Filtered : Peer_Array (1 .. 4);
          NR : Natural := 0;
 

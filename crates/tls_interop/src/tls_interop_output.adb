@@ -10,7 +10,7 @@ package body Tls_Interop_Output is
       function Pad (S : String) return String is
       begin
          if S'Length >= 8 then return S (S'First .. S'First + 7); end if;
-         return (1 .. 8 - S'Length => ' ') & S;
+         return [1 .. 8 - S'Length => ' '] & S;
       end Pad;
    begin
       if Ms = 0 then
@@ -54,7 +54,7 @@ package body Tls_Interop_Output is
          if S'Length >= W then
             return S (S'First .. S'First + W - 1);
          end if;
-         return S & (1 .. W - S'Length => ' ');
+         return S & [1 .. W - S'Length => ' '];
       end Pad;
       function Cell (R : Cell_Result; T : Duration) return String is
         ((case R is

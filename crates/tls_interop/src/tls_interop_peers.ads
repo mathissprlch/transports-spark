@@ -28,31 +28,28 @@ package Tls_Interop_Peers is
       Cert_Rsa);     --  RSA-PSS verify-only
 
    type Cipher_Kind is
-     (Auto,
-      Chacha20_Poly1305_Sha256,
-      Aes128_Gcm_Sha256,
-      Aes256_Gcm_Sha384);
+     (Auto, Chacha20_Poly1305_Sha256, Aes128_Gcm_Sha256, Aes256_Gcm_Sha384);
 
    type Cell_Spec is record
-      Peer         : Peer_Kind;
-      Role         : Role_Kind;
-      Mode         : Mode_Kind;
-      Cipher       : Cipher_Kind := Auto;
-      Port         : Natural := 0;
-      Host         : Unbounded_String := Null_Unbounded_String;
+      Peer   : Peer_Kind;
+      Role   : Role_Kind;
+      Mode   : Mode_Kind;
+      Cipher : Cipher_Kind := Auto;
+      Port   : Natural := 0;
+      Host   : Unbounded_String := Null_Unbounded_String;
 
       --  PSK material — only meaningful when Mode = Psk_Dhe_Ke.
       Psk_Hex      : Unbounded_String := Null_Unbounded_String;
       Psk_Identity : Unbounded_String := Null_Unbounded_String;
 
       --  Cert material — only meaningful when Mode in Cert_Ec | Cert_Rsa.
-      Cert_Pem     : Unbounded_String := Null_Unbounded_String;
-      Key_Pem      : Unbounded_String := Null_Unbounded_String;
-      Trust_Pem    : Unbounded_String := Null_Unbounded_String;
-      Hostname     : Unbounded_String := Null_Unbounded_String;
+      Cert_Pem  : Unbounded_String := Null_Unbounded_String;
+      Key_Pem   : Unbounded_String := Null_Unbounded_String;
+      Trust_Pem : Unbounded_String := Null_Unbounded_String;
+      Hostname  : Unbounded_String := Null_Unbounded_String;
 
       --  Path to a 32-byte file containing the PSK (used by tls_cli).
-      Psk_File     : Unbounded_String := Null_Unbounded_String;
+      Psk_File : Unbounded_String := Null_Unbounded_String;
    end record;
 
    ---------------------------------------------------------------------
@@ -143,7 +140,7 @@ package Tls_Interop_Peers is
       --  v0.6+ scope per docs/conventions.md §0a (production-default rule).
 
       Key_Update);
-      --  RFC 8446 §4.6.3 post-handshake key rotation.
+   --  RFC 8446 §4.6.3 post-handshake key rotation.
 
    --  Does the peer's CLI / library expose this feature in a way
    --  our matrix harness can drive?  This is "peer-CLI-supports",
@@ -178,8 +175,6 @@ package Tls_Interop_Peers is
    function Image (R : Cell_Result) return String;
 
    procedure Feature_To_Cell
-     (F : Feature_Kind;
-      M : out Mode_Kind;
-      C : out Cipher_Kind);
+     (F : Feature_Kind; M : out Mode_Kind; C : out Cipher_Kind);
 
 end Tls_Interop_Peers;
