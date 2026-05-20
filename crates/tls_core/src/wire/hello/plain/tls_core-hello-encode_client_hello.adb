@@ -6,7 +6,7 @@ is
    Ext_Len_Pos    : Natural;
    Ext_Body_Start : Natural;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
 
    --  legacy_version 0x0303
    W_U8 (Out_Buf, Cursor, 16#03#);
@@ -35,7 +35,7 @@ begin
    --  supported_versions: u8 list_len + N u16 versions
    declare
       Body_Bytes : constant Octet_Array (1 .. 3) :=
-        (3 => 16#04#, 2 => 16#03#, 1 => 16#02#);
+        [3 => 16#04#, 2 => 16#03#, 1 => 16#02#];
       --  Body: 0x02 0x03 0x04 (list-of-1: TLS 1.3 = 0x0304)
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
@@ -44,7 +44,7 @@ begin
    --  supported_groups: u16 list_len + N u16 groups
    declare
       Body_Bytes : constant Octet_Array (1 .. 4) :=
-        (1 => 16#00#, 2 => 16#02#, 3 => Named_Group_Hi, 4 => Named_Group_Lo);
+        [1 => 16#00#, 2 => 16#02#, 3 => Named_Group_Hi, 4 => Named_Group_Lo];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
    end;
@@ -52,14 +52,14 @@ begin
    --  signature_algorithms: u16 list_len + N u16 schemes
    declare
       Body_Bytes : constant Octet_Array (1 .. 4) :=
-        (1 => 16#00#, 2 => 16#02#, 3 => Sig_Alg_Hi, 4 => Sig_Alg_Lo);
+        [1 => 16#00#, 2 => 16#02#, 3 => Sig_Alg_Hi, 4 => Sig_Alg_Lo];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Signature_Algorithms, Body_Bytes);
    end;
 
    --  key_share: u16 client_shares_len + KeyShareEntry { u16 group, u16 key_exch_len, key_exch }
    declare
-      Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
+      Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := [others => 0];
    begin
       Body_Bytes (1) := 16#00#;
       Body_Bytes (2) := 16#24#;  --  client_shares total length = 38

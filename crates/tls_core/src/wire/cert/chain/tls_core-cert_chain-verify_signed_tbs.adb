@@ -32,7 +32,7 @@ begin
             return;
          end if;
          declare
-            Pub    : Tls_Core.Ecdsa_P256.Public_Key_Bytes := (others => 0);
+            Pub    : Tls_Core.Ecdsa_P256.Public_Key_Bytes := [others => 0];
             R, S   : Tls_Core.Ecdsa_P256.Component;
             Sig_OK : Boolean;
             Vrf_OK : Boolean;
@@ -67,15 +67,15 @@ begin
          declare
             Inner_Len                  : constant Natural := Key_L - Key_F + 1;
             Inner_Buf                  : Octet_Array (1 .. 1024) :=
-              (others => 0);
+              [others => 0];
             Rsa_OK                     : Boolean;
             Mod_F, Mod_L, Exp_F, Exp_L : Natural;
             N                          : Tls_Core.Bignum_2048.Bigint :=
-              (others => 0);
+              [others => 0];
             E                          : Tls_Core.Bignum_2048.Bigint :=
-              (others => 0);
+              [others => 0];
             Sig_BE                     : Tls_Core.Bignum_2048.Bigint :=
-              (others => 0);
+              [others => 0];
          begin
             if Inner_Len < 2 or else Inner_Len > 1024 then
                return;

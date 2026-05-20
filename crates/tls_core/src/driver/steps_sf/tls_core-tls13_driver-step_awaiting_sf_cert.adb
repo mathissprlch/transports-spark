@@ -16,7 +16,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Sf_Cert
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Handle
      (D        : in out Driver;
@@ -24,7 +23,7 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if D.My_Role /= Client then
@@ -40,9 +39,9 @@ is
       declare
          Cursor : Natural := In_Bytes'First;
 
-         Empty_In    : constant Octet_Array (1 .. 0) := (others => 0);
-         Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := (others => 0);
-         Zero32      : constant Octet_Array (1 .. 32) := (others => 0);
+         Empty_In    : constant Octet_Array (1 .. 0) := [others => 0];
+         Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := [others => 0];
+         Zero32      : constant Octet_Array (1 .. 32) := [others => 0];
          Empty_Hash  : Tls_Core.Key_Sched.Max_Digest;
 
          Th_After_Sh   : Tls_Core.Key_Sched.Max_Digest;
@@ -52,7 +51,7 @@ is
 
          --  Leaf-cert scratch -- the raw DER bytes recovered
          --  from the 4.4.2 Certificate message body.
-         Leaf_Buf : Octet_Array (1 .. 4096) := (others => 0);
+         Leaf_Buf : Octet_Array (1 .. 4096) := [others => 0];
          Leaf_Len : Natural := 0;
       begin
          --  Step 1: parse SH TLSPlaintext (same shape as
@@ -169,7 +168,7 @@ is
             type Sub_State is
               (Expect_EE, Expect_Cert, Expect_CertVerify, Expect_SF, Done_Sub);
             Sub         : Sub_State := Expect_EE;
-            Pt_Buf      : Octet_Array (1 .. 16640) := (others => 0);
+            Pt_Buf      : Octet_Array (1 .. 16640) := [others => 0];
             Pt_Last     : Natural;
             Inner_Type  : Octet;
             Aead_OK     : Boolean;
@@ -178,7 +177,7 @@ is
             Push_OK     : Boolean;
             Msg_Buf     :
               Octet_Array (1 .. Tls_Core.Handshake_Buffer.Max_Buf) :=
-                (others => 0);
+                [others => 0];
             Msg_Last    : Natural;
             Body_Len    : Natural;
             Expected_Sf : Tls_Core.Key_Sched.Max_Digest;
@@ -399,7 +398,7 @@ is
                               Total_Len : constant Natural :=
                                 Leaf_Len + D.Trust_Anchor_Len;
                               All_Certs : Octet_Array (1 .. Total_Len) :=
-                                (others => 0);
+                                [others => 0];
                               Chain_In  : Tls_Core.Cert_Chain.Chain;
                               Trust     : Tls_Core.Cert_Chain.Trust_Store;
                               Result    :
@@ -551,9 +550,9 @@ is
          --  Step 5: build + send client Finished.
          declare
             Cf_Verify   : Tls_Core.Key_Sched.Max_Digest;
-            Cf_Hs       : Octet_Array (1 .. 4 + 48) := (others => 0);
+            Cf_Hs       : Octet_Array (1 .. 4 + 48) := [others => 0];
             Cf_Hs_Last  : Natural;
-            Cf_Rec      : Octet_Array (1 .. 256) := (others => 0);
+            Cf_Rec      : Octet_Array (1 .. 256) := [others => 0];
             Cf_Rec_Last : Natural;
          begin
             Tls_Core.Key_Sched.Build_Finished

@@ -10,7 +10,6 @@ is
 
    use type Tls_Core.Octet;
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Verify — FIPS 186-4 §6.4.2.
@@ -23,7 +22,7 @@ is
       OK         : out Boolean)
    is
       E_Digest : Tls_Core.Sha256.Digest;
-      E_Bytes  : Component := (others => 0);
+      E_Bytes  : Component := [others => 0];
       E_Mod    : Component;
       W        : Component;
       U1       : Component;
@@ -36,7 +35,7 @@ is
       Decoded : Boolean;
 
       X_Field : Tls_Core.P256_Field.Field;
-      X_Bytes : Component := (others => 0);
+      X_Bytes : Component := [others => 0];
       X_Mod_N : Component;
    begin
       OK := False;
@@ -113,12 +112,12 @@ is
       OK          : out Boolean)
    is
       E_Digest : Tls_Core.Sha256.Digest;
-      E_Bytes  : Component := (others => 0);
+      E_Bytes  : Component := [others => 0];
       E_Mod    : Component;
 
       KG      : Tls_Core.P256.Point;
       X_Field : Tls_Core.P256_Field.Field;
-      X_Bytes : Component := (others => 0);
+      X_Bytes : Component := [others => 0];
       R_Mod   : Component;
 
       K_Inv  : Component;
@@ -126,8 +125,8 @@ is
       E_Plus : Component;
       S_Mod  : Component;
    begin
-      Out_R := (others => 0);
-      Out_S := (others => 0);
+      Out_R := [others => 0];
+      Out_S := [others => 0];
       OK := False;
 
       if not Tls_Core.P256_Order.In_Range (K) then
@@ -185,7 +184,7 @@ is
    is
       --  P-256 group order n in big-endian (FIPS 186-4 §D.1.2.3).
       N_BE : constant Component :=
-        (16#FF#,
+        [16#FF#,
          16#FF#,
          16#FF#,
          16#FF#,
@@ -216,7 +215,7 @@ is
          16#FC#,
          16#63#,
          16#25#,
-         16#51#);
+         16#51#];
 
       function Less_Than (A, B : Component) return Boolean is
       begin
@@ -266,15 +265,15 @@ is
       H1_Modq : Component;
       X_Bytes : constant Component := Private_Key;
 
-      V       : Component := (others => 16#01#);
-      K       : Component := (others => 16#00#);
-      Big_Buf : Octet_Array (1 .. 1 + 32 + 32 + 32) := (others => 0);
+      V       : Component := [others => 16#01#];
+      K       : Component := [others => 16#00#];
+      Big_Buf : Octet_Array (1 .. 1 + 32 + 32 + 32) := [others => 0];
       New_V   : Tls_Core.Hmac_Sha256.Tag;
       New_K   : Tls_Core.Hmac_Sha256.Tag;
 
       Iter : Natural := 0;
    begin
-      Out_K := (others => 0);
+      Out_K := [others => 0];
       OK := False;
 
       --  Step 1: h1 = SHA-256 (m); reduce mod n.

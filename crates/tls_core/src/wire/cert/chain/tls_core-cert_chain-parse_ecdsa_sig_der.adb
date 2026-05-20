@@ -94,8 +94,8 @@ is
    S_VP, S_VL, S_Nx             : Natural;
    S_OK                         : Boolean;
 begin
-   R := (others => 0);
-   S := (others => 0);
+   R := [others => 0];
+   S := [others => 0];
    OK := False;
 
    Read_Tlv_Small

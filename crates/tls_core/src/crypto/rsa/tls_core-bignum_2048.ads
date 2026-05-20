@@ -45,7 +45,6 @@ package Tls_Core.Bignum_2048
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Make the `=` operator on Octet (Interfaces.Unsigned_8) directly
    --  visible inside `Post` expressions in this spec.
@@ -57,9 +56,8 @@ is
    --  Big-endian: Bigint (1) is the most significant byte,
    --  Bigint (256) is the least significant.
 
-   Zero : constant Bigint := (others => 0);
+   Zero : constant Bigint := [others => 0];
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Ghost spec layer.

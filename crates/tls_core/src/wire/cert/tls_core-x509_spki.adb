@@ -5,7 +5,6 @@ package body Tls_Core.X509_Spki
 is
 
    use type Interfaces.Unsigned_8;
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  DER tag bytes (ITU-T X.690 §8.1).
    Tag_Sequence   : constant Octet := 16#30#;  --  context-free constructed
@@ -18,17 +17,17 @@ is
    --  rsaEncryption (RFC 8017 §A.1):
    --    1.2.840.113549.1.1.1 = 2A 86 48 86 F7 0D 01 01 01 (9 bytes)
    Oid_Rsa : constant Octet_Array (1 .. 9) :=
-     (16#2A#, 16#86#, 16#48#, 16#86#, 16#F7#, 16#0D#, 16#01#, 16#01#, 16#01#);
+     [16#2A#, 16#86#, 16#48#, 16#86#, 16#F7#, 16#0D#, 16#01#, 16#01#, 16#01#];
 
    --  id-ecPublicKey (RFC 5480 §2.1.1):
    --    1.2.840.10045.2.1 = 2A 86 48 CE 3D 02 01 (7 bytes)
    Oid_Ec_Pub : constant Octet_Array (1 .. 7) :=
-     (16#2A#, 16#86#, 16#48#, 16#CE#, 16#3D#, 16#02#, 16#01#);
+     [16#2A#, 16#86#, 16#48#, 16#CE#, 16#3D#, 16#02#, 16#01#];
 
    --  prime256v1 / secp256r1 (RFC 5480 §2.1.1.1):
    --    1.2.840.10045.3.1.7 = 2A 86 48 CE 3D 03 01 07 (8 bytes)
    Oid_P256 : constant Octet_Array (1 .. 8) :=
-     (16#2A#, 16#86#, 16#48#, 16#CE#, 16#3D#, 16#03#, 16#01#, 16#07#);
+     [16#2A#, 16#86#, 16#48#, 16#CE#, 16#3D#, 16#03#, 16#01#, 16#07#];
 
    --  ===================================================================
    --  Parser combinators (miTLS-style refinement-typed cursor advance).

@@ -9,11 +9,11 @@ procedure Send_Key_Update
 is
    pragma Unreferenced (D);
    Ku_Msg      : Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
-     (others => 0);
+     [others => 0];
    Ku_Last     : Natural;
-   Next_Secret : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+   Next_Secret : Tls_Core.Key_Sched.Max_Secret := [others => 0];
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    Out_Last := 0;
 
    --  1. Build the KeyUpdate handshake message (5 bytes total).

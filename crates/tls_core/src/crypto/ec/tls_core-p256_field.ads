@@ -50,15 +50,13 @@ package Tls_Core.P256_Field
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    subtype Field is Octet_Array (1 .. 32);
 
-   Zero : constant Field := (others => 0);
+   Zero : constant Field := [others => 0];
    One  : constant Field :=
-     (1 .. 31 => 0, 32 => 1);  --  big-endian: LSB at byte 32
+     [1 .. 31 => 0, 32 => 1];  --  big-endian: LSB at byte 32
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Ghost spec layer.

@@ -125,27 +125,27 @@ private
       My_Mode   : Mode := PSK_KE;
       Cur_State : State := Idle;
       Hash_Ctx  : Tls_Core.Transcript.Accumulator;
-      PSK       : PSK_Bytes := (others => 0);
+      PSK       : PSK_Bytes := [others => 0];
 
       --  ECDHE state — populated only when My_Mode in {ECDHE, ECDHE_With_Cert}.
-      My_Priv  : Tls_Core.X25519.Bytes_32 := (others => 0);
-      My_Pub   : Tls_Core.X25519.Bytes_32 := (others => 0);
-      Peer_Pub : Tls_Core.X25519.Bytes_32 := (others => 0);
-      Shared   : Tls_Core.X25519.Bytes_32 := (others => 0);
+      My_Priv  : Tls_Core.X25519.Bytes_32 := [others => 0];
+      My_Pub   : Tls_Core.X25519.Bytes_32 := [others => 0];
+      Peer_Pub : Tls_Core.X25519.Bytes_32 := [others => 0];
+      Shared   : Tls_Core.X25519.Bytes_32 := [others => 0];
 
       --  Cert-mode state — populated only when My_Mode = ECDHE_With_Cert.
-      Sign_Seed   : Tls_Core.Ed25519.Bytes_32 := (others => 0);
-      Sign_Pub    : Tls_Core.Ed25519.Bytes_32 := (others => 0);
-      Trusted_Pub : Tls_Core.Ed25519.Bytes_32 := (others => 0);
+      Sign_Seed   : Tls_Core.Ed25519.Bytes_32 := [others => 0];
+      Sign_Pub    : Tls_Core.Ed25519.Bytes_32 := [others => 0];
+      Trusted_Pub : Tls_Core.Ed25519.Bytes_32 := [others => 0];
 
       --  We retain the recorded ClientHello and ServerHello bytes
       --  (and the peer Finished bytes) so the §7.1 schedule can
       --  re-key using the exact transcripts the peers exchanged.
-      CH_Buf : Hello_Bytes := (others => 0);
+      CH_Buf : Hello_Bytes := [others => 0];
       CH_Len : Natural := 0;
-      SH_Buf : Hello_Bytes := (others => 0);
+      SH_Buf : Hello_Bytes := [others => 0];
       SH_Len : Natural := 0;
-      SF_Buf : Hello_Bytes := (others => 0);
+      SF_Buf : Hello_Bytes := [others => 0];
       SF_Len : Natural := 0;
 
       --  Filled when state becomes Done.

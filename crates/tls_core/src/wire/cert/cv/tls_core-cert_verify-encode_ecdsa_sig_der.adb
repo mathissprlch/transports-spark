@@ -4,7 +4,7 @@ procedure Encode_Ecdsa_Sig_Der
 is
    Cursor : Natural := 2;  --  reserve bytes 1..2 for SEQUENCE header
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    Cursor := 2;
    Append_Der_Integer (R, Out_Buf, Cursor);
    pragma Assert (Cursor <= 37);

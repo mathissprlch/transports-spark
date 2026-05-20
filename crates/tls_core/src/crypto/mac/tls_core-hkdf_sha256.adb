@@ -4,7 +4,6 @@ package body Tls_Core.Hkdf_Sha256
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Spec_HKDF_Expand_Block — single T(i) computation.
@@ -24,7 +23,7 @@ is
         (if First_Block
          then Info'Length + 1
          else Hash_Length + Info'Length + 1);
-      Buf     : Octet_Array (1 .. Buf_Len) := (others => 0);
+      Buf     : Octet_Array (1 .. Buf_Len) := [others => 0];
       Off     : Natural := 0;
       Result  : Tls_Core.Sha256.Digest;
    begin
@@ -57,7 +56,7 @@ is
      (PRK : Octet_Array; Info : Octet_Array; L : Positive) return Octet_Array
    is
       OKM    : Octet_Array (1 .. L) := (others => 0);
-      T_Prev : Tls_Core.Sha256.Digest := (others => 0);
+      T_Prev : Tls_Core.Sha256.Digest := [others => 0];
       T_Curr : Tls_Core.Sha256.Digest;
       Cursor : Natural := 0;
       Idx    : Natural := 0;
@@ -109,7 +108,7 @@ is
       Spec_Result : constant Octet_Array :=
         Spec_HKDF_Expand (PRK, Info, OKM'Length);
    begin
-      OKM := (others => 0);
+      OKM := [others => 0];
       for I in 1 .. OKM'Length loop
          OKM (OKM'First + I - 1) := Spec_Result (I);
          pragma

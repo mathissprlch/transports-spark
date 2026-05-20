@@ -10,7 +10,7 @@ is
    pragma Unreferenced (D);
    Request_Update : Octet;
    Decode_OK      : Boolean;
-   Next_Secret    : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+   Next_Secret    : Tls_Core.Key_Sched.Max_Secret := [others => 0];
 begin
    Want_Reply := False;
    OK := False;

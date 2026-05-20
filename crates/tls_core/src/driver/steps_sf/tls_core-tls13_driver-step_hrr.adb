@@ -16,7 +16,6 @@ package body Tls_Core.Tls13_Driver.Step_Hrr
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -26,7 +25,7 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       --  RFC 8446 §4.1.4 — client just sent CH1; server's first
@@ -54,7 +53,7 @@ is
          Cursor       : constant Natural := In_Bytes'First;
          Rec_Len      : Natural;
          Rec_F, Rec_L : Natural;
-         Random_Slice : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+         Random_Slice : Tls_Core.Octet_Array (1 .. 32) := [others => 0];
       begin
          if Cursor + 4 > In_Bytes'Last
            or else In_Bytes (Cursor) /= Rec_Type_Handshake
@@ -131,7 +130,7 @@ is
          --  RFC 8446 §4.4.1 — rebuild transcript:
          --    new transcript = synthetic(CH1_hash) || HRR
          declare
-            Synthetic : Tls_Core.Octet_Array (1 .. 36) := (others => 0);
+            Synthetic : Tls_Core.Octet_Array (1 .. 36) := [others => 0];
          begin
             Tls_Core.Key_Sched.Transcript_Snapshot
               (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, D.Hrr_Ch1_Hash);
@@ -165,14 +164,14 @@ is
       --  loopback test scenario.
       declare
          Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-           (others => 16#A2#);  --  distinct from CH1's 0xA1
-         Ch_Body       : Tls_Core.Octet_Array (1 .. 512) := (others => 0);
+           [others => 16#A2#];  --  distinct from CH1's 0xA1
+         Ch_Body       : Tls_Core.Octet_Array (1 .. 512) := [others => 0];
          Ch_Body_Last  : Natural;
          T_Last        : Natural;
          Binder        : Tls_Core.Psk_Binder.Binder_Bytes;
-         Ch_Hs         : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Ch_Hs         : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Ch_Hs_Last    : Natural;
-         Ch_Rec        : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Ch_Rec        : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Ch_Rec_Last   : Natural;
       begin
          Tls_Core.Hello.Encode_Client_Hello_Psk_With_Cookie
@@ -189,7 +188,7 @@ is
          --  *handshake-formatted* CH (header + body), not the
          --  body alone.  See sister site at line ~397 for
          --  rationale.
-         Ch_Hs := (others => 0);
+         Ch_Hs := [others => 0];
          Ch_Hs (1) := Hs_Type_CH;
          Ch_Hs (2) := Octet ((Ch_Body_Last / 65536) mod 256);
          Ch_Hs (3) := Octet ((Ch_Body_Last / 256) mod 256);
@@ -220,7 +219,7 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       --  RFC 8446 §4.1.4 — server already emitted HRR; the
@@ -349,10 +348,10 @@ is
             --  not the body alone.  Copy into a 'First=1
             --  buffer for Compute's Pre.
             declare
-               Computed  : Tls_Core.Psk_Binder.Binder_Bytes := (others => 0);
-               Received  : Tls_Core.Psk_Binder.Binder_Bytes := (others => 0);
+               Computed  : Tls_Core.Psk_Binder.Binder_Bytes := [others => 0];
+               Received  : Tls_Core.Psk_Binder.Binder_Bytes := [others => 0];
                Trunc_Len : constant Natural := T_Last - Rec_F + 1;
-               Hs_Trunc  : Octet_Array (1 .. 16640) := (others => 0);
+               Hs_Trunc  : Octet_Array (1 .. 16640) := [others => 0];
             begin
                if Trunc_Len > Hs_Trunc'Length then
                   D.Cur_State := Failed;
@@ -498,20 +497,20 @@ is
       --  the case-loop manually here. Implementation: build
       --  the SH+EE+SF flight inline using the same helpers.
       declare
-         Sh_Body        : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Sh_Body        : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Sh_Body_Last   : Natural;
-         Sh_Hs_Msg      : Tls_Core.Octet_Array (1 .. 512) := (others => 0);
+         Sh_Hs_Msg      : Tls_Core.Octet_Array (1 .. 512) := [others => 0];
          Sh_Hs_Last     : Natural;
-         Sh_Record      : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Sh_Record      : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Sh_Record_Last : Natural;
          Server_Random  : constant Tls_Core.Hello.Random_Bytes :=
-           (others => 16#5E#);
-         Zero32         : constant Octet_Array (1 .. 32) := (others => 0);
-         Empty          : constant Octet_Array (1 .. 0) := (others => 0);
+           [others => 16#5E#];
+         Zero32         : constant Octet_Array (1 .. 32) := [others => 0];
+         Empty          : constant Octet_Array (1 .. 0) := [others => 0];
          Derived_Label  : constant Octet_Array (1 .. 7) :=
-           (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+           [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
          C_Hs_Label     : constant Octet_Array (1 .. 12) :=
-           (16#63#,
+           [16#63#,
             16#20#,
             16#68#,
             16#73#,
@@ -522,9 +521,9 @@ is
             16#66#,
             16#66#,
             16#69#,
-            16#63#);
+            16#63#];
          S_Hs_Label     : constant Octet_Array (1 .. 12) :=
-           (16#73#,
+           [16#73#,
             16#20#,
             16#68#,
             16#73#,
@@ -535,7 +534,7 @@ is
             16#66#,
             16#66#,
             16#69#,
-            16#63#);
+            16#63#];
          Early_Secret   : Tls_Core.Key_Sched.Max_Secret;
          Derived_1      : Tls_Core.Key_Sched.Max_Secret;
          Hs_Secret      : Tls_Core.Key_Sched.Max_Secret;
@@ -573,28 +572,28 @@ is
          D.Hs_Secret := Hs_Secret;
 
          declare
-            Ee_Body       : constant Octet_Array (1 .. 2) := (16#00#, 16#00#);
-            Ee_Hs         : Octet_Array (1 .. 6) := (others => 0);
+            Ee_Body       : constant Octet_Array (1 .. 2) := [16#00#, 16#00#];
+            Ee_Hs         : Octet_Array (1 .. 6) := [others => 0];
             Ee_Hs_Last    : Natural;
-            Ee_Rec        : Octet_Array (1 .. 256) := (others => 0);
+            Ee_Rec        : Octet_Array (1 .. 256) := [others => 0];
             Ee_Rec_Last   : Natural;
             Th_After_EE   : Tls_Core.Key_Sched.Max_Digest;
             Verify_Data   : Tls_Core.Key_Sched.Max_Digest;
-            Fin_Hs        : Octet_Array (1 .. 4 + 48) := (others => 0);
+            Fin_Hs        : Octet_Array (1 .. 4 + 48) := [others => 0];
             Fin_Hs_Last   : Natural;
-            Fin_Rec       : Octet_Array (1 .. 256) := (others => 0);
+            Fin_Rec       : Octet_Array (1 .. 256) := [others => 0];
             Fin_Rec_Last  : Natural;
             Th_After_SF   : Tls_Core.Key_Sched.Max_Digest;
             Empty_Hash    : Tls_Core.Key_Sched.Max_Digest;
-            Empty_In      : constant Octet_Array (1 .. 0) := (others => 0);
+            Empty_In      : constant Octet_Array (1 .. 0) := [others => 0];
             Derived_2_Sec : Tls_Core.Key_Sched.Max_Secret;
             Master_Secret : Tls_Core.Key_Sched.Max_Secret;
             Zero_Secret   : constant Tls_Core.Key_Sched.Max_Secret :=
-              (others => 0);
+              [others => 0];
             Derived_Lab   : constant Octet_Array (1 .. 7) :=
-              (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+              [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
             C_Ap_Lab      : constant Octet_Array (1 .. 12) :=
-              (16#63#,
+              [16#63#,
                16#20#,
                16#61#,
                16#70#,
@@ -605,9 +604,9 @@ is
                16#66#,
                16#66#,
                16#69#,
-               16#63#);
+               16#63#];
             S_Ap_Lab      : constant Octet_Array (1 .. 12) :=
-              (16#73#,
+              [16#73#,
                16#20#,
                16#61#,
                16#70#,
@@ -618,7 +617,7 @@ is
                16#66#,
                16#66#,
                16#69#,
-               16#63#);
+               16#63#];
          begin
             Encode_Hs_Message (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
             Tls_Core.Key_Sched.Transcript_Append

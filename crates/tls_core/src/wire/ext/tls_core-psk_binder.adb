@@ -11,7 +11,6 @@ package body Tls_Core.Psk_Binder
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
    use type Tls_Core.Suites.Cipher_Suite_Id;
@@ -31,7 +30,7 @@ is
         Tls_Core.Hkdf_Sha384.Hmac_Expand);
 
    Ext_Binder_Label : constant Octet_Array (1 .. 10) :=
-     (16#65#,
+     [16#65#,
       16#78#,
       16#74#,
       16#20#,
@@ -40,9 +39,9 @@ is
       16#6E#,
       16#64#,
       16#65#,
-      16#72#);
+      16#72#];
    Res_Binder_Label : constant Octet_Array (1 .. 10) :=
-     (16#72#,
+     [16#72#,
       16#65#,
       16#73#,
       16#20#,
@@ -51,9 +50,9 @@ is
       16#6E#,
       16#64#,
       16#65#,
-      16#72#);
+      16#72#];
    Finished_Label   : constant Octet_Array (1 .. 8) :=
-     (16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#);
+     [16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#];
 
    procedure Compute
      (PSK                    : Octet_Array;
@@ -63,15 +62,15 @@ is
       Suite                  : Tls_Core.Suites.Cipher_Suite_Id :=
         Tls_Core.Suites.Chacha20_Poly1305_Sha256)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
       Label : constant Octet_Array (1 .. 10) :=
         (if Is_Resumption then Res_Binder_Label else Ext_Binder_Label);
    begin
-      Out_Binder := (others => 0);
+      Out_Binder := [others => 0];
       if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
          declare
-            Z48        : constant Octet_Array (1 .. 48) := (others => 0);
-            P48        : Tls_Core.Key_Schedule_Sha384.Secret := (others => 0);
+            Z48        : constant Octet_Array (1 .. 48) := [others => 0];
+            P48        : Tls_Core.Key_Schedule_Sha384.Secret := [others => 0];
             ES, BK, FK : Tls_Core.Key_Schedule_Sha384.Secret;
             PH         : Tls_Core.Sha384.Digest;
             R          : Tls_Core.Sha384.Digest;
@@ -96,7 +95,7 @@ is
          end;
       else
          declare
-            Z32        : constant Octet_Array (1 .. 32) := (others => 0);
+            Z32        : constant Octet_Array (1 .. 32) := [others => 0];
             ES, BK, FK : Tls_Core.Key_Schedule.Secret;
             PH         : Tls_Core.Sha256.Digest;
          begin

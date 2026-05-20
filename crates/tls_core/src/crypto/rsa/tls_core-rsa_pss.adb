@@ -7,7 +7,6 @@ package body Tls_Core.Rsa_Pss
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -67,7 +66,7 @@ is
      (Seed : Octet_Array; Mask_Len : Natural) return Octet_Array
    is
       Buf_Len : constant Natural := Seed'Length + 4;
-      Buf     : Octet_Array (1 .. Buf_Len) := (others => 0);
+      Buf     : Octet_Array (1 .. Buf_Len) := [others => 0];
       Result  : Octet_Array (1 .. Mask_Len) := (others => 0);
       Counter : Unsigned_32 := 0;
       Filled  : Natural := 0;
@@ -114,7 +113,7 @@ is
      (Seed : Octet_Array; Mask_Len : Natural) return Octet_Array
    is
       Buf_Len : constant Natural := Seed'Length + 4;
-      Buf     : Octet_Array (1 .. Buf_Len) := (others => 0);
+      Buf     : Octet_Array (1 .. Buf_Len) := [others => 0];
       Result  : Octet_Array (1 .. Mask_Len) := (others => 0);
       Counter : Unsigned_32 := 0;
       Filled  : Natural := 0;
@@ -204,7 +203,7 @@ is
       Salt    : Octet_Array (1 .. S_Len);
       --  M_Prime: positions 1..8 stay 0 per RFC step 10; init for SPARK
       --  flow analysis (only positions 9..72 are written explicitly).
-      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := [others => 0];
       H_Prime : Tls_Core.Sha256.Digest;
       Diff    : Octet := 0;
       Bad     : Octet := 0;
@@ -291,7 +290,7 @@ is
       Salt    : Octet_Array (1 .. S_Len);
       --  M_Prime: positions 1..8 stay 0 per RFC step 10; init for SPARK
       --  flow analysis (only positions 9..104 are written explicitly).
-      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := [others => 0];
       H_Prime : Tls_Core.Sha384.Digest;
       Diff    : Octet := 0;
       Bad     : Octet := 0;
@@ -396,13 +395,13 @@ is
       S_Len   : constant Natural := 32;
       DB_Len  : constant Natural := EM_Length - H_Len - 1;
       M_Hash  : Tls_Core.Sha256.Digest;
-      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := [others => 0];
       H_Bytes : Tls_Core.Sha256.Digest;
-      DB      : Octet_Array (1 .. DB_Len) := (others => 0);
+      DB      : Octet_Array (1 .. DB_Len) := [others => 0];
       Db_Mask : Octet_Array (1 .. DB_Len);
       PS_Len  : constant Natural := EM_Length - S_Len - H_Len - 2;
    begin
-      Out_EM := (others => 0);
+      Out_EM := [others => 0];
       pragma Assert (Salt'Length = S_Len);
 
       Tls_Core.Sha256.Hash (Message, M_Hash);
@@ -455,13 +454,13 @@ is
       S_Len   : constant Natural := 48;
       DB_Len  : constant Natural := EM_Length - H_Len - 1;
       M_Hash  : Tls_Core.Sha384.Digest;
-      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := (others => 0);
+      M_Prime : Octet_Array (1 .. 8 + H_Len + S_Len) := [others => 0];
       H_Bytes : Tls_Core.Sha384.Digest;
-      DB      : Octet_Array (1 .. DB_Len) := (others => 0);
+      DB      : Octet_Array (1 .. DB_Len) := [others => 0];
       Db_Mask : Octet_Array (1 .. DB_Len);
       PS_Len  : constant Natural := EM_Length - S_Len - H_Len - 2;
    begin
-      Out_EM := (others => 0);
+      Out_EM := [others => 0];
       pragma Assert (Salt'Length = S_Len);
 
       Tls_Core.Sha384.Hash (Message, M_Hash);
@@ -541,6 +540,5 @@ is
       Emsa_Pss_Verify_Sha384 (Message, M, OK);
    end Verify_Sha384;
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
 end Tls_Core.Rsa_Pss;

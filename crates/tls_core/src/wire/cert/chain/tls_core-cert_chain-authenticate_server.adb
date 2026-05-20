@@ -37,7 +37,7 @@ begin
         and then Leaf_Parsed.San_First <= Leaf_Parsed.San_Last
       then
          declare
-            San_Buf : Octet_Array (1 .. 1024) := (others => 0);
+            San_Buf : Octet_Array (1 .. 1024) := [others => 0];
             San_Len : constant Natural :=
               Leaf_Parsed.San_Last - Leaf_Parsed.San_First + 1;
          begin
@@ -70,7 +70,7 @@ begin
       Signed_Last : Natural;
 
       Leaf_Ent : constant Chain_Entry := Chain_In.Entries (1);
-      Leaf_Buf : Octet_Array (1 .. 16384) := (others => 0);
+      Leaf_Buf : Octet_Array (1 .. 16384) := [others => 0];
       Leaf_Len : constant Natural := Leaf_Ent.Last - Leaf_Ent.First + 1;
 
       Leaf_P_Local : Tls_Core.Cert.Parsed_Cert;

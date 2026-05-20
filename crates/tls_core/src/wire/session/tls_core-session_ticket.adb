@@ -5,7 +5,6 @@ package body Tls_Core.Session_Ticket
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  HKDF-Expand-Label, SHA-256-pinned. Same instantiation pattern
@@ -33,7 +32,7 @@ is
    is
       P : Natural := 0;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
 
       --  uint32 ticket_lifetime (BE).
       Out_Buf (1) := Octet ((Lifetime / 2**24) mod 256);

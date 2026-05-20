@@ -11,7 +11,7 @@ is
    Ext_Len_Pos    : Natural;
    Ext_Body_Start : Natural;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
 
    --  legacy_version, random, session_id, cipher_suites,
    --  legacy_compression_methods.
@@ -38,7 +38,7 @@ begin
    --  supported_versions = TLS 1.3.
    declare
       Body_Bytes : constant Octet_Array (1 .. 3) :=
-        (1 => 16#02#, 2 => 16#03#, 3 => 16#04#);
+        [1 => 16#02#, 2 => 16#03#, 3 => 16#04#];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
    end;
@@ -46,7 +46,7 @@ begin
    --  supported_groups = [x25519]. RFC 8446 §4.2.7.
    declare
       Body_Bytes : constant Octet_Array (1 .. 4) :=
-        (1 => 16#00#, 2 => 16#02#, 3 => Named_Group_Hi, 4 => Named_Group_Lo);
+        [1 => 16#00#, 2 => 16#02#, 3 => Named_Group_Hi, 4 => Named_Group_Lo];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
    end;
@@ -81,7 +81,7 @@ begin
 
    --  key_share = [{x25519, 32-byte u-coord}]. RFC 8446 §4.2.8.
    declare
-      Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
+      Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := [others => 0];
    begin
       Body_Bytes (1) := 16#00#;
       Body_Bytes (2) := 16#24#;        --  client_shares total = 38
@@ -98,14 +98,14 @@ begin
    --  rsa_pss_rsae_sha256 (0x0804). list_len = 4 (2 schemes × 2B).
    declare
       Body_Bytes : constant Octet_Array (1 .. 6) :=
-        (1 => 16#00#,
+        [1 => 16#00#,
          2 => 16#04#,
          --  list_length = 4
          3 => 16#04#,
          4 => 16#03#,
          --  ecdsa_secp256r1_sha256
          5 => 16#08#,
-         6 => 16#04#);           --  rsa_pss_rsae_sha256
+         6 => 16#04#];           --  rsa_pss_rsae_sha256
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Signature_Algorithms, Body_Bytes);
    end;
@@ -127,7 +127,7 @@ begin
    --  matrix column.
    declare
       Body_Bytes : constant Octet_Array (1 .. 2) :=
-        (1 => 16#01#, 2 => 16#01#);  --  modes_len = 1, mode = 1
+        [1 => 16#01#, 2 => 16#01#];  --  modes_len = 1, mode = 1
    begin
       Encode_Extension
         (Out_Buf, Cursor, Ext_Psk_Key_Exchange_Modes, Body_Bytes);

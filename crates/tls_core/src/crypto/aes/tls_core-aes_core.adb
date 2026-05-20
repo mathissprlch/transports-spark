@@ -4,7 +4,6 @@ package body Tls_Core.Aes_Core
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -13,7 +12,7 @@ is
    ---------------------------------------------------------------------
 
    S_Box : constant array (Octet) of Octet :=
-     (16#63#,
+     [16#63#,
       16#7C#,
       16#77#,
       16#7B#,
@@ -268,7 +267,7 @@ is
       16#B0#,
       16#54#,
       16#BB#,
-      16#16#);
+      16#16#];
 
    function Sub_Byte (B : Octet) return Octet
    is (S_Box (B));
@@ -287,7 +286,7 @@ is
    function Round_Key_Slice
      (RK : Octet_Array; Round : Round_Index) return Aes_Spec.Block_16
    is
-      Out_K : Aes_Spec.Block_16 := (others => 0);
+      Out_K : Aes_Spec.Block_16 := [others => 0];
    begin
       for I in 1 .. 16 loop
          Out_K (I) := RK (Round * 16 + I);

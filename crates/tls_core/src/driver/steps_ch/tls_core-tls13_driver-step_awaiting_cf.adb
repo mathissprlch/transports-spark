@@ -7,7 +7,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Cf
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Handle
      (D        : in out Driver;
@@ -16,12 +15,12 @@ is
       Out_Last : out Natural)
    is
       pragma Unreferenced (Out_Buf, Out_Last);
-      Pt_Buf     : Octet_Array (1 .. 1024) := (others => 0);
+      Pt_Buf     : Octet_Array (1 .. 1024) := [others => 0];
       Pt_Last    : Natural;
       Inner_Type : Octet;
       OK         : Boolean;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       Tls_Core.Aead_Channel.Receive

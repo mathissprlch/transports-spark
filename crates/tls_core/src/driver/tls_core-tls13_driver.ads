@@ -807,8 +807,8 @@ private
       Hash_Ctx     : Tls_Core.Transcript.Accumulator;
       Hash_Ctx_384 : Tls_Core.Transcript_Sha384.Accumulator;
 
-      PSK          : Psk_Bytes := (others => 0);
-      Identity     : Identity_Bytes := (others => 0);
+      PSK          : Psk_Bytes := [others => 0];
+      Identity     : Identity_Bytes := [others => 0];
       Identity_Len : Natural := 0;
 
       --  RFC 8446 §4.2.11.2: resumption-PSK uses the "res binder"
@@ -823,7 +823,7 @@ private
       --  the client may have sent an empty session_id (gnutls does
       --  by default; openssl/mbedtls send a 32-byte random and
       --  abort the handshake if the SH doesn't echo it back).
-      Session_Id_Echo     : Octet_Array (1 .. 32) := (others => 0);
+      Session_Id_Echo     : Octet_Array (1 .. 32) := [others => 0];
       Session_Id_Echo_Len : Natural := 0;
 
       --  X25519 ECDHE state (RFC 8446 §4.2.8 + §7.1 mode 3).
@@ -839,10 +839,10 @@ private
       --                   threaded into Handshake-Secret HKDF-Extract
       --                   as the IKM (replaces the all-zeros IKM that
       --                   psk_ke / mode 1 would have used).
-      My_Ecdhe_Priv  : Octet_Array (1 .. 32) := (others => 0);
-      My_Ecdhe_Pub   : Octet_Array (1 .. 32) := (others => 0);
-      Peer_Ecdhe_Pub : Octet_Array (1 .. 32) := (others => 0);
-      Ecdhe_Shared   : Octet_Array (1 .. 32) := (others => 0);
+      My_Ecdhe_Priv  : Octet_Array (1 .. 32) := [others => 0];
+      My_Ecdhe_Pub   : Octet_Array (1 .. 32) := [others => 0];
+      Peer_Ecdhe_Pub : Octet_Array (1 .. 32) := [others => 0];
+      Ecdhe_Shared   : Octet_Array (1 .. 32) := [others => 0];
 
       --  Negotiated cipher suite. Default value is meaningless
       --  until Step transitions out of Idle / Awaiting_CH.
@@ -859,32 +859,32 @@ private
       --  digests are sized for SHA-256. AES-256-GCM-SHA384 negotiation
       --  is therefore not yet completable through Step (see Wall-hit
       --  note in package comment).
-      C_Hs_Sec  : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      S_Hs_Sec  : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      Hs_Secret : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      C_Hs_Sec  : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      S_Hs_Sec  : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      Hs_Secret : Tls_Core.Key_Sched.Max_Secret := [others => 0];
 
       --  Expected client Finished verify_data, computed at the
       --  moment server Finished is sent — saved here so the
       --  Awaiting_Cf path can do a constant-time compare against
       --  the decrypted body.
-      Expected_Cf : Tls_Core.Key_Sched.Max_Digest := (others => 0);
+      Expected_Cf : Tls_Core.Key_Sched.Max_Digest := [others => 0];
 
       --  Application-data secrets (filled at the same time, used
       --  via Open_App_Directions after Done).
-      App_C_Ap : Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      App_S_Ap : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      App_C_Ap : Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      App_S_Ap : Tls_Core.Key_Sched.Max_Secret := [others => 0];
       App_Set  : Boolean := False;
 
       --  Master_Secret saved at the moment the application-traffic
       --  secrets are derived, so the Awaiting_Cf branch (server) and
       --  the inline post-Finished branch (client) can compute
       --  resumption_master_secret over CH..CF.
-      Master_Sec : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      Master_Sec : Tls_Core.Key_Sched.Max_Secret := [others => 0];
       Master_Set : Boolean := False;
 
       --  resumption_master_secret per RFC 8446 §7.1 — derived after
       --  client Finished is appended to the transcript (CH..CF).
-      Res_Master_Sec : Tls_Core.Key_Sched.Max_Secret := (others => 0);
+      Res_Master_Sec : Tls_Core.Key_Sched.Max_Secret := [others => 0];
       Res_Master_Set : Boolean := False;
 
       --  HelloRetryRequest fields (RFC 8446 §4.1.4 / §4.4.1).
@@ -915,7 +915,7 @@ private
       Hrr_Aware      : Boolean := False;
       Hrr_Seen       : Boolean := False;
       Hrr_Group      : Tls_Core.Suites.U16 := Tls_Core.Suites.Group_Secp256r1;
-      Hrr_Cookie     : Tls_Core.Hello_Retry.Cookie_Bytes := (others => 0);
+      Hrr_Cookie     : Tls_Core.Hello_Retry.Cookie_Bytes := [others => 0];
       Hrr_Cookie_Len : Natural := 0;
 
       --  Saved CH1-transcript hash, computed at the moment HRR is
@@ -924,7 +924,7 @@ private
       --  freshly-Init'd Transcript accumulator before appending HRR
       --  + CH2 + the rest of the handshake. Kept after transcript
       --  rebuild for diagnostic / test introspection.
-      Hrr_Ch1_Hash : Tls_Core.Key_Sched.Max_Digest := (others => 0);
+      Hrr_Ch1_Hash : Tls_Core.Key_Sched.Max_Digest := [others => 0];
 
       --  True once the handshake-stage Aead_Channel directions
       --  have been initialised with real (non-zero) traffic secrets.
@@ -958,7 +958,7 @@ private
       --  Server populates Sni_Hostname from the inbound CH if a
       --  server_name extension was present (Sni_Len = 0 otherwise).
       --  Max 255 bytes per RFC 1035 §2.3.4.
-      Sni_Hostname : Octet_Array (1 .. 255) := (others => 0);
+      Sni_Hostname : Octet_Array (1 .. 255) := [others => 0];
       Sni_Len      : Natural := 0;
 
       --  RFC 7301 + RFC 8446 §4.2 — ALPN.  Pre-flattened
@@ -968,9 +968,9 @@ private
       --  Selected_Alpn (server's pick from this list, emitted in
       --  EE) is a separate field — Selected_Alpn_Len = 0 until
       --  the server side picks one.
-      Alpn_Offers       : Octet_Array (1 .. 256) := (others => 0);
+      Alpn_Offers       : Octet_Array (1 .. 256) := [others => 0];
       Alpn_Offers_Len   : Natural := 0;
-      Selected_Alpn     : Octet_Array (1 .. 64) := (others => 0);
+      Selected_Alpn     : Octet_Array (1 .. 64) := [others => 0];
       Selected_Alpn_Len : Natural range 0 .. 64 := 0;
 
       --  RFC 8446 §4.4.2 / §4.4.3 cert-mode state.  Default is
@@ -984,20 +984,20 @@ private
       --  into it (leaf at index 1, intermediates at 2.., optional
       --  root anchor hint at the end).  Server emits these in the
       --  §4.4.2 certificate_list.
-      Cert_Chain_Bytes : Octet_Array (1 .. 4096) := (others => 0);
+      Cert_Chain_Bytes : Octet_Array (1 .. 4096) := [others => 0];
       Cert_Chain_Len   : Natural := 0;
       Cert_Chain_Spec  : Tls_Core.Cert_Chain.Chain;
       --  ECDSA-P256 private scalar — used for the §4.4.3 signature
       --  on the post-Cert transcript hash.  Sig_Alg encodes which
       --  signature scheme to advertise / use; v0.5 = 0x0403 only.
-      Server_Sign_Priv : Octet_Array (1 .. 32) := (others => 0);
+      Server_Sign_Priv : Octet_Array (1 .. 32) := [others => 0];
       Sig_Alg          : Tls_Core.Suites.U16 :=
         Tls_Core.Suites.Sig_Ecdsa_Secp256r1_Sha256;
 
       --  Client-side cert-mode state — trust anchors used for chain
       --  validation (Cert_Chain.Authenticate_Server).  Hostname re-
       --  uses Sni_Hostname / Sni_Len above.
-      Trust_Anchor_Bytes : Octet_Array (1 .. 4096) := (others => 0);
+      Trust_Anchor_Bytes : Octet_Array (1 .. 4096) := [others => 0];
       Trust_Anchor_Len   : Natural := 0;
       Trust_Anchor_Spec  : Tls_Core.Cert_Chain.Trust_Store;
    end record;

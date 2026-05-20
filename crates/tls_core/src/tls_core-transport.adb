@@ -2,7 +2,6 @@ package body Tls_Core.Transport
   with SPARK_Mode => Off
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Maximum wire bytes a single TLS 1.3 record can occupy:
    --  5-byte TLSCiphertext header + 16384 max plaintext + 16-byte
@@ -24,9 +23,9 @@ is
       Secrets : Tls_Core.Handshake.Traffic_Secrets) is
    begin
       P.My_Role := Role_Of;
-      P.Outbound := (others => 0);
+      P.Outbound := [others => 0];
       P.Outbound_Last := 0;
-      P.Inbound := (others => 0);
+      P.Inbound := [others => 0];
       P.Inbound_Last := 0;
 
       case Role_Of is
@@ -49,7 +48,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Send (P : in out Pipe; Plaintext : Octet_Array) is
-      Wire     : Octet_Array (1 .. Max_Record_Wire) := (others => 0);
+      Wire     : Octet_Array (1 .. Max_Record_Wire) := [others => 0];
       Wire_Len : Natural := 0;
    begin
       Tls_Core.Channel.Send
@@ -95,7 +94,7 @@ is
    is
       Take : constant Natural := P.Outbound_Last;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if Take = 0 then
@@ -114,7 +113,7 @@ is
       Out_Last := Take;
 
       --  Reset the outbound queue.
-      P.Outbound := (others => 0);
+      P.Outbound := [others => 0];
       P.Outbound_Last := 0;
    end Drain;
 
@@ -130,7 +129,7 @@ is
       Out_Last : out Natural;
       OK       : out Boolean) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
       OK := False;
 
@@ -195,7 +194,7 @@ is
             --  Zero the now-unused tail so we don't leak old
             --  ciphertext into later Inject's wire view.
             P.Inbound (P.Inbound_Last - Wire_Len + 1 .. P.Inbound_Last) :=
-              (others => 0);
+              [others => 0];
             P.Inbound_Last := P.Inbound_Last - Wire_Len;
          end;
       end;

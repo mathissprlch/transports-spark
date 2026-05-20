@@ -9,10 +9,8 @@ is
    ---------------------------------------------------------------------
 
    function Nonce (IV : IV_Array; S : Seq_Number) return IV_Array is
-      Result : IV_Array := (others => 0);
+      Result : IV_Array := [others => 0];
    begin
-      pragma
-        Warnings (Off, "array aggregate using () is an obsolescent syntax");
       --  Top 4 bytes XOR with zero = unchanged.
       Result (1 .. 4) := IV (1 .. 4);
       --  Bottom 8 bytes carry the BE-encoded sequence number XORed

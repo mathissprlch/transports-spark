@@ -4,7 +4,6 @@ package body Tls_Core.Handshake_Driver
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -50,7 +49,7 @@ is
    is
       --  "TLS 1.3, server CertificateVerify" — 33 bytes.
       Ctx_Str : constant Octet_Array (1 .. 33) :=
-        (16#54#,
+        [16#54#,
          16#4C#,
          16#53#,
          16#20#,
@@ -82,10 +81,10 @@ is
          16#72#,
          16#69#,
          16#66#,
-         16#79#);
+         16#79#];
    begin
-      Out_Bytes := (others => 0);
-      Out_Bytes (1 .. 64) := (others => 16#20#);
+      Out_Bytes := [others => 0];
+      Out_Bytes (1 .. 64) := [others => 16#20#];
       Out_Bytes (65 .. 97) := Ctx_Str;
       Out_Bytes (98) := 16#00#;
       Out_Bytes (99 .. 130) := Transcript_Hash;
@@ -100,7 +99,7 @@ is
    is
       Len_24 : constant Natural := Body_Bytes'Length;
    begin
-      Buf := (others => 0);
+      Buf := [others => 0];
       Buf (1) := Type_Of;
       Buf (2) := Octet ((Len_24 / 65536) mod 256);
       Buf (3) := Octet ((Len_24 / 256) mod 256);
@@ -120,21 +119,21 @@ is
       D.My_Role := For_Role;
       D.My_Mode := PSK_KE;
       D.PSK := PSK;
-      D.My_Priv := (others => 0);
-      D.My_Pub := (others => 0);
-      D.Peer_Pub := (others => 0);
-      D.Shared := (others => 0);
-      D.CH_Buf := (others => 0);
+      D.My_Priv := [others => 0];
+      D.My_Pub := [others => 0];
+      D.Peer_Pub := [others => 0];
+      D.Shared := [others => 0];
+      D.CH_Buf := [others => 0];
       D.CH_Len := 0;
-      D.SH_Buf := (others => 0);
+      D.SH_Buf := [others => 0];
       D.SH_Len := 0;
-      D.SF_Buf := (others => 0);
+      D.SF_Buf := [others => 0];
       D.SF_Len := 0;
       D.Secrets_Set := False;
-      D.Secrets.Client_Handshake := (others => 0);
-      D.Secrets.Server_Handshake := (others => 0);
-      D.Secrets.Client_App := (others => 0);
-      D.Secrets.Server_App := (others => 0);
+      D.Secrets.Client_Handshake := [others => 0];
+      D.Secrets.Server_Handshake := [others => 0];
+      D.Secrets.Client_App := [others => 0];
+      D.Secrets.Server_App := [others => 0];
       Tls_Core.Transcript.Init (D.Hash_Ctx);
       case For_Role is
          when Client =>
@@ -164,26 +163,26 @@ is
    begin
       D.My_Role := For_Role;
       D.My_Mode := My_Mode;
-      D.PSK := (others => 0);
+      D.PSK := [others => 0];
       D.My_Priv := Private_Key;
       Tls_Core.X25519.Derive_Public (Private_Key, Pub);
       D.My_Pub := Pub;
-      D.Peer_Pub := (others => 0);
-      D.Shared := (others => 0);
-      D.Sign_Seed := (others => 0);
-      D.Sign_Pub := (others => 0);
-      D.Trusted_Pub := (others => 0);
-      D.CH_Buf := (others => 0);
+      D.Peer_Pub := [others => 0];
+      D.Shared := [others => 0];
+      D.Sign_Seed := [others => 0];
+      D.Sign_Pub := [others => 0];
+      D.Trusted_Pub := [others => 0];
+      D.CH_Buf := [others => 0];
       D.CH_Len := 0;
-      D.SH_Buf := (others => 0);
+      D.SH_Buf := [others => 0];
       D.SH_Len := 0;
-      D.SF_Buf := (others => 0);
+      D.SF_Buf := [others => 0];
       D.SF_Len := 0;
       D.Secrets_Set := False;
-      D.Secrets.Client_Handshake := (others => 0);
-      D.Secrets.Server_Handshake := (others => 0);
-      D.Secrets.Client_App := (others => 0);
-      D.Secrets.Server_App := (others => 0);
+      D.Secrets.Client_Handshake := [others => 0];
+      D.Secrets.Server_Handshake := [others => 0];
+      D.Secrets.Client_App := [others => 0];
+      D.Secrets.Server_App := [others => 0];
       Tls_Core.Transcript.Init (D.Hash_Ctx);
       case For_Role is
          when Client =>
@@ -280,9 +279,9 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       --  Body_Of for emitted Hellos / Finished:

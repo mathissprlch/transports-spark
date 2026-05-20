@@ -8,7 +8,7 @@ is
 
    procedure Encode (A : Alert; Out_Bytes : out Alert_Bytes) is
    begin
-      Out_Bytes := (A.Level, A.Description);
+      Out_Bytes := [A.Level, A.Description];
    end Encode;
 
    ---------------------------------------------------------------------

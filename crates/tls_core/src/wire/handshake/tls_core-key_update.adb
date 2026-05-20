@@ -6,7 +6,6 @@ package body Tls_Core.Key_Update
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Wrap the SHA-256 Expand_Label here (matches the pattern in
    --  Tls_Core.Traffic_Keys). For SHA-384 we re-use the existing
@@ -21,7 +20,7 @@ is
    --  RFC 8446 §7.2 / §7.1: the bytes of the literal label string
    --  "traffic upd" (no Tls13_Prefix — Hkdf.Expand_Label adds it).
    Traffic_Upd_Label : constant Octet_Array (1 .. 11) :=
-     (Character'Pos ('t'),
+     [Character'Pos ('t'),
       Character'Pos ('r'),
       Character'Pos ('a'),
       Character'Pos ('f'),
@@ -31,9 +30,9 @@ is
       Character'Pos (' '),
       Character'Pos ('u'),
       Character'Pos ('p'),
-      Character'Pos ('d'));
+      Character'Pos ('d')];
 
-   Empty_Ctx : constant Octet_Array (1 .. 0) := (others => 0);
+   Empty_Ctx : constant Octet_Array (1 .. 0) := [others => 0];
 
    ---------------------------------------------------------------------
    --  Encode
@@ -44,7 +43,7 @@ is
       Out_Buf        : out Octet_Array;
       Out_Last       : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Hs_Type_Key_Update;   --  msg_type = 0x18
       Out_Buf (2) := 0;                    --  u24 length high
       Out_Buf (3) := 0;

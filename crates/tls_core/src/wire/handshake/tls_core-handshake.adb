@@ -2,7 +2,6 @@ package body Tls_Core.Handshake
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Derive_Psk_Secrets
      (PSK             : Octet_Array;
@@ -11,14 +10,14 @@ is
       Server_Finished : Octet_Array;
       Out_Secrets     : out Traffic_Secrets)
    is
-      Zero32 : constant Octet_Array (1 .. 32) := (others => 0);
-      Empty  : constant Octet_Array (1 .. 0) := (others => 0);
+      Zero32 : constant Octet_Array (1 .. 32) := [others => 0];
+      Empty  : constant Octet_Array (1 .. 0) := [others => 0];
 
       --  Labels (bytes, no Tls13_Prefix — Hkdf.Expand_Label adds it).
       Derived_Label : constant Octet_Array (1 .. 7) :=
-        (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+        [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
       C_Hs_Label    : constant Octet_Array (1 .. 12) :=
-        (16#63#,
+        [16#63#,
          16#20#,
          16#68#,
          16#73#,
@@ -29,9 +28,9 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
       S_Hs_Label    : constant Octet_Array (1 .. 12) :=
-        (16#73#,
+        [16#73#,
          16#20#,
          16#68#,
          16#73#,
@@ -42,9 +41,9 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
       C_Ap_Label    : constant Octet_Array (1 .. 12) :=
-        (16#63#,
+        [16#63#,
          16#20#,
          16#61#,
          16#70#,
@@ -55,9 +54,9 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
       S_Ap_Label    : constant Octet_Array (1 .. 12) :=
-        (16#73#,
+        [16#73#,
          16#20#,
          16#61#,
          16#70#,
@@ -68,7 +67,7 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
 
       Early_Secret     : Tls_Core.Key_Schedule.Secret;
       Derived_1        : Tls_Core.Key_Schedule.Secret;
@@ -178,13 +177,13 @@ is
       Server_Finished : Octet_Array;
       Out_Secrets     : out Traffic_Secrets)
    is
-      Zero32 : constant Octet_Array (1 .. 32) := (others => 0);
-      Empty  : constant Octet_Array (1 .. 0) := (others => 0);
+      Zero32 : constant Octet_Array (1 .. 32) := [others => 0];
+      Empty  : constant Octet_Array (1 .. 0) := [others => 0];
 
       Derived_Label : constant Octet_Array (1 .. 7) :=
-        (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+        [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
       C_Hs_Label    : constant Octet_Array (1 .. 12) :=
-        (16#63#,
+        [16#63#,
          16#20#,
          16#68#,
          16#73#,
@@ -195,9 +194,9 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
       S_Hs_Label    : constant Octet_Array (1 .. 12) :=
-        (16#73#,
+        [16#73#,
          16#20#,
          16#68#,
          16#73#,
@@ -208,9 +207,9 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
       C_Ap_Label    : constant Octet_Array (1 .. 12) :=
-        (16#63#,
+        [16#63#,
          16#20#,
          16#61#,
          16#70#,
@@ -221,9 +220,9 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
       S_Ap_Label    : constant Octet_Array (1 .. 12) :=
-        (16#73#,
+        [16#73#,
          16#20#,
          16#61#,
          16#70#,
@@ -234,7 +233,7 @@ is
          16#66#,
          16#66#,
          16#69#,
-         16#63#);
+         16#63#];
 
       Early_Secret     : Tls_Core.Key_Schedule.Secret;
       Derived_1        : Tls_Core.Key_Schedule.Secret;

@@ -42,14 +42,12 @@ package Tls_Core.P256_Order
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    subtype Scalar is Octet_Array (1 .. 32);
 
-   Zero : constant Scalar := (others => 0);
-   One  : constant Scalar := (1 .. 31 => 0, 32 => 1);
+   Zero : constant Scalar := [others => 0];
+   One  : constant Scalar := [1 .. 31 => 0, 32 => 1];
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Ghost spec layer.

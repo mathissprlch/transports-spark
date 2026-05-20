@@ -11,7 +11,7 @@ begin
    D.Hrr_Demand := True;
    D.Hrr_Sent := False;
    D.Hrr_Group := Demanded_Group;
-   D.Hrr_Cookie := (others => 0);
+   D.Hrr_Cookie := [others => 0];
    D.Hrr_Cookie_Len := Cookie'Length;
    if Cookie'Length > 0 then
       for I in 1 .. Cookie'Length loop

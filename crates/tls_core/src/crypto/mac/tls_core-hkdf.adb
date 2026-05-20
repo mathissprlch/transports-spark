@@ -30,7 +30,7 @@ package body Tls_Core.Hkdf is
       --  overwrite the regions we own. This pattern keeps gnatprove's
       --  initialization analysis happy without a Relaxed_Initialization
       --  aspect (unsupported on parameters in this toolchain build).
-      Output := (others => 0);
+      Output := [others => 0];
 
       --  u16 BE Length.
       Output (1) := Octet (Length / 256);
@@ -101,7 +101,7 @@ package body Tls_Core.Hkdf is
       use Interfaces;
 
       Result : Octet_Array (1 .. Info_Size (Label'Length, Context'Length)) :=
-        (others => 0);
+        [others => 0];
 
       Prefix_Off  : constant Positive := 4;
       Label_Off   : constant Positive := Prefix_Off + Tls13_Prefix'Length;

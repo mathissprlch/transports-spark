@@ -45,7 +45,7 @@ is
    --  in the spec so SMT shares a single symbolic constant for the
    --  zero accumulator across all references in Posts and Asserts
    --  (avoiding the array-aggregate fresh-constant aliasing wall).
-   Zero_Block : constant Block_16 := (others => 0);
+   Zero_Block : constant Block_16 := [others => 0];
 
    --  Pad to next 16-byte boundary. Declared early so the ghost
    --  spec functions below can use it.

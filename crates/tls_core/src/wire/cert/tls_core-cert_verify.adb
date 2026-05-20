@@ -2,7 +2,6 @@ package body Tls_Core.Cert_Verify
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
    use type Tls_Core.Octet;
@@ -12,7 +11,7 @@ is
    --  string, then a single 0x00 separator, then the transcript
    --  hash.
    Server_Prefix : constant Octet_Array (1 .. 33) :=
-     (16#54#,
+     [16#54#,
       16#4C#,
       16#53#,
       16#20#,
@@ -44,11 +43,11 @@ is
       16#72#,
       16#69#,
       16#66#,
-      16#79#);
+      16#79#];
    --  "TLS 1.3, server CertificateVerify"
 
    Client_Prefix : constant Octet_Array (1 .. 33) :=
-     (16#54#,
+     [16#54#,
       16#4C#,
       16#53#,
       16#20#,
@@ -80,7 +79,7 @@ is
       16#72#,
       16#69#,
       16#66#,
-      16#79#);
+      16#79#];
    --  "TLS 1.3, client CertificateVerify"
 
    procedure Put_U16
@@ -139,7 +138,7 @@ is
    is
       Cursor : Natural := 0;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Put_U16 (Out_Buf, Cursor, Sig_Scheme);
       Put_U16 (Out_Buf, Cursor, Unsigned_16 (Signature'Length));
       for I in 1 .. Signature'Length loop

@@ -21,7 +21,7 @@ begin
 
       when others             =>
          --  Excluded by Pre.
-         Out_Buf := (others => 0);
+         Out_Buf := [others => 0];
          Out_Last := 0;
    end case;
    D.Last_Alert := Description;

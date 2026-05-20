@@ -10,7 +10,7 @@ is
 
    Pt_Buf     :
      Octet_Array (1 .. 4 + Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
-       (others => 0);
+       [others => 0];
    Pt_Last    : Natural;
    Inner_Type : Octet;
    Decrypt_OK : Boolean;
@@ -80,7 +80,7 @@ begin
                Suite             => D.Suite);
          else
             declare
-               Empty_Nonce : constant Octet_Array (1 .. 0) := (others => 0);
+               Empty_Nonce : constant Octet_Array (1 .. 0) := [others => 0];
             begin
                Tls_Core.Session_Cache.Insert
                  (C                 => Cache,

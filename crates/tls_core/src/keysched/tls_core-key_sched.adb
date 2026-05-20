@@ -12,13 +12,12 @@ with Tls_Core.Sha384;
 package body Tls_Core.Key_Sched
   with SPARK_Mode
 is
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
    use type Tls_Core.Suites.Cipher_Suite_Id;
 
    Derived_Lab    : constant Octet_Array (1 .. 7) :=
-     (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+     [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
    C_Hs_Lab       : constant Octet_Array (1 .. 12) :=
-     (16#63#,
+     [16#63#,
       16#20#,
       16#68#,
       16#73#,
@@ -29,9 +28,9 @@ is
       16#66#,
       16#66#,
       16#69#,
-      16#63#);
+      16#63#];
    S_Hs_Lab       : constant Octet_Array (1 .. 12) :=
-     (16#73#,
+     [16#73#,
       16#20#,
       16#68#,
       16#73#,
@@ -42,9 +41,9 @@ is
       16#66#,
       16#66#,
       16#69#,
-      16#63#);
+      16#63#];
    C_Ap_Lab       : constant Octet_Array (1 .. 12) :=
-     (16#63#,
+     [16#63#,
       16#20#,
       16#61#,
       16#70#,
@@ -55,9 +54,9 @@ is
       16#66#,
       16#66#,
       16#69#,
-      16#63#);
+      16#63#];
    S_Ap_Lab       : constant Octet_Array (1 .. 12) :=
-     (16#73#,
+     [16#73#,
       16#20#,
       16#61#,
       16#70#,
@@ -68,11 +67,11 @@ is
       16#66#,
       16#66#,
       16#69#,
-      16#63#);
+      16#63#];
    Finished_Lab   : constant Octet_Array (1 .. 8) :=
-     (16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#);
+     [16#66#, 16#69#, 16#6E#, 16#69#, 16#73#, 16#68#, 16#65#, 16#64#];
    Res_Master_Lab : constant Octet_Array (1 .. 10) :=
-     (16#72#,
+     [16#72#,
       16#65#,
       16#73#,
       16#20#,
@@ -81,7 +80,7 @@ is
       16#73#,
       16#74#,
       16#65#,
-      16#72#);
+      16#72#];
 
    procedure Exp256 is new
      Tls_Core.Hkdf.Expand_Label
@@ -109,16 +108,16 @@ is
       S_Hs_Sec     : out Max_Secret;
       Hs_Secret    : out Max_Secret)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
    begin
-      C_Hs_Sec := (others => 0);
-      S_Hs_Sec := (others => 0);
-      Hs_Secret := (others => 0);
+      C_Hs_Sec := [others => 0];
+      S_Hs_Sec := [others => 0];
+      Hs_Secret := [others => 0];
       if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
          declare
-            Z48            : constant Octet_Array (1 .. HH) := (others => 0);
+            Z48            : constant Octet_Array (1 .. HH) := [others => 0];
             P48            : Tls_Core.Key_Schedule_Sha384.Secret :=
-              (others => 0);
+              [others => 0];
             E, D1, H, C, S : Tls_Core.Key_Schedule_Sha384.Secret;
          begin
             P48 (1 .. PSK'Length) := PSK;
@@ -147,7 +146,7 @@ is
          end;
       else
          declare
-            Z32            : constant Octet_Array (1 .. HL) := (others => 0);
+            Z32            : constant Octet_Array (1 .. HL) := [others => 0];
             E, D1, H, C, S : Tls_Core.Key_Schedule.Secret;
          begin
             Tls_Core.Key_Schedule.Extract
@@ -186,16 +185,16 @@ is
       App_S_Ap    : out Max_Secret;
       Master_Sec  : out Max_Secret)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
    begin
-      App_C_Ap := (others => 0);
-      App_S_Ap := (others => 0);
-      Master_Sec := (others => 0);
+      App_C_Ap := [others => 0];
+      App_S_Ap := [others => 0];
+      Master_Sec := [others => 0];
       if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
          declare
             EH          : Tls_Core.Sha384.Digest;
             Z48         : constant Tls_Core.Key_Schedule_Sha384.Secret :=
-              (others => 0);
+              [others => 0];
             D2, M, C, S : Tls_Core.Key_Schedule_Sha384.Secret;
          begin
             Tls_Core.Sha384.Hash (Empty, EH);
@@ -224,7 +223,7 @@ is
          declare
             EH          : Tls_Core.Sha256.Digest;
             Z32         : constant Tls_Core.Key_Schedule.Secret :=
-              (others => 0);
+              [others => 0];
             D2, M, C, S : Tls_Core.Key_Schedule.Secret;
          begin
             Tls_Core.Sha256.Hash (Empty, EH);
@@ -258,9 +257,9 @@ is
       Transcript_Hash : Max_Digest;
       Out_Verify      : out Max_Digest)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
    begin
-      Out_Verify := (others => 0);
+      Out_Verify := [others => 0];
       if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
          declare
             FK, R : Tls_Core.Sha384.Digest;
@@ -296,7 +295,7 @@ is
       Th_After_Cf       : Max_Digest;
       Resumption_Secret : out Max_Secret) is
    begin
-      Resumption_Secret := (others => 0);
+      Resumption_Secret := [others => 0];
       if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
          declare
             R : Tls_Core.Key_Schedule_Sha384.Secret;
@@ -337,7 +336,7 @@ is
       Ctx_384  : Tls_Core.Transcript_Sha384.Accumulator;
       Out_Hash : out Max_Digest) is
    begin
-      Out_Hash := (others => 0);
+      Out_Hash := [others => 0];
       if Suite = Tls_Core.Suites.Aes_256_Gcm_Sha384 then
          declare
             H : Tls_Core.Sha384.Digest;

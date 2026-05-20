@@ -6,8 +6,8 @@ package body Tls_Core.Tls13_Driver.Helpers
 is
 
    procedure Prime_Driver_Defaults (D : in out Driver) is
-      Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := (others => 0);
-      Zero_Digest : constant Tls_Core.Key_Sched.Max_Digest := (others => 0);
+      Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := [others => 0];
+      Zero_Digest : constant Tls_Core.Key_Sched.Max_Digest := [others => 0];
    begin
       D.Suite := Tls_Core.Suites.Chacha20_Poly1305_Sha256;
       D.C_Hs_Sec := Zero_Secret;
@@ -32,7 +32,7 @@ is
       Out_Buf     : out Octet_Array;
       Out_Last    : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Rec_Type_Alert;
       Out_Buf (2) := 16#03#;
       Out_Buf (3) := 16#03#;
@@ -99,7 +99,7 @@ is
    is
       Len : constant Natural := Body_Bytes'Length;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Msg_Type;
       Out_Buf (2) := Octet ((Len / 65536) mod 256);
       Out_Buf (3) := Octet ((Len / 256) mod 256);
@@ -117,7 +117,7 @@ is
    is
       Len : constant Natural := Hs_Bytes'Length;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Rec_Type_Handshake;
       Out_Buf (2) := 16#03#;
       Out_Buf (3) := 16#03#;

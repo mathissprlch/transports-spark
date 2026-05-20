@@ -16,16 +16,16 @@ is
    --  Worst-case body length per Session_Ticket spec.
    Body_Buf  :
      Octet_Array (1 .. Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
-       (others => 0);
+       [others => 0];
    Body_Last : Natural;
 
    --  Handshake-message wrapper (4-byte header + body).
    Hs_Buf  :
      Octet_Array (1 .. 4 + Tls_Core.Session_Ticket.Max_Nst_Body_Length) :=
-       (others => 0);
+       [others => 0];
    Hs_Last : Natural;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    Out_Last := 0;
 
    --  1. Build NST body.

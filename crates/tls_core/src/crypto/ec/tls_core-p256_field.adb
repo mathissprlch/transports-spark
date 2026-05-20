@@ -5,7 +5,6 @@ package body Tls_Core.P256_Field
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -97,14 +96,14 @@ is
    --      0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0x00000000,
    --      0x00000000, 0x00000000, 0x00000001, 0xFFFFFFFF
    P_Limbs : constant Limbs8 :=
-     (16#FFFFFFFF#,
+     [16#FFFFFFFF#,
       16#FFFFFFFF#,
       16#FFFFFFFF#,
       16#00000000#,
       16#00000000#,
       16#00000000#,
       16#00000001#,
-      16#FFFFFFFF#);
+      16#FFFFFFFF#];
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 32 BE bytes and limbs.
@@ -289,7 +288,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Fast_Reduce (T : Limbs16; Out_R : out Limbs8) is
-      Acc   : Acc9 := (others => 0);
+      Acc   : Acc9 := [others => 0];
       Carry : Integer_64;
 
       function I64 (X : Unsigned_32) return Integer_64
@@ -543,7 +542,7 @@ is
    ---------------------------------------------------------------------
 
    P_Minus_2 : constant Field :=
-     (16#FF#,
+     [16#FF#,
       16#FF#,
       16#FF#,
       16#FF#,
@@ -574,10 +573,10 @@ is
       16#FF#,
       16#FF#,
       16#FF#,
-      16#FD#);
+      16#FD#];
 
    procedure Invert (A : Field; Out_C : out Field) is
-      Result  : Limbs8 := (others => 0);  --  represents 1
+      Result  : Limbs8 := [others => 0];  --  represents 1
       Base    : Limbs8;
       Tmp     : Limbs8;
       Bit     : Unsigned_8;

@@ -4,7 +4,6 @@ is
 
    use Interfaces;
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Limb_Index / Limbs are now declared in the spec so functional
    --  Posts on the private helpers can reference As_Nat5 / Feval5.
@@ -332,9 +331,9 @@ is
       Final       : Boolean;
       Out_Limbs   : out Limbs)
    is
-      Padded : Octet_Array (1 .. 17) := (others => 0);
+      Padded : Octet_Array (1 .. 17) := [others => 0];
    begin
-      Out_Limbs := (others => 0);
+      Out_Limbs := [others => 0];
       for I in 1 .. Block_Bytes loop
          pragma Loop_Invariant (I <= 16);
          Padded (I) := B (B'First + I - 1);
@@ -468,8 +467,8 @@ is
    procedure Mac
      (Key : Key_Array; Message : Octet_Array; Out_Tag : out Tag_Array)
    is
-      R      : Limbs := (others => 0);
-      Acc    : Limbs := (others => 0);
+      R      : Limbs := [others => 0];
+      Acc    : Limbs := [others => 0];
       Block  : Limbs;
       Cursor : Natural := 0;
 
@@ -479,7 +478,7 @@ is
       with Pre => Idx <= 4;
 
       function Get_S_Limb (Idx : Limb_Index) return U64 is
-         Padded : Octet_Array (1 .. 17) := (others => 0);
+         Padded : Octet_Array (1 .. 17) := [others => 0];
       begin
          for I in 1 .. 16 loop
             Padded (I) := Key (16 + I);
@@ -522,7 +521,7 @@ is
       end Get_S_Limb;
 
    begin
-      Out_Tag := (others => 0);
+      Out_Tag := [others => 0];
       --  RFC 8439 §2.5.1 clamp.
       declare
          Clamped : Octet_Array (1 .. 16);
@@ -540,7 +539,7 @@ is
          --  Load r from clamped key (16 bytes), WITHOUT the
          --  Poly1305 implicit-1 bit. r itself is just an integer.
          declare
-            Padded : Octet_Array (1 .. 17) := (others => 0);
+            Padded : Octet_Array (1 .. 17) := [others => 0];
          begin
             for I in 1 .. 16 loop
                Padded (I) := Clamped (I);
@@ -609,7 +608,7 @@ is
       --  Acc := Acc + s (mod 2^128). Then serialize as little-endian.
       declare
          Carry_Acc : U64 := 0;
-         T         : array (Limb_Index) of U64 := (others => 0);
+         T         : array (Limb_Index) of U64 := [others => 0];
          H_Lo      : U64;
          H_Hi      : U64;
       begin

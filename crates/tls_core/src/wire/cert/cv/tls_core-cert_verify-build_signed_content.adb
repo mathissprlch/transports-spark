@@ -5,7 +5,7 @@ procedure Build_Signed_Content
    Out_Buf         : out Octet_Array;
    Out_Last        : out Natural) is
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    --  64 spaces.
    for I in 1 .. 64 loop
       Out_Buf (I) := 16#20#;

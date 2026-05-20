@@ -33,7 +33,6 @@ package Tls_Core.Cert
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Signature-algorithm enum the OUTER cert was signed with. v0.5
    --  recognises the two algorithms openssl/mbedTLS/Go default to

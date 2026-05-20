@@ -4,19 +4,18 @@ package body Tls_Core.Traffic_Keys_Aes256_Sha384
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    Key_Label : constant Octet_Array (1 .. 3) :=
-     (16#6B#, 16#65#, 16#79#);  --  "key"
+     [16#6B#, 16#65#, 16#79#];  --  "key"
    Iv_Label  : constant Octet_Array (1 .. 2) :=
-     (16#69#, 16#76#);          --  "iv"
+     [16#69#, 16#76#];          --  "iv"
 
    procedure Derive
      (Secret_In : Tls_Core.Key_Schedule_Sha384.Secret;
       Out_Key   : out Aead_Key;
       Out_IV    : out Aead_Iv)
    is
-      Empty : constant Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Octet_Array (1 .. 0) := [others => 0];
    begin
       Tls_Core.Hkdf_Label_Sha384.Expand_Label
         (Secret  => Secret_In,

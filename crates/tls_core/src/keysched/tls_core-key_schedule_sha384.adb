@@ -6,7 +6,6 @@ package body Tls_Core.Key_Schedule_Sha384
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Extract
      (Salt : Octet_Array; IKM : Octet_Array; Out_PRK : out Secret) is

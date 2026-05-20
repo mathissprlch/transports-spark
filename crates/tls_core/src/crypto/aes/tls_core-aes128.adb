@@ -4,7 +4,6 @@ package body Tls_Core.Aes128
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Expand_Key — FIPS 197 §5.2 KeyExpansion (Nk = 4, Nr = 10).

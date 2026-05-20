@@ -12,7 +12,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Sf_Psk
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Handle
      (D        : in out Driver;
@@ -20,7 +19,7 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if D.My_Role /= Client then
@@ -33,12 +32,12 @@ is
 
          --  Used to derive c_hs / s_hs after parsing SH.
          Empty_Hash  : Tls_Core.Key_Sched.Max_Digest;
-         Empty_In    : constant Octet_Array (1 .. 0) := (others => 0);
-         Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := (others => 0);
+         Empty_In    : constant Octet_Array (1 .. 0) := [others => 0];
+         Zero_Secret : constant Tls_Core.Key_Sched.Max_Secret := [others => 0];
          Derived_Lab : constant Octet_Array (1 .. 7) :=
-           (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+           [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
          C_Hs_Lab    : constant Octet_Array (1 .. 12) :=
-           (16#63#,
+           [16#63#,
             16#20#,
             16#68#,
             16#73#,
@@ -49,9 +48,9 @@ is
             16#66#,
             16#66#,
             16#69#,
-            16#63#);
+            16#63#];
          S_Hs_Lab    : constant Octet_Array (1 .. 12) :=
-           (16#73#,
+           [16#73#,
             16#20#,
             16#68#,
             16#73#,
@@ -62,9 +61,9 @@ is
             16#66#,
             16#66#,
             16#69#,
-            16#63#);
+            16#63#];
          C_Ap_Lab    : constant Octet_Array (1 .. 12) :=
-           (16#63#,
+           [16#63#,
             16#20#,
             16#61#,
             16#70#,
@@ -75,9 +74,9 @@ is
             16#66#,
             16#66#,
             16#69#,
-            16#63#);
+            16#63#];
          S_Ap_Lab    : constant Octet_Array (1 .. 12) :=
-           (16#73#,
+           [16#73#,
             16#20#,
             16#61#,
             16#70#,
@@ -88,7 +87,7 @@ is
             16#66#,
             16#66#,
             16#69#,
-            16#63#);
+            16#63#];
 
          Early_Secret : Tls_Core.Key_Sched.Max_Secret;
          Derived_1    : Tls_Core.Key_Sched.Max_Secret;
@@ -234,7 +233,7 @@ is
             type Sub_State is (Expect_EE, Expect_SF, Done_Sub);
             Sub         : Sub_State := Expect_EE;
             --  Per-record scratch.
-            Pt_Buf      : Octet_Array (1 .. 16640) := (others => 0);
+            Pt_Buf      : Octet_Array (1 .. 16640) := [others => 0];
             Pt_Last     : Natural;
             Inner_Type  : Octet;
             Aead_OK     : Boolean;
@@ -244,7 +243,7 @@ is
             --  Per-message scratch.
             Msg_Buf     :
               Octet_Array (1 .. Tls_Core.Handshake_Buffer.Max_Buf) :=
-                (others => 0);
+                [others => 0];
             Msg_Last    : Natural;
             Body_Len    : Natural;
             Expected_Sf : Tls_Core.Key_Sched.Max_Digest;
@@ -417,9 +416,9 @@ is
          --  Step 6: build + send client Finished.
          declare
             Cf_Verify   : Tls_Core.Key_Sched.Max_Digest;
-            Cf_Hs       : Octet_Array (1 .. 4 + 48) := (others => 0);
+            Cf_Hs       : Octet_Array (1 .. 4 + 48) := [others => 0];
             Cf_Hs_Last  : Natural;
-            Cf_Rec      : Octet_Array (1 .. 256) := (others => 0);
+            Cf_Rec      : Octet_Array (1 .. 256) := [others => 0];
             Cf_Rec_Last : Natural;
          begin
             Tls_Core.Key_Sched.Build_Finished

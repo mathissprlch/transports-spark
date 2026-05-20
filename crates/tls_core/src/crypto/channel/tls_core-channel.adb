@@ -5,7 +5,6 @@ package body Tls_Core.Channel
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -126,15 +125,15 @@ is
       Inner         : Octet_Array (1 .. Plaintext'Length + 1) := (others => 0);
       Encrypted_Len : constant Natural := Inner'Length + 16;
       AAD           : constant Octet_Array (1 .. 5) :=
-        (Application_Data,
+        [Application_Data,
          Legacy_Version_Hi,
          Legacy_Version_Lo,
          Octet (Unsigned_16 (Encrypted_Len) / 256),
-         Octet (Unsigned_16 (Encrypted_Len) mod 256));
+         Octet (Unsigned_16 (Encrypted_Len) mod 256)];
       Ct            : Octet_Array (1 .. Inner'Length);
       Tag           : Tag_Bytes;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       if Plaintext'Length > 0 then
          Inner (1 .. Plaintext'Length) := Plaintext;
       end if;
@@ -175,7 +174,7 @@ is
    is
       F : constant Positive := In_Buf'First;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
       Inner_Type := 0;
       OK := False;
@@ -206,7 +205,7 @@ is
          if Inner_Len <= 0 or else Out_Buf'Length + 1 < Inner_Len then
             return;
          end if;
-         AAD := (Op_Type, Ver_Hi, Ver_Lo, In_Buf (F + 3), In_Buf (F + 4));
+         AAD := [Op_Type, Ver_Hi, Ver_Lo, In_Buf (F + 3), In_Buf (F + 4)];
          declare
             Ct       : constant Octet_Array :=
               In_Buf (F + 5 .. F + 4 + Inner_Len);

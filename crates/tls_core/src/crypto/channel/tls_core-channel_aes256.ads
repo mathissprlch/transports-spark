@@ -23,7 +23,7 @@ is
 
    type Direction is record
       Stream : Tls_Core.Record_Layer.Stream;
-      Key    : Key_Type := (others => 0);
+      Key    : Key_Type := [others => 0];
    end record;
 
    procedure Init

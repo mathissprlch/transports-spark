@@ -6,7 +6,7 @@ is
    Ext_Len_Pos    : Natural;
    Ext_Body_Start : Natural;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
 
    W_U8 (Out_Buf, Cursor, 16#03#);
    W_U8 (Out_Buf, Cursor, 16#03#);
@@ -26,14 +26,14 @@ begin
 
    --  supported_versions in ServerHello: just the single u16 version.
    declare
-      Body_Bytes : constant Octet_Array (1 .. 2) := (1 => 16#03#, 2 => 16#04#);
+      Body_Bytes : constant Octet_Array (1 .. 2) := [1 => 16#03#, 2 => 16#04#];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
    end;
 
    --  key_share in ServerHello: single KeyShareEntry, no list_len prefix.
    declare
-      Body_Bytes : Octet_Array (1 .. 2 + 2 + 32) := (others => 0);
+      Body_Bytes : Octet_Array (1 .. 2 + 2 + 32) := [others => 0];
    begin
       Body_Bytes (1) := Named_Group_Hi;
       Body_Bytes (2) := Named_Group_Lo;

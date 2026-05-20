@@ -19,7 +19,7 @@ is
    Ext_Total_Len   : Natural;
    Ext_Block_Start : Natural;
 begin
-   Random := (others => 0);
+   Random := [others => 0];
    Session_Id_First := 0;
    Session_Id_Last := 0;
    Suites_First := 0;

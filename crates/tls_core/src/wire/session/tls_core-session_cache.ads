@@ -59,16 +59,16 @@ is
       Ticket_Nonce_Len : Tls_Core.Session_Ticket.Ticket_Nonce_Length := 0;
       Ticket_Nonce     :
         Octet_Array (1 .. Tls_Core.Session_Ticket.Max_Ticket_Nonce_Length) :=
-          (others => 0);
+          [others => 0];
 
       Ticket_Len : Natural := 0;
       Ticket     :
         Octet_Array (1 .. Tls_Core.Session_Ticket.Max_Ticket_Length) :=
-          (others => 0);
+          [others => 0];
 
       --  Derived secret used to recompute the resumption-PSK on
       --  the next handshake (RFC 8446 §4.6.1 binding).
-      Resumption_Secret : Tls_Core.Key_Schedule.Secret := (others => 0);
+      Resumption_Secret : Tls_Core.Key_Schedule.Secret := [others => 0];
 
       --  The cipher suite the original handshake negotiated. The
       --  resumption ClientHello SHOULD offer the same suite first

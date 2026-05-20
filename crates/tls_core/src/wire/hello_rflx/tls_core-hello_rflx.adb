@@ -53,7 +53,7 @@ is
    is
       use type Tls_Core.Suites.U16;
    begin
-      Random := (others => 0);
+      Random := [others => 0];
       Suite_Code := 0;
       Sid_First := 0;
       Sid_Last := 0;
@@ -133,7 +133,7 @@ is
       Suite_Hi : constant Octet := Octet (Suite_Code / 16#0100#);
       Suite_Lo : constant Octet := Octet (Suite_Code mod 16#0100#);
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := 16#03#;
       Out_Buf (2) := 16#03#;
       Out_Buf (3 .. 34) := Random;
@@ -169,7 +169,7 @@ is
      (Random : Random_Bytes; Suite_Code : Tls_Core.Suites.U16)
    is
       use type Tls_Core.Suites.U16;
-      Buf      : Octet_Array (1 .. 256) := (others => 0);
+      Buf      : Octet_Array (1 .. 256) := [others => 0];
       Enc_Last : Natural;
    begin
       Encode_Server_Hello_Core (Random, Suite_Code, Buf, Enc_Last);

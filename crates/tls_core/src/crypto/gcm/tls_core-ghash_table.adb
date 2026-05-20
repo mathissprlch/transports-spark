@@ -4,7 +4,6 @@ package body Tls_Core.Ghash_Table
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -15,7 +14,7 @@ is
    --  byte 16) under the bit-by-bit reduction rule "if low bit
    --  of byte 16 was 1, XOR 0xE1 into byte 1".
    Rem_4Bit_B1 : constant array (Unsigned_8 range 0 .. 15) of Octet :=
-     (16#00#,
+     [16#00#,
       16#1C#,
       16#38#,
       16#24#,
@@ -30,10 +29,10 @@ is
       16#91#,
       16#8D#,
       16#A9#,
-      16#B5#);
+      16#B5#];
 
    Rem_4Bit_B2 : constant array (Unsigned_8 range 0 .. 15) of Octet :=
-     (16#00#,
+     [16#00#,
       16#20#,
       16#40#,
       16#60#,
@@ -48,7 +47,7 @@ is
       16#80#,
       16#A0#,
       16#C0#,
-      16#E0#);
+      16#E0#];
 
    ---------------------------------------------------------------------
    --  Mul_By_X — multiply a 128-bit GF(2^128) value by x mod p.
@@ -123,7 +122,7 @@ is
       --  Single aggregate write so flow analysis sees T fully
       --  initialised in one step.
       T :=
-        (0  => (others => 0),
+        [0  => [others => 0],
          1  => H_X4,
          2  => H_X3,
          3  => E3,
@@ -138,7 +137,7 @@ is
          12 => E12,
          13 => E13,
          14 => E14,
-         15 => E15);
+         15 => E15];
    end Build;
 
    ---------------------------------------------------------------------

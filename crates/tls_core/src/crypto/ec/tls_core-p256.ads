@@ -57,7 +57,6 @@ package Tls_Core.P256
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    subtype Field is Tls_Core.P256_Field.Field;
 
@@ -186,9 +185,7 @@ is
 
 private
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    type Point is record
       X : Tls_Core.P256_Field.Field;
@@ -205,7 +202,7 @@ private
    --  Generator in Jacobian (Gx, Gy, 1).
    Generator : constant Point :=
      (X =>
-        (16#6B#,
+        [16#6B#,
          16#17#,
          16#D1#,
          16#F2#,
@@ -236,9 +233,9 @@ private
          16#D8#,
          16#98#,
          16#C2#,
-         16#96#),
+         16#96#],
       Y =>
-        (16#4F#,
+        [16#4F#,
          16#E3#,
          16#42#,
          16#E2#,
@@ -269,9 +266,8 @@ private
          16#37#,
          16#BF#,
          16#51#,
-         16#F5#),
+         16#F5#],
       Z => Tls_Core.P256_Field.One);
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
 end Tls_Core.P256;

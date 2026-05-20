@@ -91,11 +91,11 @@ private
       Recv_Dir : Tls_Core.Channel.Direction;
 
       --  Bytes Send'd but not yet Drain'd.
-      Outbound      : Wire_Buffer := (others => 0);
+      Outbound      : Wire_Buffer := [others => 0];
       Outbound_Last : Natural := 0;
 
       --  Bytes Inject'd but not yet Receive'd.
-      Inbound      : Wire_Buffer := (others => 0);
+      Inbound      : Wire_Buffer := [others => 0];
       Inbound_Last : Natural := 0;
    end record;
 

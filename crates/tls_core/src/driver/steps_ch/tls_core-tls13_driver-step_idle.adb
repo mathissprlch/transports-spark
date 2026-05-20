@@ -7,7 +7,6 @@ package body Tls_Core.Tls13_Driver.Step_Idle
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Handle
      (D        : in out Driver;
@@ -17,7 +16,7 @@ is
    is
       pragma Unreferenced (In_Bytes);
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if D.My_Role /= Client then
@@ -28,12 +27,12 @@ is
       if D.Mode = Cert_Mode then
          declare
             Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-              (others => 16#A1#);
-            Ch_Body       : Octet_Array (1 .. 512) := (others => 0);
+              [others => 16#A1#];
+            Ch_Body       : Octet_Array (1 .. 512) := [others => 0];
             Ch_Body_Last  : Natural;
-            Ch_Hs         : Octet_Array (1 .. 1024) := (others => 0);
+            Ch_Hs         : Octet_Array (1 .. 1024) := [others => 0];
             Ch_Hs_Last    : Natural;
-            Ch_Rec        : Octet_Array (1 .. 1024) := (others => 0);
+            Ch_Rec        : Octet_Array (1 .. 1024) := [others => 0];
             Ch_Rec_Last   : Natural;
          begin
             Tls_Core.Hello.Encode_Client_Hello_Cert
@@ -57,14 +56,14 @@ is
 
       declare
          Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-           (others => 16#A1#);
-         Ch_Body       : Octet_Array (1 .. 512) := (others => 0);
+           [others => 16#A1#];
+         Ch_Body       : Octet_Array (1 .. 512) := [others => 0];
          Ch_Body_Last  : Natural;
          T_Last        : Natural;
          Binder        : Tls_Core.Psk_Binder.Binder_Bytes;
-         Ch_Hs         : Octet_Array (1 .. 1024) := (others => 0);
+         Ch_Hs         : Octet_Array (1 .. 1024) := [others => 0];
          Ch_Hs_Last    : Natural;
-         Ch_Rec        : Octet_Array (1 .. 1024) := (others => 0);
+         Ch_Rec        : Octet_Array (1 .. 1024) := [others => 0];
          Ch_Rec_Last   : Natural;
       begin
          Tls_Core.Hello.Encode_Client_Hello_Psk
@@ -76,7 +75,7 @@ is
             Ch_Body,
             Ch_Body_Last,
             T_Last);
-         Ch_Hs := (others => 0);
+         Ch_Hs := [others => 0];
          Ch_Hs (1) := Hs_Type_CH;
          Ch_Hs (2) := Octet ((Ch_Body_Last / 65536) mod 256);
          Ch_Hs (3) := Octet ((Ch_Body_Last / 256) mod 256);

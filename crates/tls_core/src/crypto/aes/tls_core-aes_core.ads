@@ -109,7 +109,7 @@ is
 private
 
    Rcon : constant Rcon_Array :=
-     (16#01#,
+     [16#01#,
       16#02#,
       16#04#,
       16#08#,
@@ -118,6 +118,6 @@ private
       16#40#,
       16#80#,
       16#1B#,
-      16#36#);
+      16#36#];
 
 end Tls_Core.Aes_Core;

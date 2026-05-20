@@ -4,7 +4,6 @@ package body Tls_Core.Aes_Spec
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
    --  Mix_Columns reuses the same column variables in rotated order
    --  per FIPS 197 §5.1.3 and HACL\* `mixColumn` (Spec.AES.fst:113)
    --  — the compiler's "wrong order" heuristic doesn't apply.
@@ -27,7 +26,7 @@ is
    ---------------------------------------------------------------------
 
    S_Box : constant array (Octet) of Octet :=
-     (16#63#,
+     [16#63#,
       16#7C#,
       16#77#,
       16#7B#,
@@ -282,10 +281,10 @@ is
       16#B0#,
       16#54#,
       16#BB#,
-      16#16#);
+      16#16#];
 
    Inv_S_Box : constant array (Octet) of Octet :=
-     (16#52#,
+     [16#52#,
       16#09#,
       16#6A#,
       16#D5#,
@@ -540,7 +539,7 @@ is
       16#55#,
       16#21#,
       16#0C#,
-      16#7D#);
+      16#7D#];
 
    function Sub_Byte (B : Octet) return Octet
    is (S_Box (B));
@@ -1068,7 +1067,7 @@ is
    --  Index 0 is unused (HACL spec line 191 uses 0x8d there as a
    --  base-of-recursion — never indexed in the expansion path).
    Rcon : constant array (1 .. 10) of Octet :=
-     (16#01#,
+     [16#01#,
       16#02#,
       16#04#,
       16#08#,
@@ -1077,10 +1076,10 @@ is
       16#40#,
       16#80#,
       16#1B#,
-      16#36#);
+      16#36#];
 
    function Aes128_Key_Expansion (Key : Aes128_Key) return Aes128_Xkey is
-      Out_K                      : Aes128_Xkey := (others => 0);
+      Out_K                      : Aes128_Xkey := [others => 0];
       Temp0, Temp1, Temp2, Temp3 : Octet;
       Tmp_T                      : Octet;
    begin
@@ -1118,7 +1117,7 @@ is
    end Aes128_Key_Expansion;
 
    function Aes256_Key_Expansion (Key : Aes256_Key) return Aes256_Xkey is
-      Out_K                      : Aes256_Xkey := (others => 0);
+      Out_K                      : Aes256_Xkey := [others => 0];
       Temp0, Temp1, Temp2, Temp3 : Octet;
       Tmp_T                      : Octet;
    begin

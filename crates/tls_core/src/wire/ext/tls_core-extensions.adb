@@ -4,7 +4,6 @@ package body Tls_Core.Extensions
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -32,7 +31,7 @@ is
    is
       Cursor : Natural := 0;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       --  list_length: u16 over the single ServerName entry =
       --  1 (name_type) + 2 (host_name length) + N (host_name bytes).
       Put_U16 (Out_Buf, Cursor, Unsigned_16 (3 + Host_Name'Length));
@@ -104,7 +103,7 @@ is
    is
       Cursor : Natural := 0;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Put_U16 (Out_Buf, Cursor, Unsigned_16 (Names_Buf'Length));
       for I in 1 .. Names_Buf'Length loop
          Out_Buf (Cursor + I) := Names_Buf (Names_Buf'First + I - 1);

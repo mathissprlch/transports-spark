@@ -83,7 +83,7 @@ begin
                   Suite             => D.Suite);
             else
                declare
-                  Empty_Nonce : constant Octet_Array (1 .. 0) := (others => 0);
+                  Empty_Nonce : constant Octet_Array (1 .. 0) := [others => 0];
                begin
                   Tls_Core.Session_Cache.Insert
                     (C                 => Cache,

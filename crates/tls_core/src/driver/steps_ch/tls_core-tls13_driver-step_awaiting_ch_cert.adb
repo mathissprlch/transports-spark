@@ -15,7 +15,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Ch_Cert
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -25,7 +24,7 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if In_Bytes'Length < 5
@@ -188,16 +187,16 @@ is
       --  Build SH + key schedule + EE + Cert + CertVerify + SF.
       declare
          Server_Random : constant Tls_Core.Hello.Random_Bytes :=
-           (others => 16#5E#);
+           [others => 16#5E#];
 
-         Sh_Body      : Octet_Array (1 .. 256) := (others => 0);
+         Sh_Body      : Octet_Array (1 .. 256) := [others => 0];
          Sh_Body_Last : Natural;
-         Sh_Hs        : Octet_Array (1 .. 512) := (others => 0);
+         Sh_Hs        : Octet_Array (1 .. 512) := [others => 0];
          Sh_Hs_Last   : Natural;
-         Sh_Rec       : Octet_Array (1 .. 1024) := (others => 0);
+         Sh_Rec       : Octet_Array (1 .. 1024) := [others => 0];
          Sh_Rec_Last  : Natural;
 
-         Zero32 : constant Octet_Array (1 .. 32) := (others => 0);
+         Zero32 : constant Octet_Array (1 .. 32) := [others => 0];
 
          Th_After_Sh   : Tls_Core.Key_Sched.Max_Digest;
          Th_After_Cert : Tls_Core.Key_Sched.Max_Digest;
@@ -248,7 +247,7 @@ is
             Ee_Hs        : Octet_Array (1 .. 6 + Ext_List_Len) :=
               (others => 0);
             Ee_Hs_Last   : Natural;
-            Ee_Rec       : Octet_Array (1 .. 256) := (others => 0);
+            Ee_Rec       : Octet_Array (1 .. 256) := [others => 0];
             Ee_Rec_Last  : Natural;
          begin
             Ee_Body (1) := Octet (Ext_List_Len / 256);
@@ -288,14 +287,14 @@ is
             Leaf_L         : constant Natural :=
               D.Cert_Chain_Spec.Entries (1).Last;
             Cert_Body      : Octet_Array (1 .. 1 + 3 + 3 + 2 + 2048) :=
-              (others => 0);
+              [others => 0];
             Cert_Body_Last : Natural;
             Cert_Hs        : Octet_Array (1 .. 4 + 1 + 3 + 3 + 2 + 2048) :=
-              (others => 0);
+              [others => 0];
             Cert_Hs_Last   : Natural;
             Cert_Rec       :
               Octet_Array (1 .. 4 + 1 + 3 + 3 + 2 + 2048 + 32) :=
-                (others => 0);
+                [others => 0];
             Cert_Rec_Last  : Natural;
          begin
             if Leaf_F < D.Cert_Chain_Bytes'First
@@ -342,19 +341,19 @@ is
             Signed_Buf   :
               Octet_Array
                 (1 .. 64 + 33 + 1 + Tls_Core.Key_Sched.Max_Hash_Len) :=
-                (others => 0);
+                [others => 0];
             Signed_Last  : Natural;
             K_Bytes      : Tls_Core.Ecdsa_P256.Component;
             K_OK         : Boolean;
             R, S         : Tls_Core.Ecdsa_P256.Component;
             Sign_OK      : Boolean;
-            Der_Sig      : Octet_Array (1 .. 72) := (others => 0);
+            Der_Sig      : Octet_Array (1 .. 72) := [others => 0];
             Der_Last     : Natural;
-            Cv_Body      : Octet_Array (1 .. 4 + 72) := (others => 0);
+            Cv_Body      : Octet_Array (1 .. 4 + 72) := [others => 0];
             Cv_Body_Last : Natural;
-            Cv_Hs        : Octet_Array (1 .. 4 + 4 + 72) := (others => 0);
+            Cv_Hs        : Octet_Array (1 .. 4 + 4 + 72) := [others => 0];
             Cv_Hs_Last   : Natural;
-            Cv_Rec       : Octet_Array (1 .. 256) := (others => 0);
+            Cv_Rec       : Octet_Array (1 .. 256) := [others => 0];
             Cv_Rec_Last  : Natural;
          begin
             Tls_Core.Cert_Verify.Build_Signed_Content
@@ -417,9 +416,9 @@ is
            (D.Suite, D.Hash_Ctx, D.Hash_Ctx_384, Th_After_CV);
          declare
             Verify_Data  : Tls_Core.Key_Sched.Max_Digest;
-            Fin_Hs       : Octet_Array (1 .. 4 + 48) := (others => 0);
+            Fin_Hs       : Octet_Array (1 .. 4 + 48) := [others => 0];
             Fin_Hs_Last  : Natural;
-            Fin_Rec      : Octet_Array (1 .. 256) := (others => 0);
+            Fin_Rec      : Octet_Array (1 .. 256) := [others => 0];
             Fin_Rec_Last : Natural;
          begin
             Tls_Core.Key_Sched.Build_Finished

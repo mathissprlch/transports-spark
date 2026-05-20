@@ -123,7 +123,7 @@ private
 
    type Direction is record
       Stream : Tls_Core.Record_Layer.Stream;
-      Key    : Key_Type := (others => 0);
+      Key    : Key_Type := [others => 0];
    end record;
 
    function Stream_Seq (D : Direction) return Tls_Core.Record_Layer.Seq_Number

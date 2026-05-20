@@ -14,7 +14,7 @@ is
    Ext_Len_Pos    : Natural;
    Ext_Body_Start : Natural;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    Truncated_Last := 0;
 
    W_U8 (Out_Buf, Cursor, 16#03#);
@@ -38,7 +38,7 @@ begin
 
    declare
       Body_Bytes : constant Octet_Array (1 .. 3) :=
-        (1 => 16#02#, 2 => 16#03#, 3 => 16#04#);
+        [1 => 16#02#, 2 => 16#03#, 3 => 16#04#];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Versions, Body_Bytes);
    end;
@@ -46,7 +46,7 @@ begin
    --  supported_groups = [x25519].
    declare
       Body_Bytes : constant Octet_Array (1 .. 4) :=
-        (1 => 16#00#, 2 => 16#02#, 3 => Named_Group_Hi, 4 => Named_Group_Lo);
+        [1 => 16#00#, 2 => 16#02#, 3 => Named_Group_Hi, 4 => Named_Group_Lo];
    begin
       Encode_Extension (Out_Buf, Cursor, Ext_Supported_Groups, Body_Bytes);
    end;
@@ -81,7 +81,7 @@ begin
 
    --  key_share = [{x25519, 32-byte u-coord}].
    declare
-      Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := (others => 0);
+      Body_Bytes : Octet_Array (1 .. 2 + 2 + 2 + 32) := [others => 0];
    begin
       Body_Bytes (1) := 16#00#;
       Body_Bytes (2) := 16#24#;
@@ -95,7 +95,7 @@ begin
 
    --  psk_key_exchange_modes = [psk_dhe_ke (1)].
    declare
-      Body_Bytes : constant Octet_Array (1 .. 2) := (1 => 16#01#, 2 => 16#01#);
+      Body_Bytes : constant Octet_Array (1 .. 2) := [1 => 16#01#, 2 => 16#01#];
    begin
       Encode_Extension
         (Out_Buf, Cursor, Ext_Psk_Key_Exchange_Modes, Body_Bytes);

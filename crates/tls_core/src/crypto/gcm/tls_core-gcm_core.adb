@@ -2,7 +2,6 @@ package body Tls_Core.Gcm_Core
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -45,7 +44,7 @@ is
    is
       Total  : constant Natural :=
         Spec_Mac_Length (AAD'Length, Ciphertext'Length);
-      Result : Octet_Array (1 .. Total) := (others => 0);
+      Result : Octet_Array (1 .. Total) := [others => 0];
    begin
       for I in 1 .. Total loop
          Result (I) := Spec_Build_Mac_Data_Byte_At (AAD, Ciphertext, I);
@@ -126,7 +125,7 @@ is
 
    procedure Build_J0 (Nonce : Octet_Array; Out_J0 : out Block_16) is
    begin
-      Out_J0 := (others => 0);
+      Out_J0 := [others => 0];
       Out_J0 (1 .. 12) := Nonce;
       Out_J0 (16) := 1;
       --  Out_J0 = Spec_Build_J0 (Nonce) follows from extensional
@@ -162,7 +161,7 @@ is
       --  by mirroring exactly the if-elsif chain of
       --  Spec_Build_Mac_Data_Byte_At.
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       for I in 1 .. Total loop
          if I <= Aad_Len then
             Out_Buf (I) := AAD (AAD'First + (I - 1));
@@ -563,7 +562,7 @@ is
    procedure Ghash (H : Block_16; Data : Octet_Array; Out_X : in out Block_16)
    is
       Cursor : Natural := 0;
-      Block  : Block_16 := (others => 0);
+      Block  : Block_16 := [others => 0];
       Out_X0 : constant Block_16 := Out_X
       with Ghost;
       --  Folded_Tail (C) is Spec_GHash_Fold over the suffix
@@ -739,7 +738,7 @@ is
          begin
             pragma Assert (Tail in 1 .. 16);
             pragma Assert (Suffix'Length = Tail);
-            Block := (others => 0);
+            Block := [others => 0];
             for I in 1 .. Tail loop
                pragma Loop_Invariant (Cursor + Tail <= Data'Length);
                pragma Loop_Invariant (Cursor < Data'Length);
@@ -838,7 +837,7 @@ is
       is
          Take   : Natural;
          Stream : constant Block_16 := Spec_Encrypt_Block (RK, J);
-         Result : Octet_Array (1 .. Input'Length) := (others => 0);
+         Result : Octet_Array (1 .. Input'Length) := [others => 0];
       begin
          if Input'Length = 0 then
             return Result;
@@ -876,7 +875,7 @@ is
          Stream  : Block_16;
          Cursor  : Natural := 0;
       begin
-         Output := (others => 0);
+         Output := [others => 0];
          while Cursor < Input'Length loop
             pragma Loop_Variant (Decreases => Input'Length - Cursor);
             pragma Loop_Invariant (Cursor in 0 .. Input'Length);

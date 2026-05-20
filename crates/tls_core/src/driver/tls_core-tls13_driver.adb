@@ -24,7 +24,6 @@ package body Tls_Core.Tls13_Driver
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -205,7 +204,7 @@ is
 
    procedure Set_Sni_Hostname (D : in out Driver; Hostname : Octet_Array) is
    begin
-      D.Sni_Hostname := (others => 0);
+      D.Sni_Hostname := [others => 0];
       D.Sni_Len := Hostname'Length;
       if Hostname'Length > 0 then
          D.Sni_Hostname (1 .. Hostname'Length) := Hostname;
@@ -215,7 +214,7 @@ is
    procedure Sni_Hostname
      (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := D.Sni_Len;
       if D.Sni_Len > 0 then
          Out_Buf (1 .. D.Sni_Len) := D.Sni_Hostname (1 .. D.Sni_Len);
@@ -229,7 +228,7 @@ is
 
    procedure Set_Alpn_Offers (D : in out Driver; Names : Octet_Array) is
    begin
-      D.Alpn_Offers := (others => 0);
+      D.Alpn_Offers := [others => 0];
       D.Alpn_Offers_Len := Names'Length;
       if Names'Length > 0 then
          D.Alpn_Offers (1 .. Names'Length) := Names;
@@ -239,7 +238,7 @@ is
    procedure Alpn_Offers
      (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := D.Alpn_Offers_Len;
       if D.Alpn_Offers_Len > 0 then
          Out_Buf (1 .. D.Alpn_Offers_Len) :=
@@ -249,7 +248,7 @@ is
 
    procedure Set_Selected_Alpn (D : in out Driver; Name : Octet_Array) is
    begin
-      D.Selected_Alpn := (others => 0);
+      D.Selected_Alpn := [others => 0];
       D.Selected_Alpn_Len := Name'Length;
       if Name'Length > 0 then
          D.Selected_Alpn (1 .. Name'Length) := Name;
@@ -259,7 +258,7 @@ is
    procedure Selected_Alpn
      (D : Driver; Out_Buf : out Octet_Array; Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := D.Selected_Alpn_Len;
       if D.Selected_Alpn_Len > 0 then
          Out_Buf (1 .. D.Selected_Alpn_Len) :=

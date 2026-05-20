@@ -4,7 +4,6 @@ package body Tls_Core.P256
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
    use Tls_Core.P256_Field;
@@ -21,7 +20,7 @@ is
 
    function B_Coeff_Spec return Big.Big_Integer is
       Hex_BE : constant array (1 .. 32) of Octet :=
-        (16#5A#,
+        [16#5A#,
          16#C6#,
          16#35#,
          16#D8#,
@@ -52,7 +51,7 @@ is
          16#27#,
          16#D2#,
          16#60#,
-         16#4B#);
+         16#4B#];
       package Octet_Big is new Big.Signed_Conversions (Int => Integer);
       R      : Big.Big_Integer := Big.To_Big_Integer (0);
    begin
@@ -286,7 +285,7 @@ is
    ---------------------------------------------------------------------
 
    B_Param : constant Field :=
-     (16#5A#,
+     [16#5A#,
       16#C6#,
       16#35#,
       16#D8#,
@@ -317,7 +316,7 @@ is
       16#27#,
       16#D2#,
       16#60#,
-      16#4B#);
+      16#4B#];
 
    ---------------------------------------------------------------------
    --  Helpers.
@@ -524,7 +523,7 @@ is
       X, Y                 : Field;
       Lhs, Rhs             : Field;
       X_Cubed, Three_X, T1 : Field;
-      Three                : Field := (others => 0);
+      Three                : Field := [others => 0];
    begin
       Out_P := Infinity;
       OK := False;

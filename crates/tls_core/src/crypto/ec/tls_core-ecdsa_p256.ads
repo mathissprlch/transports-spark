@@ -22,7 +22,6 @@ package Tls_Core.Ecdsa_P256
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    subtype Public_Key_Bytes is Octet_Array (1 .. 65);
    subtype Component is Octet_Array (1 .. 32);
@@ -93,6 +92,5 @@ is
        and then Message'Last < Integer'Last - 64
        and then Message'Length <= Natural'Last - 73;
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
 end Tls_Core.Ecdsa_P256;

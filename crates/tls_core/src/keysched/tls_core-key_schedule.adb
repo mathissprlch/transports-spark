@@ -6,7 +6,6 @@ package body Tls_Core.Key_Schedule
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Extract — HKDF-Extract = HMAC-Hash(salt, IKM).

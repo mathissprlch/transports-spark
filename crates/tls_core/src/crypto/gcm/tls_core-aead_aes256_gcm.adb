@@ -5,7 +5,6 @@ package body Tls_Core.Aead_Aes256_Gcm
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -59,7 +58,7 @@ is
    is
       RK         : Tls_Core.Aes256.Round_Keys;
       H          : Block_16;
-      Zero_Block : constant Block_16 := (others => 0);
+      Zero_Block : constant Block_16 := [others => 0];
       J0         : Block_16;
       J1         : Block_16;
       E_J0       : Block_16;
@@ -73,7 +72,7 @@ is
               + Tls_Core.Gcm_Core.Pad_Len (Plaintext'Length)
               + 16);
       Mac_Last : Natural;
-      X        : Block_16 := (others => 0);
+      X        : Block_16 := [others => 0];
    begin
       Tls_Core.Aes256.Expand_Key (Key, RK);
       Tls_Core.Aes256.Encrypt_Block (RK, Zero_Block, H);
@@ -103,11 +102,11 @@ is
    is
       RK         : Tls_Core.Aes256.Round_Keys;
       H          : Block_16;
-      Zero_Block : constant Block_16 := (others => 0);
+      Zero_Block : constant Block_16 := [others => 0];
       J0         : Block_16;
       J1         : Block_16;
       E_J0       : Block_16;
-      Got_Tag    : Tag_Array := (others => 0);
+      Got_Tag    : Tag_Array := [others => 0];
 
       Mac_Buf  :
         Octet_Array
@@ -118,10 +117,10 @@ is
               + Tls_Core.Gcm_Core.Pad_Len (Ciphertext'Length)
               + 16);
       Mac_Last : Natural;
-      X        : Block_16 := (others => 0);
+      X        : Block_16 := [others => 0];
       Diff     : Octet := 0;
    begin
-      Plaintext := (others => 0);
+      Plaintext := [others => 0];
       Tls_Core.Aes256.Expand_Key (Key, RK);
       Tls_Core.Aes256.Encrypt_Block (RK, Zero_Block, H);
       Tls_Core.Gcm_Core.Build_J0 (Nonce, J0);

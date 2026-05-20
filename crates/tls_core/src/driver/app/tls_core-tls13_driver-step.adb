@@ -7,7 +7,7 @@ procedure Step
 is
    Cur_State_Old : constant State := D.Cur_State;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    Out_Last := 0;
 
    --  RFC 8446 §4.4.2 + §4.4.3 — cert-mode dispatch.  Mode is set

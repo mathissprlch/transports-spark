@@ -32,7 +32,6 @@ package Tls_Core.Cert_Chain
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Maximum supported chain depth (leaf + intermediates). Real
    --  Web PKI chains rarely exceed 4; we cap at 6 to be generous
@@ -62,7 +61,7 @@ is
 
    type Chain is record
       Count   : Natural := 0;
-      Entries : Chain_Array := (others => (others => 0));
+      Entries : Chain_Array := [others => (others => 0)];
    end record;
 
    --  A trust-store root entry — same indexed-into-flat-buffer shape
@@ -76,7 +75,7 @@ is
 
    type Trust_Store is record
       Count   : Natural := 0;
-      Entries : Trust_Array := (others => (others => 0));
+      Entries : Trust_Array := [others => (others => 0)];
    end record;
 
    --  Validation outcomes. Specific failure modes are reported so

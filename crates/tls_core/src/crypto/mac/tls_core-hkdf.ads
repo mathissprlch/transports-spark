@@ -42,12 +42,12 @@ is
 
    --  The literal six-byte ASCII prefix per RFC 8446 §7.1.
    Tls13_Prefix : constant Octet_Array (1 .. 6) :=
-     (Character'Pos ('t'),
+     [Character'Pos ('t'),
       Character'Pos ('l'),
       Character'Pos ('s'),
       Character'Pos ('1'),
       Character'Pos ('3'),
-      Character'Pos (' '));
+      Character'Pos (' ')];
 
    --  Wire size of the HkdfLabel struct for given Label / Context
    --  byte counts. Two bytes for the u16 length field, one byte

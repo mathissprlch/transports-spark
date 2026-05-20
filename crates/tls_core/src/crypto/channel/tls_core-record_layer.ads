@@ -96,7 +96,6 @@ is
    --  this layer's point of view.
    ---------------------------------------------------------------------
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    type Stream is private;
 
@@ -212,7 +211,7 @@ is
 private
 
    type Stream is record
-      IV  : IV_Array := (others => 0);
+      IV  : IV_Array := [others => 0];
       Seq : Seq_Number := 0;
    end record;
 

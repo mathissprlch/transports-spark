@@ -5,7 +5,6 @@ with Tls_Core.Sha512;
 
 package body Tls_Core.Ed25519 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
    use Tls_Core.Field25519;
@@ -18,7 +17,7 @@ package body Tls_Core.Ed25519 is
 
    --  d in 16 × 16-bit limbs, little-endian (low limb first).
    D_Felt : constant Felt :=
-     (16#78A3#,
+     [16#78A3#,
       16#1359#,
       16#4DCA#,
       16#75EB#,
@@ -33,11 +32,11 @@ package body Tls_Core.Ed25519 is
       16#FE73#,
       16#2B6F#,
       16#6CEE#,
-      16#5203#);
+      16#5203#];
 
    --  2 * d.
    D2_Felt : constant Felt :=
-     (16#F159#,
+     [16#F159#,
       16#26B2#,
       16#9B94#,
       16#EBD6#,
@@ -52,7 +51,7 @@ package body Tls_Core.Ed25519 is
       16#FCE7#,
       16#56DF#,
       16#D9DC#,
-      16#2406#);
+      16#2406#];
 
    --  Curve order L = 2^252 + 27742317777372353535851937790883648493
    --  is held inside Mod_L_Pkg below as L_Bytes_S so it can sit
@@ -71,12 +70,12 @@ package body Tls_Core.Ed25519 is
    procedure Set_Identity (P : out Point);
    procedure Set_Identity (P : out Point) is
    begin
-      P.X := (others => 0);
-      P.Y := (others => 0);
+      P.X := [others => 0];
+      P.Y := [others => 0];
       P.Y (0) := 1;
-      P.Z := (others => 0);
+      P.Z := [others => 0];
       P.Z (0) := 1;
-      P.T := (others => 0);
+      P.T := [others => 0];
    end Set_Identity;
 
    --  Base point B in extended coordinates (RFC 8032 §5.1). T is
@@ -84,7 +83,7 @@ package body Tls_Core.Ed25519 is
    --  hardcoded constant that could drift from X*Y.
 
    Bx : constant Felt :=
-     (16#D51A#,
+     [16#D51A#,
       16#8F25#,
       16#2D60#,
       16#C956#,
@@ -99,10 +98,10 @@ package body Tls_Core.Ed25519 is
       16#53FE#,
       16#CD6E#,
       16#36D3#,
-      16#2169#);
+      16#2169#];
 
    By : constant Felt :=
-     (16#6658#,
+     [16#6658#,
       16#6666#,
       16#6666#,
       16#6666#,
@@ -117,14 +116,14 @@ package body Tls_Core.Ed25519 is
       16#6666#,
       16#6666#,
       16#6666#,
-      16#6666#);
+      16#6666#];
 
    procedure Get_Base_Point (P : out Point);
    procedure Get_Base_Point (P : out Point) is
    begin
       P.X := Bx;
       P.Y := By;
-      P.Z := (1, others => 0);
+      P.Z := [1, others => 0];
       F_Mul (P.T, Bx, By);
    end Get_Base_Point;
 
@@ -256,10 +255,10 @@ package body Tls_Core.Ed25519 is
    procedure Decode_Point
      (P : out Point; In_Bytes : Bytes_32; OK : out Boolean)
    is
-      One                               : constant Felt := (1, others => 0);
+      One                               : constant Felt := [1, others => 0];
       I_Sqrt_M1                         : constant Felt :=
       --  sqrt(-1) mod p — TweetNaCl's `gf I` constant.
-        (16#A0B0#,
+        [16#A0B0#,
          16#4A0E#,
          16#1B27#,
          16#C4EE#,
@@ -274,7 +273,7 @@ package body Tls_Core.Ed25519 is
          16#DF0B#,
          16#4FC1#,
          16#2480#,
-         16#2B83#);
+         16#2B83#];
       Y, Y2, Num, Den, Den2, Den4, Den6 : Felt;
       T1, X_Cand, Chk, Tmp, Negated     : Felt;
       Local_In                          : Bytes_32 := In_Bytes;
@@ -329,7 +328,7 @@ package body Tls_Core.Ed25519 is
       end if;
       --  Pick the candidate's sign matching the encoded sign bit.
       if Parity (X_Cand) /= Sign_Bit then
-         F_Sub (Negated, (others => 0), X_Cand);
+         F_Sub (Negated, [others => 0], X_Cand);
          X_Cand := Negated;
       end if;
       P.X := X_Cand;
@@ -413,20 +412,20 @@ package body Tls_Core.Ed25519 is
       --  Curve order L = 2^252 + 27742317777372353535851937790883648493
       --  Hacl.Spec.BignumQ.Mul.make_m.
       Make_M : constant Qelem :=
-        (16#0012_631A_5CF5_D3ED#,
+        [16#0012_631A_5CF5_D3ED#,
          16#00F9_DEA2_F79C_D658#,
          16#0000_0000_0000_14DE#,
          16#0000_0000_0000_0000#,
-         16#0000_0000_1000_0000#);
+         16#0000_0000_1000_0000#];
 
       --  mu = floor(2^512 / L), 56-bit-limb LE.
       --  Hacl.Spec.BignumQ.Mul.make_mu.
       Make_Mu : constant Qelem :=
-        (16#009C_E5A3_0A2C_131B#,
+        [16#009C_E5A3_0A2C_131B#,
          16#0021_5D08_6329_A7ED#,
          16#00FF_FFFF_FFEB_2106#,
          16#00FF_FFFF_FFFF_FFFF#,
-         16#0000_000F_FFFF_FFFF#);
+         16#0000_000F_FFFF_FFFF#];
 
       Mask56 : constant U64 := Pow56 - 1;
       Mask40 : constant U64 := 2**40 - 1;
@@ -456,7 +455,7 @@ package body Tls_Core.Ed25519 is
          C : Integer_64 := 0;  --  running carry
          V : Integer_64;
       begin
-         B := (others => 0);
+         B := [others => 0];
          for I in 0 .. 63 loop
             pragma Loop_Invariant (C in 0 .. X_Limb_Bound);
             pragma Loop_Invariant (for all K in 0 .. I - 1 => B (K) <= 255);
@@ -508,7 +507,7 @@ package body Tls_Core.Ed25519 is
       procedure Load_64_Bytes (B : Bytes_64; W : out Qelem_Wide) is
       begin
          W :=
-           (Load_56_LE (B, 0),
+           [Load_56_LE (B, 0),
             Load_56_LE (B, 7),
             Load_56_LE (B, 14),
             Load_56_LE (B, 21),
@@ -517,7 +516,7 @@ package body Tls_Core.Ed25519 is
             Load_56_LE (B, 42),
             Load_56_LE (B, 49),
             Load_56_LE (B, 56),
-            B (63));        --  one byte (input is 64 bytes total)
+            B (63)];        --  one byte (input is 64 bytes total)
       end Load_64_Bytes;
 
       ---------------------------------------------------------------
@@ -549,11 +548,11 @@ package body Tls_Core.Ed25519 is
       procedure Div_248 (W : Qelem_Wide; Q : out Qelem) is
       begin
          Q :=
-           (Div_2_24_Step (W (4), W (5)),
+           [Div_2_24_Step (W (4), W (5)),
             Div_2_24_Step (W (5), W (6)),
             Div_2_24_Step (W (6), W (7)),
             Div_2_24_Step (W (7), W (8)),
-            Div_2_24_Step (W (8), W (9)));
+            Div_2_24_Step (W (8), W (9))];
       end Div_248;
 
       ---------------------------------------------------------------
@@ -620,7 +619,7 @@ package body Tls_Core.Ed25519 is
          Carry_Wide (Z8 + C, T8, C);
          --  C now holds the residual at bit position 504+; for our
          --  Barrett input space (input < 2^512) it fits in 56 bits.
-         Z := (T0, T1, T2, T3, T4, T5, T6, T7, T8, U64 (C and U128 (Mask56)));
+         Z := [T0, T1, T2, T3, T4, T5, T6, T7, T8, U64 (C and U128 (Mask56))];
       end Mul_5_Wide;
 
       ---------------------------------------------------------------
@@ -644,11 +643,11 @@ package body Tls_Core.Ed25519 is
       procedure Div_264 (W : Qelem_Wide; Q : out Qelem) is
       begin
          Q :=
-           (Div_2_40_Step (W (4), W (5)),
+           [Div_2_40_Step (W (4), W (5)),
             Div_2_40_Step (W (5), W (6)),
             Div_2_40_Step (W (6), W (7)),
             Div_2_40_Step (W (7), W (8)),
-            Div_2_40_Step (W (8), W (9)));
+            Div_2_40_Step (W (8), W (9))];
       end Div_264;
 
       ---------------------------------------------------------------
@@ -662,7 +661,7 @@ package body Tls_Core.Ed25519 is
 
       procedure Mod_264 (W : Qelem_Wide; R : out Qelem) is
       begin
-         R := (W (0), W (1), W (2), W (3), W (4) and Mask40);
+         R := [W (0), W (1), W (2), W (3), W (4) and Mask40];
       end Mod_264;
 
       ---------------------------------------------------------------
@@ -700,7 +699,7 @@ package body Tls_Core.Ed25519 is
          Carry_Wide (W1 + C, R1, C);
          Carry_Wide (W2 + C, R2, C);
          Carry_Wide (W3 + C, R3, C);
-         R := (R0, R1, R2, R3, U64 ((W4 + C) and U128 (Mask40)));
+         R := [R0, R1, R2, R3, U64 ((W4 + C) and U128 (Mask40))];
       end Low_Mul_5;
 
       ---------------------------------------------------------------
@@ -757,7 +756,7 @@ package body Tls_Core.Ed25519 is
          Subm_Step (R (3), Q (3), B2, T3, B3);
          Subm_Last_Step (R (4), Q (4), B3, T4, B4);
          pragma Unreferenced (B4);
-         S := (T0, T1, T2, T3, T4);
+         S := [T0, T1, T2, T3, T4];
       end Sub_Mod_264;
 
       ---------------------------------------------------------------
@@ -825,7 +824,7 @@ package body Tls_Core.Ed25519 is
       procedure Pack_32 (S : Qelem; Out_Bytes : out Bytes_32) is
          V : U64;
       begin
-         Out_Bytes := (others => 0);
+         Out_Bytes := [others => 0];
          Store_56_LE (Out_Bytes, 1, S (0));
          Store_56_LE (Out_Bytes, 8, S (1));
          Store_56_LE (Out_Bytes, 15, S (2));
@@ -879,7 +878,7 @@ package body Tls_Core.Ed25519 is
 
    procedure Mod_L (Out_Bytes : out Bytes_32; X_In : Octet_Array);
    procedure Mod_L (Out_Bytes : out Bytes_32; X_In : Octet_Array) is
-      X : X64_Array := (others => 0);
+      X : X64_Array := [others => 0];
    begin
       pragma Assert (X_In'Length = 64);
       for I in 0 .. 63 loop
@@ -1015,12 +1014,12 @@ package body Tls_Core.Ed25519 is
       K_Hash  : Tls_Core.Sha512.Digest;
       K_Bytes : Bytes_32;
 
-      X     : X64_Array := (others => 0);
+      X     : X64_Array := [others => 0];
       S_Out : Bytes_32;
 
       Ctx : Tls_Core.Sha512.Context;
    begin
-      Out_Sig := (others => 0);
+      Out_Sig := [others => 0];
 
       Seed_To_Scalar_And_Prefix (Seed, A_Bytes, Prefix);
       Get_Base_Point (B_Pt);

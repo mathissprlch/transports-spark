@@ -5,7 +5,7 @@ is
    Cursor             : Natural := 0;
    Cert_List_Body_Len : constant Natural := 3 + Cert_Data'Length + 2;
 begin
-   Out_Buf := (others => 0);
+   Out_Buf := [others => 0];
    --  request_context length = 0.
    Out_Buf (Cursor + 1) := 0;
    Cursor := Cursor + 1;

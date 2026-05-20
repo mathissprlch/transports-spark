@@ -19,7 +19,6 @@ package body Tls_Core.Cert_Chain
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
    use type Tls_Core.X509_Spki.Key_Kind;

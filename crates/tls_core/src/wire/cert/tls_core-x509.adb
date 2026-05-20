@@ -9,7 +9,6 @@ package body Tls_Core.X509
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -24,7 +23,7 @@ is
    --  We compare this whole 7-byte TLV byte-for-byte; the OID alone
    --  (06 03 2B 65 70) is just the inner contents.
    Alg_Id_Ed25519 : constant Octet_Array (1 .. 7) :=
-     (16#30#, 16#05#, 16#06#, 16#03#, 16#2B#, 16#65#, 16#70#);
+     [16#30#, 16#05#, 16#06#, 16#03#, 16#2B#, 16#65#, 16#70#];
 
    ---------------------------------------------------------------------
    --  Parse a single ASN.1 DER TLV header at Buf (Pos).

@@ -46,7 +46,6 @@ package Tls_Core.Rsa_Pss
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Make bitwise/relational operators on Octet (Unsigned_8) visible
    --  in Pre/Post expressions below.
@@ -320,6 +319,5 @@ is
        and then Message'Last < Integer'Last - 128
        and then Salt'Length = 48;
 
-   pragma Warnings (On, "array aggregate using () is an obsolescent syntax");
 
 end Tls_Core.Rsa_Pss;

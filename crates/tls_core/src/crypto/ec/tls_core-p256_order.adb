@@ -4,7 +4,6 @@ package body Tls_Core.P256_Order
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -29,7 +28,7 @@ is
       --  n = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
       --  Build from MSB to LSB.
       Hex_BE : constant array (1 .. 32) of Octet :=
-        (16#FF#,
+        [16#FF#,
          16#FF#,
          16#FF#,
          16#FF#,
@@ -60,7 +59,7 @@ is
          16#FC#,
          16#63#,
          16#25#,
-         16#51#);
+         16#51#];
       R      : Big.Big_Integer := Big.To_Big_Integer (0);
    begin
       for I in Hex_BE'Range loop
@@ -114,14 +113,14 @@ is
    --                              BCE6FAADA7179E84F3B9CAC2FC632551
    --  as eight 32-bit little-endian limbs.
    N_Limbs : constant Limbs8 :=
-     (16#FC632551#,
+     [16#FC632551#,
       16#F3B9CAC2#,
       16#A7179E84#,
       16#BCE6FAAD#,
       16#FFFFFFFF#,
       16#FFFFFFFF#,
       16#00000000#,
-      16#FFFFFFFF#);
+      16#FFFFFFFF#];
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 32 BE bytes and limbs.
@@ -322,7 +321,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Reduce_Mul (T : Limbs16; R : out Limbs8) is
-      Acc       : Limbs9 := (others => 0);
+      Acc       : Limbs9 := [others => 0];
       Bit       : Unsigned_32;
       Carry_Out : Unsigned_32;
    begin
@@ -423,7 +422,7 @@ is
    ---------------------------------------------------------------------
 
    N_Minus_2 : constant Scalar :=
-     (16#FF#,
+     [16#FF#,
       16#FF#,
       16#FF#,
       16#FF#,
@@ -454,10 +453,10 @@ is
       16#FC#,
       16#63#,
       16#25#,
-      16#4F#);
+      16#4F#];
 
    procedure Invert (A : Scalar; Out_C : out Scalar) is
-      Result  : Limbs8 := (others => 0);
+      Result  : Limbs8 := [others => 0];
       Base    : Limbs8;
       Tmp     : Limbs8;
       Bit     : Unsigned_8;

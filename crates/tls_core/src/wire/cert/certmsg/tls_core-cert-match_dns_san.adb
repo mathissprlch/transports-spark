@@ -51,7 +51,7 @@ begin
             --  we can pass a slice with 'First = 1 to Iequal
             --  (DNS labels are <= 255 bytes per RFC 1035 §2.3.4).
             declare
-               Name_Buf : Octet_Array (1 .. 256) := (others => 0);
+               Name_Buf : Octet_Array (1 .. 256) := [others => 0];
                Name_Len : constant Natural := VL;
             begin
                if Name_Len in 1 .. 256 then

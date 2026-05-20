@@ -92,7 +92,7 @@ is
       Cursor : Stream_Element_Offset := Buf'First;
       Last   : Stream_Element_Offset;
    begin
-      Buffer := (others => 0);
+      Buffer := [others => 0];
       Success := False;
       if Buffer'Length = 0 then
          Success := True;

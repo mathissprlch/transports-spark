@@ -41,7 +41,7 @@ is
    --  We hard-code the digest rather than recompute it because the
    --  RFC mandates the constant.
    Magic_Random : constant Octet_Array (1 .. 32) :=
-     (16#CF#,
+     [16#CF#,
       16#21#,
       16#AD#,
       16#74#,
@@ -72,7 +72,7 @@ is
       16#C8#,
       16#A8#,
       16#33#,
-      16#9C#);
+      16#9C#];
 
    --  Synthetic handshake type code for the message_hash record
    --  RFC 8446 §4.4.1 emits in place of ClientHello1.

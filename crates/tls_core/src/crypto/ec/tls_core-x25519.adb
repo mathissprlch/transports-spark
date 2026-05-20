@@ -4,7 +4,6 @@ package body Tls_Core.X25519
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
    use Tls_Core.Field25519;
@@ -60,7 +59,7 @@ is
    ---------------------------------------------------------------------
 
    function Spec_Encode_Point (P : Big.Big_Integer) return Bytes_32 is
-      Out_B : Bytes_32 := (others => 0);
+      Out_B : Bytes_32 := [others => 0];
       Q     : Big.Big_Integer := P;
       Two_8 : constant Big.Big_Integer := Big.To_Big_Integer (256);
    begin
@@ -135,7 +134,7 @@ is
       for I in reverse 0 .. 254 loop
          declare
             Pow_Tab  : constant array (Natural range 0 .. 7) of Natural :=
-              (1, 2, 4, 8, 16, 32, 64, 128);
+              [1, 2, 4, 8, 16, 32, 64, 128];
             Byte_Idx : constant Positive := 1 + I / 8;
             Bit_Pos  : constant Natural range 0 .. 7 := I mod 8;
             Byte_Val : constant Natural := Natural (Scalar (Byte_Idx));
@@ -202,7 +201,7 @@ is
 
    --  Constant 121665 = (a + 2) / 4 for a = 486662 (the Montgomery
    --  curve parameter), used as the scalar in the curve's group law.
-   C_121665 : constant Felt := (16#DB41#, 1, others => 0);
+   C_121665 : constant Felt := [16#DB41#, 1, others => 0];
 
    ---------------------------------------------------------------------
    --  Scalar_Mult — RFC 7748 §5 Decode → Montgomery ladder → Encode.
@@ -214,10 +213,10 @@ is
    is
       Z      : Bytes_32;
       X      : Felt;
-      A      : Felt := (others => 0);
+      A      : Felt := [others => 0];
       B      : Felt;
-      C      : Felt := (others => 0);
-      D      : Felt := (others => 0);
+      C      : Felt := [others => 0];
+      D      : Felt := [others => 0];
       E      : Felt;
       F      : Felt;
       R      : Integer_64;
@@ -290,7 +289,7 @@ is
 
    procedure Derive_Public (Private_Key : Bytes_32; Out_Public : out Bytes_32)
    is
-      Base : constant Bytes_32 := (1 => 9, others => 0);
+      Base : constant Bytes_32 := [1 => 9, others => 0];
    begin
       Scalar_Mult (Private_Key, Base, Out_Public);
    end Derive_Public;

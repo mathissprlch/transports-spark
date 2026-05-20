@@ -90,7 +90,7 @@ is
    --  Resumption-master-secret derivation label, RFC 8446 §7.1.
    --  ASCII "res master" (10 bytes).
    Res_Master_Label : constant Octet_Array (1 .. 10) :=
-     (Character'Pos ('r'),
+     [Character'Pos ('r'),
       Character'Pos ('e'),
       Character'Pos ('s'),
       Character'Pos (' '),
@@ -99,12 +99,12 @@ is
       Character'Pos ('s'),
       Character'Pos ('t'),
       Character'Pos ('e'),
-      Character'Pos ('r'));
+      Character'Pos ('r')];
 
    --  PSK-from-ticket label, RFC 8446 §4.6.1.
    --  ASCII "resumption" (10 bytes).
    Resumption_Label : constant Octet_Array (1 .. 10) :=
-     (Character'Pos ('r'),
+     [Character'Pos ('r'),
       Character'Pos ('e'),
       Character'Pos ('s'),
       Character'Pos ('u'),
@@ -113,7 +113,7 @@ is
       Character'Pos ('t'),
       Character'Pos ('i'),
       Character'Pos ('o'),
-      Character'Pos ('n'));
+      Character'Pos ('n')];
 
    --------------------------------------------------------------------
    --  [VERIFIED — AoRTE]  Encode the NewSessionTicket body (no

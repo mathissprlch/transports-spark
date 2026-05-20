@@ -6,7 +6,6 @@ package body Tls_Core.Bignum_2048
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -80,7 +79,7 @@ is
    function Big_To_Bigint (X : Big.Big_Integer) return Bigint is
       --  Init suppresses an "initialization has no effect" gnat
       --  warning; flow analysis still needs the unconditional write.
-      Result   : Bigint := (others => 0);
+      Result   : Bigint := [others => 0];
       Base_256 : constant Big.Big_Integer := Big.To_Big_Integer (256);
       Acc      : Big.Big_Integer := X;
       package Octet_Big is new Big.Signed_Conversions (Int => Integer);
@@ -155,7 +154,7 @@ is
       --  unconditional initialisation; the limb-walk below overwrites
       --  every byte but the prover otherwise can't see that the
       --  4×I+k indices cover [1..256] exactly.
-      B := (others => 0);
+      B := [others => 0];
       for I in Limb_Index loop
          B (Byte_Length - 4 * I - 3) :=
            Octet (Shift_Right (L (I), 24) and 16#FF#);
@@ -283,8 +282,8 @@ is
    ---------------------------------------------------------------------
 
    procedure Reduce (T : Limbs128; N : Limbs64; Out_R : out Limbs64) is
-      R         : Limbs65 := (others => 0);
-      N65       : Limbs65 := (others => 0);
+      R         : Limbs65 := [others => 0];
+      N65       : Limbs65 := [others => 0];
       Bit       : Unsigned_32;
       Limb_Word : Unsigned_32;
    begin
@@ -334,7 +333,7 @@ is
 
    procedure Widen (A : Limbs64; T : out Limbs128) is
    begin
-      T := (others => 0);
+      T := [others => 0];
       for I in Limb_Index loop
          T (I) := A (I);
       end loop;
@@ -411,7 +410,7 @@ is
    --  Concretely: build T128 = 2^2048 (so T (64) = 1, others = 0),
    --  reduce to get R mod N, then square and reduce again.
    procedure R_Sq_Mod_N (N : Limbs64; Out_R : out Limbs64) is
-      T128  : Limbs128 := (others => 0);
+      T128  : Limbs128 := [others => 0];
       R_Mod : Limbs64;
       Sq128 : Limbs128;
    begin
@@ -437,7 +436,7 @@ is
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    is
-      T     : Limbs66 := (others => 0);
+      T     : Limbs66 := [others => 0];
       Acc   : Unsigned_64;
       Carry : Unsigned_64;
       M     : Unsigned_32;
@@ -529,7 +528,7 @@ is
       From_Bytes (N, NL);
       if Is_Zero64 (NL) then
          --  Degenerate: modulus is zero. Return zero (per ads).
-         RL := (others => 0);
+         RL := [others => 0];
       else
          Limb_Mod_Mul (AL, BL, NL, RL);
       end if;
@@ -548,7 +547,7 @@ is
 
    procedure Mod_Exp (Base, Exp, N : Bigint; Out_R : out Bigint) is
       BL, EL, NL : Limbs64;
-      Result     : Limbs64 := (others => 0);
+      Result     : Limbs64 := [others => 0];
       Tmp        : Limbs64;
       Bit        : Unsigned_32;
       Limb_Word  : Unsigned_32;
@@ -564,7 +563,7 @@ is
       --  a divergent computation. (Callers verify the modulus shape
       --  earlier in the RSA pipeline.)
       if Is_Zero64 (NL) or else (NL (0) and 1) = 0 then
-         Result := (others => 0);
+         Result := [others => 0];
          To_Bytes (Result, Out_R);
          return;
       end if;
@@ -582,7 +581,7 @@ is
             end loop;
          end if;
          if Is_One then
-            Result := (others => 0);
+            Result := [others => 0];
             To_Bytes (Result, Out_R);
             return;
          end if;
@@ -602,7 +601,7 @@ is
       declare
          Inv32    : constant Unsigned_32 := N0_Inv (NL);
          R2       : Limbs64;
-         One_L    : Limbs64 := (others => 0);
+         One_L    : Limbs64 := [others => 0];
          Base_M   : Limbs64;
          Result_M : Limbs64;
       begin

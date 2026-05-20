@@ -4,7 +4,6 @@ package body Tls_Core.Aes256
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Expand_Key — body is a one-liner over the platinum spec.

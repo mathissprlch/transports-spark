@@ -4,7 +4,6 @@ package body Tls_Core.Aead_Chacha20_Poly1305
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use Interfaces;
 
@@ -72,7 +71,7 @@ is
    is
       Cursor : Natural := 0;
    begin
-      Mac_Data := (others => 0);
+      Mac_Data := [others => 0];
 
       if AAD'Length > 0 then
          Mac_Data (1 .. AAD'Length) := AAD;

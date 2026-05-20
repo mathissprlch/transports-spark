@@ -8,7 +8,7 @@ is
 
    procedure Init (B : out Buffer) is
    begin
-      B.Data := (others => 0);
+      B.Data := [others => 0];
       B.Len := 0;
    end Init;
 
@@ -57,7 +57,7 @@ is
       Old_Len   : constant Natural := B.Len;
       Remaining : constant Natural := Old_Len - Total;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       --  Copy header + body to caller buffer.
       for I in 1 .. Total loop
          pragma Loop_Invariant (B.Len = Old_Len);

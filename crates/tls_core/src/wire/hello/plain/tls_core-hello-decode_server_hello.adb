@@ -10,10 +10,10 @@ is
    Body_F, Body_L  : Natural;
    Find_OK         : Boolean;
 begin
-   SH.Random := (others => 0);
+   SH.Random := [others => 0];
    SH.Session_Id_Len := 0;
-   SH.Session_Id_Bytes := (others => 0);
-   SH.Key_Share := (others => 0);
+   SH.Session_Id_Bytes := [others => 0];
+   SH.Key_Share := [others => 0];
    OK := False;
 
    R_U8 (In_Bytes, P, U8_Val, Read_OK);

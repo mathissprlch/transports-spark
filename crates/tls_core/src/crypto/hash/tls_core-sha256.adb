@@ -4,7 +4,6 @@ is
 
    use Interfaces;
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  FIPS 180-4 §4.2.2 round constants K[0..63] —
@@ -12,7 +11,7 @@ is
    ---------------------------------------------------------------------
 
    K : constant array (0 .. 63) of Word :=
-     (16#428A_2F98#,
+     [16#428A_2F98#,
       16#7137_4491#,
       16#B5C0_FBCF#,
       16#E9B5_DBA5#,
@@ -75,7 +74,7 @@ is
       16#90BE_FFFA#,
       16#A450_6CEB#,
       16#BEF9_A3F7#,
-      16#C671_78F2#);
+      16#C671_78F2#];
 
    ---------------------------------------------------------------------
    --  FIPS 180-4 §4.1.2 — the six bit-mixing functions.
@@ -133,10 +132,10 @@ is
    --  Spec.SHA2.fst:175-200) and the round function
    --  (`shuffle_core_pre_`, Spec.SHA2.fst:154).
    function Update_Block_Spec (S : Hash_State; B : Block) return Hash_State is
-      W                       : array (0 .. 63) of Word := (others => 0);
+      W                       : array (0 .. 63) of Word := [others => 0];
       A, Bv, C, D, E, F, G, H : Word;
       T1, T2                  : Word;
-      Out_S                   : Hash_State := (others => 0);
+      Out_S                   : Hash_State := [others => 0];
    begin
       --  ws_pre: first 16 words are big-endian loads of the block.
       for I in 0 .. 15 loop
@@ -187,7 +186,7 @@ is
    end Update_Block_Spec;
 
    function Block_At (Padded : Octet_Array; I : Natural) return Block is
-      B : Block := (others => 0);
+      B : Block := [others => 0];
    begin
       for J in Block_Index loop
          B (J) := Padded (I * 64 + J);
@@ -212,7 +211,7 @@ is
       Total   : constant Positive := Input'Length + Pad_Len;
       Bits    : constant Interfaces.Unsigned_64 :=
         Interfaces.Unsigned_64 (Input'Length) * 8;
-      Out_Buf : Octet_Array (1 .. Total) := (others => 0);
+      Out_Buf : Octet_Array (1 .. Total) := [others => 0];
    begin
       if Input'Length > 0 then
          Out_Buf (1 .. Input'Length) := Input;
@@ -226,7 +225,7 @@ is
    end Pad_SHA256;
 
    function Finalize_State (S : Hash_State) return Digest is
-      D : Digest := (others => 0);
+      D : Digest := [others => 0];
    begin
       for I in 1 .. 8 loop
          D (4 * (I - 1) + 1) := Octet (Shift_Right (S (I), 24) and 16#FF#);
@@ -256,7 +255,7 @@ is
 
    procedure Process_Block (Ctx : in out Context; B : Block);
    procedure Process_Block (Ctx : in out Context; B : Block) is
-      W                       : array (0 .. 63) of Word := (others => 0);
+      W                       : array (0 .. 63) of Word := [others => 0];
       A, Bv, C, D, E, F, G, H : Word;
       T1, T2                  : Word;
    begin
@@ -313,7 +312,7 @@ is
    procedure Init (Ctx : out Context) is
    begin
       Ctx.H := Initial_State_SHA256;
-      Ctx.Buf := (others => 0);
+      Ctx.Buf := [others => 0];
       Ctx.Buf_Len := 0;
       Ctx.Total_Len := 0;
    end Init;
@@ -362,7 +361,7 @@ is
       declare
          Remaining : constant Natural := Data'Length - Consumed;
       begin
-         Ctx.Buf := (others => 0);
+         Ctx.Buf := [others => 0];
          if Remaining > 0 then
             Ctx.Buf (1 .. Remaining) :=
               Data
@@ -378,7 +377,7 @@ is
       Bits   : constant Interfaces.Unsigned_64 := Ctx.Total_Len * 8;
       Filled : Natural := Ctx.Buf_Len;
    begin
-      Out_Digest := (others => 0);
+      Out_Digest := [others => 0];
       Ctx.Buf (Filled + 1) := 16#80#;
       Filled := Filled + 1;
 
@@ -393,7 +392,7 @@ is
          begin
             Process_Block (Ctx, Snap);
          end;
-         Ctx.Buf := (others => 0);
+         Ctx.Buf := [others => 0];
          Filled := 0;
       end if;
 

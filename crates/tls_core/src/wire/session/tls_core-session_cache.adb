@@ -2,7 +2,6 @@ package body Tls_Core.Session_Cache
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Init — empty all slots.
@@ -15,13 +14,13 @@ is
          Lifetime          => 0,
          Age_Add           => 0,
          Ticket_Nonce_Len  => 0,
-         Ticket_Nonce      => (others => 0),
+         Ticket_Nonce      => [others => 0],
          Ticket_Len        => 0,
-         Ticket            => (others => 0),
-         Resumption_Secret => (others => 0),
+         Ticket            => [others => 0],
+         Resumption_Secret => [others => 0],
          Suite             => Tls_Core.Suites.Aes_128_Gcm_Sha256);
    begin
-      C.Slots := (others => Empty_Slot);
+      C.Slots := [others => Empty_Slot];
       C.Next_Seq := 1;
    end Init;
 
@@ -79,14 +78,14 @@ is
       C.Slots (Target).Age_Add := Age_Add;
 
       C.Slots (Target).Ticket_Nonce_Len := Ticket_Nonce'Length;
-      C.Slots (Target).Ticket_Nonce := (others => 0);
+      C.Slots (Target).Ticket_Nonce := [others => 0];
       if Ticket_Nonce'Length > 0 then
          C.Slots (Target).Ticket_Nonce (1 .. Ticket_Nonce'Length) :=
            Ticket_Nonce;
       end if;
 
       C.Slots (Target).Ticket_Len := Ticket'Length;
-      C.Slots (Target).Ticket := (others => 0);
+      C.Slots (Target).Ticket := [others => 0];
       C.Slots (Target).Ticket (1 .. Ticket'Length) := Ticket;
 
       C.Slots (Target).Resumption_Secret := Resumption_Secret;

@@ -52,14 +52,14 @@ is
 
    --  Mirrors `Spec.SHA2.Constants.h384` (lib/Spec.SHA2.Constants.fst:80).
    Initial_State_SHA384 : constant Hash_State :=
-     (16#CBBB_9D5D_C105_9ED8#,
+     [16#CBBB_9D5D_C105_9ED8#,
       16#629A_292A_367C_D507#,
       16#9159_015A_3070_DD17#,
       16#152F_ECD8_F70E_5939#,
       16#6733_2667_FFC0_0B31#,
       16#8EB4_4A87_6858_1511#,
       16#DB0C_2E0D_64F9_8FA7#,
-      16#47B5_481D_BEFA_4FA4#);
+      16#47B5_481D_BEFA_4FA4#];
 
    --  Same MD padding scheme as SHA-512 (128-byte block, 16-byte
    --  length field) — Spec.Hash.MD.pad (specs/Spec.Hash.MD.fst:30-44).
@@ -148,7 +148,7 @@ private
 
    type Context is record
       H         : Hash_State;
-      Buf       : Block := (others => 0);
+      Buf       : Block := [others => 0];
       Buf_Len   : Buf_Length_Type := 0;
       Total_Len : Interfaces.Unsigned_64 := 0;
    end record;

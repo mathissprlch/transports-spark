@@ -156,6 +156,6 @@ is
    --  by multiplying the curve's base point.
    --      base_u = 9 (32 bytes little-endian)
    procedure Derive_Public (Private_Key : Bytes_32; Out_Public : out Bytes_32)
-   with Post => Out_Public = Spec_X25519 (Private_Key, (1 => 9, others => 0));
+   with Post => Out_Public = Spec_X25519 (Private_Key, [1 => 9, others => 0]);
 
 end Tls_Core.X25519;

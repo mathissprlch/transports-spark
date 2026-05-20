@@ -4,7 +4,6 @@ is
 
    use Interfaces;
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    ---------------------------------------------------------------------
    --  Read four bytes LE → Word (RFC 8439 uses little-endian).
@@ -92,7 +91,7 @@ is
    --  syntactically equal expressions.
    function Build_Initial_State
      (Key : Key_Array; Nonce : Nonce_Array; Counter : Word) return State_Array
-   is ((0  => 16#6170_7865#,
+   is ([0  => 16#6170_7865#,
         1  => 16#3320_646E#,
         2  => 16#7962_2D32#,
         3  => 16#6B20_6574#,
@@ -107,7 +106,7 @@ is
         12 => Counter,
         13 => LE_Word (Nonce, 1),
         14 => LE_Word (Nonce, 5),
-        15 => LE_Word (Nonce, 9)));
+        15 => LE_Word (Nonce, 9)]);
 
    ---------------------------------------------------------------------
    --  Run the 20 rounds (10 double-rounds) on the initial state.
@@ -177,7 +176,7 @@ is
    function Spec_Block_Bytes
      (Key : Key_Array; Nonce : Nonce_Array; Counter : Word) return Block_Array
    is
-      Result : Block_Array := (others => 0);
+      Result : Block_Array := [others => 0];
    begin
       for I in 0 .. 15 loop
          declare
@@ -238,7 +237,7 @@ is
       Counter : Word;
       Input   : Octet_Array) return Octet_Array
    is
-      Result : Octet_Array (1 .. Input'Length) := (others => 0);
+      Result : Octet_Array (1 .. Input'Length) := [others => 0];
    begin
       if Input'Length = 0 then
          return Result;
@@ -279,7 +278,7 @@ is
       --  State (I) + Initial (I) = Spec_State_Word (Key, Nonce, Counter, I).
       State   : constant State_Array := Spec_Rounds (Initial);
    begin
-      Out_Block := (others => 0);
+      Out_Block := [others => 0];
 
       for I in State'Range loop
          declare
@@ -340,7 +339,7 @@ is
       --  Ghost: at every loop iteration, Output's processed prefix
       --  equals Spec_Chacha20 applied to Input's processed prefix.
    begin
-      Output := (others => 0);
+      Output := [others => 0];
 
       --  Special-case empty Input: Output is the empty array, which
       --  by definition equals Spec_Chacha20 (..., empty).

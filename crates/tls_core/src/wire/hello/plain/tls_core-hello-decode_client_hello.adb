@@ -11,10 +11,10 @@ is
    Body_F, Body_L  : Natural;
    Find_OK         : Boolean;
 begin
-   CH.Random := (others => 0);
+   CH.Random := [others => 0];
    CH.Session_Id_Len := 0;
-   CH.Session_Id_Bytes := (others => 0);
-   CH.Key_Share := (others => 0);
+   CH.Session_Id_Bytes := [others => 0];
+   CH.Key_Share := [others => 0];
    OK := False;
 
    --  legacy_version (skip — must equal 0x0303)

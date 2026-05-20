@@ -13,7 +13,6 @@ package body Tls_Core.Tls13_Driver.Step_Awaiting_Ch_Psk
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    procedure Handle
      (D        : in out Driver;
@@ -21,7 +20,7 @@ is
       Out_Buf  : out Octet_Array;
       Out_Last : out Natural) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Last := 0;
 
       if In_Bytes'Length < 5
@@ -189,11 +188,11 @@ is
                end if;
                declare
                   Computed  : Tls_Core.Psk_Binder.Binder_Bytes :=
-                    (others => 0);
+                    [others => 0];
                   Received  : Tls_Core.Psk_Binder.Binder_Bytes :=
-                    (others => 0);
+                    [others => 0];
                   Trunc_Len : constant Natural := Abs_T_Last - Rec_F + 1;
-                  Hs_Trunc  : Octet_Array (1 .. 16640) := (others => 0);
+                  Hs_Trunc  : Octet_Array (1 .. 16640) := [others => 0];
                begin
                   if Trunc_Len > Hs_Trunc'Length then
                      D.Cur_State := Failed;
@@ -219,13 +218,13 @@ is
       --  HRR emission branch (RFC 8446 §4.1.4)
       if D.Hrr_Demand and then not D.Hrr_Sent then
          declare
-            Hrr_Body      : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+            Hrr_Body      : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
             Hrr_Body_Last : Natural;
-            Hrr_Hs        : Tls_Core.Octet_Array (1 .. 512) := (others => 0);
+            Hrr_Hs        : Tls_Core.Octet_Array (1 .. 512) := [others => 0];
             Hrr_Hs_Last   : Natural;
-            Hrr_Rec       : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Hrr_Rec       : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Hrr_Rec_Last  : Natural;
-            Synthetic     : Tls_Core.Octet_Array (1 .. 36) := (others => 0);
+            Synthetic     : Tls_Core.Octet_Array (1 .. 36) := [others => 0];
             Cookie_Slice  : constant Tls_Core.Octet_Array :=
               D.Hrr_Cookie (1 .. D.Hrr_Cookie_Len);
          begin
@@ -258,17 +257,17 @@ is
 
       --  Build SH + key schedule + EE + Finished
       declare
-         Sh_Body        : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Sh_Body        : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Sh_Body_Last   : Natural;
-         Sh_Hs_Msg      : Tls_Core.Octet_Array (1 .. 512) := (others => 0);
+         Sh_Hs_Msg      : Tls_Core.Octet_Array (1 .. 512) := [others => 0];
          Sh_Hs_Last     : Natural;
-         Sh_Record      : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Sh_Record      : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Sh_Record_Last : Natural;
 
          Server_Random : constant Tls_Core.Hello.Random_Bytes :=
-           (others => 16#5E#);
+           [others => 16#5E#];
 
-         Empty_Identity_Buf : Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+         Empty_Identity_Buf : Tls_Core.Octet_Array (1 .. 0) := [others => 0];
 
          Transcript_Hash_After_SH : Tls_Core.Key_Sched.Max_Digest;
       begin
@@ -304,10 +303,10 @@ is
          Tls_Core.Key_Sched.Init_Hs_Channel (D.Suite, D.Hs_In_Dir, D.C_Hs_Sec);
 
          declare
-            Ee_Body     : constant Octet_Array (1 .. 2) := (16#00#, 16#00#);
-            Ee_Hs       : Octet_Array (1 .. 6) := (others => 0);
+            Ee_Body     : constant Octet_Array (1 .. 2) := [16#00#, 16#00#];
+            Ee_Hs       : Octet_Array (1 .. 6) := [others => 0];
             Ee_Hs_Last  : Natural;
-            Ee_Rec      : Octet_Array (1 .. 256) := (others => 0);
+            Ee_Rec      : Octet_Array (1 .. 256) := [others => 0];
             Ee_Rec_Last : Natural;
          begin
             Encode_Hs_Message (Hs_Type_EE, Ee_Body, Ee_Hs, Ee_Hs_Last);
@@ -323,9 +322,9 @@ is
             declare
                Th_After_EE  : Tls_Core.Key_Sched.Max_Digest;
                Verify_Data  : Tls_Core.Key_Sched.Max_Digest;
-               Fin_Hs       : Octet_Array (1 .. 4 + 48) := (others => 0);
+               Fin_Hs       : Octet_Array (1 .. 4 + 48) := [others => 0];
                Fin_Hs_Last  : Natural;
-               Fin_Rec      : Octet_Array (1 .. 256) := (others => 0);
+               Fin_Rec      : Octet_Array (1 .. 256) := [others => 0];
                Fin_Rec_Last : Natural;
             begin
                Tls_Core.Key_Sched.Transcript_Snapshot

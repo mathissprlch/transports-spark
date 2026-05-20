@@ -6,7 +6,6 @@ is
 
    use type Interfaces.Unsigned_8;
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    Block_Length : constant := Tls_Core.Sha256.Block_Length;
    Hash_Length  : constant := Tls_Core.Sha256.Hash_Length;
@@ -45,7 +44,7 @@ is
    --  (specs/Spec.HMAC.fst:13-25). If |K| > B then K' = H(K) || 0..0,
    --  else K' = K || 0..0, padded to Block_Length bytes.
    function Spec_Wrap_Key (Key : Octet_Array) return Tls_Core.Sha256.Block is
-      K_Prime : Block_Buf := (others => 0);
+      K_Prime : Block_Buf := [others => 0];
    begin
       if Key'Length > Block_Length then
          declare
@@ -84,7 +83,7 @@ is
       Inner_Buf  : Octet_Array (1 .. Block_Length + Message'Length) :=
         (others => 0);
       Outer_Buf  : Octet_Array (1 .. Block_Length + Hash_Length) :=
-        (others => 0);
+        [others => 0];
    begin
       --  Build the two padded keys.
       for I in Block_Buf'Range loop

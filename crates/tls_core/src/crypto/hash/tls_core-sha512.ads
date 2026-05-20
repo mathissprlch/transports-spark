@@ -53,14 +53,14 @@ is
 
    --  Mirrors `Spec.SHA2.Constants.h512` (lib/Spec.SHA2.Constants.fst:96).
    Initial_State_SHA512 : constant Hash_State :=
-     (16#6A09_E667_F3BC_C908#,
+     [16#6A09_E667_F3BC_C908#,
       16#BB67_AE85_84CA_A73B#,
       16#3C6E_F372_FE94_F82B#,
       16#A54F_F53A_5F1D_36F1#,
       16#510E_527F_ADE6_82D1#,
       16#9B05_688C_2B3E_6C1F#,
       16#1F83_D9AB_FB41_BD6B#,
-      16#5BE0_CD19_137E_2179#);
+      16#5BE0_CD19_137E_2179#];
 
    --  Number of bytes appended by FIPS 180-4 §5.1.2 padding: one
    --  0x80 byte + zeros + 16-byte length field, total a multiple
@@ -163,7 +163,7 @@ private
 
    type Context is record
       H         : Hash_State;
-      Buf       : Block := (others => 0);
+      Buf       : Block := [others => 0];
       Buf_Len   : Buf_Length_Type := 0;
       Total_Len : Interfaces.Unsigned_64 := 0;
    end record;

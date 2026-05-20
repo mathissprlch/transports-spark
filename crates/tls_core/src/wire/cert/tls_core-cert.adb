@@ -13,7 +13,6 @@ package body Tls_Core.Cert
   with SPARK_Mode
 is
 
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    use type Tls_Core.Octet;
 
@@ -33,7 +32,7 @@ is
    --  ecdsa-with-SHA256: 1.2.840.10045.4.3.2
    --      OID-only TLV: 06 08 2A 86 48 CE 3D 04 03 02      (10 bytes)
    Oid_Ecdsa_Sha256_Tlv : constant Octet_Array (1 .. 10) :=
-     (16#06#,
+     [16#06#,
       16#08#,
       16#2A#,
       16#86#,
@@ -42,12 +41,12 @@ is
       16#3D#,
       16#04#,
       16#03#,
-      16#02#);
+      16#02#];
 
    --  rsassaPss: 1.2.840.113549.1.1.10
    --      OID-only TLV: 06 09 2A 86 48 86 F7 0D 01 01 0A    (11 bytes)
    Oid_Rsa_Pss_Tlv : constant Octet_Array (1 .. 11) :=
-     (16#06#,
+     [16#06#,
       16#09#,
       16#2A#,
       16#86#,
@@ -57,12 +56,12 @@ is
       16#0D#,
       16#01#,
       16#01#,
-      16#0A#);
+      16#0A#];
 
    --  id-ce-subjectAltName: 2.5.29.17
    --      OID-only TLV: 06 03 55 1D 11
    Oid_San_Tlv : constant Octet_Array (1 .. 5) :=
-     (16#06#, 16#03#, 16#55#, 16#1D#, 16#11#);
+     [16#06#, 16#03#, 16#55#, 16#1D#, 16#11#];
 
    ---------------------------------------------------------------------
    --  Read a single ASN.1 DER TLV header at Buf (Pos).

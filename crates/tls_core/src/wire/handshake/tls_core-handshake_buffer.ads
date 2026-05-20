@@ -164,7 +164,7 @@ private
    type Storage_Array is array (1 .. Max_Buf) of Octet;
 
    type Buffer is record
-      Data : Storage_Array := (others => 0);
+      Data : Storage_Array := [others => 0];
       Len  : Natural := 0;
    end record
    with Predicate => Len <= Max_Buf;

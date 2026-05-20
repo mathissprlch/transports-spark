@@ -6,7 +6,6 @@ is
 
    use type Interfaces.Unsigned_8;
    use type Tls_Core.Suites.U16;
-   pragma Warnings (Off, "array aggregate using () is an obsolescent syntax");
 
    --  Extension type constants for HRR (RFC 8446 §4.2).
    Ext_Supported_Versions : constant Natural := 16#002B#;
@@ -36,7 +35,7 @@ is
    procedure Build_Synthetic_Msg_Sha256
      (Ch1_Hash : Tls_Core.Sha256.Digest; Out_Buf : out Octet_Array) is
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := Synthetic_Type;
       Out_Buf (2) := 16#00#;
       Out_Buf (3) := 16#00#;
@@ -157,7 +156,7 @@ is
       Ext_Len_Pos    : Natural;
       Ext_Body_Start : Natural;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
 
       --  legacy_version 0x0303
       W_U8 (Out_Buf, Cursor, 16#03#);
@@ -180,7 +179,7 @@ is
       --  supported_versions = TLS 1.3 (single u16)
       declare
          Body_Bytes : constant Octet_Array (1 .. 2) :=
-           (1 => 16#03#, 2 => 16#04#);
+           [1 => 16#03#, 2 => 16#04#];
       begin
          --  ext_type u16
          W_U16 (Out_Buf, Cursor, Ext_Supported_Versions);
@@ -192,8 +191,8 @@ is
       --  key_share (HRR variant): u16 selected_group, no public key
       declare
          Body_Bytes : constant Octet_Array (1 .. 2) :=
-           (1 => Octet (Natural (Selected_Group) / 256),
-            2 => Octet (Natural (Selected_Group) mod 256));
+           [1 => Octet (Natural (Selected_Group) / 256),
+            2 => Octet (Natural (Selected_Group) mod 256)];
       begin
          W_U16 (Out_Buf, Cursor, Ext_Key_Share);
          W_U16 (Out_Buf, Cursor, Body_Bytes'Length);
@@ -243,7 +242,7 @@ is
    begin
       Cipher_Suite := 0;
       Selected_Group := 0;
-      Cookie := (others => 0);
+      Cookie := [others => 0];
       Cookie_Length := 0;
       OK := False;
 

@@ -51,7 +51,7 @@ is
       Ext_Last     : out Natural;
       OK           : out Boolean) is
    begin
-      Random := (others => 0);
+      Random := [others => 0];
       Sid_First := 0;
       Sid_Last := 0;
       Suites_First := 0;
@@ -159,7 +159,7 @@ is
       S_Off : constant Natural := 36;
       J     : Natural;
    begin
-      Out_Buf := (others => 0);
+      Out_Buf := [others => 0];
       Out_Buf (1) := 16#03#;
       Out_Buf (2) := 16#03#;
       Out_Buf (3 .. 34) := Random;
@@ -197,7 +197,7 @@ is
 
    procedure Lemma_CH_Round_Trip (Random : Random_Bytes; Suites : Octet_Array)
    is
-      Buf      : Octet_Array (1 .. 256) := (others => 0);
+      Buf      : Octet_Array (1 .. 256) := [others => 0];
       Enc_Last : Natural;
    begin
       Encode_Client_Hello_Core (Random, Suites, Buf, Enc_Last);

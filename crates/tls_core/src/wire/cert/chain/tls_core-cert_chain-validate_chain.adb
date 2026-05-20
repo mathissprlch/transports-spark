@@ -59,7 +59,7 @@ begin
       declare
          Ent       : constant Chain_Entry := Chain_In.Entries (I);
          Slice_Len : constant Natural := Ent.Last - Ent.First + 1;
-         Slice_Buf : Octet_Array (1 .. 16384) := (others => 0);
+         Slice_Buf : Octet_Array (1 .. 16384) := [others => 0];
          P         : Tls_Core.Cert.Parsed_Cert;
          P_OK      : Boolean;
       begin
@@ -116,9 +116,9 @@ begin
             Child    : constant Tls_Core.Cert.Parsed_Cert := Parsed_Chain (I);
             Parent   : constant Tls_Core.Cert.Parsed_Cert :=
               Parsed_Chain (I + 1);
-            TBS_Buf  : Octet_Array (1 .. 16384) := (others => 0);
-            Sig_Buf  : Octet_Array (1 .. 512) := (others => 0);
-            Spki_Buf : Octet_Array (1 .. 1024) := (others => 0);
+            TBS_Buf  : Octet_Array (1 .. 16384) := [others => 0];
+            Sig_Buf  : Octet_Array (1 .. 512) := [others => 0];
+            Spki_Buf : Octet_Array (1 .. 1024) := [others => 0];
             TBS_Len  : constant Natural :=
               Child.Tbs_Last - Child.Tbs_First + 1;
             Sig_Len  : constant Natural :=
@@ -167,8 +167,8 @@ begin
    declare
       Top         : constant Tls_Core.Cert.Parsed_Cert :=
         Parsed_Chain (Chain_In.Count);
-      Top_TBS_Buf : Octet_Array (1 .. 16384) := (others => 0);
-      Top_Sig_Buf : Octet_Array (1 .. 512) := (others => 0);
+      Top_TBS_Buf : Octet_Array (1 .. 16384) := [others => 0];
+      Top_Sig_Buf : Octet_Array (1 .. 512) := [others => 0];
       Top_TBS_Len : constant Natural := Top.Tbs_Last - Top.Tbs_First + 1;
       Top_Sig_Len : constant Natural := Top.Sig_Last - Top.Sig_First + 1;
    begin
@@ -194,7 +194,7 @@ begin
          pragma Loop_Invariant (Trust.Count in 0 .. Max_Trust_Roots);
          declare
             Ent      : constant Trust_Entry := Trust.Entries (J);
-            Root_Buf : Octet_Array (1 .. 16384) := (others => 0);
+            Root_Buf : Octet_Array (1 .. 16384) := [others => 0];
             Root_Len : constant Natural := Ent.Last - Ent.First + 1;
             Root_P   : Tls_Core.Cert.Parsed_Cert;
             Root_OK  : Boolean;
@@ -206,7 +206,7 @@ begin
                Tls_Core.Cert.Parse (Root_Buf (1 .. Root_Len), Root_P, Root_OK);
                if Root_OK then
                   declare
-                     Spki_Buf : Octet_Array (1 .. 1024) := (others => 0);
+                     Spki_Buf : Octet_Array (1 .. 1024) := [others => 0];
                      Spki_Len : constant Natural :=
                        Root_P.Spki_Last - Root_P.Spki_First + 1;
                      Link_OK  : Boolean := False;

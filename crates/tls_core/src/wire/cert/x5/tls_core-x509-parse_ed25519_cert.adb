@@ -34,8 +34,8 @@ is
 begin
    Tbs_First := 0;
    Tbs_Last := 0;
-   Pub_Key := (others => 0);
-   Sig := (others => 0);
+   Pub_Key := [others => 0];
+   Sig := [others => 0];
    OK := False;
 
    if Der'Length < 16 then

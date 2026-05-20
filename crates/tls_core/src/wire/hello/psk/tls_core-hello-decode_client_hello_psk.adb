@@ -24,7 +24,7 @@ is
    Body_F, Body_L  : Natural;
    Find_OK         : Boolean;
 begin
-   Random := (others => 0);
+   Random := [others => 0];
    Session_Id_First := 0;
    Session_Id_Last := 0;  --  Last < First means empty range
    Suites_First := 0;
