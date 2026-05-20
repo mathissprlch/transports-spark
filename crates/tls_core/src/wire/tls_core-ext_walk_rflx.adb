@@ -60,6 +60,10 @@ is
          --  set in the current iteration — where the assignment-site
          --  asserts established Data_First / Data_Len's bounds.
          pragma Loop_Invariant (not Found);
+         --  Every iteration's Update returns the element buffer to
+         --  Seq_Ctx, so Ext_Ctx owns no buffer at the top — meaning
+         --  the Switch below never overwrites (leaks) a held one.
+         pragma Loop_Invariant (not Ext.Has_Buffer (Ext_Ctx));
          EL.Switch (Seq_Ctx, Ext_Ctx);
          Ext.Verify_Message (Ext_Ctx);
          if not Ext.Well_Formed_Message (Ext_Ctx) then
@@ -74,8 +78,11 @@ is
                  Natural (Ext.Get_Length (Ext_Ctx));
                Byte_Off : Natural;
             begin
-               if FF < RFLX.RFLX_Types.Bit_Index'Last - 8
-                 and then Natural (FF) / 8 < Natural'Last
+               --  Bit_Index'Last = Length'Last * 8 exceeds Natural'Last,
+               --  so bound FF in the Bit_Index domain *before* the
+               --  Natural conversion — otherwise Natural (FF) itself
+               --  can overflow.
+               if FF <= RFLX.RFLX_Types.Bit_Index (Natural'Last)
                then
                   Byte_Off := Natural (FF) / 8 + 1;
                   if Byte_Off >= 1
@@ -120,29 +127,27 @@ is
       Key_Share_Last  := 0;
       Found           := False;
       Walk_Find (Ext_Bytes, 51, Df, Dl, Buf, Ext_Found);
-      if not Ext_Found or else Dl < 6 or else Buf = null
+      --  Walk_Find only located the extension; its bytes live in
+      --  Ext_Bytes at the same 1-based offsets (Buf was a copy).  Free
+      --  Buf now and read from Ext_Bytes, whose bounds are known from
+      --  the Pre — this is the Find_Key_Share_X25519_Sh pattern and
+      --  avoids the unprovable Buf'Last dependency through Take_Buffer.
+      if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
+      if not Ext_Found or else Dl < 6
         or else Df < 1
         or else Df > Natural'Last - Dl
         or else Df + Dl - 1 > Ext_Bytes'Length
-        or else Df + 1 > Natural'Last / 2
       then
-         if Buf /= null then RFLX.RFLX_Types.Free (Buf); end if;
          return;
       end if;
       pragma Assert (Df >= 1);
       pragma Assert (Df + Dl - 1 <= Ext_Bytes'Length);
       pragma Assert (Dl >= 6);
       pragma Assert (Df + 1 <= Ext_Bytes'Length);
-      if RFLX.RFLX_Types.Index (Df) > Buf'Last
-        or else RFLX.RFLX_Types.Index (Df + 1) > Buf'Last
-      then
-         RFLX.RFLX_Types.Free (Buf);
-         return;
-      end if;
       declare
          Ks_Len : constant Natural :=
-           Natural (Buf (RFLX.RFLX_Types.Index (Df))) * 256
-           + Natural (Buf (RFLX.RFLX_Types.Index (Df + 1)));
+           Natural (Ext_Bytes (Df)) * 256
+           + Natural (Ext_Bytes (Df + 1));
          Ks_Cur : Natural := Df + 2;
          Ks_End : constant Natural := Df + 2 + Ks_Len - 1;
       begin
@@ -157,20 +162,13 @@ is
                   and then Ks_Cur <= Ks_End
                   and then Ks_End <= Ext_Bytes'Length
                   and then Ks_Cur + 3 <= Ext_Bytes'Length);
-               if RFLX.RFLX_Types.Index (Ks_Cur + 3) > Buf'Last then
-                  exit;
-               end if;
                declare
                   Grp : constant Natural :=
-                    Natural (Buf (RFLX.RFLX_Types.Index (Ks_Cur)))
-                      * 256
-                    + Natural (Buf (RFLX.RFLX_Types.Index
-                                      (Ks_Cur + 1)));
+                    Natural (Ext_Bytes (Ks_Cur)) * 256
+                    + Natural (Ext_Bytes (Ks_Cur + 1));
                   Kx_L : constant Natural :=
-                    Natural (Buf (RFLX.RFLX_Types.Index
-                                    (Ks_Cur + 2))) * 256
-                    + Natural (Buf (RFLX.RFLX_Types.Index
-                                      (Ks_Cur + 3)));
+                    Natural (Ext_Bytes (Ks_Cur + 2)) * 256
+                    + Natural (Ext_Bytes (Ks_Cur + 3));
                   Kx_F : constant Natural := Ks_Cur + 4;
                begin
                   if Kx_F + Kx_L - 1 > Ks_End then exit; end if;
@@ -185,7 +183,6 @@ is
             end loop;
          end if;
       end;
-      RFLX.RFLX_Types.Free (Buf);
    end Find_Key_Share_X25519;
 
    procedure Find_Key_Share_X25519_Sh
