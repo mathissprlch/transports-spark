@@ -17,7 +17,7 @@ with Tls_Core.Tls13_Driver;
 with Tls_Core.Tcp_Transport;
 
 package Tls_Transport
-with SPARK_Mode => Off
+  with SPARK_Mode => Off
 is
 
    Max_Hostname : constant := 255;
@@ -27,18 +27,17 @@ is
    type Tls_Mode is (Cert_Ec, Psk_External, Psk_Resume);
 
    type Tls_Config is record
-      Mode           : Tls_Mode := Cert_Ec;
-      Hostname       : String (1 .. Max_Hostname) := (others => ' ');
-      Hostname_Len   : Natural := 0;
-      Alpn           : String (1 .. Max_Alpn) := (others => ' ');
-      Alpn_Len       : Natural := 0;
-      Trust_Der      : Tls_Core.Octet_Array (1 .. Max_Trust) :=
-        (others => 0);
-      Trust_Der_Len  : Natural := 0;
-      Cert_Der       : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
-      Cert_Der_Len   : Natural := 0;
-      Key_Raw        : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
-      Key_Raw_Len    : Natural := 0;
+      Mode          : Tls_Mode := Cert_Ec;
+      Hostname      : String (1 .. Max_Hostname) := [others => ' '];
+      Hostname_Len  : Natural := 0;
+      Alpn          : String (1 .. Max_Alpn) := [others => ' '];
+      Alpn_Len      : Natural := 0;
+      Trust_Der     : Tls_Core.Octet_Array (1 .. Max_Trust) := [others => 0];
+      Trust_Der_Len : Natural := 0;
+      Cert_Der      : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
+      Cert_Der_Len  : Natural := 0;
+      Key_Raw       : Tls_Core.Octet_Array (1 .. 32) := [others => 0];
+      Key_Raw_Len   : Natural := 0;
    end record;
 
    type Channel is limited private;
@@ -51,9 +50,7 @@ is
 
    function Is_Open (Chan : Channel) return Boolean;
 
-   procedure Send
-     (Chan : in out Channel;
-      Data : Tls_Core.Octet_Array)
+   procedure Send (Chan : in out Channel; Data : Tls_Core.Octet_Array)
    with Pre => Is_Open (Chan);
 
    procedure Receive
@@ -67,37 +64,24 @@ is
    with Pre => Is_Open (Chan);
 
    procedure Wait_For_Data
-     (Chan     : Channel;
-      Timeout  : Duration;
-      Got_Data : out Boolean)
+     (Chan : Channel; Timeout : Duration; Got_Data : out Boolean)
    with Pre => Is_Open (Chan);
 
    procedure Close (Chan : in out Channel)
-   with
-     Pre  => Is_Open (Chan),
-     Post => not Is_Open (Chan);
+   with Pre => Is_Open (Chan), Post => not Is_Open (Chan);
 
    type Listener is limited private;
 
-   procedure Listen
-     (L    : in out Listener;
-      Host : String;
-      Port : Natural);
+   procedure Listen (L : in out Listener; Host : String; Port : Natural);
 
    function Is_Listening (L : Listener) return Boolean;
 
    procedure Accept_One
-     (L      : in out Listener;
-      Chan   : in out Channel;
-      Config : Tls_Config)
-   with
-     Pre  => Is_Listening (L),
-     Post => Is_Open (Chan);
+     (L : in out Listener; Chan : in out Channel; Config : Tls_Config)
+   with Pre => Is_Listening (L), Post => Is_Open (Chan);
 
    procedure Stop (L : in out Listener)
-   with
-     Pre  => Is_Listening (L),
-     Post => not Is_Listening (L);
+   with Pre => Is_Listening (L), Post => not Is_Listening (L);
 
    Connect_Error : exception;
    Send_Error    : exception;
@@ -107,14 +91,14 @@ private
    Pt_Buf_Size : constant := 16640;
 
    type Channel is limited record
-      Tcp      : Tls_Core.Tcp_Transport.Channel;
-      Driver   : Tls_Core.Tls13_Driver.Driver;
-      App_In   : Tls_Core.Aead_Channel.Direction;
-      App_Out  : Tls_Core.Aead_Channel.Direction;
-      Selector : GNAT.Sockets.Selector_Type;
-      Sel_Open : Boolean := False;
-      Open     : Boolean := False;
-      Pending    : Tls_Core.Octet_Array (1 .. Pt_Buf_Size) := (others => 0);
+      Tcp        : Tls_Core.Tcp_Transport.Channel;
+      Driver     : Tls_Core.Tls13_Driver.Driver;
+      App_In     : Tls_Core.Aead_Channel.Direction;
+      App_Out    : Tls_Core.Aead_Channel.Direction;
+      Selector   : GNAT.Sockets.Selector_Type;
+      Sel_Open   : Boolean := False;
+      Open       : Boolean := False;
+      Pending    : Tls_Core.Octet_Array (1 .. Pt_Buf_Size) := [others => 0];
       Pend_First : Natural := 1;
       Pend_Last  : Natural := 0;
       Rflx_Buf   : RFLX.RFLX_Types.Bytes_Ptr := null;

@@ -11,7 +11,7 @@ project Tls_Transport is
 
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-gnat2022", "-gnatwa", "-gnatyM120", "-gnato",
+        ("-gnat2022", "-gnatwae", "-gnatyM120", "-gnatW8", "-gnato",
          "-fstack-check", "-g", "-O1");
    end Compiler;
 
