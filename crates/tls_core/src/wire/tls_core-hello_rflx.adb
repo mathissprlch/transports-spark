@@ -245,6 +245,11 @@ is
             if Ext_Len < 4 then
                return;
             end if;
+            --  Defensive bound for Ext_Walk_Rflx's precondition
+            --  (Ext_Bytes'Last < Natural'Last / 2).
+            if Ext_Len >= Natural'Last / 2 then
+               return;
+            end if;
             declare
                Ext_Copy : Octet_Array (1 .. Ext_Len) :=
                  Local (Ef .. El);

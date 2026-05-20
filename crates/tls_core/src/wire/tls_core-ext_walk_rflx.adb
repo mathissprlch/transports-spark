@@ -54,6 +54,12 @@ is
       EL.Initialize (Seq_Ctx, Buf);
       while EL.Has_Element (Seq_Ctx) loop
          pragma Loop_Invariant (EL.Has_Buffer (Seq_Ctx));
+         --  The loop exits the instant Found is set, so Found is
+         --  always False at the top of an iteration.  This lets the
+         --  prover conclude that a True Found at the exit point was
+         --  set in the current iteration — where the assignment-site
+         --  asserts established Data_First / Data_Len's bounds.
+         pragma Loop_Invariant (not Found);
          EL.Switch (Seq_Ctx, Ext_Ctx);
          Ext.Verify_Message (Ext_Ctx);
          if not Ext.Well_Formed_Message (Ext_Ctx) then
@@ -81,6 +87,14 @@ is
                      Data_First := Byte_Off;
                      Data_Len := DL_Val;
                      Found := True;
+                     --  Capture the Post facts here, while the guard
+                     --  locals Byte_Off / DL_Val are in scope; these
+                     --  facts about Data_First / Data_Len then persist
+                     --  to the loop exit (neither is aliased by the
+                     --  RFLX context calls below).
+                     pragma Assert (Data_First >= 1);
+                     pragma Assert
+                       (Data_First + Data_Len - 1 <= Ext_Bytes'Length);
                   end if;
                end if;
             end;

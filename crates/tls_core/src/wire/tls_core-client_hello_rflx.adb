@@ -279,6 +279,13 @@ is
             OK := False;
             return;
          end if;
+         --  Defensive bound for Ext_Walk_Rflx's precondition
+         --  (Ext_Bytes'Last < Natural'Last / 2).  A handshake fits in
+         --  well under that; reject anything absurd up front.
+         if Ext_Len >= Natural'Last / 2 then
+            OK := False;
+            return;
+         end if;
          declare
             Ext_Blob : Octet_Array (1 .. Ext_Len) :=
               In_Bytes (Ef .. El);
@@ -389,6 +396,12 @@ is
             return;
          end if;
          if Ef > Natural'Last - Ext_Len then
+            OK := False;
+            return;
+         end if;
+         --  Defensive bound for Ext_Walk_Rflx's precondition
+         --  (Ext_Bytes'Last < Natural'Last / 2).
+         if Ext_Len >= Natural'Last / 2 then
             OK := False;
             return;
          end if;
