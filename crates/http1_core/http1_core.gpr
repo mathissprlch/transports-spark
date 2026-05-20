@@ -9,7 +9,7 @@ library project Http1_Core is
 
    package Compiler is
       for Default_Switches ("Ada") use
-        ("-g", "-O0", "-gnat2022", "-gnatwa", "-gnatVa", "-gnatyM100", "-gnata");
+        ("-g", "-O0", "-gnat2022", "-gnatwae", "-gnatVa", "-gnatyM100", "-gnata");
    end Compiler;
 
 end Http1_Core;

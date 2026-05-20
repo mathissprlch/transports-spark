@@ -112,7 +112,7 @@ package body Http1_Core.Server is
       Chan : Transport.Channel;
 
       Inbound : Wire.Octet_Array (1 .. Inbound_Capacity) :=
-        (others => 0);
+        [others => 0];
       Inbound_Last : Wire.Octet_Offset;
       Head_OK : Boolean;
 
@@ -135,7 +135,7 @@ package body Http1_Core.Server is
             Out_Last : Wire.Octet_Offset;
             Empty_Headers : Wire.Header_Block;
             Empty_Body : constant Wire.Octet_Array (1 .. 0) :=
-              (others => 0);
+              [others => 0];
          begin
             Wire.Encode_Response
               (Out_Buf      => Out_Buf,
@@ -177,17 +177,17 @@ package body Http1_Core.Server is
             Body_Slice : Wire.Octet_Array
               (1 .. (if Req.Has_Content_Length
                      then Wire.Octet_Offset (Req.Content_Length)
-                     else 0)) := (others => 0);
+                     else 0)) := [others => 0];
             Resp_Status : Natural := 200;
-            Resp_Reason : String (1 .. 64) := (others => ' ');
+            Resp_Reason : String (1 .. 64) := [others => ' '];
             Reason_Last : Natural := 0;
             Resp_Headers : Wire.Header_Block;
             Resp_Headers_Last : Natural := 0;
             Resp_Body : Wire.Octet_Array (1 .. Body_Capacity) :=
-              (others => 0);
+              [others => 0];
             Resp_Body_Last : Wire.Octet_Offset := 0;
             Out_Buf  : Wire.Octet_Array (1 .. Outbound_Capacity) :=
-              (others => 0);
+              [others => 0];
             Out_Last : Wire.Octet_Offset;
          begin
             if Body_Slice'Length > 0 then

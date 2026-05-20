@@ -19,7 +19,6 @@ with Http2_Core.Hpack;
 with Http2_Core.Hpack.Static_Table;
 with Http2_Core.Hpack.Huffman;
 with Http2_Core.Hpack.Int_Codec;
-with Http2_Core.Hpack_Dynamic_Table;
 with Http2_Core.Wire;
 
 procedure Http2_Core_Tests is
@@ -102,7 +101,7 @@ procedure Http2_Core_Tests is
 
    procedure Test_Int_Codec;
    procedure Test_Int_Codec is
-      Buf      : Int_Codec.Octet_Array (1 .. 8) := (others => 0);
+      Buf      : Int_Codec.Octet_Array (1 .. 8) := [others => 0];
       L        : Natural;
       OK       : Boolean;
       V        : Natural;
@@ -111,7 +110,7 @@ procedure Http2_Core_Tests is
       --  10 fits in 5-bit prefix (mask = 31; 10 < 31): single byte
       --  with low-5-bit value = 10. We pre-clear discriminator to 0
       --  to get a clean 0x0A.
-      Buf := (others => 0);
+      Buf := [others => 0];
       Int_Codec.Encode
         (Value => 10, N => 5, Output => Buf,
          Output_Last => L, Output_OK => OK);
@@ -125,7 +124,7 @@ procedure Http2_Core_Tests is
 
       --  1337 with N=5: too big, all-1s prefix (31), then 1337-31=1306
       --  encoded as little-endian 7-bit-per-byte continuation.
-      Buf := (others => 0);
+      Buf := [others => 0];
       Int_Codec.Encode
         (Value => 1337, N => 5, Output => Buf,
          Output_Last => L, Output_OK => OK);
@@ -199,12 +198,12 @@ procedure Http2_Core_Tests is
    procedure Test_Hpack_Round_Trip;
    procedure Test_Hpack_Round_Trip is
       In_Headers : constant Header_Block (1 .. 5) :=
-        (Make_Header (":method", "POST"),
+        [Make_Header (":method", "POST"),
          Make_Header (":scheme", "https"),
          Make_Header (":path", "/helloworld.Greeter/SayHello"),
          Make_Header (":authority", "localhost:50051"),
-         Make_Header ("content-type", "application/grpc"));
-      Wire        : Octet_Array (1 .. 256) := (others => 0);
+         Make_Header ("content-type", "application/grpc")];
+      Wire        : Octet_Array (1 .. 256) := [others => 0];
       Wire_Last   : Natural;
       Enc_OK      : Boolean;
       Out_Headers : Header_Block (1 .. 16);
@@ -275,10 +274,10 @@ procedure Http2_Core_Tests is
       --    05 'v' 'a' 'l' 'u' '1' — value "valu1"
       --    BE                  — §6.1, index = 62 (first dynamic entry)
       Wire : constant Octet_Array (1 .. 14) :=
-        (16#40#,
+        [16#40#,
          16#05#, 16#6D#, 16#79#, 16#68#, 16#64#, 16#72#,
          16#05#, 16#76#, 16#61#, 16#6C#, 16#75#, 16#31#,
-         16#BE#);
+         16#BE#];
       DT       : Hpack.Dynamic_Table.Table;
       Out_H    : Header_Block (1 .. 4);
       Out_Last : Natural;
@@ -378,8 +377,8 @@ procedure Http2_Core_Tests is
       --  PING with 8 bytes of pattern data, ACK = False.
       declare
          Ping_Data : constant RFLX.RFLX_Types.Bytes (1 .. 8) :=
-           (1 => 1, 2 => 2, 3 => 3, 4 => 4,
-            5 => 5, 6 => 6, 7 => 7, 8 => 8);
+           [1 => 1, 2 => 2, 3 => 3, 4 => 4,
+            5 => 5, 6 => 6, 7 => 7, 8 => 8];
       begin
          Wire.Encode_Ping
            (Buffer => Buf, Last => Last,
@@ -398,10 +397,10 @@ procedure Http2_Core_Tests is
       --  SETTINGS with 2 parameters: ENABLE_PUSH=0, MAX_CONCURRENT_STREAMS=1.
       declare
          Params : constant Wire.Settings_List (1 .. 2) :=
-           ((Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
+           [(Identifier => RFLX.Http2_Parameters.ENABLE_PUSH,
              Value      => 0),
             (Identifier => RFLX.Http2_Parameters.MAX_CONCURRENT_STREAMS,
-             Value      => 1));
+             Value      => 1)];
       begin
          Wire.Encode_Settings (Buffer => Buf, Last => Last,
                                Params => Params);

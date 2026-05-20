@@ -29,7 +29,6 @@ with Ada.Exceptions;
 with Interfaces;
 
 with RFLX.RFLX_Types;
-with RFLX.RFLX_Builtin_Types;
 
 with Http2_Core.Hpack;
 with Http2_Core.Hpack.Huffman;
@@ -38,7 +37,6 @@ with Http2_Core.Hpack.Int_Codec;
 procedure Http2_Core_Fuzz is
    use Ada.Text_IO;
    use Ada.Calendar;
-   use type Interfaces.Unsigned_8;
 
    package Byte_Random is new
      Ada.Numerics.Discrete_Random (Interfaces.Unsigned_8);
