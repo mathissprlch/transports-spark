@@ -99,7 +99,6 @@ package body Http2_Core.Mux_Server.Slots is
      (L         : Listener;
       Stream_Id : Bit_Len) return Natural
    is
-      use type Bit_Len;
    begin
       for I in L.Slots'Range loop
          if L.Slots (I).Phase /= Free

@@ -113,7 +113,7 @@ package body GRPC.Transport.HTTP2 is
      (Code    : GRPC.Status.Code;
       Message : String) return AWS.Response.Data
    is
-      Empty : constant Stream_Element_Array (1 .. 0) := (others => 0);
+      Empty : constant Stream_Element_Array (1 .. 0) := [others => 0];
       R     : AWS.Response.Data :=
                 AWS.Response.Build
                   (Content_Type => "application/grpc+proto",

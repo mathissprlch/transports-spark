@@ -269,7 +269,7 @@ is
    begin
       --  Every path assigns Last, Value_Last and OK explicitly. Value
       --  is `out String`, must be fully initialised by the procedure.
-      Value      := (others => Character'Val (0));
+      Value      := [others => Character'Val (0)];
       Value_Last := 0;
 
       Decode_Varint (Input, First, Len_Val, Len_Last, OK);

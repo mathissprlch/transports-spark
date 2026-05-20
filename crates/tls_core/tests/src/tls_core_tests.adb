@@ -50,7 +50,6 @@ with Tls_Core.Aead_Channel;
 with Tls_Core.Key_Update;
 with Tls_Core.P256;
 with Tls_Core.P256_Field;
-with Tls_Core.P256_Order;
 with Tls_Core.Ecdsa_P256;
 with Tls_Core.Rsa_Pss;
 with Tls_Core.Cert;
@@ -111,18 +110,18 @@ procedure Tls_Core_Tests is
    procedure Scenario_1;
    procedure Scenario_1 is
       Label    : constant Tls_Core.Octet_Array (1 .. 5) :=
-        (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#);
+        [16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#];
       Context  : constant Tls_Core.Octet_Array (1 .. 0) :=
-        (others => 0);
+        [others => 0];
       Out_Hand : Tls_Core.Octet_Array
         (1 .. Tls_Core.Hkdf.Info_Size (Label'Length, Context'Length));
       Out_Last : Natural;
       Expected : constant Tls_Core.Octet_Array (1 .. 15) :=
-        (16#00#, 16#20#,
+        [16#00#, 16#20#,
          16#0B#,
          16#74#, 16#6C#, 16#73#, 16#31#, 16#33#, 16#20#,
          16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#,
-         16#00#);
+         16#00#];
    begin
       Put_Line ("scenario 1 — label=hello, context=empty, length=32");
       Tls_Core.Hkdf.Build_Info_Bytes
@@ -154,19 +153,19 @@ procedure Tls_Core_Tests is
    procedure Scenario_2;
    procedure Scenario_2 is
       Label    : constant Tls_Core.Octet_Array (1 .. 3) :=
-        (16#6B#, 16#65#, 16#79#);
+        [16#6B#, 16#65#, 16#79#];
       Context  : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#CA#, 16#FE#, 16#BA#, 16#BE#);
+        [16#CA#, 16#FE#, 16#BA#, 16#BE#];
       Out_Hand : Tls_Core.Octet_Array
         (1 .. Tls_Core.Hkdf.Info_Size (Label'Length, Context'Length));
       Out_Last : Natural;
       Expected : constant Tls_Core.Octet_Array (1 .. 17) :=
-        (16#00#, 16#10#,
+        [16#00#, 16#10#,
          16#09#,
          16#74#, 16#6C#, 16#73#, 16#31#, 16#33#, 16#20#,
          16#6B#, 16#65#, 16#79#,
          16#04#,
-         16#CA#, 16#FE#, 16#BA#, 16#BE#);
+         16#CA#, 16#FE#, 16#BA#, 16#BE#];
    begin
       Put_Line ("scenario 2 — label=key, context=4B, length=16");
       Tls_Core.Hkdf.Build_Info_Bytes
@@ -192,12 +191,10 @@ procedure Tls_Core_Tests is
 
    procedure Record_Layer_Scenario;
    procedure Record_Layer_Scenario is
-      use type Interfaces.Unsigned_64;
-      use Tls_Core.Record_Layer;
       IV : constant Tls_Core.Record_Layer.IV_Array :=
-        (16#10#, 16#11#, 16#12#, 16#13#,
+        [16#10#, 16#11#, 16#12#, 16#13#,
          16#20#, 16#21#, 16#22#, 16#23#,
-         16#30#, 16#31#, 16#32#, 16#33#);
+         16#30#, 16#31#, 16#32#, 16#33#];
       N0 : constant Tls_Core.Record_Layer.IV_Array :=
         Tls_Core.Record_Layer.Nonce (IV, 0);
       All_Distinct : Boolean := True;
@@ -267,32 +264,32 @@ procedure Tls_Core_Tests is
    procedure Sha256_Scenario;
    procedure Sha256_Scenario is
       Empty_Expected : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#E3#, 16#B0#, 16#C4#, 16#42#, 16#98#, 16#FC#, 16#1C#, 16#14#,
+        [16#E3#, 16#B0#, 16#C4#, 16#42#, 16#98#, 16#FC#, 16#1C#, 16#14#,
          16#9A#, 16#FB#, 16#F4#, 16#C8#, 16#99#, 16#6F#, 16#B9#, 16#24#,
          16#27#, 16#AE#, 16#41#, 16#E4#, 16#64#, 16#9B#, 16#93#, 16#4C#,
-         16#A4#, 16#95#, 16#99#, 16#1B#, 16#78#, 16#52#, 16#B8#, 16#55#);
+         16#A4#, 16#95#, 16#99#, 16#1B#, 16#78#, 16#52#, 16#B8#, 16#55#];
       Abc            : constant Tls_Core.Octet_Array (1 .. 3) :=
-        (16#61#, 16#62#, 16#63#);
+        [16#61#, 16#62#, 16#63#];
       Abc_Expected   : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#BA#, 16#78#, 16#16#, 16#BF#, 16#8F#, 16#01#, 16#CF#, 16#EA#,
+        [16#BA#, 16#78#, 16#16#, 16#BF#, 16#8F#, 16#01#, 16#CF#, 16#EA#,
          16#41#, 16#41#, 16#40#, 16#DE#, 16#5D#, 16#AE#, 16#22#, 16#23#,
          16#B0#, 16#03#, 16#61#, 16#A3#, 16#96#, 16#17#, 16#7A#, 16#9C#,
-         16#B4#, 16#10#, 16#FF#, 16#61#, 16#F2#, 16#00#, 16#15#, 16#AD#);
+         16#B4#, 16#10#, 16#FF#, 16#61#, 16#F2#, 16#00#, 16#15#, 16#AD#];
       --  56-byte FIPS §B.2 input:
       --  "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
       Long_In        : constant Tls_Core.Octet_Array (1 .. 56) :=
-        (16#61#, 16#62#, 16#63#, 16#64#, 16#62#, 16#63#, 16#64#, 16#65#,
+        [16#61#, 16#62#, 16#63#, 16#64#, 16#62#, 16#63#, 16#64#, 16#65#,
          16#63#, 16#64#, 16#65#, 16#66#, 16#64#, 16#65#, 16#66#, 16#67#,
          16#65#, 16#66#, 16#67#, 16#68#, 16#66#, 16#67#, 16#68#, 16#69#,
          16#67#, 16#68#, 16#69#, 16#6A#, 16#68#, 16#69#, 16#6A#, 16#6B#,
          16#69#, 16#6A#, 16#6B#, 16#6C#, 16#6A#, 16#6B#, 16#6C#, 16#6D#,
          16#6B#, 16#6C#, 16#6D#, 16#6E#, 16#6C#, 16#6D#, 16#6E#, 16#6F#,
-         16#6D#, 16#6E#, 16#6F#, 16#70#, 16#6E#, 16#6F#, 16#70#, 16#71#);
+         16#6D#, 16#6E#, 16#6F#, 16#70#, 16#6E#, 16#6F#, 16#70#, 16#71#];
       Long_Expected  : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#24#, 16#8D#, 16#6A#, 16#61#, 16#D2#, 16#06#, 16#38#, 16#B8#,
+        [16#24#, 16#8D#, 16#6A#, 16#61#, 16#D2#, 16#06#, 16#38#, 16#B8#,
          16#E5#, 16#C0#, 16#26#, 16#93#, 16#0C#, 16#3E#, 16#60#, 16#39#,
          16#A3#, 16#3C#, 16#E4#, 16#59#, 16#64#, 16#FF#, 16#21#, 16#67#,
-         16#F6#, 16#EC#, 16#ED#, 16#D4#, 16#19#, 16#DB#, 16#06#, 16#C1#);
+         16#F6#, 16#EC#, 16#ED#, 16#D4#, 16#19#, 16#DB#, 16#06#, 16#C1#];
       Got            : Tls_Core.Sha256.Digest;
    begin
       Put_Line ("scenario 4 — SHA-256 against FIPS 180-4 §B vectors");
@@ -311,9 +308,9 @@ procedure Tls_Core_Tests is
       declare
          Ctx : Tls_Core.Sha256.Context;
          A   : constant Tls_Core.Octet_Array (1 .. 1) :=
-           (1 => 16#61#);
+           [1 => 16#61#];
          Bc  : constant Tls_Core.Octet_Array (1 .. 2) :=
-           (16#62#, 16#63#);
+           [16#62#, 16#63#];
       begin
          Tls_Core.Sha256.Init (Ctx);
          Tls_Core.Sha256.Update (Ctx, A);
@@ -348,14 +345,14 @@ procedure Tls_Core_Tests is
    procedure Hmac_Sha256_Scenario;
    procedure Hmac_Sha256_Scenario is
       Key : constant Tls_Core.Octet_Array (1 .. 20) :=
-        (others => 16#0B#);
+        [others => 16#0B#];
       Data : constant Tls_Core.Octet_Array (1 .. 8) :=
-        (16#48#, 16#69#, 16#20#, 16#54#, 16#68#, 16#65#, 16#72#, 16#65#);
+        [16#48#, 16#69#, 16#20#, 16#54#, 16#68#, 16#65#, 16#72#, 16#65#];
       Expected : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#B0#, 16#34#, 16#4C#, 16#61#, 16#D8#, 16#DB#, 16#38#, 16#53#,
+        [16#B0#, 16#34#, 16#4C#, 16#61#, 16#D8#, 16#DB#, 16#38#, 16#53#,
          16#5C#, 16#A8#, 16#AF#, 16#CE#, 16#AF#, 16#0B#, 16#F1#, 16#2B#,
          16#88#, 16#1D#, 16#C2#, 16#00#, 16#C9#, 16#83#, 16#3D#, 16#A7#,
-         16#26#, 16#E9#, 16#37#, 16#6C#, 16#2E#, 16#32#, 16#CF#, 16#F7#);
+         16#26#, 16#E9#, 16#37#, 16#6C#, 16#2E#, 16#32#, 16#CF#, 16#F7#];
       Got : Tls_Core.Hmac_Sha256.Tag;
    begin
       Put_Line ("scenario 5 — HMAC-SHA-256 RFC 4231 §4.2 case 1");
@@ -368,21 +365,21 @@ procedure Tls_Core_Tests is
    procedure Hkdf_Expand_Scenario is
       --  RFC 5869 §A.1 PRK.
       PRK : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#07#, 16#77#, 16#09#, 16#36#, 16#2C#, 16#2E#, 16#32#, 16#DF#,
+        [16#07#, 16#77#, 16#09#, 16#36#, 16#2C#, 16#2E#, 16#32#, 16#DF#,
          16#0D#, 16#DC#, 16#3F#, 16#0D#, 16#C4#, 16#7B#, 16#BA#, 16#63#,
          16#90#, 16#B6#, 16#C7#, 16#3B#, 16#B5#, 16#0F#, 16#9C#, 16#31#,
-         16#22#, 16#EC#, 16#84#, 16#4A#, 16#D7#, 16#C2#, 16#B3#, 16#E5#);
+         16#22#, 16#EC#, 16#84#, 16#4A#, 16#D7#, 16#C2#, 16#B3#, 16#E5#];
       Info : constant Tls_Core.Octet_Array (1 .. 10) :=
-        (16#F0#, 16#F1#, 16#F2#, 16#F3#, 16#F4#,
-         16#F5#, 16#F6#, 16#F7#, 16#F8#, 16#F9#);
+        [16#F0#, 16#F1#, 16#F2#, 16#F3#, 16#F4#,
+         16#F5#, 16#F6#, 16#F7#, 16#F8#, 16#F9#];
       --  RFC 5869 §A.1 expected output (42 bytes).
       Expected : constant Tls_Core.Octet_Array (1 .. 42) :=
-        (16#3C#, 16#B2#, 16#5F#, 16#25#, 16#FA#, 16#AC#, 16#D5#, 16#7A#,
+        [16#3C#, 16#B2#, 16#5F#, 16#25#, 16#FA#, 16#AC#, 16#D5#, 16#7A#,
          16#90#, 16#43#, 16#4F#, 16#64#, 16#D0#, 16#36#, 16#2F#, 16#2A#,
          16#2D#, 16#2D#, 16#0A#, 16#90#, 16#CF#, 16#1A#, 16#5A#, 16#4C#,
          16#5D#, 16#B0#, 16#2D#, 16#56#, 16#EC#, 16#C4#, 16#C5#, 16#BF#,
          16#34#, 16#00#, 16#72#, 16#08#, 16#D5#, 16#B8#, 16#87#, 16#18#,
-         16#58#, 16#65#);
+         16#58#, 16#65#];
       OKM : Tls_Core.Octet_Array (1 .. 42);
    begin
       Put_Line ("scenario 6 — HKDF-Expand RFC 5869 §A.1");
@@ -402,18 +399,18 @@ procedure Tls_Core_Tests is
    procedure Expand_Label_End_To_End;
    procedure Expand_Label_End_To_End is
       Secret : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#07#, 16#77#, 16#09#, 16#36#, 16#2C#, 16#2E#, 16#32#, 16#DF#,
+        [16#07#, 16#77#, 16#09#, 16#36#, 16#2C#, 16#2E#, 16#32#, 16#DF#,
          16#0D#, 16#DC#, 16#3F#, 16#0D#, 16#C4#, 16#7B#, 16#BA#, 16#63#,
          16#90#, 16#B6#, 16#C7#, 16#3B#, 16#B5#, 16#0F#, 16#9C#, 16#31#,
-         16#22#, 16#EC#, 16#84#, 16#4A#, 16#D7#, 16#C2#, 16#B3#, 16#E5#);
+         16#22#, 16#EC#, 16#84#, 16#4A#, 16#D7#, 16#C2#, 16#B3#, 16#E5#];
       Label : constant Tls_Core.Octet_Array (1 .. 10) :=
-        (16#63#, 16#20#, 16#68#, 16#73#, 16#20#,        --  "c hs "
-         16#74#, 16#72#, 16#61#, 16#66#, 16#66#);       --  "traff"
+        [16#63#, 16#20#, 16#68#, 16#73#, 16#20#,        --  "c hs "
+         16#74#, 16#72#, 16#61#, 16#66#, 16#66#];       --  "traff"
       Empty_Hash : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#E3#, 16#B0#, 16#C4#, 16#42#, 16#98#, 16#FC#, 16#1C#, 16#14#,
+        [16#E3#, 16#B0#, 16#C4#, 16#42#, 16#98#, 16#FC#, 16#1C#, 16#14#,
          16#9A#, 16#FB#, 16#F4#, 16#C8#, 16#99#, 16#6F#, 16#B9#, 16#24#,
          16#27#, 16#AE#, 16#41#, 16#E4#, 16#64#, 16#9B#, 16#93#, 16#4C#,
-         16#A4#, 16#95#, 16#99#, 16#1B#, 16#78#, 16#52#, 16#B8#, 16#55#);
+         16#A4#, 16#95#, 16#99#, 16#1B#, 16#78#, 16#52#, 16#B8#, 16#55#];
       Out_Material : Tls_Core.Octet_Array (1 .. 32);
       All_Different_From_Secret : Boolean := True;
    begin
@@ -477,35 +474,35 @@ procedure Tls_Core_Tests is
    procedure Chacha20_Scenario;
    procedure Chacha20_Scenario is
       Key   : constant Tls_Core.Chacha20.Key_Array :=
-        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+        [16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
          16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#,
          16#10#, 16#11#, 16#12#, 16#13#, 16#14#, 16#15#, 16#16#, 16#17#,
-         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#);
+         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#];
       Nonce : constant Tls_Core.Chacha20.Nonce_Array :=
-        (16#00#, 16#00#, 16#00#, 16#09#,
+        [16#00#, 16#00#, 16#00#, 16#09#,
          16#00#, 16#00#, 16#00#, 16#4A#,
-         16#00#, 16#00#, 16#00#, 16#00#);
+         16#00#, 16#00#, 16#00#, 16#00#];
       Expected_Block : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (16#10#, 16#F1#, 16#E7#, 16#E4#, 16#D1#, 16#3B#, 16#59#, 16#15#,
+        [16#10#, 16#F1#, 16#E7#, 16#E4#, 16#D1#, 16#3B#, 16#59#, 16#15#,
          16#50#, 16#0F#, 16#DD#, 16#1F#, 16#A3#, 16#20#, 16#71#, 16#C4#,
          16#C7#, 16#D1#, 16#F4#, 16#C7#, 16#33#, 16#C0#, 16#68#, 16#03#,
          16#04#, 16#22#, 16#AA#, 16#9A#, 16#C3#, 16#D4#, 16#6C#, 16#4E#,
          16#D2#, 16#82#, 16#64#, 16#46#, 16#07#, 16#9F#, 16#AA#, 16#09#,
          16#14#, 16#C2#, 16#D7#, 16#05#, 16#D9#, 16#8B#, 16#02#, 16#A2#,
          16#B5#, 16#12#, 16#9C#, 16#D1#, 16#DE#, 16#16#, 16#4E#, 16#B9#,
-         16#CB#, 16#D0#, 16#83#, 16#E8#, 16#A2#, 16#50#, 16#3C#, 16#4E#);
+         16#CB#, 16#D0#, 16#83#, 16#E8#, 16#A2#, 16#50#, 16#3C#, 16#4E#];
       Got_Block : Tls_Core.Chacha20.Block_Array;
 
       --  RFC 8439 §2.4.2 encryption vector — "Sunscreen" plaintext.
       Sunscreen_Nonce : constant Tls_Core.Chacha20.Nonce_Array :=
-        (16#00#, 16#00#, 16#00#, 16#00#,
+        [16#00#, 16#00#, 16#00#, 16#00#,
          16#00#, 16#00#, 16#00#, 16#4A#,
-         16#00#, 16#00#, 16#00#, 16#00#);
+         16#00#, 16#00#, 16#00#, 16#00#];
       --  "Ladies and Gentlemen of the class of '99: If I could
       --   offer you only one tip for the future, sunscreen would
       --   be it."  (114 bytes)
       Plain : constant Tls_Core.Octet_Array (1 .. 114) :=
-        (16#4C#, 16#61#, 16#64#, 16#69#, 16#65#, 16#73#, 16#20#, 16#61#,
+        [16#4C#, 16#61#, 16#64#, 16#69#, 16#65#, 16#73#, 16#20#, 16#61#,
          16#6E#, 16#64#, 16#20#, 16#47#, 16#65#, 16#6E#, 16#74#, 16#6C#,
          16#65#, 16#6D#, 16#65#, 16#6E#, 16#20#, 16#6F#, 16#66#, 16#20#,
          16#74#, 16#68#, 16#65#, 16#20#, 16#63#, 16#6C#, 16#61#, 16#73#,
@@ -519,9 +516,9 @@ procedure Tls_Core_Tests is
          16#72#, 16#65#, 16#2C#, 16#20#, 16#73#, 16#75#, 16#6E#, 16#73#,
          16#63#, 16#72#, 16#65#, 16#65#, 16#6E#, 16#20#, 16#77#, 16#6F#,
          16#75#, 16#6C#, 16#64#, 16#20#, 16#62#, 16#65#, 16#20#, 16#69#,
-         16#74#, 16#2E#);
+         16#74#, 16#2E#];
       Cipher : constant Tls_Core.Octet_Array (1 .. 114) :=
-        (16#6E#, 16#2E#, 16#35#, 16#9A#, 16#25#, 16#68#, 16#F9#, 16#80#,
+        [16#6E#, 16#2E#, 16#35#, 16#9A#, 16#25#, 16#68#, 16#F9#, 16#80#,
          16#41#, 16#BA#, 16#07#, 16#28#, 16#DD#, 16#0D#, 16#69#, 16#81#,
          16#E9#, 16#7E#, 16#7A#, 16#EC#, 16#1D#, 16#43#, 16#60#, 16#C2#,
          16#0A#, 16#27#, 16#AF#, 16#CC#, 16#FD#, 16#9F#, 16#AE#, 16#0B#,
@@ -535,7 +532,7 @@ procedure Tls_Core_Tests is
          16#81#, 16#8C#, 16#E9#, 16#1A#, 16#B7#, 16#79#, 16#37#, 16#36#,
          16#5A#, 16#F9#, 16#0B#, 16#BF#, 16#74#, 16#A3#, 16#5B#, 16#E6#,
          16#B4#, 16#0B#, 16#8E#, 16#ED#, 16#F2#, 16#78#, 16#5E#, 16#42#,
-         16#87#, 16#4D#);
+         16#87#, 16#4D#];
       Got : Tls_Core.Octet_Array (1 .. 114);
    begin
       Put_Line
@@ -596,18 +593,18 @@ procedure Tls_Core_Tests is
    procedure Record_Aead_Roundtrip;
    procedure Record_Aead_Roundtrip is
       Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array :=
-        (others => 16#42#);
+        [others => 16#42#];
       IV  : constant Tls_Core.Record_Layer.IV_Array :=
-        (16#01#, 16#02#, 16#03#, 16#04#,
+        [16#01#, 16#02#, 16#03#, 16#04#,
          16#05#, 16#06#, 16#07#, 16#08#,
-         16#09#, 16#0A#, 16#0B#, 16#0C#);
+         16#09#, 16#0A#, 16#0B#, 16#0C#];
       AAD : constant Tls_Core.Octet_Array (1 .. 5) :=
-        (16#17#, 16#03#, 16#03#, 16#00#, 16#21#);  -- TLS 1.3 record header sketch
+        [16#17#, 16#03#, 16#03#, 16#00#, 16#21#];  -- TLS 1.3 record header sketch
       Plain : constant Tls_Core.Octet_Array (1 .. 16) :=
-        (16#54#, 16#65#, 16#73#, 16#74#,
+        [16#54#, 16#65#, 16#73#, 16#74#,
          16#5F#, 16#52#, 16#65#, 16#63#,
          16#6F#, 16#72#, 16#64#, 16#5F#,
-         16#41#, 16#42#, 16#43#, 16#44#);
+         16#41#, 16#42#, 16#43#, 16#44#];
       Sender, Receiver : Tls_Core.Record_Layer.Stream;
       Cipher_1, Cipher_2 : Tls_Core.Octet_Array (1 .. 16);
       Tag_1, Tag_2 : Tls_Core.Aead_Chacha20_Poly1305.Tag_Array;
@@ -683,19 +680,18 @@ procedure Tls_Core_Tests is
 
    procedure Capstone_Scenario;
    procedure Capstone_Scenario is
-      use type Tls_Core.Sha256.Digest;
       PSK : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#5C#);
+        [others => 16#5C#];
       --  Synthetic recorded handshake transcript bytes. The actual
       --  bytes don't have to be valid TLS messages for the key
       --  derivation to produce identical outputs — both parties
       --  just need to feed the same byte sequences.
       Ch_Bytes : constant Tls_Core.Octet_Array (1 .. 90) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Sh_Bytes : constant Tls_Core.Octet_Array (1 .. 90) :=
-        (others => 16#22#);
+        [others => 16#22#];
       Sf_Bytes : constant Tls_Core.Octet_Array (1 .. 36) :=
-        (others => 16#33#);
+        [others => 16#33#];
       Client_Side, Server_Side : Tls_Core.Handshake.Traffic_Secrets;
    begin
       Put_Line
@@ -745,17 +741,17 @@ procedure Tls_Core_Tests is
       --  "iv" out of it; this test just demonstrates that the
       --  derived bytes produce a working AEAD round-trip).
       declare
-         AEAD_Key : Tls_Core.Aead_Chacha20_Poly1305.Key_Array
+         AEAD_Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array
            := Client_Side.Client_App;
          Nonce : constant Tls_Core.Aead_Chacha20_Poly1305.Nonce_Array :=
-           (others => 16#33#);
+           [others => 16#33#];
          Plain : constant Tls_Core.Octet_Array (1 .. 13) :=
-           (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#,  -- "Hello"
+           [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#,  -- "Hello"
             16#2C#, 16#20#,                          -- ", "
             16#54#, 16#4C#, 16#53#, 16#21#,          -- "TLS!"
-            16#0A#, 16#0D#);
+            16#0A#, 16#0D#];
          AAD : constant Tls_Core.Octet_Array (1 .. 0) :=
-           (others => 0);
+           [others => 0];
          Cipher : Tls_Core.Octet_Array (1 .. 13);
          Tag : Tls_Core.Aead_Chacha20_Poly1305.Tag_Array;
          Decrypted : Tls_Core.Octet_Array (1 .. 13);
@@ -778,25 +774,25 @@ procedure Tls_Core_Tests is
    procedure Transcript_Finished_Scenario is
       use type Tls_Core.Sha256.Digest;
       PSK : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#AB#);
+        [others => 16#AB#];
       --  Synthetic ClientHello and ServerHello bodies (just bytes
       --  for the running hash; not validated against a wire spec
       --  here — the wire-format check is scenario 13).
       Ch_Bytes : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Sh_Bytes : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (others => 16#22#);
+        [others => 16#22#];
       Early_Secret, Handshake_Secret : Tls_Core.Key_Schedule.Secret;
       Hs_Traffic : Tls_Core.Key_Schedule.Secret;
       Empty   : constant Tls_Core.Octet_Array (1 .. 0) :=
-        (others => 0);
+        [others => 0];
       Zero32  : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 0);
+        [others => 0];
       Derived_Label : constant Tls_Core.Octet_Array (1 .. 7) :=
-        (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+        [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
       C_Hs_Label : constant Tls_Core.Octet_Array (1 .. 12) :=
-        (16#63#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
-         16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#);
+        [16#63#, 16#20#, 16#68#, 16#73#, 16#20#, 16#74#,
+         16#72#, 16#61#, 16#66#, 16#66#, 16#69#, 16#63#];
       Tx : Tls_Core.Transcript.Accumulator;
       Snapshot_Hash : Tls_Core.Sha256.Digest;
       Verify_A, Verify_B : Tls_Core.Finished.Verify_Data;
@@ -885,20 +881,20 @@ procedure Tls_Core_Tests is
    procedure Aead_Scenario;
    procedure Aead_Scenario is
       Key : constant Tls_Core.Aead_Chacha20_Poly1305.Key_Array :=
-        (16#80#, 16#81#, 16#82#, 16#83#, 16#84#, 16#85#, 16#86#, 16#87#,
+        [16#80#, 16#81#, 16#82#, 16#83#, 16#84#, 16#85#, 16#86#, 16#87#,
          16#88#, 16#89#, 16#8A#, 16#8B#, 16#8C#, 16#8D#, 16#8E#, 16#8F#,
          16#90#, 16#91#, 16#92#, 16#93#, 16#94#, 16#95#, 16#96#, 16#97#,
-         16#98#, 16#99#, 16#9A#, 16#9B#, 16#9C#, 16#9D#, 16#9E#, 16#9F#);
+         16#98#, 16#99#, 16#9A#, 16#9B#, 16#9C#, 16#9D#, 16#9E#, 16#9F#];
       Nonce : constant Tls_Core.Aead_Chacha20_Poly1305.Nonce_Array :=
-        (16#07#, 16#00#, 16#00#, 16#00#,
+        [16#07#, 16#00#, 16#00#, 16#00#,
          16#40#, 16#41#, 16#42#, 16#43#,
-         16#44#, 16#45#, 16#46#, 16#47#);
+         16#44#, 16#45#, 16#46#, 16#47#];
       AAD : constant Tls_Core.Octet_Array (1 .. 12) :=
-        (16#50#, 16#51#, 16#52#, 16#53#,
+        [16#50#, 16#51#, 16#52#, 16#53#,
          16#C0#, 16#C1#, 16#C2#, 16#C3#,
-         16#C4#, 16#C5#, 16#C6#, 16#C7#);
+         16#C4#, 16#C5#, 16#C6#, 16#C7#];
       Plain : constant Tls_Core.Octet_Array (1 .. 114) :=
-        (16#4C#, 16#61#, 16#64#, 16#69#, 16#65#, 16#73#, 16#20#, 16#61#,
+        [16#4C#, 16#61#, 16#64#, 16#69#, 16#65#, 16#73#, 16#20#, 16#61#,
          16#6E#, 16#64#, 16#20#, 16#47#, 16#65#, 16#6E#, 16#74#, 16#6C#,
          16#65#, 16#6D#, 16#65#, 16#6E#, 16#20#, 16#6F#, 16#66#, 16#20#,
          16#74#, 16#68#, 16#65#, 16#20#, 16#63#, 16#6C#, 16#61#, 16#73#,
@@ -912,9 +908,9 @@ procedure Tls_Core_Tests is
          16#72#, 16#65#, 16#2C#, 16#20#, 16#73#, 16#75#, 16#6E#, 16#73#,
          16#63#, 16#72#, 16#65#, 16#65#, 16#6E#, 16#20#, 16#77#, 16#6F#,
          16#75#, 16#6C#, 16#64#, 16#20#, 16#62#, 16#65#, 16#20#, 16#69#,
-         16#74#, 16#2E#);
+         16#74#, 16#2E#];
       Cipher_Expected : constant Tls_Core.Octet_Array (1 .. 114) :=
-        (16#D3#, 16#1A#, 16#8D#, 16#34#, 16#64#, 16#8E#, 16#60#, 16#DB#,
+        [16#D3#, 16#1A#, 16#8D#, 16#34#, 16#64#, 16#8E#, 16#60#, 16#DB#,
          16#7B#, 16#86#, 16#AF#, 16#BC#, 16#53#, 16#EF#, 16#7E#, 16#C2#,
          16#A4#, 16#AD#, 16#ED#, 16#51#, 16#29#, 16#6E#, 16#08#, 16#FE#,
          16#A9#, 16#E2#, 16#B5#, 16#A7#, 16#36#, 16#EE#, 16#62#, 16#D6#,
@@ -928,10 +924,10 @@ procedure Tls_Core_Tests is
          16#55#, 16#85#, 16#80#, 16#8B#, 16#48#, 16#31#, 16#D7#, 16#BC#,
          16#3F#, 16#F4#, 16#DE#, 16#F0#, 16#8E#, 16#4B#, 16#7A#, 16#9D#,
          16#E5#, 16#76#, 16#D2#, 16#65#, 16#86#, 16#CE#, 16#C6#, 16#4B#,
-         16#61#, 16#16#);
+         16#61#, 16#16#];
       Tag_Expected : constant Tls_Core.Octet_Array (1 .. 16) :=
-        (16#1A#, 16#E1#, 16#0B#, 16#59#, 16#4F#, 16#09#, 16#E2#, 16#6A#,
-         16#7E#, 16#90#, 16#2E#, 16#CB#, 16#D0#, 16#60#, 16#06#, 16#91#);
+        [16#1A#, 16#E1#, 16#0B#, 16#59#, 16#4F#, 16#09#, 16#E2#, 16#6A#,
+         16#7E#, 16#90#, 16#2E#, 16#CB#, 16#D0#, 16#60#, 16#06#, 16#91#];
       Got_Cipher : Tls_Core.Octet_Array (1 .. 114);
       Got_Tag    : Tls_Core.Aead_Chacha20_Poly1305.Tag_Array;
       Got_Plain  : Tls_Core.Octet_Array (1 .. 114);
@@ -966,19 +962,19 @@ procedure Tls_Core_Tests is
    procedure Poly1305_Scenario;
    procedure Poly1305_Scenario is
       Key : constant Tls_Core.Poly1305.Key_Array :=
-        (16#85#, 16#D6#, 16#BE#, 16#78#, 16#57#, 16#55#, 16#6D#, 16#33#,
+        [16#85#, 16#D6#, 16#BE#, 16#78#, 16#57#, 16#55#, 16#6D#, 16#33#,
          16#7F#, 16#44#, 16#52#, 16#FE#, 16#42#, 16#D5#, 16#06#, 16#A8#,
          16#01#, 16#03#, 16#80#, 16#8A#, 16#FB#, 16#0D#, 16#B2#, 16#FD#,
-         16#4A#, 16#BF#, 16#F6#, 16#AF#, 16#41#, 16#49#, 16#F5#, 16#1B#);
+         16#4A#, 16#BF#, 16#F6#, 16#AF#, 16#41#, 16#49#, 16#F5#, 16#1B#];
       Msg : constant Tls_Core.Octet_Array (1 .. 34) :=
-        (16#43#, 16#72#, 16#79#, 16#70#, 16#74#, 16#6F#, 16#67#, 16#72#,
+        [16#43#, 16#72#, 16#79#, 16#70#, 16#74#, 16#6F#, 16#67#, 16#72#,
          16#61#, 16#70#, 16#68#, 16#69#, 16#63#, 16#20#, 16#46#, 16#6F#,
          16#72#, 16#75#, 16#6D#, 16#20#, 16#52#, 16#65#, 16#73#, 16#65#,
          16#61#, 16#72#, 16#63#, 16#68#, 16#20#, 16#47#, 16#72#, 16#6F#,
-         16#75#, 16#70#);
+         16#75#, 16#70#];
       Expected : constant Tls_Core.Octet_Array (1 .. 16) :=
-        (16#A8#, 16#06#, 16#1D#, 16#C1#, 16#30#, 16#51#, 16#36#, 16#C6#,
-         16#C2#, 16#2B#, 16#8B#, 16#AF#, 16#0C#, 16#01#, 16#27#, 16#A9#);
+        [16#A8#, 16#06#, 16#1D#, 16#C1#, 16#30#, 16#51#, 16#36#, 16#C6#,
+         16#C2#, 16#2B#, 16#8B#, 16#AF#, 16#0C#, 16#01#, 16#27#, 16#A9#];
       Got : Tls_Core.Poly1305.Tag_Array;
    begin
       Put_Line ("scenario 10 — Poly1305 RFC 8439 §2.5.2");
@@ -988,25 +984,24 @@ procedure Tls_Core_Tests is
 
    procedure Key_Schedule_Scenario;
    procedure Key_Schedule_Scenario is
-      use type Tls_Core.Sha256.Digest;
       Zero32 : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 0);
+        [others => 0];
       Early_Secret_Expected :
         constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#33#, 16#AD#, 16#0A#, 16#1C#, 16#60#, 16#7E#, 16#C0#, 16#3B#,
+        [16#33#, 16#AD#, 16#0A#, 16#1C#, 16#60#, 16#7E#, 16#C0#, 16#3B#,
          16#09#, 16#E6#, 16#CD#, 16#98#, 16#93#, 16#68#, 16#0C#, 16#E2#,
          16#10#, 16#AD#, 16#F3#, 16#00#, 16#AA#, 16#1F#, 16#26#, 16#60#,
-         16#E1#, 16#B2#, 16#2E#, 16#10#, 16#F1#, 16#70#, 16#F9#, 16#2A#);
+         16#E1#, 16#B2#, 16#2E#, 16#10#, 16#F1#, 16#70#, 16#F9#, 16#2A#];
       Derived_Expected :
         constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#6F#, 16#26#, 16#15#, 16#A1#, 16#08#, 16#C7#, 16#02#, 16#C5#,
+        [16#6F#, 16#26#, 16#15#, 16#A1#, 16#08#, 16#C7#, 16#02#, 16#C5#,
          16#67#, 16#8F#, 16#54#, 16#FC#, 16#9D#, 16#BA#, 16#B6#, 16#97#,
          16#16#, 16#C0#, 16#76#, 16#18#, 16#9C#, 16#48#, 16#25#, 16#0C#,
-         16#EB#, 16#EA#, 16#C3#, 16#57#, 16#6C#, 16#36#, 16#11#, 16#BA#);
+         16#EB#, 16#EA#, 16#C3#, 16#57#, 16#6C#, 16#36#, 16#11#, 16#BA#];
       Derived_Label : constant Tls_Core.Octet_Array (1 .. 7) :=
-        (16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#);
+        [16#64#, 16#65#, 16#72#, 16#69#, 16#76#, 16#65#, 16#64#];
       Empty   : constant Tls_Core.Octet_Array (1 .. 0) :=
-        (others => 0);
+        [others => 0];
       Early_Secret : Tls_Core.Key_Schedule.Secret;
       Derived      : Tls_Core.Key_Schedule.Secret;
    begin
@@ -1039,15 +1034,14 @@ procedure Tls_Core_Tests is
    procedure Driver_Loopback_Scenario;
    procedure Driver_Loopback_Scenario is
       use type Tls_Core.Handshake_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
 
       C, S : Tls_Core.Handshake_Driver.Driver;
 
-      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Buf_Last : Natural := 0;
-      Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
       pragma Unreferenced (Empty);
 
       Cs, Ss : Tls_Core.Handshake.Traffic_Secrets;
@@ -1068,7 +1062,7 @@ procedure Tls_Core_Tests is
       --  Server consumes CH, emits SH.
       declare
          CH_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1077,7 +1071,7 @@ procedure Tls_Core_Tests is
                 Tls_Core.Handshake_Driver.Current_State (S)
                   = Tls_Core.Handshake_Driver.Awaiting_Finished);
          Check ("Server emits ServerHello bytes", Reply_Last > 4);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -1085,7 +1079,7 @@ procedure Tls_Core_Tests is
       --  Client consumes SH || SF, derives secrets, → Awaiting_Finished.
       declare
          Sh_Sf_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1098,7 +1092,7 @@ procedure Tls_Core_Tests is
 
       --  Client emits its Finished, → Done. Server receives → Done.
       declare
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1111,7 +1105,7 @@ procedure Tls_Core_Tests is
          declare
             CF : constant Tls_Core.Octet_Array :=
               Reply (1 .. Reply_Last);
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural := 0;
          begin
             Tls_Core.Handshake_Driver.Step
@@ -1151,11 +1145,10 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Channel_Roundtrip_Scenario;
    procedure Channel_Roundtrip_Scenario is
-      use type Tls_Core.Octet;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
 
       C, S : Tls_Core.Handshake_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Buf_Last : Natural := 0;
       Cs : Tls_Core.Handshake.Traffic_Secrets;
       Send_Dir, Recv_Dir : Tls_Core.Channel.Direction;
@@ -1170,18 +1163,18 @@ procedure Tls_Core_Tests is
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          CH_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
            (S, In_Bytes => CH_Bytes, Out_Buf => Reply, Out_Last => Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Sh_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1189,7 +1182,7 @@ procedure Tls_Core_Tests is
          pragma Unreferenced (Reply_Last);
       end;
       declare
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1197,7 +1190,7 @@ procedure Tls_Core_Tests is
             Out_Buf => Reply, Out_Last => Reply_Last);
          declare
             CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural := 0;
          begin
             Tls_Core.Handshake_Driver.Step
@@ -1214,19 +1207,19 @@ procedure Tls_Core_Tests is
       Tls_Core.Channel.Init (Recv_Dir, Cs.Client_App);
 
       declare
-         Pt1 : constant Tls_Core.Octet_Array := (16#41#, 16#42#, 16#43#);
+         Pt1 : constant Tls_Core.Octet_Array := [16#41#, 16#42#, 16#43#];
          Pt2 : constant Tls_Core.Octet_Array (1 .. 5) :=
-           (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "hello"
-         Pt3 : constant Tls_Core.Octet_Array (1 .. 16) := (others => 16#5A#);
+           [16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#];  --  "hello"
+         Pt3 : constant Tls_Core.Octet_Array (1 .. 16) := [others => 16#5A#];
 
-         Wire1 : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire1 : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Wire1_L : Natural;
-         Wire2 : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire2 : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Wire2_L : Natural;
-         Wire3 : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire3 : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Wire3_L : Natural;
 
-         Got : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Got_L : Natural;
          OK    : Boolean;
       begin
@@ -1288,43 +1281,42 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure X25519_Scenario;
    procedure X25519_Scenario is
-      use type Tls_Core.Octet;
 
       --  RFC 7748 §5.2 first vector.
       Scalar_1 : constant Tls_Core.X25519.Bytes_32 :=
-        (16#A5#, 16#46#, 16#E3#, 16#6B#, 16#F0#, 16#52#, 16#7C#, 16#9D#,
+        [16#A5#, 16#46#, 16#E3#, 16#6B#, 16#F0#, 16#52#, 16#7C#, 16#9D#,
          16#3B#, 16#16#, 16#15#, 16#4B#, 16#82#, 16#46#, 16#5E#, 16#DD#,
          16#62#, 16#14#, 16#4C#, 16#0A#, 16#C1#, 16#FC#, 16#5A#, 16#18#,
-         16#50#, 16#6A#, 16#22#, 16#44#, 16#BA#, 16#44#, 16#9A#, 16#C4#);
+         16#50#, 16#6A#, 16#22#, 16#44#, 16#BA#, 16#44#, 16#9A#, 16#C4#];
       U_1 : constant Tls_Core.X25519.Bytes_32 :=
-        (16#E6#, 16#DB#, 16#68#, 16#67#, 16#58#, 16#30#, 16#30#, 16#DB#,
+        [16#E6#, 16#DB#, 16#68#, 16#67#, 16#58#, 16#30#, 16#30#, 16#DB#,
          16#35#, 16#94#, 16#C1#, 16#A4#, 16#24#, 16#B1#, 16#5F#, 16#7C#,
          16#72#, 16#66#, 16#24#, 16#EC#, 16#26#, 16#B3#, 16#35#, 16#3B#,
-         16#10#, 16#A9#, 16#03#, 16#A6#, 16#D0#, 16#AB#, 16#1C#, 16#4C#);
+         16#10#, 16#A9#, 16#03#, 16#A6#, 16#D0#, 16#AB#, 16#1C#, 16#4C#];
       Expected_1 : constant Tls_Core.X25519.Bytes_32 :=
-        (16#C3#, 16#DA#, 16#55#, 16#37#, 16#9D#, 16#E9#, 16#C6#, 16#90#,
+        [16#C3#, 16#DA#, 16#55#, 16#37#, 16#9D#, 16#E9#, 16#C6#, 16#90#,
          16#8E#, 16#94#, 16#EA#, 16#4D#, 16#F2#, 16#8D#, 16#08#, 16#4F#,
          16#32#, 16#EC#, 16#CF#, 16#03#, 16#49#, 16#1C#, 16#71#, 16#F7#,
-         16#54#, 16#B4#, 16#07#, 16#55#, 16#77#, 16#A2#, 16#85#, 16#52#);
+         16#54#, 16#B4#, 16#07#, 16#55#, 16#77#, 16#A2#, 16#85#, 16#52#];
 
       --  RFC 7748 §5.2 second vector.
       Scalar_2 : constant Tls_Core.X25519.Bytes_32 :=
-        (16#4B#, 16#66#, 16#E9#, 16#D4#, 16#D1#, 16#B4#, 16#67#, 16#3C#,
+        [16#4B#, 16#66#, 16#E9#, 16#D4#, 16#D1#, 16#B4#, 16#67#, 16#3C#,
          16#5A#, 16#D2#, 16#26#, 16#91#, 16#95#, 16#7D#, 16#6A#, 16#F5#,
          16#C1#, 16#1B#, 16#64#, 16#21#, 16#E0#, 16#EA#, 16#01#, 16#D4#,
-         16#2C#, 16#A4#, 16#16#, 16#9E#, 16#79#, 16#18#, 16#BA#, 16#0D#);
+         16#2C#, 16#A4#, 16#16#, 16#9E#, 16#79#, 16#18#, 16#BA#, 16#0D#];
       U_2 : constant Tls_Core.X25519.Bytes_32 :=
-        (16#E5#, 16#21#, 16#0F#, 16#12#, 16#78#, 16#68#, 16#11#, 16#D3#,
+        [16#E5#, 16#21#, 16#0F#, 16#12#, 16#78#, 16#68#, 16#11#, 16#D3#,
          16#F4#, 16#B7#, 16#95#, 16#9D#, 16#05#, 16#38#, 16#AE#, 16#2C#,
          16#31#, 16#DB#, 16#E7#, 16#10#, 16#6F#, 16#C0#, 16#3C#, 16#3E#,
-         16#FC#, 16#4C#, 16#D5#, 16#49#, 16#C7#, 16#15#, 16#A4#, 16#93#);
+         16#FC#, 16#4C#, 16#D5#, 16#49#, 16#C7#, 16#15#, 16#A4#, 16#93#];
       Expected_2 : constant Tls_Core.X25519.Bytes_32 :=
-        (16#95#, 16#CB#, 16#DE#, 16#94#, 16#76#, 16#E8#, 16#90#, 16#7D#,
+        [16#95#, 16#CB#, 16#DE#, 16#94#, 16#76#, 16#E8#, 16#90#, 16#7D#,
          16#7A#, 16#AD#, 16#E4#, 16#5C#, 16#B4#, 16#B8#, 16#73#, 16#F8#,
          16#8B#, 16#59#, 16#5A#, 16#68#, 16#79#, 16#9F#, 16#A1#, 16#52#,
-         16#E6#, 16#F8#, 16#F7#, 16#64#, 16#7A#, 16#AC#, 16#79#, 16#57#);
+         16#E6#, 16#F8#, 16#F7#, 16#64#, 16#7A#, 16#AC#, 16#79#, 16#57#];
 
-      Got : Tls_Core.X25519.Bytes_32 := (others => 0);
+      Got : Tls_Core.X25519.Bytes_32 := [others => 0];
    begin
       Put_Line ("scenario 18 — X25519 RFC 7748 §5.2 vectors");
 
@@ -1337,34 +1329,34 @@ procedure Tls_Core_Tests is
       --  Diffie-Hellman round-trip (RFC 7748 §6.1).
       declare
          Alice_Priv : constant Tls_Core.X25519.Bytes_32 :=
-           (16#77#, 16#07#, 16#6D#, 16#0A#, 16#73#, 16#18#, 16#A5#, 16#7D#,
+           [16#77#, 16#07#, 16#6D#, 16#0A#, 16#73#, 16#18#, 16#A5#, 16#7D#,
             16#3C#, 16#16#, 16#C1#, 16#72#, 16#51#, 16#B2#, 16#66#, 16#45#,
             16#DF#, 16#4C#, 16#2F#, 16#87#, 16#EB#, 16#C0#, 16#99#, 16#2A#,
-            16#B1#, 16#77#, 16#FB#, 16#A5#, 16#1D#, 16#B9#, 16#2C#, 16#2A#);
+            16#B1#, 16#77#, 16#FB#, 16#A5#, 16#1D#, 16#B9#, 16#2C#, 16#2A#];
          Alice_Pub_Expected : constant Tls_Core.X25519.Bytes_32 :=
-           (16#85#, 16#20#, 16#F0#, 16#09#, 16#89#, 16#30#, 16#A7#, 16#54#,
+           [16#85#, 16#20#, 16#F0#, 16#09#, 16#89#, 16#30#, 16#A7#, 16#54#,
             16#74#, 16#8B#, 16#7D#, 16#DC#, 16#B4#, 16#3E#, 16#F7#, 16#5A#,
             16#0D#, 16#BF#, 16#3A#, 16#0D#, 16#26#, 16#38#, 16#1A#, 16#F4#,
-            16#EB#, 16#A4#, 16#A9#, 16#8E#, 16#AA#, 16#9B#, 16#4E#, 16#6A#);
+            16#EB#, 16#A4#, 16#A9#, 16#8E#, 16#AA#, 16#9B#, 16#4E#, 16#6A#];
 
          Bob_Priv : constant Tls_Core.X25519.Bytes_32 :=
-           (16#5D#, 16#AB#, 16#08#, 16#7E#, 16#62#, 16#4A#, 16#8A#, 16#4B#,
+           [16#5D#, 16#AB#, 16#08#, 16#7E#, 16#62#, 16#4A#, 16#8A#, 16#4B#,
             16#79#, 16#E1#, 16#7F#, 16#8B#, 16#83#, 16#80#, 16#0E#, 16#E6#,
             16#6F#, 16#3B#, 16#B1#, 16#29#, 16#26#, 16#18#, 16#B6#, 16#FD#,
-            16#1C#, 16#2F#, 16#8B#, 16#27#, 16#FF#, 16#88#, 16#E0#, 16#EB#);
+            16#1C#, 16#2F#, 16#8B#, 16#27#, 16#FF#, 16#88#, 16#E0#, 16#EB#];
          Bob_Pub_Expected : constant Tls_Core.X25519.Bytes_32 :=
-           (16#DE#, 16#9E#, 16#DB#, 16#7D#, 16#7B#, 16#7D#, 16#C1#, 16#B4#,
+           [16#DE#, 16#9E#, 16#DB#, 16#7D#, 16#7B#, 16#7D#, 16#C1#, 16#B4#,
             16#D3#, 16#5B#, 16#61#, 16#C2#, 16#EC#, 16#E4#, 16#35#, 16#37#,
             16#3F#, 16#83#, 16#43#, 16#C8#, 16#5B#, 16#78#, 16#67#, 16#4D#,
-            16#AD#, 16#FC#, 16#7E#, 16#14#, 16#6F#, 16#88#, 16#2B#, 16#4F#);
+            16#AD#, 16#FC#, 16#7E#, 16#14#, 16#6F#, 16#88#, 16#2B#, 16#4F#];
          Shared_Expected : constant Tls_Core.X25519.Bytes_32 :=
-           (16#4A#, 16#5D#, 16#9D#, 16#5B#, 16#A4#, 16#CE#, 16#2D#, 16#E1#,
+           [16#4A#, 16#5D#, 16#9D#, 16#5B#, 16#A4#, 16#CE#, 16#2D#, 16#E1#,
             16#72#, 16#8E#, 16#3B#, 16#F4#, 16#80#, 16#35#, 16#0F#, 16#25#,
             16#E0#, 16#7E#, 16#21#, 16#C9#, 16#47#, 16#D1#, 16#9E#, 16#33#,
-            16#76#, 16#F0#, 16#9B#, 16#3C#, 16#1E#, 16#16#, 16#17#, 16#42#);
+            16#76#, 16#F0#, 16#9B#, 16#3C#, 16#1E#, 16#16#, 16#17#, 16#42#];
 
-         Alice_Pub, Bob_Pub : Tls_Core.X25519.Bytes_32 := (others => 0);
-         Shared_A, Shared_B : Tls_Core.X25519.Bytes_32 := (others => 0);
+         Alice_Pub, Bob_Pub : Tls_Core.X25519.Bytes_32 := [others => 0];
+         Shared_A, Shared_B : Tls_Core.X25519.Bytes_32 := [others => 0];
       begin
          Tls_Core.X25519.Derive_Public (Alice_Priv, Alice_Pub);
          Tls_Core.X25519.Derive_Public (Bob_Priv, Bob_Pub);
@@ -1393,16 +1385,15 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Ecdhe_Schedule_Scenario;
    procedure Ecdhe_Schedule_Scenario is
-      use type Tls_Core.Octet;
-      Alice_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#11#);
-      Bob_Priv   : constant Tls_Core.X25519.Bytes_32 := (others => 16#22#);
+      Alice_Priv : constant Tls_Core.X25519.Bytes_32 := [others => 16#11#];
+      Bob_Priv   : constant Tls_Core.X25519.Bytes_32 := [others => 16#22#];
 
-      Alice_Pub, Bob_Pub : Tls_Core.X25519.Bytes_32 := (others => 0);
-      Shared_A, Shared_B : Tls_Core.X25519.Bytes_32 := (others => 0);
+      Alice_Pub, Bob_Pub : Tls_Core.X25519.Bytes_32 := [others => 0];
+      Shared_A, Shared_B : Tls_Core.X25519.Bytes_32 := [others => 0];
 
-      CH : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#A1#);
-      SH : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#B2#);
-      SF : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#C3#);
+      CH : constant Tls_Core.Octet_Array (1 .. 64) := [others => 16#A1#];
+      SH : constant Tls_Core.Octet_Array (1 .. 64) := [others => 16#B2#];
+      SF : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#C3#];
 
       Sec_A, Sec_B : Tls_Core.Handshake.Traffic_Secrets;
    begin
@@ -1465,13 +1456,12 @@ procedure Tls_Core_Tests is
    procedure Ecdhe_Driver_Loopback;
    procedure Ecdhe_Driver_Loopback is
       use type Tls_Core.Handshake_Driver.State;
-      use type Tls_Core.Octet;
 
-      Cli_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#33#);
-      Srv_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#44#);
+      Cli_Priv : constant Tls_Core.X25519.Bytes_32 := [others => 16#33#];
+      Srv_Priv : constant Tls_Core.X25519.Bytes_32 := [others => 16#44#];
 
       C, S : Tls_Core.Handshake_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Buf_Last : Natural := 0;
       Cs, Ss : Tls_Core.Handshake.Traffic_Secrets;
    begin
@@ -1493,7 +1483,7 @@ procedure Tls_Core_Tests is
       --  and computed shared.
       declare
          CH : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1501,7 +1491,7 @@ procedure Tls_Core_Tests is
          Check ("ECDHE Driver: Server emitted SH+SF",
                 Tls_Core.Handshake_Driver.Current_State (S)
                   = Tls_Core.Handshake_Driver.Awaiting_Finished);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -1509,7 +1499,7 @@ procedure Tls_Core_Tests is
       --  Client receives SH+SF, extracts server pub, computes shared.
       declare
          Sh_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1522,7 +1512,7 @@ procedure Tls_Core_Tests is
 
       --  Client emits Finished; Server receives it.
       declare
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -1533,7 +1523,7 @@ procedure Tls_Core_Tests is
                   = Tls_Core.Handshake_Driver.Done);
          declare
             CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural := 0;
          begin
             Tls_Core.Handshake_Driver.Step
@@ -1566,50 +1556,49 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Sha512_Scenario;
    procedure Sha512_Scenario is
-      use type Tls_Core.Octet;
 
-      Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+      Empty : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
 
-      Msg_Abc : constant Tls_Core.Octet_Array := (16#61#, 16#62#, 16#63#);
+      Msg_Abc : constant Tls_Core.Octet_Array := [16#61#, 16#62#, 16#63#];
 
       Msg_C2 : constant Tls_Core.Octet_Array :=
-        (16#61#, 16#62#, 16#63#, 16#64#, 16#62#, 16#63#, 16#64#, 16#65#,
+        [16#61#, 16#62#, 16#63#, 16#64#, 16#62#, 16#63#, 16#64#, 16#65#,
          16#63#, 16#64#, 16#65#, 16#66#, 16#64#, 16#65#, 16#66#, 16#67#,
          16#65#, 16#66#, 16#67#, 16#68#, 16#66#, 16#67#, 16#68#, 16#69#,
          16#67#, 16#68#, 16#69#, 16#6A#, 16#68#, 16#69#, 16#6A#, 16#6B#,
          16#69#, 16#6A#, 16#6B#, 16#6C#, 16#6A#, 16#6B#, 16#6C#, 16#6D#,
          16#6B#, 16#6C#, 16#6D#, 16#6E#, 16#6C#, 16#6D#, 16#6E#, 16#6F#,
-         16#6D#, 16#6E#, 16#6F#, 16#70#, 16#6E#, 16#6F#, 16#70#, 16#71#);
+         16#6D#, 16#6E#, 16#6F#, 16#70#, 16#6E#, 16#6F#, 16#70#, 16#71#];
 
       Expected_Abc : constant Tls_Core.Sha512.Digest :=
-        (16#DD#, 16#AF#, 16#35#, 16#A1#, 16#93#, 16#61#, 16#7A#, 16#BA#,
+        [16#DD#, 16#AF#, 16#35#, 16#A1#, 16#93#, 16#61#, 16#7A#, 16#BA#,
          16#CC#, 16#41#, 16#73#, 16#49#, 16#AE#, 16#20#, 16#41#, 16#31#,
          16#12#, 16#E6#, 16#FA#, 16#4E#, 16#89#, 16#A9#, 16#7E#, 16#A2#,
          16#0A#, 16#9E#, 16#EE#, 16#E6#, 16#4B#, 16#55#, 16#D3#, 16#9A#,
          16#21#, 16#92#, 16#99#, 16#2A#, 16#27#, 16#4F#, 16#C1#, 16#A8#,
          16#36#, 16#BA#, 16#3C#, 16#23#, 16#A3#, 16#FE#, 16#EB#, 16#BD#,
          16#45#, 16#4D#, 16#44#, 16#23#, 16#64#, 16#3C#, 16#E8#, 16#0E#,
-         16#2A#, 16#9A#, 16#C9#, 16#4F#, 16#A5#, 16#4C#, 16#A4#, 16#9F#);
+         16#2A#, 16#9A#, 16#C9#, 16#4F#, 16#A5#, 16#4C#, 16#A4#, 16#9F#];
 
       Expected_C2 : constant Tls_Core.Sha512.Digest :=
-        (16#20#, 16#4A#, 16#8F#, 16#C6#, 16#DD#, 16#A8#, 16#2F#, 16#0A#,
+        [16#20#, 16#4A#, 16#8F#, 16#C6#, 16#DD#, 16#A8#, 16#2F#, 16#0A#,
          16#0C#, 16#ED#, 16#7B#, 16#EB#, 16#8E#, 16#08#, 16#A4#, 16#16#,
          16#57#, 16#C1#, 16#6E#, 16#F4#, 16#68#, 16#B2#, 16#28#, 16#A8#,
          16#27#, 16#9B#, 16#E3#, 16#31#, 16#A7#, 16#03#, 16#C3#, 16#35#,
          16#96#, 16#FD#, 16#15#, 16#C1#, 16#3B#, 16#1B#, 16#07#, 16#F9#,
          16#AA#, 16#1D#, 16#3B#, 16#EA#, 16#57#, 16#78#, 16#9C#, 16#A0#,
          16#31#, 16#AD#, 16#85#, 16#C7#, 16#A7#, 16#1D#, 16#D7#, 16#03#,
-         16#54#, 16#EC#, 16#63#, 16#12#, 16#38#, 16#CA#, 16#34#, 16#45#);
+         16#54#, 16#EC#, 16#63#, 16#12#, 16#38#, 16#CA#, 16#34#, 16#45#];
 
       Expected_Empty : constant Tls_Core.Sha512.Digest :=
-        (16#CF#, 16#83#, 16#E1#, 16#35#, 16#7E#, 16#EF#, 16#B8#, 16#BD#,
+        [16#CF#, 16#83#, 16#E1#, 16#35#, 16#7E#, 16#EF#, 16#B8#, 16#BD#,
          16#F1#, 16#54#, 16#28#, 16#50#, 16#D6#, 16#6D#, 16#80#, 16#07#,
          16#D6#, 16#20#, 16#E4#, 16#05#, 16#0B#, 16#57#, 16#15#, 16#DC#,
          16#83#, 16#F4#, 16#A9#, 16#21#, 16#D3#, 16#6C#, 16#E9#, 16#CE#,
          16#47#, 16#D0#, 16#D1#, 16#3C#, 16#5D#, 16#85#, 16#F2#, 16#B0#,
          16#FF#, 16#83#, 16#18#, 16#D2#, 16#87#, 16#7E#, 16#EC#, 16#2F#,
          16#63#, 16#B9#, 16#31#, 16#BD#, 16#47#, 16#41#, 16#7A#, 16#81#,
-         16#A5#, 16#38#, 16#32#, 16#7A#, 16#F9#, 16#27#, 16#DA#, 16#3E#);
+         16#A5#, 16#38#, 16#32#, 16#7A#, 16#F9#, 16#27#, 16#DA#, 16#3E#];
 
       D : Tls_Core.Sha512.Digest;
    begin
@@ -1659,7 +1648,7 @@ procedure Tls_Core_Tests is
    procedure X509_Scenario;
    procedure X509_Scenario is
       Cert : constant Tls_Core.Octet_Array (1 .. 310) :=
-        (16#30#, 16#82#, 16#01#, 16#32#, 16#30#, 16#81#, 16#E5#, 16#A0#,
+        [16#30#, 16#82#, 16#01#, 16#32#, 16#30#, 16#81#, 16#E5#, 16#A0#,
          16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#56#, 16#8D#,
          16#E2#, 16#DF#, 16#FB#, 16#BC#, 16#98#, 16#AF#, 16#80#, 16#FD#,
          16#10#, 16#86#, 16#ED#, 16#3B#, 16#29#, 16#B4#, 16#1D#, 16#51#,
@@ -1697,7 +1686,7 @@ procedure Tls_Core_Tests is
          16#BB#, 16#98#, 16#AE#, 16#9A#, 16#55#, 16#83#, 16#91#, 16#9C#,
          16#A2#, 16#92#, 16#F7#, 16#03#, 16#7F#, 16#91#, 16#73#, 16#43#,
          16#A8#, 16#86#, 16#DB#, 16#C4#, 16#88#, 16#09#, 16#38#, 16#D6#,
-         16#36#, 16#F4#, 16#C2#, 16#D6#, 16#ED#, 16#00#);
+         16#36#, 16#F4#, 16#C2#, 16#D6#, 16#ED#, 16#00#];
 
       --  Expected pub-key first/last bytes (from xxd of the cert at
       --  the 32-byte window after the SPKI BIT STRING unused-bits
@@ -1754,7 +1743,7 @@ procedure Tls_Core_Tests is
       --  Negative: zero-length input must return OK=False.
       declare
          Empty : constant Tls_Core.Octet_Array (1 .. 0) :=
-           (others => 0);
+           [others => 0];
          Tf    : Natural := 0;
          Tl    : Natural := 0;
          Pk    : Tls_Core.X509.Public_Key;
@@ -1803,55 +1792,54 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Ed25519_Scenario;
    procedure Ed25519_Scenario is
-      use type Tls_Core.Octet;
 
       Pub_1 : constant Tls_Core.Ed25519.Bytes_32 :=
-        (16#D7#, 16#5A#, 16#98#, 16#01#, 16#82#, 16#B1#, 16#0A#, 16#B7#,
+        [16#D7#, 16#5A#, 16#98#, 16#01#, 16#82#, 16#B1#, 16#0A#, 16#B7#,
          16#D5#, 16#4B#, 16#FE#, 16#D3#, 16#C9#, 16#64#, 16#07#, 16#3A#,
          16#0E#, 16#E1#, 16#72#, 16#F3#, 16#DA#, 16#A6#, 16#23#, 16#25#,
-         16#AF#, 16#02#, 16#1A#, 16#68#, 16#F7#, 16#07#, 16#51#, 16#1A#);
-      Msg_1 : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+         16#AF#, 16#02#, 16#1A#, 16#68#, 16#F7#, 16#07#, 16#51#, 16#1A#];
+      Msg_1 : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
       Sig_1 : constant Tls_Core.Ed25519.Signature :=
-        (16#E5#, 16#56#, 16#43#, 16#00#, 16#C3#, 16#60#, 16#AC#, 16#72#,
+        [16#E5#, 16#56#, 16#43#, 16#00#, 16#C3#, 16#60#, 16#AC#, 16#72#,
          16#90#, 16#86#, 16#E2#, 16#CC#, 16#80#, 16#6E#, 16#82#, 16#8A#,
          16#84#, 16#87#, 16#7F#, 16#1E#, 16#B8#, 16#E5#, 16#D9#, 16#74#,
          16#D8#, 16#73#, 16#E0#, 16#65#, 16#22#, 16#49#, 16#01#, 16#55#,
          16#5F#, 16#B8#, 16#82#, 16#15#, 16#90#, 16#A3#, 16#3B#, 16#AC#,
          16#C6#, 16#1E#, 16#39#, 16#70#, 16#1C#, 16#F9#, 16#B4#, 16#6B#,
          16#D2#, 16#5B#, 16#F5#, 16#F0#, 16#59#, 16#5B#, 16#BE#, 16#24#,
-         16#65#, 16#51#, 16#41#, 16#43#, 16#8E#, 16#7A#, 16#10#, 16#0B#);
+         16#65#, 16#51#, 16#41#, 16#43#, 16#8E#, 16#7A#, 16#10#, 16#0B#];
 
       Pub_2 : constant Tls_Core.Ed25519.Bytes_32 :=
-        (16#3D#, 16#40#, 16#17#, 16#C3#, 16#E8#, 16#43#, 16#89#, 16#5A#,
+        [16#3D#, 16#40#, 16#17#, 16#C3#, 16#E8#, 16#43#, 16#89#, 16#5A#,
          16#92#, 16#B7#, 16#0A#, 16#A7#, 16#4D#, 16#1B#, 16#7E#, 16#BC#,
          16#9C#, 16#98#, 16#2C#, 16#CF#, 16#2E#, 16#C4#, 16#96#, 16#8C#,
-         16#C0#, 16#CD#, 16#55#, 16#F1#, 16#2A#, 16#F4#, 16#66#, 16#0C#);
-      Msg_2 : constant Tls_Core.Octet_Array := (1 => 16#72#);
+         16#C0#, 16#CD#, 16#55#, 16#F1#, 16#2A#, 16#F4#, 16#66#, 16#0C#];
+      Msg_2 : constant Tls_Core.Octet_Array := [1 => 16#72#];
       Sig_2 : constant Tls_Core.Ed25519.Signature :=
-        (16#92#, 16#A0#, 16#09#, 16#A9#, 16#F0#, 16#D4#, 16#CA#, 16#B8#,
+        [16#92#, 16#A0#, 16#09#, 16#A9#, 16#F0#, 16#D4#, 16#CA#, 16#B8#,
          16#72#, 16#0E#, 16#82#, 16#0B#, 16#5F#, 16#64#, 16#25#, 16#40#,
          16#A2#, 16#B2#, 16#7B#, 16#54#, 16#16#, 16#50#, 16#3F#, 16#8F#,
          16#B3#, 16#76#, 16#22#, 16#23#, 16#EB#, 16#DB#, 16#69#, 16#DA#,
          16#08#, 16#5A#, 16#C1#, 16#E4#, 16#3E#, 16#15#, 16#99#, 16#6E#,
          16#45#, 16#8F#, 16#36#, 16#13#, 16#D0#, 16#F1#, 16#1D#, 16#8C#,
          16#38#, 16#7B#, 16#2E#, 16#AE#, 16#B4#, 16#30#, 16#2A#, 16#EE#,
-         16#B0#, 16#0D#, 16#29#, 16#16#, 16#12#, 16#BB#, 16#0C#, 16#00#);
+         16#B0#, 16#0D#, 16#29#, 16#16#, 16#12#, 16#BB#, 16#0C#, 16#00#];
 
       Pub_3 : constant Tls_Core.Ed25519.Bytes_32 :=
-        (16#FC#, 16#51#, 16#CD#, 16#8E#, 16#62#, 16#18#, 16#A1#, 16#A3#,
+        [16#FC#, 16#51#, 16#CD#, 16#8E#, 16#62#, 16#18#, 16#A1#, 16#A3#,
          16#8D#, 16#A4#, 16#7E#, 16#D0#, 16#02#, 16#30#, 16#F0#, 16#58#,
          16#08#, 16#16#, 16#ED#, 16#13#, 16#BA#, 16#33#, 16#03#, 16#AC#,
-         16#5D#, 16#EB#, 16#91#, 16#15#, 16#48#, 16#90#, 16#80#, 16#25#);
-      Msg_3 : constant Tls_Core.Octet_Array (1 .. 2) := (16#AF#, 16#82#);
+         16#5D#, 16#EB#, 16#91#, 16#15#, 16#48#, 16#90#, 16#80#, 16#25#];
+      Msg_3 : constant Tls_Core.Octet_Array (1 .. 2) := [16#AF#, 16#82#];
       Sig_3 : constant Tls_Core.Ed25519.Signature :=
-        (16#62#, 16#91#, 16#D6#, 16#57#, 16#DE#, 16#EC#, 16#24#, 16#02#,
+        [16#62#, 16#91#, 16#D6#, 16#57#, 16#DE#, 16#EC#, 16#24#, 16#02#,
          16#48#, 16#27#, 16#E6#, 16#9C#, 16#3A#, 16#BE#, 16#01#, 16#A3#,
          16#0C#, 16#E5#, 16#48#, 16#A2#, 16#84#, 16#74#, 16#3A#, 16#44#,
          16#5E#, 16#36#, 16#80#, 16#D7#, 16#DB#, 16#5A#, 16#C3#, 16#AC#,
          16#18#, 16#FF#, 16#9B#, 16#53#, 16#8D#, 16#16#, 16#F2#, 16#90#,
          16#AE#, 16#67#, 16#F7#, 16#60#, 16#98#, 16#4D#, 16#C6#, 16#59#,
          16#4A#, 16#7C#, 16#15#, 16#E9#, 16#71#, 16#6E#, 16#D2#, 16#8D#,
-         16#C0#, 16#27#, 16#BE#, 16#CE#, 16#EA#, 16#1E#, 16#C4#, 16#0A#);
+         16#C0#, 16#27#, 16#BE#, 16#CE#, 16#EA#, 16#1E#, 16#C4#, 16#0A#];
    begin
       Put_Line ("scenario 23 — Ed25519 RFC 8032 §7.1 verify vectors");
 
@@ -1877,10 +1865,10 @@ procedure Tls_Core_Tests is
       --  the canonical signature given the seed.
       declare
          Seed_1 : constant Tls_Core.Ed25519.Bytes_32 :=
-           (16#9D#, 16#61#, 16#B1#, 16#9D#, 16#EF#, 16#FD#, 16#5A#, 16#60#,
+           [16#9D#, 16#61#, 16#B1#, 16#9D#, 16#EF#, 16#FD#, 16#5A#, 16#60#,
             16#BA#, 16#84#, 16#4A#, 16#F4#, 16#92#, 16#EC#, 16#2C#, 16#C4#,
             16#44#, 16#49#, 16#C5#, 16#69#, 16#7B#, 16#32#, 16#69#, 16#19#,
-            16#70#, 16#3B#, 16#AC#, 16#03#, 16#1C#, 16#AE#, 16#7F#, 16#60#);
+            16#70#, 16#3B#, 16#AC#, 16#03#, 16#1C#, 16#AE#, 16#7F#, 16#60#];
          Got_Sig : Tls_Core.Ed25519.Signature;
          Got_Pub : Tls_Core.Ed25519.Bytes_32;
       begin
@@ -1896,10 +1884,10 @@ procedure Tls_Core_Tests is
 
       declare
          Seed_2 : constant Tls_Core.Ed25519.Bytes_32 :=
-           (16#4C#, 16#CD#, 16#08#, 16#9B#, 16#28#, 16#FF#, 16#96#, 16#DA#,
+           [16#4C#, 16#CD#, 16#08#, 16#9B#, 16#28#, 16#FF#, 16#96#, 16#DA#,
             16#9D#, 16#B6#, 16#C3#, 16#46#, 16#EC#, 16#11#, 16#4E#, 16#0F#,
             16#5B#, 16#8A#, 16#31#, 16#9F#, 16#35#, 16#AB#, 16#A6#, 16#24#,
-            16#DA#, 16#8C#, 16#F6#, 16#ED#, 16#4F#, 16#B8#, 16#A6#, 16#FB#);
+            16#DA#, 16#8C#, 16#F6#, 16#ED#, 16#4F#, 16#B8#, 16#A6#, 16#FB#];
          Got_Sig : Tls_Core.Ed25519.Signature;
       begin
          Tls_Core.Ed25519.Sign (Seed_2, Msg_2, Got_Sig);
@@ -1915,25 +1903,24 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Hello_Scenario;
    procedure Hello_Scenario is
-      use type Tls_Core.Octet;
 
       Random_Bytes : constant Tls_Core.Hello.Random_Bytes :=
-        (others => 16#A5#);
+        [others => 16#A5#];
       Pub_Key      : constant Tls_Core.Hello.Public_Key :=
-        (1 => 16#01#, 2 => 16#02#, others => 16#42#);
+        [1 => 16#01#, 2 => 16#02#, others => 16#42#];
 
       CH : Tls_Core.Hello.Client_Hello :=
         (Random           => Random_Bytes,
          Session_Id_Len   => 0,
-         Session_Id_Bytes => (others => 0),
+         Session_Id_Bytes => [others => 0],
          Key_Share        => Pub_Key);
-      SH : Tls_Core.Hello.Server_Hello :=
+      SH : constant Tls_Core.Hello.Server_Hello :=
         (Random           => Random_Bytes,
          Session_Id_Len   => 0,
-         Session_Id_Bytes => (others => 0),
+         Session_Id_Bytes => [others => 0],
          Key_Share        => Pub_Key);
 
-      Wire : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Wire : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Wire_Last : Natural;
       OK : Boolean;
       Decoded_CH : Tls_Core.Hello.Client_Hello;
@@ -1971,7 +1958,7 @@ procedure Tls_Core_Tests is
 
       --  CH with non-empty session_id round-trips.
       CH.Session_Id_Len := 16;
-      CH.Session_Id_Bytes (1 .. 16) := (others => 16#5A#);
+      CH.Session_Id_Bytes (1 .. 16) := [others => 16#5A#];
       Tls_Core.Hello.Encode_Client_Hello (CH, Wire, Wire_Last);
       Tls_Core.Hello.Decode_Client_Hello
         (Wire (1 .. Wire_Last), Decoded_CH, OK);
@@ -1998,11 +1985,10 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Transport_Loopback_Scenario;
    procedure Transport_Loopback_Scenario is
-      use type Tls_Core.Octet;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
 
       C, S : Tls_Core.Handshake_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Buf_Last : Natural := 0;
       Cs : Tls_Core.Handshake.Traffic_Secrets;
 
@@ -2020,19 +2006,19 @@ procedure Tls_Core_Tests is
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          CH_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
            (S, In_Bytes => CH_Bytes,
             Out_Buf => Reply, Out_Last => Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Sh_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -2040,7 +2026,7 @@ procedure Tls_Core_Tests is
          pragma Unreferenced (Reply_Last);
       end;
       declare
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -2048,7 +2034,7 @@ procedure Tls_Core_Tests is
             Out_Buf => Reply, Out_Last => Reply_Last);
          declare
             CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural := 0;
          begin
             Tls_Core.Handshake_Driver.Step
@@ -2072,10 +2058,10 @@ procedure Tls_Core_Tests is
       ----------------------------------------------------------------
       declare
          Pt : constant Tls_Core.Octet_Array (1 .. 16) :=
-           (others => 16#A5#);
-         Wire : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+           [others => 16#A5#];
+         Wire : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Wire_Last : Natural := 0;
-         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Got_Last : Natural := 0;
          OK : Boolean := False;
       begin
@@ -2099,10 +2085,10 @@ procedure Tls_Core_Tests is
       ----------------------------------------------------------------
       declare
          Pt : constant Tls_Core.Octet_Array (1 .. 32) :=
-           (others => 16#5A#);
-         Wire : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+           [others => 16#5A#];
+         Wire : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Wire_Last : Natural := 0;
-         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Got_Last : Natural := 0;
          OK : Boolean := False;
       begin
@@ -2127,15 +2113,15 @@ procedure Tls_Core_Tests is
       --  multiple records buffered together.
       ----------------------------------------------------------------
       declare
-         Pt1 : constant Tls_Core.Octet_Array := (16#41#, 16#42#, 16#43#);
+         Pt1 : constant Tls_Core.Octet_Array := [16#41#, 16#42#, 16#43#];
          Pt2 : constant Tls_Core.Octet_Array (1 .. 5) :=
-           (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "hello"
+           [16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#];  --  "hello"
          Pt3 : constant Tls_Core.Octet_Array (1 .. 24) :=
-           (others => 16#7E#);
+           [others => 16#7E#];
 
-         Wire : Tls_Core.Octet_Array (1 .. 8192) := (others => 0);
+         Wire : Tls_Core.Octet_Array (1 .. 8192) := [others => 0];
          Wire_Last : Natural := 0;
-         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Got_Last : Natural := 0;
          OK : Boolean := False;
          Expected_Wire : constant Natural :=
@@ -2159,7 +2145,7 @@ procedure Tls_Core_Tests is
                 and then Got_Last = Pt1'Length
                 and then Equal (Got (1 .. Got_Last), Pt1));
 
-         Got := (others => 0);
+         Got := [others => 0];
          Got_Last := 0;
          OK := False;
          Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
@@ -2168,7 +2154,7 @@ procedure Tls_Core_Tests is
                 and then Got_Last = Pt2'Length
                 and then Equal (Got (1 .. Got_Last), Pt2));
 
-         Got := (others => 0);
+         Got := [others => 0];
          Got_Last := 0;
          OK := False;
          Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
@@ -2179,7 +2165,7 @@ procedure Tls_Core_Tests is
 
          --  After draining all three records the inbound queue
          --  is empty: a fourth Receive must report no record.
-         Got := (others => 0);
+         Got := [others => 0];
          Got_Last := 0;
          OK := True;
          Tls_Core.Transport.Receive (Server_Pipe, Got, Got_Last, OK);
@@ -2194,10 +2180,10 @@ procedure Tls_Core_Tests is
       declare
          Fresh_Client, Fresh_Server : Tls_Core.Transport.Pipe;
          Pt : constant Tls_Core.Octet_Array (1 .. 12) :=
-           (others => 16#33#);
-         Wire : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+           [others => 16#33#];
+         Wire : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Wire_Last : Natural := 0;
-         Got : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Got_Last : Natural := 0;
          OK : Boolean := True;
       begin
@@ -2237,17 +2223,16 @@ procedure Tls_Core_Tests is
    procedure Cert_Driver_Loopback;
    procedure Cert_Driver_Loopback is
       use type Tls_Core.Handshake_Driver.State;
-      use type Tls_Core.Octet;
 
-      Cli_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#33#);
-      Srv_Priv : constant Tls_Core.X25519.Bytes_32 := (others => 16#44#);
+      Cli_Priv : constant Tls_Core.X25519.Bytes_32 := [others => 16#33#];
+      Srv_Priv : constant Tls_Core.X25519.Bytes_32 := [others => 16#44#];
       Sign_Seed : constant Tls_Core.Ed25519.Bytes_32 :=
-        (others => 16#55#);
+        [others => 16#55#];
 
       Server_Pub : Tls_Core.Ed25519.Bytes_32;
 
       C, S : Tls_Core.Handshake_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Buf_Last : Natural := 0;
       Cs, Ss : Tls_Core.Handshake.Traffic_Secrets;
    begin
@@ -2268,7 +2253,7 @@ procedure Tls_Core_Tests is
 
       declare
          CH : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -2276,14 +2261,14 @@ procedure Tls_Core_Tests is
          Check ("Cert driver: server emits SH+Cert+CV+SF",
                 Tls_Core.Handshake_Driver.Current_State (S)
                   = Tls_Core.Handshake_Driver.Awaiting_Finished);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
 
       declare
          Sh_Cert_Cv_Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -2296,7 +2281,7 @@ procedure Tls_Core_Tests is
       end;
 
       declare
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -2307,7 +2292,7 @@ procedure Tls_Core_Tests is
                   = Tls_Core.Handshake_Driver.Done);
          declare
             CF : constant Tls_Core.Octet_Array := Reply (1 .. Reply_Last);
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural := 0;
          begin
             Tls_Core.Handshake_Driver.Step
@@ -2334,9 +2319,9 @@ procedure Tls_Core_Tests is
       declare
          Bad_C, Bad_S : Tls_Core.Handshake_Driver.Driver;
          Bad_Pub : Tls_Core.Ed25519.Bytes_32 := Server_Pub;
-         Bad_Buf : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Bad_Buf : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Bad_Buf_Last : Natural := 0;
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Bad_Pub (1) := Bad_Pub (1) xor 16#01#;
@@ -2349,7 +2334,7 @@ procedure Tls_Core_Tests is
             Out_Buf => Bad_Buf, Out_Last => Bad_Buf_Last);
          declare
             CH : constant Tls_Core.Octet_Array := Bad_Buf (1 .. Bad_Buf_Last);
-            Srv_Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Srv_Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Srv_Reply_Last : Natural := 0;
          begin
             Tls_Core.Handshake_Driver.Step
@@ -2404,15 +2389,14 @@ procedure Tls_Core_Tests is
    procedure Tcp_Loopback_Scenario;
    procedure Tcp_Loopback_Scenario is
       use type Tls_Core.Handshake_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
 
       --  Plaintext the client encrypts and the server is expected
       --  to decrypt: ASCII for "hello tls 1.3".
       Plaintext : constant Tls_Core.Octet_Array (1 .. 13) :=
-        (16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#20#,
-         16#74#, 16#6C#, 16#73#, 16#20#, 16#31#, 16#2E#, 16#33#);
+        [16#68#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#20#,
+         16#74#, 16#6C#, 16#73#, 16#20#, 16#31#, 16#2E#, 16#33#];
 
       --  Rendezvous: the server task binds the listener and posts
       --  the kernel-assigned port; the main thread waits on Get_Port
@@ -2459,7 +2443,7 @@ procedure Tls_Core_Tests is
          R_State_OK : Boolean := False;
          R_Secrets  : Tls_Core.Handshake.Traffic_Secrets;
          R_PT_Len   : Natural := 0;
-         R_PT_Buf   : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         R_PT_Buf   : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          R_Recv_OK  : Boolean := False;
       end Server_Result_Box;
 
@@ -2476,7 +2460,7 @@ procedure Tls_Core_Tests is
             State_OK := R_State_OK;
             Secrets  := R_Secrets;
             Plaintext_Len := R_PT_Len;
-            Plaintext_Buf := (others => 0);
+            Plaintext_Buf := [others => 0];
             if R_PT_Len > 0
               and then Plaintext_Buf'Length >= R_PT_Len
             then
@@ -2498,7 +2482,7 @@ procedure Tls_Core_Tests is
             R_State_OK := State_OK;
             R_Secrets  := Secrets;
             R_PT_Len   := Plaintext_Len;
-            R_PT_Buf   := (others => 0);
+            R_PT_Buf   := [others => 0];
             if Plaintext_Len > 0
               and then Plaintext_Buf'Length >= Plaintext_Len
             then
@@ -2529,10 +2513,10 @@ procedure Tls_Core_Tests is
          Out_Last : out Natural;
          OK       : out Boolean)
       is
-         Header   : Tls_Core.Octet_Array (1 .. 4) := (others => 0);
+         Header   : Tls_Core.Octet_Array (1 .. 4) := [others => 0];
          Body_Len : Natural;
       begin
-         Out_Buf  := (others => 0);
+         Out_Buf  := [others => 0];
          Out_Last := 0;
          Tls_Core.Tcp_Transport.Recv_All (Chan, Header, OK);
          if not OK then
@@ -2550,7 +2534,7 @@ procedure Tls_Core_Tests is
          if Body_Len > 0 then
             declare
                Body_Buf : Tls_Core.Octet_Array (1 .. Body_Len) :=
-                 (others => 0);
+                 [others => 0];
             begin
                Tls_Core.Tcp_Transport.Recv_All (Chan, Body_Buf, OK);
                if not OK then
@@ -2577,10 +2561,10 @@ procedure Tls_Core_Tests is
          Out_Last : out Natural;
          OK       : out Boolean)
       is
-         Header   : Tls_Core.Octet_Array (1 .. 5) := (others => 0);
+         Header   : Tls_Core.Octet_Array (1 .. 5) := [others => 0];
          Body_Len : Natural;
       begin
-         Out_Buf  := (others => 0);
+         Out_Buf  := [others => 0];
          Out_Last := 0;
          Tls_Core.Tcp_Transport.Recv_All (Chan, Header, OK);
          if not OK then
@@ -2596,7 +2580,7 @@ procedure Tls_Core_Tests is
          if Body_Len > 0 then
             declare
                Body_Buf : Tls_Core.Octet_Array (1 .. Body_Len) :=
-                 (others => 0);
+                 [others => 0];
             begin
                Tls_Core.Tcp_Transport.Recv_All (Chan, Body_Buf, OK);
                if not OK then
@@ -2620,7 +2604,7 @@ procedure Tls_Core_Tests is
          OK       : Boolean := False;
          Server_Reached_Done : Boolean := False;
          Server_Secrets : Tls_Core.Handshake.Traffic_Secrets;
-         Recv_PT  : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Recv_PT  : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Recv_PT_Len : Natural := 0;
          Recv_PT_OK  : Boolean := False;
       begin
@@ -2637,9 +2621,9 @@ procedure Tls_Core_Tests is
 
          --  Flight 1: read CH from the wire, run Step, send SH+SF.
          declare
-            CH_Buf  : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            CH_Buf  : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             CH_Last : Natural := 0;
-            Reply   : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Reply   : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Reply_Last : Natural := 0;
          begin
             Recv_Hs_Msg (Sock, CH_Buf, CH_Last, OK);
@@ -2656,9 +2640,9 @@ procedure Tls_Core_Tests is
 
          --  Flight 2: read CF from the wire, run Step → Done.
          declare
-            CF_Buf  : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            CF_Buf  : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             CF_Last : Natural := 0;
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural := 0;
          begin
             Recv_Hs_Msg (Sock, CF_Buf, CF_Last, OK);
@@ -2680,7 +2664,7 @@ procedure Tls_Core_Tests is
             --  the wire and decrypt with a Direction Init'd from
             --  Client_App (matching what the client encrypted with).
             declare
-               Wire   : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+               Wire   : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
                Wire_Last : Natural := 0;
                Recv_Dir : Tls_Core.Channel.Direction;
             begin
@@ -2716,7 +2700,7 @@ procedure Tls_Core_Tests is
       --  Client-side handshake driver, run on the main thread.
       C : Tls_Core.Handshake_Driver.Driver;
       Cli_Sock : Tls_Core.Tcp_Transport.Channel;
-      Buf      : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Buf      : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Buf_Last : Natural := 0;
       Cs       : Tls_Core.Handshake.Traffic_Secrets;
 
@@ -2724,7 +2708,7 @@ procedure Tls_Core_Tests is
       --  after the server task reports Done.
       Srv_State_OK   : Boolean := False;
       Srv_Secrets    : Tls_Core.Handshake.Traffic_Secrets;
-      Srv_PT_Buf     : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Srv_PT_Buf     : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Srv_PT_Len     : Natural := 0;
       Srv_Recv_OK    : Boolean := False;
 
@@ -2752,14 +2736,14 @@ procedure Tls_Core_Tests is
       --  Flight 2: read SH then SF (two back-to-back handshake
       --  messages) and feed both to the client driver in one Step.
       declare
-         M1_Buf  : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         M1_Buf  : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          M1_Last : Natural := 0;
-         M2_Buf  : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         M2_Buf  : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          M2_Last : Natural := 0;
          OK      : Boolean := False;
-         Combined : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Combined : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Combined_Last : Natural := 0;
-         Reply   : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply   : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Recv_Hs_Msg (Cli_Sock, M1_Buf, M1_Last, OK);
@@ -2778,7 +2762,7 @@ procedure Tls_Core_Tests is
 
       --  Flight 3: emit Client Finished, ship to server, → Done.
       declare
-         Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Reply_Last : Natural := 0;
       begin
          Tls_Core.Handshake_Driver.Step
@@ -2797,7 +2781,7 @@ procedure Tls_Core_Tests is
       --  Application data: encrypt one record, ship it.
       declare
          Send_Dir : Tls_Core.Channel.Direction;
-         Wire     : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Wire     : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Wire_Last : Natural := 0;
       begin
          Tls_Core.Channel.Init (Send_Dir, Cs.Client_App);
@@ -2848,11 +2832,10 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Psk_Binder_Scenario;
    procedure Psk_Binder_Scenario is
-      use type Tls_Core.Octet;
-      Psk_A : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#A1#);
-      Psk_B : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#A2#);
-      Tch_X : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#5A#);
-      Tch_Y : constant Tls_Core.Octet_Array (1 .. 64) := (others => 16#5B#);
+      Psk_A : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#A1#];
+      Psk_B : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#A2#];
+      Tch_X : constant Tls_Core.Octet_Array (1 .. 64) := [others => 16#5A#];
+      Tch_Y : constant Tls_Core.Octet_Array (1 .. 64) := [others => 16#5B#];
 
       B1, B2, B3, B4 : Tls_Core.Psk_Binder.Binder_Bytes;
    begin
@@ -2897,20 +2880,19 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Psk_Hello_Roundtrip;
    procedure Psk_Hello_Roundtrip is
-      use type Tls_Core.Octet;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
-      Random : constant Tls_Core.Hello.Random_Bytes := (others => 16#7E#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
+      Random : constant Tls_Core.Hello.Random_Bytes := [others => 16#7E#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
 
-      Wire : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Wire : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Wire_Last : Natural;
       Truncated_Last : Natural;
       Computed_Binder : Tls_Core.Psk_Binder.Binder_Bytes;
 
       --  Fixed test X25519 public key — psk_dhe_ke (mode 3) wire path.
       Test_Key_Share : constant Tls_Core.Hello.Public_Key :=
-        (others => 16#99#);
+        [others => 16#99#];
 
       Decoded_Random : Tls_Core.Hello.Random_Bytes;
       Sid_F, Sid_L : Natural;
@@ -2980,7 +2962,7 @@ procedure Tls_Core_Tests is
       declare
          Recompute : Tls_Core.Psk_Binder.Binder_Bytes;
          Recv_Buf  : Tls_Core.Psk_Binder.Binder_Bytes :=
-           (others => 0);
+           [others => 0];
       begin
          Tls_Core.Psk_Binder.Compute
            (Psk, Wire (1 .. T_Last), Recompute);
@@ -2992,12 +2974,12 @@ procedure Tls_Core_Tests is
 
       --  ServerHello echo round-trip — server selects AES-128.
       declare
-         Sh_Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Sh_Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Sh_Last : Natural;
          Sh_Ks_F, Sh_Ks_L : Natural;
          Sh_Ks_OK : Boolean;
          Server_Pub : constant Tls_Core.Hello.Public_Key :=
-           (others => 16#88#);
+           [others => 16#88#];
       begin
          Tls_Core.Hello.Encode_Server_Hello_Psk
            (Random,
@@ -3067,21 +3049,20 @@ procedure Tls_Core_Tests is
    procedure Tls13_Loopback;
    procedure Tls13_Loopback is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
 
       --  Distinct X25519 private scalars — psk_dhe_ke (mode 3) needs
       --  one ephemeral keypair per peer.
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
    begin
       Put_Line ("scenario 30 — Tls13_Driver Ada-to-Ada psk_dhe_ke (mode 3)");
@@ -3099,7 +3080,7 @@ procedure Tls_Core_Tests is
       --  Flight 2: server consumes CH, emits SH+EE+SF
       declare
          Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3114,7 +3095,7 @@ procedure Tls_Core_Tests is
                               + Natural (Reply (5)) + 6) = 16#17#);
          --  Byte 6 + SH-rec-len is the start of the next record (EE encrypted),
          --  whose outer type should be 0x17 application_data.
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -3122,7 +3103,7 @@ procedure Tls_Core_Tests is
       --  Flight 3: client consumes SH+EE+SF, emits CF
       declare
          Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3133,7 +3114,7 @@ procedure Tls_Core_Tests is
                   = Tls_Core.Tls13_Driver.Done);
          Check ("Tls13: client emitted encrypted Finished",
                 Reply_Last > 16 and then Reply (1) = 16#17#);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -3141,7 +3122,7 @@ procedure Tls_Core_Tests is
       --  Server consumes client Finished, → Done
       declare
          Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Discard_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3160,10 +3141,10 @@ procedure Tls_Core_Tests is
          use type Tls_Core.Suites.Cipher_Suite_Id;
          Out_Cli, In_Cli, Out_Srv, In_Srv : Tls_Core.Aead_Channel.Direction;
          Pt : constant Tls_Core.Octet_Array :=
-           (16#48#, 16#69#);  --  "Hi"
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+           [16#48#, 16#69#];  --  "Hi"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
-         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Got_Last : Natural;
          Inner : Tls_Core.Octet;
          OK : Boolean;
@@ -3221,22 +3202,21 @@ procedure Tls_Core_Tests is
    procedure Tls13_Mode3_Ecdhe_Contributes;
    procedure Tls13_Mode3_Ecdhe_Contributes is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
 
       --  Server uses the same private scalar both times — this isolates
       --  the variation to the CLIENT's ECDHE contribution.
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
 
       --  Two distinct client private scalars.
       Client_Priv_A : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
       Client_Priv_B : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#33#);
+        [others => 16#33#];
 
       function Run_Handshake
         (Cli_Priv : Tls_Core.Octet_Array)
@@ -3247,7 +3227,7 @@ procedure Tls_Core_Tests is
          return Tls_Core.Key_Sched.Max_Secret
       is
          C, S : Tls_Core.Tls13_Driver.Driver;
-         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Buf_Last : Natural := 0;
          Out_Cli, In_Cli : Tls_Core.Aead_Channel.Direction;
          Out_Sec, In_Sec : Tls_Core.Key_Sched.Max_Secret;
@@ -3258,30 +3238,30 @@ procedure Tls_Core_Tests is
            (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
          declare
             Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-            Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+            Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
             Reply_Last : Natural;
          begin
             Tls_Core.Tls13_Driver.Step
               (S, In_Bytes => Ch, Out_Buf => Reply, Out_Last => Reply_Last);
-            Buf := (others => 0);
+            Buf := [others => 0];
             Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
             Buf_Last := Reply_Last;
          end;
          declare
             Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-            Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+            Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
             Reply_Last : Natural;
          begin
             Tls_Core.Tls13_Driver.Step
               (C, In_Bytes => Sf_Flight,
                Out_Buf => Reply, Out_Last => Reply_Last);
-            Buf := (others => 0);
+            Buf := [others => 0];
             Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
             Buf_Last := Reply_Last;
          end;
          declare
             Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-            Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+            Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
             Discard_Last : Natural;
          begin
             Tls_Core.Tls13_Driver.Step
@@ -3352,7 +3332,7 @@ procedure Tls_Core_Tests is
    procedure Key_Update_Wire_Scenario;
    procedure Key_Update_Wire_Scenario is
       Buf : Tls_Core.Octet_Array (1 .. Tls_Core.Key_Update.Wire_Size) :=
-        (others => 0);
+        [others => 0];
       Last : Natural;
       Req  : Tls_Core.Octet;
       OK   : Boolean;
@@ -3392,8 +3372,8 @@ procedure Tls_Core_Tests is
 
       --  Reject: wrong msg_type.
       declare
-         Bad : Tls_Core.Octet_Array (1 .. 5) :=
-           (16#19#, 16#00#, 16#00#, 16#01#, 16#00#);
+         Bad : constant Tls_Core.Octet_Array (1 .. 5) :=
+           [16#19#, 16#00#, 16#00#, 16#01#, 16#00#];
       begin
          Tls_Core.Key_Update.Decode (Bad, Req, OK);
          Check ("Key_Update.Decode rejects wrong msg_type", not OK);
@@ -3401,8 +3381,8 @@ procedure Tls_Core_Tests is
 
       --  Reject: u24 length /= 1.
       declare
-         Bad : Tls_Core.Octet_Array (1 .. 5) :=
-           (16#18#, 16#00#, 16#00#, 16#02#, 16#00#);
+         Bad : constant Tls_Core.Octet_Array (1 .. 5) :=
+           [16#18#, 16#00#, 16#00#, 16#02#, 16#00#];
       begin
          Tls_Core.Key_Update.Decode (Bad, Req, OK);
          Check ("Key_Update.Decode rejects u24 length /= 1", not OK);
@@ -3410,8 +3390,8 @@ procedure Tls_Core_Tests is
 
       --  Reject: payload outside {0, 1}.
       declare
-         Bad : Tls_Core.Octet_Array (1 .. 5) :=
-           (16#18#, 16#00#, 16#00#, 16#01#, 16#02#);
+         Bad : constant Tls_Core.Octet_Array (1 .. 5) :=
+           [16#18#, 16#00#, 16#00#, 16#01#, 16#02#];
       begin
          Tls_Core.Key_Update.Decode (Bad, Req, OK);
          Check ("Key_Update.Decode rejects payload outside {0,1}",
@@ -3420,8 +3400,8 @@ procedure Tls_Core_Tests is
 
       --  Reject: short buffer.
       declare
-         Bad : Tls_Core.Octet_Array (1 .. 4) :=
-           (16#18#, 16#00#, 16#00#, 16#01#);
+         Bad : constant Tls_Core.Octet_Array (1 .. 4) :=
+           [16#18#, 16#00#, 16#00#, 16#01#];
       begin
          Tls_Core.Key_Update.Decode (Bad, Req, OK);
          Check ("Key_Update.Decode rejects short buffer", not OK);
@@ -3453,19 +3433,17 @@ procedure Tls_Core_Tests is
    procedure Key_Update_Roundtrip_Scenario;
    procedure Key_Update_Roundtrip_Scenario is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
-      use type Tls_Core.Suites.Cipher_Suite_Id;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);
+        [16#54#, 16#65#, 16#73#, 16#74#];
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
 
       Out_Cli, In_Cli, Out_Srv, In_Srv :
@@ -3482,29 +3460,29 @@ procedure Tls_Core_Tests is
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
            (S, Ch, Reply, Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
            (C, Sf_Flight, Reply, Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Discard_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3533,10 +3511,10 @@ procedure Tls_Core_Tests is
       --  Step 1: client sends "Hi" under c_ap_0; server decrypts.
       declare
          Pt : constant Tls_Core.Octet_Array :=
-           (16#48#, 16#69#);  --  "Hi"
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+           [16#48#, 16#69#];  --  "Hi"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
-         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Got_Last : Natural;
          Inner : Tls_Core.Octet;
          OK : Boolean;
@@ -3557,7 +3535,7 @@ procedure Tls_Core_Tests is
       --  Step 2: client sends KeyUpdate(update_requested).
       --  Send_Key_Update encrypts under c_ap_0 then rotates to c_ap_1.
       declare
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
          Sec_Cli_Out_Before : constant Tls_Core.Key_Sched.Max_Secret :=
            Sec_Cli_Out;
@@ -3579,7 +3557,7 @@ procedure Tls_Core_Tests is
          --  Step 3: server receives the KeyUpdate record.
          --  First decrypt under In_Srv (still c_ap_0) to get plaintext.
          declare
-            Pt_Buf : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+            Pt_Buf : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
             Pt_Last : Natural;
             Inner : Tls_Core.Octet;
             OK : Boolean;
@@ -3614,7 +3592,7 @@ procedure Tls_Core_Tests is
       --  Step 4: server emits its own KeyUpdate(update_not_requested)
       --  in response. Encrypted under s_ap_0; rotates Out_Srv to s_ap_1.
       declare
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
          Sec_Srv_Out_Before : constant Tls_Core.Key_Sched.Max_Secret :=
            Sec_Srv_Out;
@@ -3633,7 +3611,7 @@ procedure Tls_Core_Tests is
 
          --  Step 5: client receives server's KeyUpdate.
          declare
-            Pt_Buf : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+            Pt_Buf : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
             Pt_Last : Natural;
             Inner : Tls_Core.Octet;
             OK : Boolean;
@@ -3666,12 +3644,12 @@ procedure Tls_Core_Tests is
       --  Step 6: full bidirectional app-data exchange under rotated keys.
       declare
          Pt_C : constant Tls_Core.Octet_Array :=
-           (16#46#, 16#6F#, 16#6F#);  --  "Foo"
+           [16#46#, 16#6F#, 16#6F#];  --  "Foo"
          Pt_S : constant Tls_Core.Octet_Array :=
-           (16#42#, 16#61#, 16#72#);  --  "Bar"
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+           [16#42#, 16#61#, 16#72#];  --  "Bar"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
-         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Got_Last : Natural;
          Inner : Tls_Core.Octet;
          OK : Boolean;
@@ -3690,8 +3668,8 @@ procedure Tls_Core_Tests is
                 and then Equal (Got (1 .. Got_Last), Pt_C));
 
          --  Server → Client under s_ap_1.
-         Wire := (others => 0);
-         Got := (others => 0);
+         Wire := [others => 0];
+         Got := [others => 0];
          Tls_Core.Aead_Channel.Send
            (Out_Srv, Pt_S,
             Tls_Core.Aead_Channel.Inner_Type_Application_Data,
@@ -3732,22 +3710,21 @@ procedure Tls_Core_Tests is
    procedure Tls13_Hrr_Loopback;
    procedure Tls13_Hrr_Loopback is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
       --  An eight-byte cookie — chosen as a fixed bytestring so the
       --  test can assert byte-for-byte echo.
       Cookie : constant Tls_Core.Octet_Array (1 .. 8) :=
-        (16#C0#, 16#0C#, 16#1E#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#);
+        [16#C0#, 16#0C#, 16#1E#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#];
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
    begin
       Put_Line ("scenario 30b — Tls13_Driver HRR loopback");
@@ -3773,7 +3750,7 @@ procedure Tls_Core_Tests is
       --  Flight 2: server consumes CH1 → emits HRR (single TLSPlaintext)
       declare
          Ch1 : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3796,7 +3773,7 @@ procedure Tls_Core_Tests is
             Check ("HRR: server random equals Magic_Random",
                    Tls_Core.Hello_Retry.Is_Hrr_Random (Random_Slice));
          end;
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -3804,7 +3781,7 @@ procedure Tls_Core_Tests is
       --  Flight 3: client consumes HRR → emits CH2 (TLSPlaintext)
       declare
          Hrr_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3817,7 +3794,7 @@ procedure Tls_Core_Tests is
          Check ("HRR: CH2 outer is handshake", Reply (1) = 16#16#);
          Check ("HRR: CH2 handshake type is CH (0x01)",
                 Reply (6) = 16#01#);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -3825,7 +3802,7 @@ procedure Tls_Core_Tests is
       --  Flight 4: server consumes CH2 → emits SH+EE+SF
       declare
          Ch2 : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3836,7 +3813,7 @@ procedure Tls_Core_Tests is
          Check ("HRR: server flight has SH plaintext + 2 ciphertexts",
                 Reply_Last > 100
                 and then Reply (1) = 16#16#);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -3844,7 +3821,7 @@ procedure Tls_Core_Tests is
       --  Flight 5: client consumes SH+EE+SF → emits CF
       declare
          Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3855,7 +3832,7 @@ procedure Tls_Core_Tests is
                   = Tls_Core.Tls13_Driver.Done);
          Check ("HRR: client emitted encrypted Finished",
                 Reply_Last > 16 and then Reply (1) = 16#17#);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -3863,7 +3840,7 @@ procedure Tls_Core_Tests is
       --  Flight 6: server consumes CF → Done
       declare
          Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Discard_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -3879,10 +3856,10 @@ procedure Tls_Core_Tests is
          use type Tls_Core.Suites.Cipher_Suite_Id;
          Out_Cli, In_Cli, Out_Srv, In_Srv : Tls_Core.Aead_Channel.Direction;
          Pt : constant Tls_Core.Octet_Array :=
-           (16#48#, 16#69#);  --  "Hi"
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+           [16#48#, 16#69#];  --  "Hi"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
-         Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Got_Last : Natural;
          Inner : Tls_Core.Octet;
          OK : Boolean;
@@ -3915,20 +3892,19 @@ procedure Tls_Core_Tests is
    --------------------------------------------------------------------
    procedure Hello_Retry_Unit;
    procedure Hello_Retry_Unit is
-      use type Tls_Core.Octet;
       use type Tls_Core.Suites.U16;
 
       Demo_Cookie : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#11#, 16#22#, 16#33#, 16#44#);
+        [16#11#, 16#22#, 16#33#, 16#44#];
       Other_Cookie : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#11#, 16#22#, 16#33#, 16#45#);
-      Hrr_Buf : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+        [16#11#, 16#22#, 16#33#, 16#45#];
+      Hrr_Buf : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Hrr_Last : Natural;
       Cs, Group : Tls_Core.Suites.U16;
       Cookie_Out : Tls_Core.Hello_Retry.Cookie_Bytes;
       Cookie_Len : Natural;
       OK : Boolean;
-      Want_Cookie : Tls_Core.Hello_Retry.Cookie_Bytes := (others => 0);
+      Want_Cookie : Tls_Core.Hello_Retry.Cookie_Bytes := [others => 0];
    begin
       Put_Line ("scenario 30c — Hello_Retry primitives");
 
@@ -3942,8 +3918,8 @@ procedure Tls_Core_Tests is
 
       --  Synthetic message_hash shape (§4.4.1)
       declare
-         Synth : Tls_Core.Octet_Array (1 .. 36) := (others => 0);
-         Hash  : constant Tls_Core.Sha256.Digest := (others => 16#5A#);
+         Synth : Tls_Core.Octet_Array (1 .. 36) := [others => 0];
+         Hash  : constant Tls_Core.Sha256.Digest := [others => 16#5A#];
       begin
          Tls_Core.Hello_Retry.Build_Synthetic_Msg_Sha256 (Hash, Synth);
          Check ("HRR: synthetic header type 0xFE", Synth (1) = 16#FE#);
@@ -4000,14 +3976,14 @@ procedure Tls_Core_Tests is
 
       --  Encode_Hrr with empty cookie omits the cookie ext.
       declare
-         Hrr_No_Cookie : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Hrr_No_Cookie : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          No_Cookie_Last : Natural;
          No_Cookie_Out : Tls_Core.Hello_Retry.Cookie_Bytes;
          No_Cookie_Len : Natural;
          No_Cookie_OK  : Boolean;
          No_Cs, No_Group : Tls_Core.Suites.U16;
          Empty_Cookie : constant Tls_Core.Octet_Array (1 .. 0) :=
-           (others => 0);
+           [others => 0];
       begin
          Tls_Core.Hello_Retry.Encode_Hrr
            (Selected_Suite => Tls_Core.Suites.TLS_CHACHA20_POLY1305_SHA256,
@@ -4028,7 +4004,7 @@ procedure Tls_Core_Tests is
 
       --  Decode rejects non-magic random.
       declare
-         Bogus_Hrr : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Bogus_Hrr : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Bogus_OK  : Boolean;
          Bogus_Cs, Bogus_Group : Tls_Core.Suites.U16;
          Bogus_Cookie_Out : Tls_Core.Hello_Retry.Cookie_Bytes;
@@ -4059,14 +4035,14 @@ procedure Tls_Core_Tests is
    procedure Aes128_Scenario;
    procedure Aes128_Scenario is
       Key : constant Tls_Core.Aes128.Key_Array :=
-        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
-         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#);
+        [16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#];
       Pt : constant Tls_Core.Aes128.Block :=
-        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
-         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+        [16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#];
       Expected : constant Tls_Core.Aes128.Block :=
-        (16#69#, 16#C4#, 16#E0#, 16#D8#, 16#6A#, 16#7B#, 16#04#, 16#30#,
-         16#D8#, 16#CD#, 16#B7#, 16#80#, 16#70#, 16#B4#, 16#C5#, 16#5A#);
+        [16#69#, 16#C4#, 16#E0#, 16#D8#, 16#6A#, 16#7B#, 16#04#, 16#30#,
+         16#D8#, 16#CD#, 16#B7#, 16#80#, 16#70#, 16#B4#, 16#C5#, 16#5A#];
 
       RK : Tls_Core.Aes128.Round_Keys;
       Ct : Tls_Core.Aes128.Block;
@@ -4090,38 +4066,38 @@ procedure Tls_Core_Tests is
    procedure Aes_Gcm_Scenario;
    procedure Aes_Gcm_Scenario is
       Key : constant Tls_Core.Aead_Aes128_Gcm.Key_Array :=
-        (16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
-         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#);
+        [16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
+         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#];
       IV : constant Tls_Core.Aead_Aes128_Gcm.Nonce_Array :=
-        (16#CA#, 16#FE#, 16#BA#, 16#BE#, 16#FA#, 16#CE#, 16#DB#, 16#AD#,
-         16#DE#, 16#CA#, 16#F8#, 16#88#);
+        [16#CA#, 16#FE#, 16#BA#, 16#BE#, 16#FA#, 16#CE#, 16#DB#, 16#AD#,
+         16#DE#, 16#CA#, 16#F8#, 16#88#];
       Pt : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (16#D9#, 16#31#, 16#32#, 16#25#, 16#F8#, 16#84#, 16#06#, 16#E5#,
+        [16#D9#, 16#31#, 16#32#, 16#25#, 16#F8#, 16#84#, 16#06#, 16#E5#,
          16#A5#, 16#59#, 16#09#, 16#C5#, 16#AF#, 16#F5#, 16#26#, 16#9A#,
          16#86#, 16#A7#, 16#A9#, 16#53#, 16#15#, 16#34#, 16#F7#, 16#DA#,
          16#2E#, 16#4C#, 16#30#, 16#3D#, 16#8A#, 16#31#, 16#8A#, 16#72#,
          16#1C#, 16#3C#, 16#0C#, 16#95#, 16#95#, 16#68#, 16#09#, 16#53#,
          16#2F#, 16#CF#, 16#0E#, 16#24#, 16#49#, 16#A6#, 16#B5#, 16#25#,
          16#B1#, 16#6A#, 16#ED#, 16#F5#, 16#AA#, 16#0D#, 16#E6#, 16#57#,
-         16#BA#, 16#63#, 16#7B#, 16#39#, 16#1A#, 16#AF#, 16#D2#, 16#55#);
-      AAD : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+         16#BA#, 16#63#, 16#7B#, 16#39#, 16#1A#, 16#AF#, 16#D2#, 16#55#];
+      AAD : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
       Expected_Ct : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (16#42#, 16#83#, 16#1E#, 16#C2#, 16#21#, 16#77#, 16#74#, 16#24#,
+        [16#42#, 16#83#, 16#1E#, 16#C2#, 16#21#, 16#77#, 16#74#, 16#24#,
          16#4B#, 16#72#, 16#21#, 16#B7#, 16#84#, 16#D0#, 16#D4#, 16#9C#,
          16#E3#, 16#AA#, 16#21#, 16#2F#, 16#2C#, 16#02#, 16#A4#, 16#E0#,
          16#35#, 16#C1#, 16#7E#, 16#23#, 16#29#, 16#AC#, 16#A1#, 16#2E#,
          16#21#, 16#D5#, 16#14#, 16#B2#, 16#54#, 16#66#, 16#93#, 16#1C#,
          16#7D#, 16#8F#, 16#6A#, 16#5A#, 16#AC#, 16#84#, 16#AA#, 16#05#,
          16#1B#, 16#A3#, 16#0B#, 16#39#, 16#6A#, 16#0A#, 16#AC#, 16#97#,
-         16#3D#, 16#58#, 16#E0#, 16#91#, 16#47#, 16#3F#, 16#59#, 16#85#);
+         16#3D#, 16#58#, 16#E0#, 16#91#, 16#47#, 16#3F#, 16#59#, 16#85#];
       Expected_T : constant Tls_Core.Aead_Aes128_Gcm.Tag_Array :=
-        (16#4D#, 16#5C#, 16#2A#, 16#F3#, 16#27#, 16#CD#, 16#64#, 16#A6#,
-         16#2C#, 16#F3#, 16#5A#, 16#BD#, 16#2B#, 16#A6#, 16#FA#, 16#B4#);
+        [16#4D#, 16#5C#, 16#2A#, 16#F3#, 16#27#, 16#CD#, 16#64#, 16#A6#,
+         16#2C#, 16#F3#, 16#5A#, 16#BD#, 16#2B#, 16#A6#, 16#FA#, 16#B4#];
 
       Ct : Tls_Core.Octet_Array (1 .. 64);
       T  : Tls_Core.Aead_Aes128_Gcm.Tag_Array;
 
-      Round_Pt : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+      Round_Pt : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
       OK : Boolean;
    begin
       Put_Line ("scenario 32 — AES-128-GCM NIST Test Case 3");
@@ -4141,7 +4117,7 @@ procedure Tls_Core_Tests is
       --  Tampered ciphertext rejected.
       declare
          Bad_Ct : Tls_Core.Octet_Array (1 .. 64) := Ct;
-         Pt2 : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+         Pt2 : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
          OK2 : Boolean;
       begin
          Bad_Ct (1) := Bad_Ct (1) xor 16#01#;
@@ -4158,14 +4134,14 @@ procedure Tls_Core_Tests is
    procedure Sha384_Scenario;
    procedure Sha384_Scenario is
       Msg : constant Tls_Core.Octet_Array (1 .. 3) :=
-        (16#61#, 16#62#, 16#63#);   --  "abc"
+        [16#61#, 16#62#, 16#63#];   --  "abc"
       Expected : constant Tls_Core.Sha384.Digest :=
-        (16#CB#, 16#00#, 16#75#, 16#3F#, 16#45#, 16#A3#, 16#5E#, 16#8B#,
+        [16#CB#, 16#00#, 16#75#, 16#3F#, 16#45#, 16#A3#, 16#5E#, 16#8B#,
          16#B5#, 16#A0#, 16#3D#, 16#69#, 16#9A#, 16#C6#, 16#50#, 16#07#,
          16#27#, 16#2C#, 16#32#, 16#AB#, 16#0E#, 16#DE#, 16#D1#, 16#63#,
          16#1A#, 16#8B#, 16#60#, 16#5A#, 16#43#, 16#FF#, 16#5B#, 16#ED#,
          16#80#, 16#86#, 16#07#, 16#2B#, 16#A1#, 16#E7#, 16#CC#, 16#23#,
-         16#58#, 16#BA#, 16#EC#, 16#A1#, 16#34#, 16#C8#, 16#25#, 16#A7#);
+         16#58#, 16#BA#, 16#EC#, 16#A1#, 16#34#, 16#C8#, 16#25#, 16#A7#];
       Got : Tls_Core.Sha384.Digest;
    begin
       Put_Line ("scenario 33 — SHA-384 ""abc"" (FIPS 180-4 §C.2)");
@@ -4180,16 +4156,16 @@ procedure Tls_Core_Tests is
    procedure Aes256_Scenario;
    procedure Aes256_Scenario is
       Key : constant Tls_Core.Aes256.Key_Array :=
-        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+        [16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
          16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#,
          16#10#, 16#11#, 16#12#, 16#13#, 16#14#, 16#15#, 16#16#, 16#17#,
-         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#);
+         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#];
       Pt : constant Tls_Core.Aes256.Block :=
-        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
-         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+        [16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#];
       Expected : constant Tls_Core.Aes256.Block :=
-        (16#8E#, 16#A2#, 16#B7#, 16#CA#, 16#51#, 16#67#, 16#45#, 16#BF#,
-         16#EA#, 16#FC#, 16#49#, 16#90#, 16#4B#, 16#49#, 16#60#, 16#89#);
+        [16#8E#, 16#A2#, 16#B7#, 16#CA#, 16#51#, 16#67#, 16#45#, 16#BF#,
+         16#EA#, 16#FC#, 16#49#, 16#90#, 16#4B#, 16#49#, 16#60#, 16#89#];
       RK : Tls_Core.Aes256.Round_Keys;
       Got : Tls_Core.Aes256.Block;
    begin
@@ -4220,14 +4196,14 @@ procedure Tls_Core_Tests is
    procedure Aes_Spec_Scenario is
       --  AES-128 §C.1 vectors.
       K128 : constant Tls_Core.Aes128.Key_Array :=
-        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
-         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#);
+        [16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+         16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#];
       Pt128 : constant Tls_Core.Aes128.Block :=
-        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
-         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+        [16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#];
       Ct128_Expected : constant Tls_Core.Aes128.Block :=
-        (16#69#, 16#C4#, 16#E0#, 16#D8#, 16#6A#, 16#7B#, 16#04#, 16#30#,
-         16#D8#, 16#CD#, 16#B7#, 16#80#, 16#70#, 16#B4#, 16#C5#, 16#5A#);
+        [16#69#, 16#C4#, 16#E0#, 16#D8#, 16#6A#, 16#7B#, 16#04#, 16#30#,
+         16#D8#, 16#CD#, 16#B7#, 16#80#, 16#70#, 16#B4#, 16#C5#, 16#5A#];
 
       RK128       : Tls_Core.Aes128.Round_Keys;
       Ct128_Spec  : Tls_Core.Aes_Spec.Block_16;
@@ -4236,16 +4212,16 @@ procedure Tls_Core_Tests is
 
       --  AES-256 §C.3 vectors.
       K256 : constant Tls_Core.Aes256.Key_Array :=
-        (16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
+        [16#00#, 16#01#, 16#02#, 16#03#, 16#04#, 16#05#, 16#06#, 16#07#,
          16#08#, 16#09#, 16#0A#, 16#0B#, 16#0C#, 16#0D#, 16#0E#, 16#0F#,
          16#10#, 16#11#, 16#12#, 16#13#, 16#14#, 16#15#, 16#16#, 16#17#,
-         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#);
+         16#18#, 16#19#, 16#1A#, 16#1B#, 16#1C#, 16#1D#, 16#1E#, 16#1F#];
       Pt256 : constant Tls_Core.Aes256.Block :=
-        (16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
-         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#);
+        [16#00#, 16#11#, 16#22#, 16#33#, 16#44#, 16#55#, 16#66#, 16#77#,
+         16#88#, 16#99#, 16#AA#, 16#BB#, 16#CC#, 16#DD#, 16#EE#, 16#FF#];
       Ct256_Expected : constant Tls_Core.Aes256.Block :=
-        (16#8E#, 16#A2#, 16#B7#, 16#CA#, 16#51#, 16#67#, 16#45#, 16#BF#,
-         16#EA#, 16#FC#, 16#49#, 16#90#, 16#4B#, 16#49#, 16#60#, 16#89#);
+        [16#8E#, 16#A2#, 16#B7#, 16#CA#, 16#51#, 16#67#, 16#45#, 16#BF#,
+         16#EA#, 16#FC#, 16#49#, 16#90#, 16#4B#, 16#49#, 16#60#, 16#89#];
 
       RK256       : Tls_Core.Aes256.Round_Keys;
       Ct256_Spec  : Tls_Core.Aes_Spec.Block_16;
@@ -4298,39 +4274,39 @@ procedure Tls_Core_Tests is
    procedure Aes256_Gcm_Scenario;
    procedure Aes256_Gcm_Scenario is
       Key : constant Tls_Core.Aead_Aes256_Gcm.Key_Array :=
-        (16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
+        [16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
          16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#,
          16#FE#, 16#FF#, 16#E9#, 16#92#, 16#86#, 16#65#, 16#73#, 16#1C#,
-         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#);
+         16#6D#, 16#6A#, 16#8F#, 16#94#, 16#67#, 16#30#, 16#83#, 16#08#];
       IV : constant Tls_Core.Aead_Aes256_Gcm.Nonce_Array :=
-        (16#CA#, 16#FE#, 16#BA#, 16#BE#, 16#FA#, 16#CE#, 16#DB#, 16#AD#,
-         16#DE#, 16#CA#, 16#F8#, 16#88#);
+        [16#CA#, 16#FE#, 16#BA#, 16#BE#, 16#FA#, 16#CE#, 16#DB#, 16#AD#,
+         16#DE#, 16#CA#, 16#F8#, 16#88#];
       Pt : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (16#D9#, 16#31#, 16#32#, 16#25#, 16#F8#, 16#84#, 16#06#, 16#E5#,
+        [16#D9#, 16#31#, 16#32#, 16#25#, 16#F8#, 16#84#, 16#06#, 16#E5#,
          16#A5#, 16#59#, 16#09#, 16#C5#, 16#AF#, 16#F5#, 16#26#, 16#9A#,
          16#86#, 16#A7#, 16#A9#, 16#53#, 16#15#, 16#34#, 16#F7#, 16#DA#,
          16#2E#, 16#4C#, 16#30#, 16#3D#, 16#8A#, 16#31#, 16#8A#, 16#72#,
          16#1C#, 16#3C#, 16#0C#, 16#95#, 16#95#, 16#68#, 16#09#, 16#53#,
          16#2F#, 16#CF#, 16#0E#, 16#24#, 16#49#, 16#A6#, 16#B5#, 16#25#,
          16#B1#, 16#6A#, 16#ED#, 16#F5#, 16#AA#, 16#0D#, 16#E6#, 16#57#,
-         16#BA#, 16#63#, 16#7B#, 16#39#, 16#1A#, 16#AF#, 16#D2#, 16#55#);
-      AAD : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+         16#BA#, 16#63#, 16#7B#, 16#39#, 16#1A#, 16#AF#, 16#D2#, 16#55#];
+      AAD : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
       Expected_Ct : constant Tls_Core.Octet_Array (1 .. 64) :=
-        (16#52#, 16#2D#, 16#C1#, 16#F0#, 16#99#, 16#56#, 16#7D#, 16#07#,
+        [16#52#, 16#2D#, 16#C1#, 16#F0#, 16#99#, 16#56#, 16#7D#, 16#07#,
          16#F4#, 16#7F#, 16#37#, 16#A3#, 16#2A#, 16#84#, 16#42#, 16#7D#,
          16#64#, 16#3A#, 16#8C#, 16#DC#, 16#BF#, 16#E5#, 16#C0#, 16#C9#,
          16#75#, 16#98#, 16#A2#, 16#BD#, 16#25#, 16#55#, 16#D1#, 16#AA#,
          16#8C#, 16#B0#, 16#8E#, 16#48#, 16#59#, 16#0D#, 16#BB#, 16#3D#,
          16#A7#, 16#B0#, 16#8B#, 16#10#, 16#56#, 16#82#, 16#88#, 16#38#,
          16#C5#, 16#F6#, 16#1E#, 16#63#, 16#93#, 16#BA#, 16#7A#, 16#0A#,
-         16#BC#, 16#C9#, 16#F6#, 16#62#, 16#89#, 16#80#, 16#15#, 16#AD#);
+         16#BC#, 16#C9#, 16#F6#, 16#62#, 16#89#, 16#80#, 16#15#, 16#AD#];
       Expected_T : constant Tls_Core.Aead_Aes256_Gcm.Tag_Array :=
-        (16#B0#, 16#94#, 16#DA#, 16#C5#, 16#D9#, 16#34#, 16#71#, 16#BD#,
-         16#EC#, 16#1A#, 16#50#, 16#22#, 16#70#, 16#E3#, 16#CC#, 16#6C#);
+        [16#B0#, 16#94#, 16#DA#, 16#C5#, 16#D9#, 16#34#, 16#71#, 16#BD#,
+         16#EC#, 16#1A#, 16#50#, 16#22#, 16#70#, 16#E3#, 16#CC#, 16#6C#];
 
       Ct : Tls_Core.Octet_Array (1 .. 64);
       T  : Tls_Core.Aead_Aes256_Gcm.Tag_Array;
-      Round_Pt : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+      Round_Pt : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
       OK : Boolean;
    begin
       Put_Line ("scenario 35 — AES-256-GCM NIST Test Case 15");
@@ -4345,7 +4321,7 @@ procedure Tls_Core_Tests is
              Equal (Round_Pt, Pt));
       declare
          Bad_Ct : Tls_Core.Octet_Array (1 .. 64) := Ct;
-         Pt2 : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+         Pt2 : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
          OK2 : Boolean;
       begin
          Bad_Ct (1) := Bad_Ct (1) xor 16#01#;
@@ -4361,18 +4337,18 @@ procedure Tls_Core_Tests is
    procedure Hmac_Sha384_Scenario;
    procedure Hmac_Sha384_Scenario is
       Key : constant Tls_Core.Octet_Array (1 .. 20) :=
-        (others => 16#0B#);
+        [others => 16#0B#];
       --  "Hi There"
       Msg : constant Tls_Core.Octet_Array (1 .. 8) :=
-        (16#48#, 16#69#, 16#20#, 16#54#,
-         16#68#, 16#65#, 16#72#, 16#65#);
+        [16#48#, 16#69#, 16#20#, 16#54#,
+         16#68#, 16#65#, 16#72#, 16#65#];
       Expected : constant Tls_Core.Hmac_Sha384.Tag :=
-        (16#AF#, 16#D0#, 16#39#, 16#44#, 16#D8#, 16#48#, 16#95#, 16#62#,
+        [16#AF#, 16#D0#, 16#39#, 16#44#, 16#D8#, 16#48#, 16#95#, 16#62#,
          16#6B#, 16#08#, 16#25#, 16#F4#, 16#AB#, 16#46#, 16#90#, 16#7F#,
          16#15#, 16#F9#, 16#DA#, 16#DB#, 16#E4#, 16#10#, 16#1E#, 16#C6#,
          16#82#, 16#AA#, 16#03#, 16#4C#, 16#7C#, 16#EB#, 16#C5#, 16#9C#,
          16#FA#, 16#EA#, 16#9E#, 16#A9#, 16#07#, 16#6E#, 16#DE#, 16#7F#,
-         16#4A#, 16#F1#, 16#52#, 16#E8#, 16#B2#, 16#FA#, 16#9C#, 16#B6#);
+         16#4A#, 16#F1#, 16#52#, 16#E8#, 16#B2#, 16#FA#, 16#9C#, 16#B6#];
       Got : Tls_Core.Hmac_Sha384.Tag;
    begin
       Put_Line ("scenario 36 — HMAC-SHA-384 RFC 4231 Test Case 1");
@@ -4390,9 +4366,9 @@ procedure Tls_Core_Tests is
    procedure Hkdf_Sha384_Scenario;
    procedure Hkdf_Sha384_Scenario is
       Prk : constant Tls_Core.Octet_Array
-        (1 .. Tls_Core.Hkdf_Sha384.Hash_Length) := (others => 16#42#);
+        (1 .. Tls_Core.Hkdf_Sha384.Hash_Length) := [others => 16#42#];
       Info : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#74#, 16#65#, 16#73#, 16#74#);  --  "test"
+        [16#74#, 16#65#, 16#73#, 16#74#];  --  "test"
       Out48 : Tls_Core.Octet_Array (1 .. 48);
       Out96 : Tls_Core.Octet_Array (1 .. 96);
       All_Zero_48 : Boolean := True;
@@ -4428,15 +4404,14 @@ procedure Tls_Core_Tests is
 
    procedure Channel_Aes128_Roundtrip_Scenario;
    procedure Channel_Aes128_Roundtrip_Scenario is
-      use type Tls_Core.Octet;
       Secret : constant Tls_Core.Key_Schedule.Secret :=
-        (others => 16#7A#);  --  arbitrary 32-byte secret
+        [others => 16#7A#];  --  arbitrary 32-byte secret
       Tx, Rx : Tls_Core.Channel_Aes128.Direction;
       Pt : constant Tls_Core.Octet_Array :=
-        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "Hello"
-      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+        [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#];  --  "Hello"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Wire_Last : Natural;
-      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Got_Last : Natural;
       Inner : Tls_Core.Octet;
       OK : Boolean;
@@ -4462,15 +4437,14 @@ procedure Tls_Core_Tests is
 
    procedure Channel_Aes256_Roundtrip_Scenario;
    procedure Channel_Aes256_Roundtrip_Scenario is
-      use type Tls_Core.Octet;
       Secret : constant Tls_Core.Key_Schedule_Sha384.Secret :=
-        (others => 16#7B#);  --  arbitrary 48-byte SHA-384 secret
+        [others => 16#7B#];  --  arbitrary 48-byte SHA-384 secret
       Tx, Rx : Tls_Core.Channel_Aes256.Direction;
       Pt : constant Tls_Core.Octet_Array :=
-        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);
-      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+        [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#];
+      Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Wire_Last : Natural;
-      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Got_Last : Natural;
       Inner : Tls_Core.Octet;
       OK : Boolean;
@@ -4506,15 +4480,14 @@ procedure Tls_Core_Tests is
 
    procedure Aead_Channel_Chacha_Scenario;
    procedure Aead_Channel_Chacha_Scenario is
-      use type Tls_Core.Octet;
       Secret : constant Tls_Core.Key_Schedule.Secret :=
-        (others => 16#71#);
+        [others => 16#71#];
       Tx, Rx : Tls_Core.Aead_Channel.Direction;
       Pt : constant Tls_Core.Octet_Array :=
-        (16#43#, 16#68#, 16#61#);  --  "Cha"
-      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+        [16#43#, 16#68#, 16#61#];  --  "Cha"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Wire_Last : Natural;
-      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Got_Last : Natural;
       Inner : Tls_Core.Octet;
       OK : Boolean;
@@ -4542,15 +4515,14 @@ procedure Tls_Core_Tests is
 
    procedure Aead_Channel_Aes128_Scenario;
    procedure Aead_Channel_Aes128_Scenario is
-      use type Tls_Core.Octet;
       Secret : constant Tls_Core.Key_Schedule.Secret :=
-        (others => 16#72#);
+        [others => 16#72#];
       Tx, Rx : Tls_Core.Aead_Channel.Direction;
       Pt : constant Tls_Core.Octet_Array :=
-        (16#41#, 16#31#, 16#32#, 16#38#);  --  "A128"
-      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+        [16#41#, 16#31#, 16#32#, 16#38#];  --  "A128"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Wire_Last : Natural;
-      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Got_Last : Natural;
       Inner : Tls_Core.Octet;
       OK : Boolean;
@@ -4578,15 +4550,14 @@ procedure Tls_Core_Tests is
 
    procedure Aead_Channel_Aes256_Scenario;
    procedure Aead_Channel_Aes256_Scenario is
-      use type Tls_Core.Octet;
       Secret : constant Tls_Core.Key_Schedule_Sha384.Secret :=
-        (others => 16#73#);  --  48-byte SHA-384 secret
+        [others => 16#73#];  --  48-byte SHA-384 secret
       Tx, Rx : Tls_Core.Aead_Channel.Direction;
       Pt : constant Tls_Core.Octet_Array :=
-        (16#41#, 16#32#, 16#35#, 16#36#);  --  "A256"
-      Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+        [16#41#, 16#32#, 16#35#, 16#36#];  --  "A256"
+      Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Wire_Last : Natural;
-      Got : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Got : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Got_Last : Natural;
       Inner : Tls_Core.Octet;
       OK : Boolean;
@@ -4621,17 +4592,17 @@ procedure Tls_Core_Tests is
    procedure P256_Generator_Scenario;
    procedure P256_Generator_Scenario is
       Encoded : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
       Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
+        [16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
          16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
          16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
-         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#);
+         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#];
       Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
+        [16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
          16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
          16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
-         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#);
+         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#];
       P  : Tls_Core.P256.Point;
       OK : Boolean;
    begin
@@ -4652,19 +4623,19 @@ procedure Tls_Core_Tests is
    procedure P256_One_G_Scenario;
    procedure P256_One_G_Scenario is
       Encoded : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
       Encoded_Out : Tls_Core.Octet_Array (1 .. 65);
       Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
+        [16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
          16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
          16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
-         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#);
+         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#];
       Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
+        [16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
          16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
          16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
-         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#);
-      Scalar : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#];
+      Scalar : Tls_Core.Octet_Array (1 .. 32) := [others => 0];
       P, R   : Tls_Core.P256.Point;
       OK     : Boolean;
    begin
@@ -4694,31 +4665,31 @@ procedure Tls_Core_Tests is
    procedure P256_Two_G_Scenario;
    procedure P256_Two_G_Scenario is
       Encoded : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
       Encoded_Out : Tls_Core.Octet_Array (1 .. 65);
       Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
+        [16#6B#, 16#17#, 16#D1#, 16#F2#, 16#E1#, 16#2C#, 16#42#, 16#47#,
          16#F8#, 16#BC#, 16#E6#, 16#E5#, 16#63#, 16#A4#, 16#40#, 16#F2#,
          16#77#, 16#03#, 16#7D#, 16#81#, 16#2D#, 16#EB#, 16#33#, 16#A0#,
-         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#);
+         16#F4#, 16#A1#, 16#39#, 16#45#, 16#D8#, 16#98#, 16#C2#, 16#96#];
       Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
+        [16#4F#, 16#E3#, 16#42#, 16#E2#, 16#FE#, 16#1A#, 16#7F#, 16#9B#,
          16#8E#, 16#E7#, 16#EB#, 16#4A#, 16#7C#, 16#0F#, 16#9E#, 16#16#,
          16#2B#, 16#CE#, 16#33#, 16#57#, 16#6B#, 16#31#, 16#5E#, 16#CE#,
-         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#);
+         16#CB#, 16#B6#, 16#40#, 16#68#, 16#37#, 16#BF#, 16#51#, 16#F5#];
       Two_Gx : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#7C#, 16#F2#, 16#7B#, 16#18#, 16#8D#, 16#03#, 16#4F#, 16#7E#,
+        [16#7C#, 16#F2#, 16#7B#, 16#18#, 16#8D#, 16#03#, 16#4F#, 16#7E#,
          16#8A#, 16#52#, 16#38#, 16#03#, 16#04#, 16#B5#, 16#1A#, 16#C3#,
          16#C0#, 16#89#, 16#69#, 16#E2#, 16#77#, 16#F2#, 16#1B#, 16#35#,
-         16#A6#, 16#0B#, 16#48#, 16#FC#, 16#47#, 16#66#, 16#99#, 16#78#);
+         16#A6#, 16#0B#, 16#48#, 16#FC#, 16#47#, 16#66#, 16#99#, 16#78#];
       Two_Gy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#07#, 16#77#, 16#55#, 16#10#, 16#DB#, 16#8E#, 16#D0#, 16#40#,
+        [16#07#, 16#77#, 16#55#, 16#10#, 16#DB#, 16#8E#, 16#D0#, 16#40#,
          16#29#, 16#3D#, 16#9A#, 16#C6#, 16#9F#, 16#74#, 16#30#, 16#DB#,
          16#BA#, 16#7D#, 16#AD#, 16#E6#, 16#3C#, 16#E9#, 16#82#, 16#29#,
-         16#9E#, 16#04#, 16#B7#, 16#9D#, 16#22#, 16#78#, 16#73#, 16#D1#);
+         16#9E#, 16#04#, 16#B7#, 16#9D#, 16#22#, 16#78#, 16#73#, 16#D1#];
       Expected : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
-      Scalar : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+        [1 => 16#04#, others => 0];
+      Scalar : Tls_Core.Octet_Array (1 .. 32) := [others => 0];
       P, R   : Tls_Core.P256.Point;
       OK     : Boolean;
    begin
@@ -4744,45 +4715,45 @@ procedure Tls_Core_Tests is
    procedure P256_Ecdh_Scenario;
    procedure P256_Ecdh_Scenario is
       I_Scalar : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#C8#, 16#8F#, 16#01#, 16#F5#, 16#10#, 16#D9#, 16#AC#, 16#3F#,
+        [16#C8#, 16#8F#, 16#01#, 16#F5#, 16#10#, 16#D9#, 16#AC#, 16#3F#,
          16#70#, 16#A2#, 16#92#, 16#DA#, 16#A2#, 16#31#, 16#6D#, 16#E5#,
          16#44#, 16#E9#, 16#AA#, 16#B8#, 16#AF#, 16#E8#, 16#40#, 16#49#,
-         16#C6#, 16#2A#, 16#9C#, 16#57#, 16#86#, 16#2D#, 16#14#, 16#33#);
+         16#C6#, 16#2A#, 16#9C#, 16#57#, 16#86#, 16#2D#, 16#14#, 16#33#];
       R_Scalar : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#C6#, 16#EF#, 16#9C#, 16#5D#, 16#78#, 16#AE#, 16#01#, 16#2A#,
+        [16#C6#, 16#EF#, 16#9C#, 16#5D#, 16#78#, 16#AE#, 16#01#, 16#2A#,
          16#01#, 16#11#, 16#64#, 16#AC#, 16#B3#, 16#97#, 16#CE#, 16#20#,
          16#88#, 16#68#, 16#5D#, 16#8F#, 16#06#, 16#BF#, 16#9B#, 16#E0#,
-         16#B2#, 16#83#, 16#AB#, 16#46#, 16#47#, 16#6B#, 16#EE#, 16#53#);
+         16#B2#, 16#83#, 16#AB#, 16#46#, 16#47#, 16#6B#, 16#EE#, 16#53#];
       G_iX : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#DA#, 16#D0#, 16#B6#, 16#53#, 16#94#, 16#22#, 16#1C#, 16#F9#,
+        [16#DA#, 16#D0#, 16#B6#, 16#53#, 16#94#, 16#22#, 16#1C#, 16#F9#,
          16#B0#, 16#51#, 16#E1#, 16#FE#, 16#CA#, 16#57#, 16#87#, 16#D0#,
          16#98#, 16#DF#, 16#E6#, 16#37#, 16#FC#, 16#90#, 16#B9#, 16#EF#,
-         16#94#, 16#5D#, 16#0C#, 16#37#, 16#72#, 16#58#, 16#11#, 16#80#);
+         16#94#, 16#5D#, 16#0C#, 16#37#, 16#72#, 16#58#, 16#11#, 16#80#];
       G_iY : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#52#, 16#71#, 16#A0#, 16#46#, 16#1C#, 16#DB#, 16#82#, 16#52#,
+        [16#52#, 16#71#, 16#A0#, 16#46#, 16#1C#, 16#DB#, 16#82#, 16#52#,
          16#D6#, 16#1F#, 16#1C#, 16#45#, 16#6F#, 16#A3#, 16#E5#, 16#9A#,
          16#B1#, 16#F4#, 16#5B#, 16#33#, 16#AC#, 16#CF#, 16#5F#, 16#58#,
-         16#38#, 16#9E#, 16#05#, 16#77#, 16#B8#, 16#99#, 16#0B#, 16#B3#);
+         16#38#, 16#9E#, 16#05#, 16#77#, 16#B8#, 16#99#, 16#0B#, 16#B3#];
       G_rX : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#D1#, 16#2D#, 16#FB#, 16#52#, 16#89#, 16#C8#, 16#D4#, 16#F8#,
+        [16#D1#, 16#2D#, 16#FB#, 16#52#, 16#89#, 16#C8#, 16#D4#, 16#F8#,
          16#12#, 16#08#, 16#B7#, 16#02#, 16#70#, 16#39#, 16#8C#, 16#34#,
          16#22#, 16#96#, 16#97#, 16#0A#, 16#0B#, 16#CC#, 16#B7#, 16#4C#,
-         16#73#, 16#6F#, 16#C7#, 16#55#, 16#44#, 16#94#, 16#BF#, 16#63#);
+         16#73#, 16#6F#, 16#C7#, 16#55#, 16#44#, 16#94#, 16#BF#, 16#63#];
       G_rY : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#56#, 16#FB#, 16#F3#, 16#CA#, 16#36#, 16#6C#, 16#C2#, 16#3E#,
+        [16#56#, 16#FB#, 16#F3#, 16#CA#, 16#36#, 16#6C#, 16#C2#, 16#3E#,
          16#81#, 16#57#, 16#85#, 16#4C#, 16#13#, 16#C5#, 16#8D#, 16#6A#,
          16#AC#, 16#23#, 16#F0#, 16#46#, 16#AD#, 16#A3#, 16#0F#, 16#83#,
-         16#53#, 16#E7#, 16#4F#, 16#33#, 16#03#, 16#98#, 16#72#, 16#AB#);
+         16#53#, 16#E7#, 16#4F#, 16#33#, 16#03#, 16#98#, 16#72#, 16#AB#];
       Shared_X : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#D6#, 16#84#, 16#0F#, 16#6B#, 16#42#, 16#F6#, 16#ED#, 16#AF#,
+        [16#D6#, 16#84#, 16#0F#, 16#6B#, 16#42#, 16#F6#, 16#ED#, 16#AF#,
          16#D1#, 16#31#, 16#16#, 16#E0#, 16#E1#, 16#25#, 16#65#, 16#20#,
          16#2F#, 16#EF#, 16#8E#, 16#9E#, 16#CE#, 16#7D#, 16#CE#, 16#03#,
-         16#81#, 16#24#, 16#64#, 16#D0#, 16#4B#, 16#94#, 16#42#, 16#DE#);
+         16#81#, 16#24#, 16#64#, 16#D0#, 16#4B#, 16#94#, 16#42#, 16#DE#];
 
       Encoded_I : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
       Encoded_R : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
       P_I, P_R, Shared_Pt_1, Shared_Pt_2 : Tls_Core.P256.Point;
       Shared_X_1, Shared_X_2 : Tls_Core.P256_Field.Field;
       OK_I, OK_R : Boolean;
@@ -4846,30 +4817,30 @@ procedure Tls_Core_Tests is
    procedure Ecdsa_P256_Verify_Scenario;
    procedure Ecdsa_P256_Verify_Scenario is
       Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+        [16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
          16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
          16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
-         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#];
       Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+        [16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
          16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
          16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
-         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#];
       Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
 
       Msg : constant Tls_Core.Octet_Array (1 .. 6) :=
-        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);  -- "sample"
+        [16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#];  -- "sample"
       R : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+        [16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
          16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
          16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
-         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#];
       S : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+        [16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
          16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
          16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
-         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#];
 
       OK     : Boolean;
       R_Bad  : Tls_Core.Octet_Array (1 .. 32) := R;
@@ -4906,38 +4877,38 @@ procedure Tls_Core_Tests is
    procedure Ecdsa_P256_Range_Scenario;
    procedure Ecdsa_P256_Range_Scenario is
       Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+        [16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
          16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
          16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
-         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#];
       Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+        [16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
          16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
          16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
-         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#];
       Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
 
       Msg : constant Tls_Core.Octet_Array (1 .. 6) :=
-        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);
+        [16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#];
 
       Order_N : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
+        [16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#00#, 16#00#, 16#00#, 16#00#,
          16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#, 16#FF#,
          16#BC#, 16#E6#, 16#FA#, 16#AD#, 16#A7#, 16#17#, 16#9E#, 16#84#,
-         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#);
-      Zero32 : constant Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+         16#F3#, 16#B9#, 16#CA#, 16#C2#, 16#FC#, 16#63#, 16#25#, 16#51#];
+      Zero32 : constant Tls_Core.Octet_Array (1 .. 32) := [others => 0];
 
       Valid_R : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+        [16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
          16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
          16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
-         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#];
       Valid_S : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+        [16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
          16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
          16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
-         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#];
 
       OK : Boolean;
    begin
@@ -4970,34 +4941,34 @@ procedure Tls_Core_Tests is
    procedure Ecdsa_P256_Wrongmsg_Scenario;
    procedure Ecdsa_P256_Wrongmsg_Scenario is
       Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+        [16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
          16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
          16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
-         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#];
       Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+        [16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
          16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
          16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
-         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#];
       Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
 
       --  "test" — RFC 6979 §A.2.5 also publishes a signature for
       --  this message; using "sample"'s signature against "test"
       --  must therefore fail.
       Wrong_Msg : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#74#, 16#65#, 16#73#, 16#74#);
+        [16#74#, 16#65#, 16#73#, 16#74#];
 
       R : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+        [16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
          16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
          16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
-         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#];
       S : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+        [16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
          16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
          16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
-         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#];
 
       R_Bitflip : Tls_Core.Octet_Array (1 .. 32) := R;
       OK : Boolean;
@@ -5015,7 +4986,7 @@ procedure Tls_Core_Tests is
       R_Bitflip (1) := R (1) xor 16#01#;
       Tls_Core.Ecdsa_P256.Verify
         (Pubkey,
-         (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#),
+         [16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#],
          R_Bitflip, S, OK);
       Check ("single-bit-flip of r rejected", not OK);
    end Ecdsa_P256_Wrongmsg_Scenario;
@@ -5034,41 +5005,41 @@ procedure Tls_Core_Tests is
    procedure Ecdsa_P256_Sign_Scenario;
    procedure Ecdsa_P256_Sign_Scenario is
       D : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#C9#, 16#AF#, 16#A9#, 16#D8#, 16#45#, 16#BA#, 16#75#, 16#16#,
+        [16#C9#, 16#AF#, 16#A9#, 16#D8#, 16#45#, 16#BA#, 16#75#, 16#16#,
          16#6B#, 16#5C#, 16#21#, 16#57#, 16#67#, 16#B1#, 16#D6#, 16#93#,
          16#4E#, 16#50#, 16#C3#, 16#DB#, 16#36#, 16#E8#, 16#9B#, 16#12#,
-         16#7B#, 16#8A#, 16#62#, 16#2B#, 16#12#, 16#0F#, 16#67#, 16#21#);
+         16#7B#, 16#8A#, 16#62#, 16#2B#, 16#12#, 16#0F#, 16#67#, 16#21#];
       K : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#A6#, 16#E3#, 16#C5#, 16#7D#, 16#D0#, 16#1A#, 16#BE#, 16#90#,
+        [16#A6#, 16#E3#, 16#C5#, 16#7D#, 16#D0#, 16#1A#, 16#BE#, 16#90#,
          16#08#, 16#65#, 16#38#, 16#39#, 16#83#, 16#55#, 16#DD#, 16#4C#,
          16#3B#, 16#17#, 16#AA#, 16#87#, 16#33#, 16#82#, 16#B0#, 16#F2#,
-         16#4D#, 16#61#, 16#29#, 16#49#, 16#3D#, 16#8A#, 16#AD#, 16#60#);
+         16#4D#, 16#61#, 16#29#, 16#49#, 16#3D#, 16#8A#, 16#AD#, 16#60#];
       Ux : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
+        [16#60#, 16#FE#, 16#D4#, 16#BA#, 16#25#, 16#5A#, 16#9D#, 16#31#,
          16#C9#, 16#61#, 16#EB#, 16#74#, 16#C6#, 16#35#, 16#6D#, 16#68#,
          16#C0#, 16#49#, 16#B8#, 16#92#, 16#3B#, 16#61#, 16#FA#, 16#6C#,
-         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#);
+         16#E6#, 16#69#, 16#62#, 16#2E#, 16#60#, 16#F2#, 16#9F#, 16#B6#];
       Uy : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
+        [16#79#, 16#03#, 16#FE#, 16#10#, 16#08#, 16#B8#, 16#BC#, 16#99#,
          16#A4#, 16#1A#, 16#E9#, 16#E9#, 16#56#, 16#28#, 16#BC#, 16#64#,
          16#F2#, 16#F1#, 16#B2#, 16#0C#, 16#2D#, 16#7E#, 16#9F#, 16#51#,
-         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#);
+         16#77#, 16#A3#, 16#C2#, 16#94#, 16#D4#, 16#46#, 16#22#, 16#99#];
       Pubkey : Tls_Core.Octet_Array (1 .. 65) :=
-        (1 => 16#04#, others => 0);
+        [1 => 16#04#, others => 0];
 
       Msg : constant Tls_Core.Octet_Array (1 .. 6) :=
-        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);
+        [16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#];
 
       Expected_R : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+        [16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
          16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
          16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
-         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#];
       Expected_S : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+        [16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
          16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
          16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
-         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#];
 
       Got_R, Got_S : Tls_Core.Octet_Array (1 .. 32);
       Sign_OK : Boolean;
@@ -5097,19 +5068,19 @@ procedure Tls_Core_Tests is
    procedure Rsa_Pss_Sha256_Roundtrip_Scenario;
    procedure Rsa_Pss_Sha256_Roundtrip_Scenario is
       Msg  : constant Tls_Core.Octet_Array (1 .. 13) :=
-        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#2C#, 16#20#, 16#52#,
-         16#53#, 16#41#, 16#21#, 16#21#, 16#21#);   -- "Hello, RSA!!!"
+        [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#2C#, 16#20#, 16#52#,
+         16#53#, 16#41#, 16#21#, 16#21#, 16#21#];   -- "Hello, RSA!!!"
 
       --  Deterministic salt for round-trip — sLen = hLen = 32.
       Salt : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (1 => 16#00#, 2 => 16#11#, 3 => 16#22#, 4 => 16#33#,
+        [1 => 16#00#, 2 => 16#11#, 3 => 16#22#, 4 => 16#33#,
          5 => 16#44#, 6 => 16#55#, 7 => 16#66#, 8 => 16#77#,
          9 => 16#88#, 10 => 16#99#, 11 => 16#AA#, 12 => 16#BB#,
          13 => 16#CC#, 14 => 16#DD#, 15 => 16#EE#, 16 => 16#FF#,
          17 => 16#0F#, 18 => 16#1E#, 19 => 16#2D#, 20 => 16#3C#,
          21 => 16#4B#, 22 => 16#5A#, 23 => 16#69#, 24 => 16#78#,
          25 => 16#87#, 26 => 16#96#, 27 => 16#A5#, 28 => 16#B4#,
-         29 => 16#C3#, 30 => 16#D2#, 31 => 16#E1#, 32 => 16#F0#);
+         29 => 16#C3#, 30 => 16#D2#, 31 => 16#E1#, 32 => 16#F0#];
 
       EM      : Tls_Core.Rsa_Pss.Bigint;
       EM_Bad  : Tls_Core.Rsa_Pss.Bigint;
@@ -5117,8 +5088,8 @@ procedure Tls_Core_Tests is
       Ver_OK  : Boolean;
 
       Other   : constant Tls_Core.Octet_Array (1 .. 13) :=
-        (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#2C#, 16#20#, 16#52#,
-         16#53#, 16#41#, 16#21#, 16#21#, 16#22#);   -- last byte differs
+        [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#, 16#2C#, 16#20#, 16#52#,
+         16#53#, 16#41#, 16#21#, 16#21#, 16#22#];   -- last byte differs
    begin
       Put_Line ("scenario 46 — RSA-PSS-SHA256 Encode → Verify round-trip");
 
@@ -5159,11 +5130,11 @@ procedure Tls_Core_Tests is
    procedure Rsa_Pss_Sha384_Roundtrip_Scenario;
    procedure Rsa_Pss_Sha384_Roundtrip_Scenario is
       Msg : constant Tls_Core.Octet_Array (1 .. 5) :=
-        (16#54#, 16#4C#, 16#53#, 16#21#, 16#33#);   -- "TLS!3"
+        [16#54#, 16#4C#, 16#53#, 16#21#, 16#33#];   -- "TLS!3"
 
       --  sLen = hLen = 48 for SHA-384.
       Salt : constant Tls_Core.Octet_Array (1 .. 48) :=
-        (1 => 16#A1#, 2 => 16#B2#, 3 => 16#C3#, 4 => 16#D4#,
+        [1 => 16#A1#, 2 => 16#B2#, 3 => 16#C3#, 4 => 16#D4#,
          5 => 16#E5#, 6 => 16#F6#, 7 => 16#07#, 8 => 16#18#,
          9 => 16#29#, 10 => 16#3A#, 11 => 16#4B#, 12 => 16#5C#,
          13 => 16#6D#, 14 => 16#7E#, 15 => 16#8F#, 16 => 16#90#,
@@ -5174,7 +5145,7 @@ procedure Tls_Core_Tests is
          33 => 16#11#, 34 => 16#22#, 35 => 16#33#, 36 => 16#44#,
          37 => 16#55#, 38 => 16#66#, 39 => 16#77#, 40 => 16#88#,
          41 => 16#99#, 42 => 16#AA#, 43 => 16#BB#, 44 => 16#CC#,
-         45 => 16#DD#, 46 => 16#EE#, 47 => 16#FF#, 48 => 16#00#);
+         45 => 16#DD#, 46 => 16#EE#, 47 => 16#FF#, 48 => 16#00#];
 
       EM      : Tls_Core.Rsa_Pss.Bigint;
       EM_Bad  : Tls_Core.Rsa_Pss.Bigint;
@@ -5238,7 +5209,7 @@ procedure Tls_Core_Tests is
       --  regenerate with the openssl recipe in fixtures/README.md) =====
 
       Root_Der : constant Tls_Core.Octet_Array (1 .. 392) :=
-        (16#30#, 16#82#, 16#01#, 16#84#, 16#30#, 16#82#, 16#01#, 16#29#,
+        [16#30#, 16#82#, 16#01#, 16#84#, 16#30#, 16#82#, 16#01#, 16#29#,
          16#A0#, 16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#4C#,
          16#38#, 16#ED#, 16#66#, 16#47#, 16#3E#, 16#2B#, 16#B0#, 16#25#,
          16#DA#, 16#0E#, 16#29#, 16#CA#, 16#0C#, 16#F7#, 16#CE#, 16#F0#,
@@ -5286,10 +5257,10 @@ procedure Tls_Core_Tests is
          16#AB#, 16#4B#, 16#78#, 16#70#, 16#82#, 16#4C#, 16#78#, 16#50#,
          16#37#, 16#23#, 16#AA#, 16#A5#, 16#61#, 16#6A#, 16#5D#, 16#C4#,
          16#CA#, 16#88#, 16#F6#, 16#07#, 16#C5#, 16#17#, 16#6E#, 16#E7#,
-         16#13#, 16#A0#, 16#97#, 16#1E#, 16#A7#, 16#FF#, 16#12#, 16#31#);
+         16#13#, 16#A0#, 16#97#, 16#1E#, 16#A7#, 16#FF#, 16#12#, 16#31#];
 
       Leaf_Der : constant Tls_Core.Octet_Array (1 .. 417) :=
-        (16#30#, 16#82#, 16#01#, 16#9D#, 16#30#, 16#82#, 16#01#, 16#43#,
+        [16#30#, 16#82#, 16#01#, 16#9D#, 16#30#, 16#82#, 16#01#, 16#43#,
          16#A0#, 16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#1B#,
          16#3B#, 16#A5#, 16#4E#, 16#36#, 16#F6#, 16#C5#, 16#E1#, 16#D7#,
          16#60#, 16#80#, 16#63#, 16#45#, 16#B9#, 16#5B#, 16#51#, 16#2A#,
@@ -5341,10 +5312,10 @@ procedure Tls_Core_Tests is
          16#78#, 16#90#, 16#E4#, 16#02#, 16#DD#, 16#CC#, 16#8F#, 16#FB#,
          16#80#, 16#FD#, 16#10#, 16#41#, 16#92#, 16#C2#, 16#0F#, 16#B5#,
          16#49#, 16#72#, 16#6A#, 16#E1#, 16#F9#, 16#65#, 16#7D#, 16#25#,
-         16#64#);
+         16#64#];
 
       Leaf_Sig : constant Tls_Core.Octet_Array (1 .. 70) :=
-        (16#30#, 16#44#, 16#02#, 16#20#, 16#03#, 16#BA#, 16#EE#, 16#B7#,
+        [16#30#, 16#44#, 16#02#, 16#20#, 16#03#, 16#BA#, 16#EE#, 16#B7#,
          16#9D#, 16#81#, 16#B7#, 16#0C#, 16#81#, 16#C0#, 16#4C#, 16#53#,
          16#EB#, 16#03#, 16#CF#, 16#A6#, 16#E2#, 16#9A#, 16#78#, 16#E0#,
          16#B9#, 16#00#, 16#32#, 16#DB#, 16#7B#, 16#4D#, 16#5E#, 16#9D#,
@@ -5352,7 +5323,7 @@ procedure Tls_Core_Tests is
          16#15#, 16#13#, 16#79#, 16#5D#, 16#16#, 16#20#, 16#6C#, 16#38#,
          16#BC#, 16#C4#, 16#EE#, 16#C5#, 16#34#, 16#EE#, 16#2C#, 16#AB#,
          16#08#, 16#82#, 16#B7#, 16#4F#, 16#43#, 16#05#, 16#F0#, 16#2E#,
-         16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#);
+         16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#];
 
       --  All_Certs is the contiguous backing buffer the validator
       --  is fed; chain entries point into it via (First, Last)
@@ -5366,16 +5337,16 @@ procedure Tls_Core_Tests is
       Root_L : constant Natural := Leaf_Der'Length + Root_Der'Length;
 
       Hostname_Localhost : constant Tls_Core.Octet_Array (1 .. 9) :=
-        (16#6C#, 16#6F#, 16#63#, 16#61#, 16#6C#, 16#68#, 16#6F#, 16#73#,
-         16#74#);  --  "localhost"
+        [16#6C#, 16#6F#, 16#63#, 16#61#, 16#6C#, 16#68#, 16#6F#, 16#73#,
+         16#74#];  --  "localhost"
 
       Hostname_Test : constant Tls_Core.Octet_Array (1 .. 16) :=
-        (16#74#, 16#65#, 16#73#, 16#74#, 16#2E#, 16#65#, 16#78#, 16#61#,
-         16#6D#, 16#70#, 16#6C#, 16#65#, 16#2E#, 16#63#, 16#6F#, 16#6D#);
+        [16#74#, 16#65#, 16#73#, 16#74#, 16#2E#, 16#65#, 16#78#, 16#61#,
+         16#6D#, 16#70#, 16#6C#, 16#65#, 16#2E#, 16#63#, 16#6F#, 16#6D#];
         --  "test.example.com"
 
       Hostname_Bogus : constant Tls_Core.Octet_Array (1 .. 8) :=
-        (16#62#, 16#6F#, 16#67#, 16#75#, 16#73#, 16#2E#, 16#69#, 16#6F#);
+        [16#62#, 16#6F#, 16#67#, 16#75#, 16#73#, 16#2E#, 16#69#, 16#6F#];
         --  "bogus.io"
    begin
       Put_Line ("scenario 48 — cert chain + CertVerify against real PKI");
@@ -5481,7 +5452,7 @@ procedure Tls_Core_Tests is
 
          --  Synthetic 32-byte transcript hash: 0xAA repeated.
          Synth_Hash : constant Tls_Core.Octet_Array (1 .. 32) :=
-           (others => 16#AA#);
+           [others => 16#AA#];
 
          Signed_Buf : Tls_Core.Octet_Array (1 .. 64 + 33 + 1 + 32);
          Signed_Last : Natural;
@@ -5514,7 +5485,7 @@ procedure Tls_Core_Tests is
             Bad_Buf : Tls_Core.Octet_Array (1 .. 64 + 33 + 1 + 32);
             Bad_Last : Natural;
             Bad_Hash : constant Tls_Core.Octet_Array (1 .. 32) :=
-              (others => 16#BB#);
+              [others => 16#BB#];
             Vrf_Bad : Boolean;
          begin
             Tls_Core.Cert_Verify.Build_Signed_Content
@@ -5559,7 +5530,7 @@ procedure Tls_Core_Tests is
          Trust : Tls_Core.Cert_Chain.Trust_Store;
          Result : Tls_Core.Cert_Chain.Validation_Result;
          Synth_Hash : constant Tls_Core.Octet_Array (1 .. 32) :=
-           (others => 16#AA#);
+           [others => 16#AA#];
          use type Tls_Core.Cert_Chain.Validation_Result;
       begin
          Chain.Count := 1;
@@ -5641,7 +5612,6 @@ procedure Tls_Core_Tests is
 
    procedure Alert_Codec_Scenario;
    procedure Alert_Codec_Scenario is
-      use type Tls_Core.Octet;
    begin
       Put_Line ("scenario — Alert encode/decode round-trip");
       declare
@@ -5657,8 +5627,8 @@ procedure Tls_Core_Tests is
 
       declare
          W : constant Tls_Core.Octet_Array (1 .. 2) :=
-           (Tls_Core.Alert.Level_Warning,
-            Tls_Core.Alert.Desc_Close_Notify);
+           [Tls_Core.Alert.Level_Warning,
+            Tls_Core.Alert.Desc_Close_Notify];
          A : Tls_Core.Alert.Alert;
          OK : Boolean;
       begin
@@ -5675,8 +5645,8 @@ procedure Tls_Core_Tests is
 
       declare
          W : constant Tls_Core.Octet_Array (1 .. 2) :=
-           (Tls_Core.Alert.Level_Fatal,
-            Tls_Core.Alert.Desc_Unknown_Ca);
+           [Tls_Core.Alert.Level_Fatal,
+            Tls_Core.Alert.Desc_Unknown_Ca];
          A : Tls_Core.Alert.Alert;
          OK : Boolean;
       begin
@@ -5690,8 +5660,8 @@ procedure Tls_Core_Tests is
 
       --  Non-2-byte payload must be rejected per §6.
       declare
-         W1 : constant Tls_Core.Octet_Array (1 .. 1) := (others => 0);
-         W3 : constant Tls_Core.Octet_Array (1 .. 3) := (others => 0);
+         W1 : constant Tls_Core.Octet_Array (1 .. 1) := [others => 0];
+         W3 : constant Tls_Core.Octet_Array (1 .. 3) := [others => 0];
          A  : Tls_Core.Alert.Alert;
          OK : Boolean;
       begin
@@ -5715,18 +5685,17 @@ procedure Tls_Core_Tests is
    procedure Alert_Close_Notify_Scenario;
    procedure Alert_Close_Notify_Scenario is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
    begin
       Put_Line ("scenario — Alert close_notify graceful shutdown");
@@ -5739,30 +5708,30 @@ procedure Tls_Core_Tests is
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
            (S, In_Bytes => Ch, Out_Buf => Reply, Out_Last => Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
            (C, In_Bytes => Sf_Flight,
             Out_Buf => Reply, Out_Last => Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Discard_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -5778,11 +5747,11 @@ procedure Tls_Core_Tests is
       --  Client emits close_notify; server's app inbound receives it
       --  and sees inner type Alert.
       declare
-         Cn_Buf  : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Cn_Buf  : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Cn_Last : Natural;
          Out_Cli, In_Cli, Out_Srv, In_Srv :
            Tls_Core.Aead_Channel.Direction;
-         Got     : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Got     : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Got_Last : Natural;
          Inner   : Tls_Core.Octet;
          OK      : Boolean;
@@ -5837,18 +5806,17 @@ procedure Tls_Core_Tests is
    procedure Alert_Bad_Record_Mac_Scenario;
    procedure Alert_Bad_Record_Mac_Scenario is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
    begin
       Put_Line ("scenario — Alert bad_record_mac on tag-flip");
@@ -5861,12 +5829,12 @@ procedure Tls_Core_Tests is
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
            (S, In_Bytes => Ch, Out_Buf => Reply, Out_Last => Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -5878,7 +5846,7 @@ procedure Tls_Core_Tests is
 
       declare
          Sf_Flight : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -5912,21 +5880,20 @@ procedure Tls_Core_Tests is
    procedure Alert_Decode_Error_Scenario;
    procedure Alert_Decode_Error_Scenario is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);
+        [16#54#, 16#65#, 16#73#, 16#74#];
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       S : Tls_Core.Tls13_Driver.Driver;
-      Reply : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Reply : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Reply_Last : Natural;
    begin
       Put_Line ("scenario — Alert plaintext decode_error on bad CH");
       Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
       declare
          Garbage : constant Tls_Core.Octet_Array (1 .. 5) :=
-           (16#FF#, 16#03#, 16#03#, 16#00#, 16#00#);
+           [16#FF#, 16#03#, 16#03#, 16#00#, 16#00#];
       begin
          Tls_Core.Tls13_Driver.Step
            (S, In_Bytes => Garbage,
@@ -5955,14 +5922,13 @@ procedure Tls_Core_Tests is
    procedure Alert_Plaintext_Fatal_Scenario;
    procedure Alert_Plaintext_Fatal_Scenario is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);
+        [16#54#, 16#65#, 16#73#, 16#74#];
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       D : Tls_Core.Tls13_Driver.Driver;
-      Out_Buf : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+      Out_Buf : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
       Out_Last : Natural;
    begin
       Put_Line ("scenario — Send_Fatal_Alert before keys = plaintext alert");
@@ -6000,9 +5966,8 @@ procedure Tls_Core_Tests is
 
    procedure Handshake_Buffer_Scenario;
    procedure Handshake_Buffer_Scenario is
-      use type Tls_Core.Octet;
       B : Tls_Core.Handshake_Buffer.Buffer;
-      Pop : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+      Pop : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
       Pop_Last : Natural;
       OK : Boolean;
    begin
@@ -6018,9 +5983,9 @@ procedure Tls_Core_Tests is
       --  Case 2: a complete 4+8-byte handshake message in one push.
       declare
          Msg : constant Tls_Core.Octet_Array (1 .. 12) :=
-           (16#01#, 16#00#, 16#00#, 16#08#,
+           [16#01#, 16#00#, 16#00#, 16#08#,
             16#AA#, 16#BB#, 16#CC#, 16#DD#,
-            16#EE#, 16#FF#, 16#11#, 16#22#);
+            16#EE#, 16#FF#, 16#11#, 16#22#];
       begin
          Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Msg, OK);
          Check ("HB/whole: push OK", OK);
@@ -6044,9 +6009,9 @@ procedure Tls_Core_Tests is
       Tls_Core.Handshake_Buffer.Init (B);
       declare
          Frag1 : constant Tls_Core.Octet_Array (1 .. 6) :=
-           (16#0B#, 16#00#, 16#00#, 16#06#, 16#11#, 16#22#);
+           [16#0B#, 16#00#, 16#00#, 16#06#, 16#11#, 16#22#];
          Frag2 : constant Tls_Core.Octet_Array (1 .. 4) :=
-           (16#33#, 16#44#, 16#55#, 16#66#);
+           [16#33#, 16#44#, 16#55#, 16#66#];
       begin
          Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Frag1, OK);
          Check ("HB/split: push 1 OK", OK);
@@ -6066,9 +6031,9 @@ procedure Tls_Core_Tests is
       Tls_Core.Handshake_Buffer.Init (B);
       declare
          Packed : constant Tls_Core.Octet_Array (1 .. 14) :=
-           (16#08#, 16#00#, 16#00#, 16#02#, 16#A0#, 16#A1#,
+           [16#08#, 16#00#, 16#00#, 16#02#, 16#A0#, 16#A1#,
             16#14#, 16#00#, 16#00#, 16#04#, 16#B0#, 16#B1#,
-            16#B2#, 16#B3#);
+            16#B2#, 16#B3#];
       begin
          Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Packed, OK);
          Check ("HB/packed: push OK", OK);
@@ -6094,7 +6059,7 @@ procedure Tls_Core_Tests is
       Tls_Core.Handshake_Buffer.Init (B);
       declare
          Partial : constant Tls_Core.Octet_Array (1 .. 3) :=
-           (16#0B#, 16#00#, 16#00#);
+           [16#0B#, 16#00#, 16#00#];
       begin
          Tls_Core.Handshake_Buffer.Push_Record_Bytes (B, Partial, OK);
          Check ("HB/partial: push OK", OK);
@@ -6130,15 +6095,14 @@ procedure Tls_Core_Tests is
    procedure Tls13_Multi_Record_Reassembly_Scenario;
    procedure Tls13_Multi_Record_Reassembly_Scenario is
       use type Tls_Core.Tls13_Driver.State;
-      use type Tls_Core.Octet;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       --  Helper: drive Server and Client to capture Server's
       --  full SH+EE+SF flight bytes in Flight (1 .. Flight_Last).
@@ -6156,14 +6120,14 @@ procedure Tls_Core_Tests is
          Sf_Rec_Last : out Natural)
       is
          C, S : Tls_Core.Tls13_Driver.Driver;
-         Buf     : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf     : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Buf_Last : Natural;
-         Reply    : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply    : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
          Sh_Len, Ee_Len, Sf_Len : Natural;
          Cursor : Natural;
       begin
-         Flight := (others => 0);
+         Flight := [others => 0];
          Tls_Core.Tls13_Driver.Init_Psk_Server (S, Psk, Identity, Server_Priv);
          Tls_Core.Tls13_Driver.Init_Psk_Client (C, Psk, Identity, Client_Priv);
 
@@ -6196,7 +6160,7 @@ procedure Tls_Core_Tests is
       end Capture_Server_Flight;
 
       --  Captured state, shared across sub-tests.
-      Flight      : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Flight      : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Flight_Last : Natural;
       Sh_Rec_Last : Natural;
       Ee_Rec_Last : Natural;
@@ -6223,7 +6187,7 @@ procedure Tls_Core_Tests is
       --  Sub-test A: full flight → client reaches Done.
       declare
          C_Ok : Tls_Core.Tls13_Driver.Driver;
-         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client (C_Ok, Psk, Identity, Client_Priv);
@@ -6248,7 +6212,7 @@ procedure Tls_Core_Tests is
       --  branch.
       declare
          C_Trunc : Tls_Core.Tls13_Driver.Driver;
-         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client (C_Trunc, Psk, Identity, Client_Priv);
@@ -6273,7 +6237,7 @@ procedure Tls_Core_Tests is
       --  attempting any AEAD decrypt.
       declare
          C_Sh : Tls_Core.Tls13_Driver.Driver;
-         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Out_Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client (C_Sh, Psk, Identity, Client_Priv);
@@ -6306,15 +6270,15 @@ procedure Tls_Core_Tests is
       Lifetime : constant Tls_Core.Session_Ticket.U32 := 16#00010203#;
       Age_Add  : constant Tls_Core.Session_Ticket.U32 := 16#04050607#;
       Nonce    : constant Tls_Core.Octet_Array (1 .. 8) :=
-        (16#11#, 16#22#, 16#33#, 16#44#,
-         16#55#, 16#66#, 16#77#, 16#88#);
+        [16#11#, 16#22#, 16#33#, 16#44#,
+         16#55#, 16#66#, 16#77#, 16#88#];
       Ticket   : constant Tls_Core.Octet_Array (1 .. 16) :=
-        (16#A0#, 16#A1#, 16#A2#, 16#A3#,
+        [16#A0#, 16#A1#, 16#A2#, 16#A3#,
          16#A4#, 16#A5#, 16#A6#, 16#A7#,
          16#A8#, 16#A9#, 16#AA#, 16#AB#,
-         16#AC#, 16#AD#, 16#AE#, 16#AF#);
+         16#AC#, 16#AD#, 16#AE#, 16#AF#];
 
-      Buf  : Tls_Core.Octet_Array (1 .. 1600) := (others => 0);
+      Buf  : Tls_Core.Octet_Array (1 .. 1600) := [others => 0];
       Last : Natural;
    begin
       Put_Line ("scenario 35a — Session_Ticket Encode/Decode wire round-trip");
@@ -6401,7 +6365,7 @@ procedure Tls_Core_Tests is
 
       --  Decode malformed: short buffer.
       declare
-         Bad : Tls_Core.Octet_Array (1 .. 13) := (others => 0);
+         Bad : constant Tls_Core.Octet_Array (1 .. 13) := [others => 0];
          D_Lifetime : Tls_Core.Session_Ticket.U32;
          D_Age      : Tls_Core.Session_Ticket.U32;
          Nf         : Natural;
@@ -6418,13 +6382,13 @@ procedure Tls_Core_Tests is
 
       --  Decode malformed: ticket length zero (RFC: ticket<1..2^16-1>).
       declare
-         Mb : Tls_Core.Octet_Array (1 .. 14) :=
-           (16#00#, 16#00#, 16#00#, 16#0A#,    --  lifetime
+         Mb : constant Tls_Core.Octet_Array (1 .. 14) :=
+           [16#00#, 16#00#, 16#00#, 16#0A#,    --  lifetime
             16#00#, 16#00#, 16#00#, 16#00#,    --  age_add
             16#00#,                              --  nonce_len = 0
             16#00#, 16#00#,                      --  ticket_len = 0
             16#00#, 16#00#,                      --  ext_len = 0
-            16#00#);                             --  pad
+            16#00#];                             --  pad
          D_Lifetime : Tls_Core.Session_Ticket.U32;
          D_Age      : Tls_Core.Session_Ticket.U32;
          Nf         : Natural;
@@ -6442,10 +6406,10 @@ procedure Tls_Core_Tests is
       --  Empty nonce + 1-byte ticket round-trip.
       declare
          Empty_Nonce : constant Tls_Core.Octet_Array (1 .. 0) :=
-           (others => 0);
+           [others => 0];
          Tiny_Ticket : constant Tls_Core.Octet_Array (1 .. 1) :=
-           (1 => 16#5A#);
-         Tb : Tls_Core.Octet_Array (1 .. 64) := (others => 0);
+           [1 => 16#5A#];
+         Tb : Tls_Core.Octet_Array (1 .. 64) := [others => 0];
          Tl_E : Natural;
          D_Lifetime : Tls_Core.Session_Ticket.U32;
          D_Age      : Tls_Core.Session_Ticket.U32;
@@ -6486,24 +6450,23 @@ procedure Tls_Core_Tests is
    procedure Session_Cache_Scenario;
    procedure Session_Cache_Scenario is
       use type Interfaces.Unsigned_32;
-      use type Tls_Core.Session_Cache.Slot_Index;
       use type Tls_Core.Suites.Cipher_Suite_Id;
 
       Cache : Tls_Core.Session_Cache.Cache;
 
       Nonce_A : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#01#, 16#02#, 16#03#, 16#04#);
+        [16#01#, 16#02#, 16#03#, 16#04#];
       Ticket_A : constant Tls_Core.Octet_Array (1 .. 6) :=
-        (16#A0#, 16#A1#, 16#A2#, 16#A3#, 16#A4#, 16#A5#);
+        [16#A0#, 16#A1#, 16#A2#, 16#A3#, 16#A4#, 16#A5#];
       Nonce_B : constant Tls_Core.Octet_Array (1 .. 4) :=
-        (16#B0#, 16#B1#, 16#B2#, 16#B3#);
+        [16#B0#, 16#B1#, 16#B2#, 16#B3#];
       Ticket_B : constant Tls_Core.Octet_Array (1 .. 8) :=
-        (16#B0#, 16#B1#, 16#B2#, 16#B3#,
-         16#B4#, 16#B5#, 16#B6#, 16#B7#);
+        [16#B0#, 16#B1#, 16#B2#, 16#B3#,
+         16#B4#, 16#B5#, 16#B6#, 16#B7#];
       Secret_A : constant Tls_Core.Key_Schedule.Secret :=
-        (others => 16#5A#);
+        [others => 16#5A#];
       Secret_B : constant Tls_Core.Key_Schedule.Secret :=
-        (others => 16#A5#);
+        [others => 16#A5#];
    begin
       Put_Line ("scenario 35b — Session_Cache Insert / Lookup / Invalidate");
 
@@ -6662,12 +6625,12 @@ procedure Tls_Core_Tests is
       use type Tls_Core.Tls13_Driver.State;
       use type Interfaces.Unsigned_32;
 
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);
+        [16#54#, 16#65#, 16#73#, 16#74#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
 
       Out_Cli, In_Cli, Out_Srv, In_Srv :
@@ -6678,9 +6641,9 @@ procedure Tls_Core_Tests is
       Cache : Tls_Core.Session_Cache.Cache;
 
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
    begin
       Put_Line ("scenario 35c — NewSessionTicket end-to-end emit/receive/cache");
 
@@ -6693,27 +6656,27 @@ procedure Tls_Core_Tests is
          Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          Ch : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step (S, Ch, Reply, Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Sf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step (C, Sf, Reply, Reply_Last);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
       declare
          Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Discard_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step (S, Cf, Discard, Discard_Last);
@@ -6739,15 +6702,15 @@ procedure Tls_Core_Tests is
       --  Server emits one NST.
       declare
          Nonce : constant Tls_Core.Octet_Array (1 .. 4) :=
-           (16#DE#, 16#AD#, 16#BE#, 16#EF#);
+           [16#DE#, 16#AD#, 16#BE#, 16#EF#];
          Tkt : constant Tls_Core.Octet_Array (1 .. 24) :=
-           (16#01#, 16#02#, 16#03#, 16#04#,
+           [16#01#, 16#02#, 16#03#, 16#04#,
             16#05#, 16#06#, 16#07#, 16#08#,
             16#09#, 16#0A#, 16#0B#, 16#0C#,
             16#0D#, 16#0E#, 16#0F#, 16#10#,
             16#11#, 16#12#, 16#13#, 16#14#,
-            16#15#, 16#16#, 16#17#, 16#18#);
-         Wire : Tls_Core.Octet_Array (1 .. 2048) := (others => 0);
+            16#15#, 16#16#, 16#17#, 16#18#];
+         Wire : Tls_Core.Octet_Array (1 .. 2048) := [others => 0];
          Wire_Last : Natural;
          Got_OK : Boolean;
       begin
@@ -6850,17 +6813,16 @@ procedure Tls_Core_Tests is
 
    procedure Sni_Emit_Scenario;
    procedure Sni_Emit_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Octet_Array;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
       Hostname : constant Tls_Core.Octet_Array :=
-        (16#65#, 16#78#, 16#61#, 16#6D#, 16#70#,
+        [16#65#, 16#78#, 16#61#, 16#6D#, 16#70#,
          16#6C#, 16#65#, 16#2E#, 16#63#, 16#6F#,
-         16#6D#);  --  "example.com" (11 bytes)
+         16#6D#];  --  "example.com" (11 bytes)
 
       function Find_Ext_Type
         (Buf      : Tls_Core.Octet_Array;
@@ -6883,9 +6845,9 @@ procedure Tls_Core_Tests is
       --  Case 1: client with SNI set emits server_name extension.
       declare
          C : Tls_Core.Tls13_Driver.Driver;
-         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Buf_Last : Natural;
-         Read_Out : Tls_Core.Octet_Array (1 .. 255) := (others => 0);
+         Read_Out : Tls_Core.Octet_Array (1 .. 255) := [others => 0];
          Read_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client
@@ -6914,7 +6876,7 @@ procedure Tls_Core_Tests is
       --  inside other extensions).
       declare
          C : Tls_Core.Tls13_Driver.Driver;
-         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Buf_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client
@@ -6942,18 +6904,17 @@ procedure Tls_Core_Tests is
 
    procedure Alpn_Emit_Scenario;
    procedure Alpn_Emit_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Octet_Array;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);  --  "Test"
+        [16#54#, 16#65#, 16#73#, 16#74#];  --  "Test"
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       --  Pre-flattened "u8 N || N name bytes" for "h2"
       --  (gRPC over TLS uses h2; per RFC 7301 + IANA registry).
       H2_Offer : constant Tls_Core.Octet_Array :=
-        (16#02#, 16#68#, 16#32#);  --  len=2 || 'h' '2'
+        [16#02#, 16#68#, 16#32#];  --  len=2 || 'h' '2'
 
       function Find_Bytes
         (Buf    : Tls_Core.Octet_Array;
@@ -6977,9 +6938,9 @@ procedure Tls_Core_Tests is
       --  Case 1: client with ALPN set emits the extension.
       declare
          C : Tls_Core.Tls13_Driver.Driver;
-         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Buf_Last : Natural;
-         Read_Out : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Read_Out : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Read_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client
@@ -7010,7 +6971,7 @@ procedure Tls_Core_Tests is
       --  Case 2: no Set_Alpn_Offers call — extension absent.
       declare
          C : Tls_Core.Tls13_Driver.Driver;
-         Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Buf_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Init_Psk_Client
@@ -7039,18 +7000,17 @@ procedure Tls_Core_Tests is
 
    procedure Post_Handshake_Demux_Scenario;
    procedure Post_Handshake_Demux_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Tls13_Driver.State;
-      Psk : constant Tls_Core.Octet_Array (1 .. 32) := (others => 16#42#);
+      Psk : constant Tls_Core.Octet_Array (1 .. 32) := [others => 16#42#];
       Identity : constant Tls_Core.Octet_Array :=
-        (16#54#, 16#65#, 16#73#, 16#74#);
+        [16#54#, 16#65#, 16#73#, 16#74#];
       Server_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Client_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural;
       Out_Cli, In_Cli : Tls_Core.Aead_Channel.Direction;
       Sec_Cli_Out, Sec_Cli_In : Tls_Core.Key_Sched.Max_Secret;
@@ -7066,7 +7026,7 @@ procedure Tls_Core_Tests is
         (C, In_Bytes => Buf (1 .. 0), Out_Buf => Buf, Out_Last => Buf_Last);
       declare
          Ch_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step (S, Ch_Bytes, Reply, Reply_Last);
@@ -7075,7 +7035,7 @@ procedure Tls_Core_Tests is
       end;
       declare
          Cf : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step (S, Cf, Reply, Reply_Last);
@@ -7093,7 +7053,7 @@ procedure Tls_Core_Tests is
       --  Case 1: Inner_Type=Application_Data passes through.
       declare
          App_Pt : constant Tls_Core.Octet_Array :=
-           (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "Hello"
+           [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#];  --  "Hello"
          Saw_Nst, Saw_Ku, Want_Reply, OK : Boolean;
       begin
          Tls_Core.Tls13_Driver.Process_Post_Handshake_Plaintext
@@ -7117,7 +7077,7 @@ procedure Tls_Core_Tests is
       --  length 1 = 0x000001, request_update 0x00).
       declare
          Ku_Pt : constant Tls_Core.Octet_Array :=
-           (16#18#, 16#00#, 16#00#, 16#01#, 16#00#);
+           [16#18#, 16#00#, 16#00#, 16#01#, 16#00#];
          Saw_Nst, Saw_Ku, Want_Reply, OK : Boolean;
       begin
          Tls_Core.Tls13_Driver.Process_Post_Handshake_Plaintext
@@ -7142,7 +7102,7 @@ procedure Tls_Core_Tests is
       --  policy whether to alert).
       declare
          Bad_Pt : constant Tls_Core.Octet_Array :=
-           (16#AA#, 16#00#, 16#00#, 16#00#);
+           [16#AA#, 16#00#, 16#00#, 16#00#];
          Saw_Nst, Saw_Ku, Want_Reply, OK : Boolean;
       begin
          Tls_Core.Tls13_Driver.Process_Post_Handshake_Plaintext
@@ -7175,23 +7135,22 @@ procedure Tls_Core_Tests is
    ---------------------------------------------------------------------
    procedure Ecdsa_Sig_Der_Scenario;
    procedure Ecdsa_Sig_Der_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Octet_Array;
 
       --  r/s extracted from Leaf_Sig in Cert_Chain_Pki_Scenario.
       --  Layout of Leaf_Sig: 0x30 0x44 0x02 0x20 <32B r> 0x02 0x20 <32B s>
       R_From_Fixture : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#03#, 16#BA#, 16#EE#, 16#B7#, 16#9D#, 16#81#, 16#B7#, 16#0C#,
+        [16#03#, 16#BA#, 16#EE#, 16#B7#, 16#9D#, 16#81#, 16#B7#, 16#0C#,
          16#81#, 16#C0#, 16#4C#, 16#53#, 16#EB#, 16#03#, 16#CF#, 16#A6#,
          16#E2#, 16#9A#, 16#78#, 16#E0#, 16#B9#, 16#00#, 16#32#, 16#DB#,
-         16#7B#, 16#4D#, 16#5E#, 16#9D#, 16#02#, 16#B3#, 16#9B#, 16#E2#);
+         16#7B#, 16#4D#, 16#5E#, 16#9D#, 16#02#, 16#B3#, 16#9B#, 16#E2#];
       S_From_Fixture : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#13#, 16#61#, 16#15#, 16#13#, 16#79#, 16#5D#, 16#16#, 16#20#,
+        [16#13#, 16#61#, 16#15#, 16#13#, 16#79#, 16#5D#, 16#16#, 16#20#,
          16#6C#, 16#38#, 16#BC#, 16#C4#, 16#EE#, 16#C5#, 16#34#, 16#EE#,
          16#2C#, 16#AB#, 16#08#, 16#82#, 16#B7#, 16#4F#, 16#43#, 16#05#,
-         16#F0#, 16#2E#, 16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#);
+         16#F0#, 16#2E#, 16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#];
       Expected_Sig : constant Tls_Core.Octet_Array (1 .. 70) :=
-        (16#30#, 16#44#, 16#02#, 16#20#, 16#03#, 16#BA#, 16#EE#, 16#B7#,
+        [16#30#, 16#44#, 16#02#, 16#20#, 16#03#, 16#BA#, 16#EE#, 16#B7#,
          16#9D#, 16#81#, 16#B7#, 16#0C#, 16#81#, 16#C0#, 16#4C#, 16#53#,
          16#EB#, 16#03#, 16#CF#, 16#A6#, 16#E2#, 16#9A#, 16#78#, 16#E0#,
          16#B9#, 16#00#, 16#32#, 16#DB#, 16#7B#, 16#4D#, 16#5E#, 16#9D#,
@@ -7199,13 +7158,13 @@ procedure Tls_Core_Tests is
          16#15#, 16#13#, 16#79#, 16#5D#, 16#16#, 16#20#, 16#6C#, 16#38#,
          16#BC#, 16#C4#, 16#EE#, 16#C5#, 16#34#, 16#EE#, 16#2C#, 16#AB#,
          16#08#, 16#82#, 16#B7#, 16#4F#, 16#43#, 16#05#, 16#F0#, 16#2E#,
-         16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#);
+         16#1E#, 16#B1#, 16#09#, 16#06#, 16#02#, 16#35#];
    begin
       Put_Line ("scenario — Encode_Ecdsa_Sig_Der");
 
       --  Case 1: round-trip a real PKI ECDSA-SHA256 signature.
       declare
-         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := (others => 0);
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Cert_Verify.Encode_Ecdsa_Sig_Der
@@ -7220,10 +7179,10 @@ procedure Tls_Core_Tests is
       --  pushing total length from 70 → 71.
       declare
          R_Hb : constant Tls_Core.Octet_Array (1 .. 32) :=
-           (16#80#, others => 16#11#);
+           [16#80#, others => 16#11#];
          S_Hb : constant Tls_Core.Octet_Array (1 .. 32) :=
-           (16#22#, others => 16#22#);
-         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := (others => 0);
+           [16#22#, others => 16#22#];
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Cert_Verify.Encode_Ecdsa_Sig_Der
@@ -7244,10 +7203,10 @@ procedure Tls_Core_Tests is
       --  0x00 0x42 (only one nonzero byte at position 32) → r INTEGER
       --  body length 1.
       declare
-         R_Zero : Tls_Core.Octet_Array (1 .. 32) := (others => 0);
+         R_Zero : Tls_Core.Octet_Array (1 .. 32) := [others => 0];
          S_Zero : constant Tls_Core.Octet_Array (1 .. 32) :=
-           (others => 16#33#);
-         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := (others => 0);
+           [others => 16#33#];
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 72) := [others => 0];
          Out_Last : Natural;
       begin
          R_Zero (32) := 16#42#;
@@ -7280,14 +7239,12 @@ procedure Tls_Core_Tests is
    ---------------------------------------------------------------------
    procedure Cert_Server_Hello_Scenario;
    procedure Cert_Server_Hello_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Octet_Array;
-      use type Tls_Core.Suites.U16;
 
       Server_Random : constant Tls_Core.Hello.Random_Bytes :=
-        (others => 16#5A#);
+        [others => 16#5A#];
       Server_Pub : constant Tls_Core.Hello.Public_Key :=
-        (1 .. 32 => 16#7B#);
+        [1 .. 32 => 16#7B#];
 
       function Find_Pair
         (Buf : Tls_Core.Octet_Array;
@@ -7323,7 +7280,7 @@ procedure Tls_Core_Tests is
       Put_Line ("scenario — Encode_Server_Hello_Cert (RFC 8446 §4.1.3)");
 
       declare
-         Out_Buf  : Tls_Core.Octet_Array (1 .. 192) := (others => 0);
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 192) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Hello.Encode_Server_Hello_Cert
@@ -7358,7 +7315,7 @@ procedure Tls_Core_Tests is
          --  in the extension block.
          declare
              Pat : constant Tls_Core.Octet_Array (1 .. 32) :=
-               (others => 16#7B#);
+               [others => 16#7B#];
          begin
              Check ("Cert SH: 32-byte X25519 key share present",
                     Find_Run (Out_Buf (1 .. Out_Last), Pat));
@@ -7396,21 +7353,20 @@ procedure Tls_Core_Tests is
    ---------------------------------------------------------------------
    procedure Cert_Client_Hello_Scenario;
    procedure Cert_Client_Hello_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Octet_Array;
 
       Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-        (others => 16#3C#);
+        [others => 16#3C#];
       Client_Pub : constant Tls_Core.Hello.Public_Key :=
-        (1 .. 32 => 16#6D#);
+        [1 .. 32 => 16#6D#];
 
       Hostname : constant Tls_Core.Octet_Array :=
-        (16#65#, 16#78#, 16#61#, 16#6D#, 16#70#,
+        [16#65#, 16#78#, 16#61#, 16#6D#, 16#70#,
          16#6C#, 16#65#, 16#2E#, 16#63#, 16#6F#,
-         16#6D#);  --  "example.com"
+         16#6D#];  --  "example.com"
 
       H2_Alpn : constant Tls_Core.Octet_Array :=
-        (16#02#, 16#68#, 16#32#);  --  "u8 2; 'h', '2'"
+        [16#02#, 16#68#, 16#32#];  --  "u8 2; 'h', '2'"
 
       function Find_Pair
         (Buf : Tls_Core.Octet_Array;
@@ -7447,8 +7403,8 @@ procedure Tls_Core_Tests is
 
       --  Case 1: bare cert CH — no SNI, no ALPN.
       declare
-         Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
-         Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := (others => 0);
+         Empty : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Hello.Encode_Client_Hello_Cert
@@ -7481,7 +7437,7 @@ procedure Tls_Core_Tests is
          --  Verify the v0.5 sig schemes appear: 0x0403 + 0x0804
          declare
             Sig_Pat : constant Tls_Core.Octet_Array (1 .. 6) :=
-              (16#00#, 16#04#, 16#04#, 16#03#, 16#08#, 16#04#);
+              [16#00#, 16#04#, 16#04#, 16#03#, 16#08#, 16#04#];
          begin
             Check ("Cert CH: sig_alg list (ecdsa+rsa-pss) present",
                    Find_Run (Out_Buf (1 .. Out_Last), Sig_Pat));
@@ -7501,7 +7457,7 @@ procedure Tls_Core_Tests is
          --  X25519 client key (32 bytes 0x6D) appears
          declare
             Pat : constant Tls_Core.Octet_Array (1 .. 32) :=
-              (others => 16#6D#);
+              [others => 16#6D#];
          begin
             Check ("Cert CH: 32-byte X25519 key share present",
                    Find_Run (Out_Buf (1 .. Out_Last), Pat));
@@ -7515,7 +7471,7 @@ procedure Tls_Core_Tests is
 
       --  Case 2: cert CH WITH SNI + ALPN.
       declare
-         Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := (others => 0);
+         Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := [others => 0];
          Out_Last : Natural;
       begin
          Tls_Core.Hello.Encode_Client_Hello_Cert
@@ -7548,16 +7504,15 @@ procedure Tls_Core_Tests is
    ---------------------------------------------------------------------
    procedure Cert_Client_Hello_Roundtrip_Scenario;
    procedure Cert_Client_Hello_Roundtrip_Scenario is
-      use type Tls_Core.Octet;
       use type Tls_Core.Octet_Array;
 
       Client_Random : constant Tls_Core.Hello.Random_Bytes :=
-        (others => 16#A1#);
+        [others => 16#A1#];
       Client_Pub : constant Tls_Core.Hello.Public_Key :=
-        (1 .. 32 => 16#3F#);
-      Empty : constant Tls_Core.Octet_Array (1 .. 0) := (others => 0);
+        [1 .. 32 => 16#3F#];
+      Empty : constant Tls_Core.Octet_Array (1 .. 0) := [others => 0];
 
-      Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := (others => 0);
+      Out_Buf  : Tls_Core.Octet_Array (1 .. 320) := [others => 0];
       Out_Last : Natural;
    begin
       Put_Line ("scenario — cert-mode CH encode/decode round-trip");
@@ -7719,12 +7674,11 @@ procedure Tls_Core_Tests is
    procedure Tls13_Cert_Mode_Loopback_Scenario is
       use type Tls_Core.Tls13_Driver.State;
       use type Tls_Core.Tls13_Driver.Driver_Mode;
-      use type Tls_Core.Octet;
 
       --  ===== embedded fixtures (paste from fixtures/fixtures.ada) =====
 
       Root_Der : constant Tls_Core.Octet_Array (1 .. 392) :=
-        (16#30#, 16#82#, 16#01#, 16#84#, 16#30#, 16#82#, 16#01#, 16#29#,
+        [16#30#, 16#82#, 16#01#, 16#84#, 16#30#, 16#82#, 16#01#, 16#29#,
          16#A0#, 16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#4C#,
          16#38#, 16#ED#, 16#66#, 16#47#, 16#3E#, 16#2B#, 16#B0#, 16#25#,
          16#DA#, 16#0E#, 16#29#, 16#CA#, 16#0C#, 16#F7#, 16#CE#, 16#F0#,
@@ -7772,10 +7726,10 @@ procedure Tls_Core_Tests is
          16#AB#, 16#4B#, 16#78#, 16#70#, 16#82#, 16#4C#, 16#78#, 16#50#,
          16#37#, 16#23#, 16#AA#, 16#A5#, 16#61#, 16#6A#, 16#5D#, 16#C4#,
          16#CA#, 16#88#, 16#F6#, 16#07#, 16#C5#, 16#17#, 16#6E#, 16#E7#,
-         16#13#, 16#A0#, 16#97#, 16#1E#, 16#A7#, 16#FF#, 16#12#, 16#31#);
+         16#13#, 16#A0#, 16#97#, 16#1E#, 16#A7#, 16#FF#, 16#12#, 16#31#];
 
       Leaf_Der : constant Tls_Core.Octet_Array (1 .. 417) :=
-        (16#30#, 16#82#, 16#01#, 16#9D#, 16#30#, 16#82#, 16#01#, 16#43#,
+        [16#30#, 16#82#, 16#01#, 16#9D#, 16#30#, 16#82#, 16#01#, 16#43#,
          16#A0#, 16#03#, 16#02#, 16#01#, 16#02#, 16#02#, 16#14#, 16#1B#,
          16#3B#, 16#A5#, 16#4E#, 16#36#, 16#F6#, 16#C5#, 16#E1#, 16#D7#,
          16#60#, 16#80#, 16#63#, 16#45#, 16#B9#, 16#5B#, 16#51#, 16#2A#,
@@ -7827,28 +7781,28 @@ procedure Tls_Core_Tests is
          16#78#, 16#90#, 16#E4#, 16#02#, 16#DD#, 16#CC#, 16#8F#, 16#FB#,
          16#80#, 16#FD#, 16#10#, 16#41#, 16#92#, 16#C2#, 16#0F#, 16#B5#,
          16#49#, 16#72#, 16#6A#, 16#E1#, 16#F9#, 16#65#, 16#7D#, 16#25#,
-         16#64#);
+         16#64#];
 
       --  Leaf private scalar (32 bytes big-endian) — extracted from
       --  fixtures/leaf.key.
       Leaf_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#55#, 16#E6#, 16#A4#, 16#5A#, 16#EA#, 16#B1#, 16#EC#, 16#54#,
+        [16#55#, 16#E6#, 16#A4#, 16#5A#, 16#EA#, 16#B1#, 16#EC#, 16#54#,
          16#19#, 16#0C#, 16#E2#, 16#14#, 16#B3#, 16#78#, 16#25#, 16#6F#,
          16#B2#, 16#2C#, 16#72#, 16#3C#, 16#5E#, 16#70#, 16#56#, 16#84#,
-         16#14#, 16#6C#, 16#EB#, 16#CB#, 16#EF#, 16#82#, 16#A8#, 16#88#);
+         16#14#, 16#6C#, 16#EB#, 16#CB#, 16#EF#, 16#82#, 16#A8#, 16#88#];
 
       Hostname_Localhost : constant Tls_Core.Octet_Array (1 .. 9) :=
-        (16#6C#, 16#6F#, 16#63#, 16#61#, 16#6C#, 16#68#, 16#6F#, 16#73#,
-         16#74#);
+        [16#6C#, 16#6F#, 16#63#, 16#61#, 16#6C#, 16#68#, 16#6F#, 16#73#,
+         16#74#];
 
       --  X25519 private scalars for client + server ECDHE.
       Client_Ecdhe_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#11#);
+        [others => 16#11#];
       Server_Ecdhe_Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (others => 16#22#);
+        [others => 16#22#];
 
       C, S : Tls_Core.Tls13_Driver.Driver;
-      Buf  : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+      Buf  : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
       Buf_Last : Natural := 0;
 
       Chain_Spec : Tls_Core.Cert_Chain.Chain;
@@ -7905,7 +7859,7 @@ procedure Tls_Core_Tests is
       --  Step 2: server processes CH and emits SH+EE+Cert+CV+SF.
       declare
          Ch_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Reply : Tls_Core.Octet_Array (1 .. 4096) := (others => 0);
+         Reply : Tls_Core.Octet_Array (1 .. 4096) := [others => 0];
          Reply_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -7922,7 +7876,7 @@ procedure Tls_Core_Tests is
          --  with handshake content type (0x16).
          Check ("Cert mode: flight starts with 0x16 (SH plaintext)",
                 Reply (1) = 16#16#);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Reply_Last) := Reply (1 .. Reply_Last);
          Buf_Last := Reply_Last;
       end;
@@ -7933,7 +7887,7 @@ procedure Tls_Core_Tests is
          Server_Flight : constant Tls_Core.Octet_Array :=
            Buf (1 .. Buf_Last);
          Cf_Reply : Tls_Core.Octet_Array (1 .. 1024) :=
-           (others => 0);
+           [others => 0];
          Cf_Last  : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -7945,7 +7899,7 @@ procedure Tls_Core_Tests is
          Check ("Cert mode: CF non-empty", Cf_Last > 0);
          Check ("Cert mode: CF starts with 0x17 (encrypted)",
                 Cf_Reply (1) = 16#17#);
-         Buf := (others => 0);
+         Buf := [others => 0];
          Buf (1 .. Cf_Last) := Cf_Reply (1 .. Cf_Last);
          Buf_Last := Cf_Last;
       end;
@@ -7953,7 +7907,7 @@ procedure Tls_Core_Tests is
       --  Step 4: server processes CF, transitions to Done.
       declare
          Cf_Bytes : constant Tls_Core.Octet_Array := Buf (1 .. Buf_Last);
-         Discard : Tls_Core.Octet_Array (1 .. 1024) := (others => 0);
+         Discard : Tls_Core.Octet_Array (1 .. 1024) := [others => 0];
          Discard_Last : Natural;
       begin
          Tls_Core.Tls13_Driver.Step
@@ -7973,13 +7927,12 @@ procedure Tls_Core_Tests is
       --  Round-trip an application message both ways using the
       --  application traffic secrets.
       declare
-         use type Tls_Core.Suites.Cipher_Suite_Id;
          C_Out, C_In, S_Out, S_In : Tls_Core.Aead_Channel.Direction;
          App_Msg : constant Tls_Core.Octet_Array :=
-           (16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#);  --  "Hello"
-         Wire : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+           [16#48#, 16#65#, 16#6C#, 16#6C#, 16#6F#];  --  "Hello"
+         Wire : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Wire_Last : Natural;
-         Pt_Buf : Tls_Core.Octet_Array (1 .. 256) := (others => 0);
+         Pt_Buf : Tls_Core.Octet_Array (1 .. 256) := [others => 0];
          Pt_Last : Natural;
          Inner_Type : Tls_Core.Octet;
          OK : Boolean;
@@ -8003,8 +7956,8 @@ procedure Tls_Core_Tests is
                 and then Equal (Pt_Buf (1 .. Pt_Last), App_Msg));
 
          --  Server → client.
-         Wire := (others => 0);
-         Pt_Buf := (others => 0);
+         Wire := [others => 0];
+         Pt_Buf := [others => 0];
          Tls_Core.Aead_Channel.Send
            (S_Out, App_Msg,
             Tls_Core.Aead_Channel.Inner_Type_Application_Data,
@@ -8037,35 +7990,35 @@ procedure Tls_Core_Tests is
       use type Tls_Core.Octet_Array;
 
       Priv : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#C9#, 16#AF#, 16#A9#, 16#D8#, 16#45#, 16#BA#, 16#75#, 16#16#,
+        [16#C9#, 16#AF#, 16#A9#, 16#D8#, 16#45#, 16#BA#, 16#75#, 16#16#,
          16#6B#, 16#5C#, 16#21#, 16#57#, 16#67#, 16#B1#, 16#D6#, 16#93#,
          16#4E#, 16#50#, 16#C3#, 16#DB#, 16#36#, 16#E8#, 16#9B#, 16#12#,
-         16#7B#, 16#8A#, 16#62#, 16#2B#, 16#12#, 16#0F#, 16#67#, 16#21#);
+         16#7B#, 16#8A#, 16#62#, 16#2B#, 16#12#, 16#0F#, 16#67#, 16#21#];
 
       Msg_Sample : constant Tls_Core.Octet_Array :=
-        (16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#);  --  "sample"
+        [16#73#, 16#61#, 16#6D#, 16#70#, 16#6C#, 16#65#];  --  "sample"
 
       Expected_K_Sample : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#A6#, 16#E3#, 16#C5#, 16#7D#, 16#D0#, 16#1A#, 16#BE#, 16#90#,
+        [16#A6#, 16#E3#, 16#C5#, 16#7D#, 16#D0#, 16#1A#, 16#BE#, 16#90#,
          16#08#, 16#65#, 16#38#, 16#39#, 16#83#, 16#55#, 16#DD#, 16#4C#,
          16#3B#, 16#17#, 16#AA#, 16#87#, 16#33#, 16#82#, 16#B0#, 16#F2#,
-         16#4D#, 16#61#, 16#29#, 16#49#, 16#3D#, 16#8A#, 16#AD#, 16#60#);
+         16#4D#, 16#61#, 16#29#, 16#49#, 16#3D#, 16#8A#, 16#AD#, 16#60#];
 
       --  RFC 6979 §A.2.5 — message = "test", same private key.
       Msg_Test : constant Tls_Core.Octet_Array :=
-        (16#74#, 16#65#, 16#73#, 16#74#);
+        [16#74#, 16#65#, 16#73#, 16#74#];
 
       --  RFC 6979 §A.2.5 — full sample/SHA-256 signature outputs.
       Expected_R_Sample : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
+        [16#EF#, 16#D4#, 16#8B#, 16#2A#, 16#AC#, 16#B6#, 16#A8#, 16#FD#,
          16#11#, 16#40#, 16#DD#, 16#9C#, 16#D4#, 16#5E#, 16#81#, 16#D6#,
          16#9D#, 16#2C#, 16#87#, 16#7B#, 16#56#, 16#AA#, 16#F9#, 16#91#,
-         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#);
+         16#C3#, 16#4D#, 16#0E#, 16#A8#, 16#4E#, 16#AF#, 16#37#, 16#16#];
       Expected_S_Sample : constant Tls_Core.Octet_Array (1 .. 32) :=
-        (16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
+        [16#F7#, 16#CB#, 16#1C#, 16#94#, 16#2D#, 16#65#, 16#7C#, 16#41#,
          16#D4#, 16#36#, 16#C7#, 16#A1#, 16#B6#, 16#E2#, 16#9F#, 16#65#,
          16#F3#, 16#E9#, 16#00#, 16#DB#, 16#B9#, 16#AF#, 16#F4#, 16#06#,
-         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#);
+         16#4D#, 16#C4#, 16#AB#, 16#2F#, 16#84#, 16#3A#, 16#CD#, 16#A8#];
 
       Out_K : Tls_Core.Ecdsa_P256.Component;
       OK    : Boolean;

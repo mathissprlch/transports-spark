@@ -15,11 +15,11 @@ library project Logger is
       case Build_Mode is
          when "release" =>
             for Default_Switches ("Ada") use
-              ("-gnat2022", "-gnatwa", "-gnatyM120", "-g", "-O2",
+              ("-gnat2022", "-gnatwae", "-gnatyM120", "-g", "-O2",
                "-gnatn");
          when "debug" =>
             for Default_Switches ("Ada") use
-              ("-gnat2022", "-gnatwa", "-gnatyM120", "-g", "-O1");
+              ("-gnat2022", "-gnatwae", "-gnatyM120", "-g", "-O1");
       end case;
    end Compiler;
 

@@ -11,7 +11,6 @@ with Http2_Core.Mux_Server.Slots;
 procedure Http2_Core.Mux_Server.Driver (L : in out Listener) is
 
    use type RFLX.RFLX_Types.Index;
-   use type RFLX.RFLX_Types.Length;
    use type RFLX.RFLX_Types.Byte;
    use type RFLX.RFLX_Types.Bytes_Ptr;
    use type Bit_Len;

@@ -8,24 +8,20 @@ package body Http2_Core.Transport is
    --  RecordFlux apps.
 
    use type RFLX.RFLX_Types.Index;
-   use type RFLX.RFLX_Types.Length;
    use type Ada.Streams.Stream_Element_Offset;
 
    ---------------------------------------------------------------------
    --  Is_Open
    ---------------------------------------------------------------------
 
-   function Is_Open (Chan : Channel) return Boolean is (Chan.Open);
+   function Is_Open (Chan : Channel) return Boolean
+   is (Chan.Open);
 
    ---------------------------------------------------------------------
    --  Connect
    ---------------------------------------------------------------------
 
-   procedure Connect
-     (Chan : in out Channel;
-      Host : String;
-      Port : Natural)
-   is
+   procedure Connect (Chan : in out Channel; Host : String; Port : Natural) is
       use GNAT.Sockets;
       Address : constant Sock_Addr_Type :=
         (Family => Family_Inet,
@@ -42,7 +38,8 @@ package body Http2_Core.Transport is
          begin
             Close_Socket (Chan.Socket);
          exception
-            when others => null;
+            when others =>
+               null;
          end;
          Chan.Open := False;
          raise Connect_Error;
@@ -52,10 +49,7 @@ package body Http2_Core.Transport is
    --  Send
    ---------------------------------------------------------------------
 
-   procedure Send
-     (Chan : Channel;
-      Data : RFLX.RFLX_Types.Bytes)
-   is
+   procedure Send (Chan : Channel; Data : RFLX.RFLX_Types.Bytes) is
       use Ada.Streams;
       Buf  : Stream_Element_Array (1 .. Stream_Element_Offset (Data'Length));
       Last : Stream_Element_Offset;
@@ -81,12 +75,12 @@ package body Http2_Core.Transport is
       Success : out Boolean)
    is
       use Ada.Streams;
-      Buf      : Stream_Element_Array
-        (1 .. Stream_Element_Offset (Buffer'Length));
+      Buf       :
+        Stream_Element_Array (1 .. Stream_Element_Offset (Buffer'Length));
       Recv_Last : Stream_Element_Offset;
    begin
-      Buffer  := (others => 0);
-      Last    := Buffer'First;  --  not meaningful unless Success = True
+      Buffer := (others => 0);
+      Last := Buffer'First;  --  not meaningful unless Success = True
       Success := False;
       GNAT.Sockets.Receive_Socket (Chan.Socket, Buf, Recv_Last);
       if Recv_Last < Buf'First then
@@ -122,11 +116,11 @@ package body Http2_Core.Transport is
       Buffer  : out RFLX.RFLX_Types.Bytes;
       Success : out Boolean)
    is
-      Cursor    : RFLX.RFLX_Types.Index := Buffer'First;
-      Sub_Last  : RFLX.RFLX_Types.Index;
-      Sub_Ok    : Boolean;
+      Cursor   : RFLX.RFLX_Types.Index := Buffer'First;
+      Sub_Last : RFLX.RFLX_Types.Index;
+      Sub_Ok   : Boolean;
    begin
-      Buffer  := (others => 0);
+      Buffer := (others => 0);
       Success := False;
       while Cursor <= Buffer'Last loop
          declare
@@ -149,14 +143,10 @@ package body Http2_Core.Transport is
 
    --  Internal: poll the persistent selector with the given timeout.
    procedure Poll_Internal
-     (Chan    : Channel;
-      Timeout : Duration;
-      Ready   : out Boolean);
+     (Chan : Channel; Timeout : Duration; Ready : out Boolean);
 
    procedure Poll_Internal
-     (Chan    : Channel;
-      Timeout : Duration;
-      Ready   : out Boolean)
+     (Chan : Channel; Timeout : Duration; Ready : out Boolean)
    is
       use GNAT.Sockets;
       Read_Set  : Socket_Set_Type;
@@ -171,11 +161,8 @@ package body Http2_Core.Transport is
       Empty (Write_Set);
       Set (Read_Set, Chan.Socket);
       Check_Selector
-        (Chan.Selector, Read_Set, Write_Set, Status,
-         Timeout => Timeout);
-      Ready :=
-        Status = Completed
-          and then Is_Set (Read_Set, Chan.Socket);
+        (Chan.Selector, Read_Set, Write_Set, Status, Timeout => Timeout);
+      Ready := Status = Completed and then Is_Set (Read_Set, Chan.Socket);
    exception
       when others =>
          Ready := False;
@@ -189,10 +176,7 @@ package body Http2_Core.Transport is
    end Has_Pending;
 
    procedure Wait_For_Data
-     (Chan     : Channel;
-      Timeout  : Duration;
-      Got_Data : out Boolean)
-   is
+     (Chan : Channel; Timeout : Duration; Got_Data : out Boolean) is
    begin
       Poll_Internal (Chan, Timeout, Got_Data);
    end Wait_For_Data;
@@ -207,14 +191,16 @@ package body Http2_Core.Transport is
          begin
             GNAT.Sockets.Close_Selector (Chan.Selector);
          exception
-            when others => null;
+            when others =>
+               null;
          end;
          Chan.Sel_Open := False;
       end if;
       begin
          GNAT.Sockets.Close_Socket (Chan.Socket);
       exception
-         when others => null;
+         when others =>
+            null;
       end;
       Chan.Open := False;
    end Close;
@@ -223,23 +209,19 @@ package body Http2_Core.Transport is
    --  Listener side
    ---------------------------------------------------------------------
 
-   function Is_Listening (L : Listener) return Boolean is (L.Listening);
+   function Is_Listening (L : Listener) return Boolean
+   is (L.Listening);
 
-   procedure Listen
-     (L    : in out Listener;
-      Host : String;
-      Port : Natural)
-   is
+   procedure Listen (L : in out Listener; Host : String; Port : Natural) is
       use GNAT.Sockets;
       Address : constant Sock_Addr_Type :=
         (Family => Family_Inet,
-         Addr   => (if Host = "0.0.0.0" then Any_Inet_Addr
-                    else Inet_Addr (Host)),
+         Addr   =>
+           (if Host = "0.0.0.0" then Any_Inet_Addr else Inet_Addr (Host)),
          Port   => Port_Type (Port));
    begin
       Create_Socket (L.Socket, Family_Inet, Socket_Stream);
-      Set_Socket_Option
-        (L.Socket, Socket_Level, (Reuse_Address, True));
+      Set_Socket_Option (L.Socket, Socket_Level, (Reuse_Address, True));
       Bind_Socket (L.Socket, Address);
       Listen_Socket (L.Socket, 8);
       L.Listening := True;
@@ -248,16 +230,14 @@ package body Http2_Core.Transport is
          begin
             Close_Socket (L.Socket);
          exception
-            when others => null;
+            when others =>
+               null;
          end;
          L.Listening := False;
          raise Connect_Error;
    end Listen;
 
-   procedure Accept_One
-     (L    : in out Listener;
-      Chan : in out Channel)
-   is
+   procedure Accept_One (L : in out Listener; Chan : in out Channel) is
       use GNAT.Sockets;
       Peer : Sock_Addr_Type;
    begin
@@ -276,22 +256,28 @@ package body Http2_Core.Transport is
       begin
          GNAT.Sockets.Close_Socket (L.Socket);
       exception
-         when others => null;
+         when others =>
+            null;
       end;
       L.Listening := False;
    end Stop;
 
    procedure Set_Trust_Anchor
-     (Chan : in out Channel;
-      Der  : RFLX.RFLX_Types.Bytes) is
+     (Chan : in out Channel; Der : RFLX.RFLX_Types.Bytes)
+   is
       pragma Unreferenced (Chan, Der);
-   begin null; end Set_Trust_Anchor;
+   begin
+      null;
+   end Set_Trust_Anchor;
 
    procedure Set_Server_Identity
      (Chan     : in out Channel;
       Cert_Der : RFLX.RFLX_Types.Bytes;
-      Key_Raw  : RFLX.RFLX_Types.Bytes) is
+      Key_Raw  : RFLX.RFLX_Types.Bytes)
+   is
       pragma Unreferenced (Chan, Cert_Der, Key_Raw);
-   begin null; end Set_Server_Identity;
+   begin
+      null;
+   end Set_Server_Identity;
 
 end Http2_Core.Transport;

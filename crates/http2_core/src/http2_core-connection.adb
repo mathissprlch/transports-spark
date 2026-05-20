@@ -765,7 +765,6 @@ package body Http2_Core.Connection is
       Response_Headers      : in out Hpack.Header_Block;
       Response_Headers_Last : in out Natural)
    is
-      pragma Unreferenced (C);
       Frag_First : RFLX.RFLX_Types.Index := View'First + 9;
       Frag_Last  : constant RFLX.RFLX_Types.Index := View'Last;
       Decode_OK  : Boolean;

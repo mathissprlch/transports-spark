@@ -43,7 +43,7 @@ package body Tls_Interop_Bench is
       Psk_Hex : String;
       Psk_Id  : String) return Cell_Spec
    is
-      CS : Cell_Spec := (others => <>);
+      CS : Cell_Spec;
    begin
       CS.Peer := P; CS.Role := R;
       CS.Mode := M; CS.Cipher := C;
@@ -337,16 +337,16 @@ package body Tls_Interop_Bench is
                               for I in 1 .. Runs loop
                                  Append
                                    (Runs_Json,
-                                    Create (Float (Times (I))));
+                                    Create (Times (I)));
                               end loop;
                               Row.Set_Field ("peer",      Image (P));
                               Row.Set_Field ("feature",   Image (F));
                               Row.Set_Field ("direction", Dir_S);
                               Row.Set_Field ("runs_s",    Runs_Json);
-                              Row.Set_Field ("mean_s",    Float (S.Mean));
-                              Row.Set_Field ("sd_s",      Float (S.Sd));
-                              Row.Set_Field ("min_s",     Float (S.Min_V));
-                              Row.Set_Field ("max_s",     Float (S.Max_V));
+                              Row.Set_Field ("mean_s",    S.Mean);
+                              Row.Set_Field ("sd_s",      S.Sd);
+                              Row.Set_Field ("min_s",     S.Min_V);
+                              Row.Set_Field ("max_s",     S.Max_V);
                               Append (Json_Out, Row);
                               Put_Line (Standard_Error,
                                 "[bench] hs " & Image (P)
@@ -421,15 +421,15 @@ package body Tls_Interop_Bench is
                      Runs_Json : JSON_Array := Empty_Array;
                   begin
                      for I in 1 .. Runs loop
-                        Append (Runs_Json, Create (Float (Ts (I))));
+                        Append (Runs_Json, Create (Ts (I)));
                      end loop;
                      Row.Set_Field
                        ("matchup", Image (RP) & "->" & Image (RP));
                      Row.Set_Field ("runs_s", Runs_Json);
-                     Row.Set_Field ("mean_s", Float (S.Mean));
-                     Row.Set_Field ("sd_s",   Float (S.Sd));
-                     Row.Set_Field ("min_s",  Float (S.Min_V));
-                     Row.Set_Field ("max_s",  Float (S.Max_V));
+                     Row.Set_Field ("mean_s", S.Mean);
+                     Row.Set_Field ("sd_s",   S.Sd);
+                     Row.Set_Field ("min_s",  S.Min_V);
+                     Row.Set_Field ("max_s",  S.Max_V);
                      Append (Json_Out, Row);
                      Put_Line (Standard_Error,
                        "[bench] pvp " & Image (RP) & "->" & Image (RP)
@@ -552,16 +552,16 @@ package body Tls_Interop_Bench is
                      begin
                         for I in 1 .. Runs loop
                            Append
-                             (Runs_Json, Create (Float (Tputs (I))));
+                             (Runs_Json, Create (Tputs (I)));
                         end loop;
                         Row.Set_Field ("peer",    Image (P));
                         Row.Set_Field ("feature", Image (F));
                         Row.Set_Field ("bytes",   Bytes);
                         Row.Set_Field ("runs_mibps", Runs_Json);
-                        Row.Set_Field ("mean_mibps", Float (S.Mean));
-                        Row.Set_Field ("sd_mibps",   Float (S.Sd));
-                        Row.Set_Field ("min_mibps",  Float (S.Min_V));
-                        Row.Set_Field ("max_mibps",  Float (S.Max_V));
+                        Row.Set_Field ("mean_mibps", S.Mean);
+                        Row.Set_Field ("sd_mibps",   S.Sd);
+                        Row.Set_Field ("min_mibps",  S.Min_V);
+                        Row.Set_Field ("max_mibps",  S.Max_V);
                         Append (Json_Out, Row);
                         Put_Line (Standard_Error,
                           "[bench] tp " & Image (P)

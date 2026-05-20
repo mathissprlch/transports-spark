@@ -67,24 +67,24 @@ is
    type Settings_List is array (Positive range <>) of Settings_Parameter;
 
    procedure Encode_Settings
-     (Buffer : in out Bytes_Ptr;
+     (Buffer : Bytes_Ptr;
       Last   :    out Index;
       Params : Settings_List)
    with
      Pre  => Buffer /= null
              and then Params'Length in 0 .. 16
              and then Buffer'Length >= 9 + 6 * Params'Length,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    --  SETTINGS-ACK frame: empty body, ACK flag set, stream 0. RFC
    --  9113 §6.5.3 obligates the receiver of a SETTINGS frame to
    --  acknowledge.
    procedure Encode_Settings_Ack
-     (Buffer : in out Bytes_Ptr;
+     (Buffer : Bytes_Ptr;
       Last   :    out Index)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 9,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    --  Decode a SETTINGS payload (assumed already separated from the
    --  9-byte fixed header by the caller — Buffer'First..Last is
@@ -104,21 +104,21 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Ping
-     (Buffer       : in out Bytes_Ptr;
+     (Buffer       : Bytes_Ptr;
       Last         :    out Index;
       Opaque_Data  : RFLX.RFLX_Types.Bytes;
       Ack          : Boolean := False)
    with
      Pre  => Buffer /= null and then Buffer'Length >= 17
              and then Opaque_Data'Length = 8,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    ---------------------------------------------------------------------
    --  RST_STREAM (RFC 9113 §6.4). 4-byte error code body.
    ---------------------------------------------------------------------
 
    procedure Encode_Rst_Stream
-     (Buffer     : in out Bytes_Ptr;
+     (Buffer     : Bytes_Ptr;
       Last       :    out Index;
       Stream_Id  : Bit_Len;
       Error_Code : Bit_Len)
@@ -126,14 +126,14 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 13
              and then Stream_Id in 1 .. 2 ** 31 - 1
              and then Error_Code <= 2 ** 32 - 1,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    ---------------------------------------------------------------------
    --  WINDOW_UPDATE (RFC 9113 §6.9). 4-byte 31-bit increment.
    ---------------------------------------------------------------------
 
    procedure Encode_Window_Update
-     (Buffer    : in out Bytes_Ptr;
+     (Buffer    : Bytes_Ptr;
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Increment : Bit_Len)
@@ -141,7 +141,7 @@ is
      Pre  => Buffer /= null and then Buffer'Length >= 13
              and then Stream_Id <= 2 ** 31 - 1
              and then Increment in 1 .. 2 ** 31 - 1,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    --  Decode a WINDOW_UPDATE payload (§6.9). Buffer is the 4-byte
    --  body (caller already stripped the 9-byte fixed frame header).
@@ -162,7 +162,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Goaway
-     (Buffer         : in out Bytes_Ptr;
+     (Buffer         : Bytes_Ptr;
       Last           :    out Index;
       Last_Stream_Id : Bit_Len;
       Error_Code     : Bit_Len;
@@ -173,7 +173,7 @@ is
              and then Last_Stream_Id <= 2 ** 31 - 1
              and then Error_Code <= 2 ** 32 - 1
              and then Debug_Data'Length <= 2 ** 24 - 18,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    ---------------------------------------------------------------------
    --  HEADERS (RFC 9113 §6.2). Caller pre-encodes the HPACK fragment
@@ -182,7 +182,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Headers
-     (Buffer    : in out Bytes_Ptr;
+     (Buffer    : Bytes_Ptr;
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Fragment  : RFLX.RFLX_Types.Bytes;
@@ -193,13 +193,13 @@ is
              and then Buffer'Length >= 9 + Fragment'Length
              and then Stream_Id in 1 .. 2 ** 31 - 1
              and then Fragment'Length <= 2 ** 14,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    --  CONTINUATION (RFC 9113 §6.10). Carries the next chunk of a
    --  HEADERS run; the final CONTINUATION on a given stream MUST
    --  set END_HEADERS=True.
    procedure Encode_Continuation
-     (Buffer    : in out Bytes_Ptr;
+     (Buffer    : Bytes_Ptr;
       Last      :    out Index;
       Stream_Id : Bit_Len;
       Fragment  : RFLX.RFLX_Types.Bytes;
@@ -209,7 +209,7 @@ is
              and then Buffer'Length >= 9 + Fragment'Length
              and then Stream_Id in 1 .. 2 ** 31 - 1
              and then Fragment'Length <= 2 ** 14,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    ---------------------------------------------------------------------
    --  DATA (RFC 9113 §6.1). Application bytes. END_STREAM flag for
@@ -217,7 +217,7 @@ is
    ---------------------------------------------------------------------
 
    procedure Encode_Data
-     (Buffer     : in out Bytes_Ptr;
+     (Buffer     : Bytes_Ptr;
       Last       :    out Index;
       Stream_Id  : Bit_Len;
       Payload    : RFLX.RFLX_Types.Bytes;
@@ -227,7 +227,7 @@ is
              and then Buffer'Length >= 9 + Payload'Length
              and then Stream_Id in 1 .. 2 ** 31 - 1
              and then Payload'Length <= 2 ** 14,
-     Post => Buffer /= null;
+     Post => Last in Buffer'Range;
 
    ---------------------------------------------------------------------
    --  Decode a 9-byte frame fixed header at the start of `Buffer`.

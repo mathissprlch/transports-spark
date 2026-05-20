@@ -14,7 +14,7 @@ package body Tests.Wire is
    type Int64_Array is array (Positive range <>) of Integer_64;
 
    procedure Roundtrip_Varint_32_Small is
-      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := (others => 0);
+      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := [others => 0];
       W      : Protobuf.IO.Write_Cursor;
       R      : Protobuf.IO.Read_Cursor;
       V      : Unsigned_32;
@@ -42,7 +42,7 @@ package body Tests.Wire is
    end Roundtrip_Varint_32_Small;
 
    procedure Roundtrip_Varint_32_Max is
-      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := (others => 0);
+      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := [others => 0];
       W      : Protobuf.IO.Write_Cursor;
       R      : Protobuf.IO.Read_Cursor;
       V      : Unsigned_32;
@@ -54,7 +54,7 @@ package body Tests.Wire is
    end Roundtrip_Varint_32_Max;
 
    procedure Roundtrip_Varint_64 is
-      Buffer : Protobuf.IO.Octet_Array (1 .. 32) := (others => 0);
+      Buffer : Protobuf.IO.Octet_Array (1 .. 32) := [others => 0];
       W      : Protobuf.IO.Write_Cursor;
       R      : Protobuf.IO.Read_Cursor;
       V      : Unsigned_64;
@@ -85,9 +85,9 @@ package body Tests.Wire is
 
       declare
          Samples_32 : constant Int32_Array :=
-           (0, 1, -1, 1234, -1234, Integer_32'Last, Integer_32'First);
+           [0, 1, -1, 1234, -1234, Integer_32'Last, Integer_32'First];
          Samples_64 : constant Int64_Array :=
-           (0, 1, -1, Integer_64'Last, Integer_64'First);
+           [0, 1, -1, Integer_64'Last, Integer_64'First];
       begin
          for Sample of Samples_32 loop
             Test_Support.Assert
@@ -105,7 +105,7 @@ package body Tests.Wire is
    end Roundtrip_ZigZag;
 
    procedure Roundtrip_Fixed is
-      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := (others => 0);
+      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := [others => 0];
       W      : Protobuf.IO.Write_Cursor;
       R      : Protobuf.IO.Read_Cursor;
       U32    : Unsigned_32;
@@ -122,7 +122,7 @@ package body Tests.Wire is
    end Roundtrip_Fixed;
 
    procedure Roundtrip_Tag is
-      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := (others => 0);
+      Buffer : Protobuf.IO.Octet_Array (1 .. 16) := [others => 0];
       W      : Protobuf.IO.Write_Cursor;
       R      : Protobuf.IO.Read_Cursor;
       Num    : Protobuf.Wire.Field_Number;

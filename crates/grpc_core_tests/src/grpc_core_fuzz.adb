@@ -18,7 +18,6 @@ with Grpc_Core.Status;
 procedure Grpc_Core_Fuzz is
    use Ada.Text_IO;
    use Ada.Calendar;
-   use type Interfaces.Unsigned_8;
    use type RFLX.RFLX_Builtin_Types.Index;
 
    package Byte_Random is new
@@ -90,7 +89,7 @@ procedure Grpc_Core_Fuzz is
       --  Framing.Decode
       Framing_R.Total := Framing_R.Total + 1;
       declare
-         Out_Msg : RFLX.RFLX_Types.Bytes (1 .. 1024) := (others => 0);
+         Out_Msg : RFLX.RFLX_Types.Bytes (1 .. 1024) := [others => 0];
          M_Len   : RFLX.RFLX_Types.Length;
          Compr   : Boolean;
          OK      : Boolean;

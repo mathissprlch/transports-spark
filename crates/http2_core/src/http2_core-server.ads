@@ -15,7 +15,6 @@
 --    4. Stop — close listening socket.
 
 with RFLX.RFLX_Types;
-with RFLX.RFLX_Builtin_Types;
 
 with Http2_Core.Transport;
 with Http2_Core.Hpack;

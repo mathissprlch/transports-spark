@@ -28,18 +28,18 @@ package Http1_Core.Wire is
    Max_Uri_Len          : constant := 256;
 
    type Header is record
-      Name       : String (1 .. Max_Header_Name_Len) := (others => ' ');
+      Name       : String (1 .. Max_Header_Name_Len) := [others => ' '];
       Name_Last  : Natural := 0;
-      Value      : String (1 .. Max_Header_Value_Len) := (others => ' ');
+      Value      : String (1 .. Max_Header_Value_Len) := [others => ' '];
       Value_Last : Natural := 0;
    end record;
 
    type Header_Block is array (1 .. Max_Headers) of Header;
 
    type Request is record
-      Method      : String (1 .. Max_Method_Len) := (others => ' ');
+      Method      : String (1 .. Max_Method_Len) := [others => ' '];
       Method_Last : Natural := 0;
-      Uri         : String (1 .. Max_Uri_Len) := (others => ' ');
+      Uri         : String (1 .. Max_Uri_Len) := [others => ' '];
       Uri_Last    : Natural := 0;
       Headers      : Header_Block;
       Headers_Last : Natural := 0;

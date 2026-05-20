@@ -11,7 +11,7 @@ library project Protobuf_Ada is
       for Default_Switches ("Ada") use
         ("-g",
          "-O0",
-         "-gnat2022", "-gnatwa",      --  enable all warnings
+         "-gnat2022", "-gnatwae",      --  enable all warnings
          "-gnatVa",      --  validity checks on
          "-gnatyM100",   --  100-column line limit
          "-gnata");      --  enable assertions and contracts

@@ -1,4 +1,5 @@
 with RFLX.RFLX_Types; use type RFLX.RFLX_Types.Index;
+with RFLX.RFLX_Builtin_Types;
 with RFLX.Http2_Parameters;
 with RFLX.Stream.Open.FSM;
 
@@ -12,7 +13,6 @@ package body Http2_Core.Server is
    use type RFLX.Http2_Parameters.HTTP_2_Settings_Enum;
 
    use type RFLX.RFLX_Builtin_Types.Bytes_Ptr;
-   use type RFLX.RFLX_Builtin_Types.Bit_Length;
    use type RFLX.RFLX_Builtin_Types.Byte;
    use type RFLX.Http2_Parameters.HTTP_2_Frame_Type_Enum;
    use type RFLX.RFLX_Types.Length;
@@ -1755,7 +1755,6 @@ package body Http2_Core.Server is
       --  interleave inbound DATA / outbound DATA.
       declare
          package FSM renames RFLX.Stream.Open.FSM;
-         use type FSM.State;
          Ctx : FSM.Context;
 
          Request_Headers : Hpack.Header_Block (1 .. 16);

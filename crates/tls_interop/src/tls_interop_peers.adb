@@ -3,9 +3,6 @@ with Ada.Directories;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
 with GNAT.OS_Lib;     use GNAT.OS_Lib;
-pragma Warnings (Off, "no entities of ""GNAT.Strings"" are referenced");
-with GNAT.Strings;
-pragma Warnings (On, "no entities of ""GNAT.Strings"" are referenced");
 
 package body Tls_Interop_Peers is
 
@@ -146,7 +143,7 @@ package body Tls_Interop_Peers is
          Val : GNAT.OS_Lib.String_Access;
       end record;
       Slots : array (1 .. 21) of Slot :=
-        (1  => (S0 /= "", New_Arg (S0)),
+        [1  => (S0 /= "", New_Arg (S0)),
          2  => (S1 /= "", New_Arg (S1)),
          3  => (S2 /= "", New_Arg (S2)),
          4  => (S3 /= "", New_Arg (S3)),
@@ -166,7 +163,7 @@ package body Tls_Interop_Peers is
          18 => (S17 /= "", New_Arg (S17)),
          19 => (S18 /= "", New_Arg (S18)),
          20 => (S19 /= "", New_Arg (S19)),
-         21 => (S20 /= "", New_Arg (S20)));
+         21 => (S20 /= "", New_Arg (S20))];
       N : Natural := 0;
    begin
       for I in Slots'Range loop

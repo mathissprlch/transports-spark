@@ -6,8 +6,6 @@ separate (Http2_Core.Mux_Server)
 procedure Accept_And_Serve_Multi_Server_Stream
   (L : in out Listener) is
 
-   use type RFLX.RFLX_Types.Index;
-
    --  Body_Complete: caller's Setup_Response runs once, response
    --  HEADERS go out, slot transitions to Streaming. From there the
    --  driver pumps Pump_Reply each iteration.

@@ -4,8 +4,6 @@ with Http2_Core.Mux_Server.Hooks;
 separate (Http2_Core.Mux_Server)
 procedure Accept_And_Serve_Multi (L : in out Listener) is
 
-   use type RFLX.RFLX_Types.Index;
-
    --  Body_Complete hook: invoke the user's handler and emit the
    --  full response in one shot.
    procedure Run_Handler

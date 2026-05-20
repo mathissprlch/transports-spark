@@ -4,7 +4,6 @@ with Tls_Core;
 with Tls_Core.Aead_Channel;
 with Tls_Core.Cert_Chain;
 with Tls_Core.Suites;
-with Tls_Core.Tcp_Transport;
 with Tls_Core.Tls13_Driver;
 
 package body Tls_Interop_Inline is
@@ -56,10 +55,10 @@ package body Tls_Interop_Inline is
       Out_Last : out Natural;
       OK       : out Boolean)
    is
-      Header   : Octet_Array (1 .. 5) := (others => 0);
+      Header   : Octet_Array (1 .. 5) := [others => 0];
       Body_Len : Natural;
    begin
-      Out_Buf  := (others => 0);
+      Out_Buf  := [others => 0];
       Out_Last := 0;
       OK       := False;
       Tls_Core.Tcp_Transport.Recv_All (Chan, Header, OK);
@@ -71,7 +70,7 @@ package body Tls_Interop_Inline is
       Out_Buf (1 .. 5) := Header;
       if Body_Len > 0 then
          declare
-            Body_Buf : Octet_Array (1 .. Body_Len) := (others => 0);
+            Body_Buf : Octet_Array (1 .. Body_Len) := [others => 0];
          begin
             Tls_Core.Tcp_Transport.Recv_All (Chan, Body_Buf, OK);
             if not OK then return; end if;
@@ -93,7 +92,7 @@ package body Tls_Interop_Inline is
       Rec_Last : Natural;
       Got      : Natural := 0;
    begin
-      Acc_Buf  := (others => 0);
+      Acc_Buf  := [others => 0];
       Acc_Last := 0;
       OK       := True;
       while Got < N_Recs loop
@@ -128,19 +127,19 @@ package body Tls_Interop_Inline is
       Sock : Tls_Core.Tcp_Transport.Channel;
       D    : Tls_Core.Tls13_Driver.Driver;
 
-      Priv_Key : constant Octet_Array (1 .. 32) := (others => 16#42#);
-      Trust_Buf : Octet_Array (1 .. 4096) := (others => 0);
+      Priv_Key : constant Octet_Array (1 .. 32) := [others => 16#42#];
+      Trust_Buf : Octet_Array (1 .. 4096) := [others => 0];
       Trust_Len : Natural;
-      Psk       : constant Octet_Array (1 .. 32) := (others => 16#42#);
-      Psk_Id    : constant Octet_Array := (Character'Pos ('T'),
-        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
+      Psk       : constant Octet_Array (1 .. 32) := [others => 16#42#];
+      Psk_Id    : constant Octet_Array := [Character'Pos ('T'),
+        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t')];
 
       EC_Dir : constant String :=
         "crates/tls_core/tests/fixtures/interop/ec";
-      Hostname : constant Octet_Array := (
+      Hostname : constant Octet_Array := [
         Character'Pos ('l'), Character'Pos ('o'), Character'Pos ('c'),
         Character'Pos ('a'), Character'Pos ('l'), Character'Pos ('h'),
-        Character'Pos ('o'), Character'Pos ('s'), Character'Pos ('t'));
+        Character'Pos ('o'), Character'Pos ('s'), Character'Pos ('t')];
 
       T0 : Time;
       Server_Records : Positive := 5;
@@ -185,9 +184,9 @@ package body Tls_Interop_Inline is
       T0 := Clock;
 
       declare
-         Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+         Out_Buf  : Octet_Array (1 .. 4096) := [others => 0];
          Out_Last : Natural;
-         Empty    : constant Octet_Array (1 .. 0) := (others => 0);
+         Empty    : constant Octet_Array (1 .. 0) := [others => 0];
       begin
          Tls_Core.Tls13_Driver.Step
            (D, In_Bytes => Empty,
@@ -200,10 +199,10 @@ package body Tls_Interop_Inline is
          Tls_Core.Tcp_Transport.Send_All (Sock, Out_Buf (1 .. Out_Last));
 
          declare
-            In_Buf  : Octet_Array (1 .. 16640 * 5 + 64) := (others => 0);
+            In_Buf  : Octet_Array (1 .. 16640 * 5 + 64) := [others => 0];
             In_Last : Natural;
             OK      : Boolean;
-            CF_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+            CF_Buf  : Octet_Array (1 .. 4096) := [others => 0];
             CF_Last : Natural;
          begin
             Read_Flight (Sock, Server_Records, In_Buf, In_Last, OK);
@@ -264,14 +263,14 @@ package body Tls_Interop_Inline is
       Sock : Tls_Core.Tcp_Transport.Channel;
       D    : Tls_Core.Tls13_Driver.Driver;
 
-      Priv_Key : constant Octet_Array (1 .. 32) := (others => 16#42#);
-      Cert_Buf : Octet_Array (1 .. 4096) := (others => 0);
+      Priv_Key : constant Octet_Array (1 .. 32) := [others => 16#42#];
+      Cert_Buf : Octet_Array (1 .. 4096) := [others => 0];
       Cert_Len : Natural;
-      Key_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+      Key_Buf  : Octet_Array (1 .. 4096) := [others => 0];
       Key_Len  : Natural;
-      Psk      : constant Octet_Array (1 .. 32) := (others => 16#42#);
-      Psk_Id   : constant Octet_Array := (Character'Pos ('T'),
-        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
+      Psk      : constant Octet_Array (1 .. 32) := [others => 16#42#];
+      Psk_Id   : constant Octet_Array := [Character'Pos ('T'),
+        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t')];
 
       EC_Dir : constant String :=
         "crates/tls_core/tests/fixtures/interop/ec";
@@ -313,10 +312,10 @@ package body Tls_Interop_Inline is
       T0 := Clock;
 
       declare
-         In_Buf   : Octet_Array (1 .. 16640 + 5) := (others => 0);
+         In_Buf   : Octet_Array (1 .. 16640 + 5) := [others => 0];
          In_Last  : Natural;
          OK       : Boolean;
-         Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+         Out_Buf  : Octet_Array (1 .. 4096) := [others => 0];
          Out_Last : Natural;
       begin
          Read_Flight (Sock, 1, In_Buf, In_Last, OK);
@@ -383,19 +382,19 @@ package body Tls_Interop_Inline is
       Sock : Tls_Core.Tcp_Transport.Channel;
       D    : Tls_Core.Tls13_Driver.Driver;
 
-      Priv_Key : constant Octet_Array (1 .. 32) := (others => 16#42#);
-      Trust_Buf : Octet_Array (1 .. 4096) := (others => 0);
+      Priv_Key : constant Octet_Array (1 .. 32) := [others => 16#42#];
+      Trust_Buf : Octet_Array (1 .. 4096) := [others => 0];
       Trust_Len : Natural;
-      Psk       : constant Octet_Array (1 .. 32) := (others => 16#42#);
-      Psk_Id    : constant Octet_Array := (Character'Pos ('T'),
-        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t'));
+      Psk       : constant Octet_Array (1 .. 32) := [others => 16#42#];
+      Psk_Id    : constant Octet_Array := [Character'Pos ('T'),
+        Character'Pos ('e'), Character'Pos ('s'), Character'Pos ('t')];
 
       EC_Dir : constant String :=
         "crates/tls_core/tests/fixtures/interop/ec";
-      Hostname : constant Octet_Array := (
+      Hostname : constant Octet_Array := [
         Character'Pos ('l'), Character'Pos ('o'), Character'Pos ('c'),
         Character'Pos ('a'), Character'Pos ('l'), Character'Pos ('h'),
-        Character'Pos ('o'), Character'Pos ('s'), Character'Pos ('t'));
+        Character'Pos ('o'), Character'Pos ('s'), Character'Pos ('t')];
 
       Server_Records : Positive := 5;
    begin
@@ -437,9 +436,9 @@ package body Tls_Interop_Inline is
       end;
 
       declare
-         Out_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+         Out_Buf  : Octet_Array (1 .. 4096) := [others => 0];
          Out_Last : Natural;
-         Empty    : constant Octet_Array (1 .. 0) := (others => 0);
+         Empty    : constant Octet_Array (1 .. 0) := [others => 0];
       begin
          Tls_Core.Tls13_Driver.Step
            (D, In_Bytes => Empty,
@@ -452,10 +451,10 @@ package body Tls_Interop_Inline is
          Tls_Core.Tcp_Transport.Send_All (Sock, Out_Buf (1 .. Out_Last));
 
          declare
-            In_Buf  : Octet_Array (1 .. 16640 * 5 + 64) := (others => 0);
+            In_Buf  : Octet_Array (1 .. 16640 * 5 + 64) := [others => 0];
             In_Last : Natural;
             OK      : Boolean;
-            CF_Buf  : Octet_Array (1 .. 4096) := (others => 0);
+            CF_Buf  : Octet_Array (1 .. 4096) := [others => 0];
             CF_Last : Natural;
          begin
             Read_Flight (Sock, Server_Records, In_Buf, In_Last, OK);
@@ -484,8 +483,8 @@ package body Tls_Interop_Inline is
       declare
          Out_Dir, In_Dir : Tls_Core.Aead_Channel.Direction;
          Chunk   : constant Natural := 4096;
-         Payload : constant Octet_Array (1 .. Chunk) := (others => 16#42#);
-         Wire    : Octet_Array (1 .. Chunk + 256) := (others => 0);
+         Payload : constant Octet_Array (1 .. Chunk) := [others => 16#42#];
+         Wire    : Octet_Array (1 .. Chunk + 256) := [others => 0];
          W_Last  : Natural;
          Sent    : Natural := 0;
          T0      : Time;

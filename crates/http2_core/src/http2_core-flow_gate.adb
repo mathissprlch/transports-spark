@@ -7,7 +7,6 @@ is
 
    use type RFLX.RFLX_Types.Length;
    use type RFLX.RFLX_Types.Index;
-   use type RFLX.RFLX_Builtin_Types.Bit_Length;
    use type RFLX.RFLX_Builtin_Types.Byte;
    use type RFLX.Flow_Gate.Send_Gate.FSM.Channel;
    use type RFLX.Flow_Gate.Send_Gate.FSM.State;
@@ -31,7 +30,6 @@ is
 
    Dec_Allow      : constant Byte := 1;
    Dec_Deny       : constant Byte := 2;
-   Dec_Flow_Error : constant Byte := 3;
 
    ------------------------------------------------------------------
    --  Internal helpers

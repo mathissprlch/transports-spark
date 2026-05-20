@@ -2,7 +2,6 @@
 --  package so the codegen `with` clause is independent of the wire
 --  primitives and easy to drop into generated bodies.
 
-with Interfaces;
 with Protobuf.IO;
 
 package Protobuf.Wire.Extras is

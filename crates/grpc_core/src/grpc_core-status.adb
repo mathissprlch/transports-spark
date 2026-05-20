@@ -46,7 +46,7 @@ is
    is
       N : constant Natural := Code'Pos (C);
    begin
-      Buf := (others => ' ');
+      Buf := [others => ' '];
       if N >= 10 then
          Buf (Buf'First) :=
            Character'Val (Character'Pos ('0') + N / 10);

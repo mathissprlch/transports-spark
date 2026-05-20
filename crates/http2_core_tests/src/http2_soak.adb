@@ -27,7 +27,6 @@ with Http2_Core.Connection;
 procedure Http2_Soak is
    use Ada.Text_IO;
    use Ada.Calendar;
-   use type Interfaces.Unsigned_8;
    use type RFLX.RFLX_Builtin_Types.Index;
    use type RFLX.RFLX_Builtin_Types.Byte;
 
@@ -41,11 +40,11 @@ procedure Http2_Soak is
    Port       : Natural := 8080;
 
    --  Counters.
-   Total       : Natural := 0;
-   OK          : Natural := 0;
-   Open_Fail   : Natural := 0;
-   RPC_Fail    : Natural := 0;
-   Other_Fail  : Natural := 0;
+   Total         : Natural := 0;
+   OK            : Natural := 0;
+   Open_Fail     : Natural := 0;
+   RPC_Fail      : Natural := 0;
+   Other_Fail    : Natural := 0;
    Body_Mismatch : Natural := 0;
 
    Anomaly_Log : File_Type;
@@ -53,8 +52,7 @@ procedure Http2_Soak is
    procedure Log_Anomaly (Iter : Natural; Why : String);
    procedure Log_Anomaly (Iter : Natural; Why : String) is
    begin
-      Put_Line (Anomaly_Log,
-                "iter=" & Iter'Image & " " & Why);
+      Put_Line (Anomaly_Log, "iter=" & Iter'Image & " " & Why);
       Flush (Anomaly_Log);
    end Log_Anomaly;
 
@@ -84,50 +82,49 @@ procedure Http2_Soak is
 
    procedure One_Iteration (I : Natural);
    procedure One_Iteration (I : Natural) is
-      C : Http2_Core.Connection.Connection;
+      C               : Http2_Core.Connection.Connection;
       --  Per-iteration buffers. Heap is fine in the test harness;
       --  production code paths in http2_core itself never call `new`.
       --  Three buffers: working + Stream::Half_Open's Inbound + Outgoing
       --  external slots.
       Buffer_Capacity : constant := 16 * 1024 + 64;
-      Conn_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+      Conn_Buf        : RFLX.RFLX_Types.Bytes_Ptr :=
         new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
-      Inbound_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+      Inbound_Buf     : RFLX.RFLX_Types.Bytes_Ptr :=
         new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
-      Outgoing_Buf : RFLX.RFLX_Types.Bytes_Ptr :=
+      Outgoing_Buf    : RFLX.RFLX_Types.Bytes_Ptr :=
         new RFLX.RFLX_Types.Bytes'(1 .. Buffer_Capacity => 0);
 
       --  Vary body size: deterministic from iteration index, but
       --  bounded so the soak never asks for more than the
       --  Connection's buffer can hold (16 KB).
-      Body_Size : constant Natural :=
-        (I mod 256) + 1;
-      Body_Bytes : RFLX.RFLX_Types.Bytes
-        (1 .. RFLX.RFLX_Types.Index (Body_Size));
+      Body_Size  : constant Natural := (I mod 256) + 1;
+      Body_Bytes :
+        RFLX.RFLX_Types.Bytes (1 .. RFLX.RFLX_Types.Index (Body_Size));
 
-      Path_Buf  : String (1 .. 32);
-      Path_Len  : Natural;
+      Path_Buf : String (1 .. 32);
+      Path_Len : Natural;
 
       Resp_Hdrs : Http2_Core.Hpack.Header_Block (1 .. 16);
       Hdrs_Last : Natural;
-      Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 16384) := (others => 0);
+      Resp_Body : RFLX.RFLX_Types.Bytes (1 .. 16384) := [others => 0];
       Body_Last : Natural;
    begin
       --  Random body of (deterministic-per-iteration size).
       for J in Body_Bytes'Range loop
-         Body_Bytes (J) := RFLX.RFLX_Types.Byte
-                             (Byte_Random.Random (Byte_Gen));
+         Body_Bytes (J) :=
+           RFLX.RFLX_Types.Byte (Byte_Random.Random (Byte_Gen));
       end loop;
 
       --  Path includes iteration index for traceability.
       declare
-         Img : constant String := I'Image;
+         Img     : constant String := I'Image;
          --  Strip leading space from 'Image.
          Idx_Str : constant String :=
            (if Img'Length > 0 and then Img (Img'First) = ' '
             then Img (Img'First + 1 .. Img'Last)
             else Img);
-         Prefix : constant String := "/echo/";
+         Prefix  : constant String := "/echo/";
       begin
          Path_Buf (1 .. Prefix'Length) := Prefix;
          Path_Buf (Prefix'Length + 1 .. Prefix'Length + Idx_Str'Length) :=
@@ -138,21 +135,15 @@ procedure Http2_Soak is
       Http2_Core.Connection.Attach_Buffers
         (C, Conn_Buf, Inbound_Buf, Outgoing_Buf);
       Http2_Core.Connection.Open
-        (C    => C,
-         Host => Host (1 .. Host_Last),
-         Port => Port);
+        (C => C, Host => Host (1 .. Host_Last), Port => Port);
 
       declare
          Headers : constant Http2_Core.Hpack.Header_Block (1 .. 5) :=
-           (Http2_Core.Hpack.Make_Header (":method", "POST"),
+           [Http2_Core.Hpack.Make_Header (":method", "POST"),
             Http2_Core.Hpack.Make_Header (":scheme", "http"),
-            Http2_Core.Hpack.Make_Header
-              (":path", Path_Buf (1 .. Path_Len)),
-            Http2_Core.Hpack.Make_Header
-              (":authority",
-               Host (1 .. Host_Last)),
-            Http2_Core.Hpack.Make_Header
-              ("content-type", "application/grpc"));
+            Http2_Core.Hpack.Make_Header (":path", Path_Buf (1 .. Path_Len)),
+            Http2_Core.Hpack.Make_Header (":authority", Host (1 .. Host_Last)),
+            Http2_Core.Hpack.Make_Header ("content-type", "application/grpc")];
       begin
          Http2_Core.Connection.Round_Trip
            (C                     => C,
@@ -169,31 +160,34 @@ procedure Http2_Soak is
             Got_Size : constant Integer :=
               Body_Last - Integer (Resp_Body'First) + 1;
          begin
-         if Got_Size /= Body_Size then
-            Body_Mismatch := Body_Mismatch + 1;
-            Log_Anomaly
-              (I, "body_size mismatch: expected" & Body_Size'Image
-                  & " got" & Got_Size'Image);
-         else
-            declare
-               All_Match : Boolean := True;
-            begin
-               for J in 1 .. Body_Size loop
-                  if Resp_Body (Resp_Body'First +
-                                  RFLX.RFLX_Types.Index (J) - 1)
-                    /= Body_Bytes (Body_Bytes'First +
-                                     RFLX.RFLX_Types.Index (J) - 1)
-                  then
-                     All_Match := False;
-                     exit;
+            if Got_Size /= Body_Size then
+               Body_Mismatch := Body_Mismatch + 1;
+               Log_Anomaly
+                 (I,
+                  "body_size mismatch: expected"
+                  & Body_Size'Image
+                  & " got"
+                  & Got_Size'Image);
+            else
+               declare
+                  All_Match : Boolean := True;
+               begin
+                  for J in 1 .. Body_Size loop
+                     if Resp_Body
+                          (Resp_Body'First + RFLX.RFLX_Types.Index (J) - 1)
+                       /= Body_Bytes
+                            (Body_Bytes'First + RFLX.RFLX_Types.Index (J) - 1)
+                     then
+                        All_Match := False;
+                        exit;
+                     end if;
+                  end loop;
+                  if not All_Match then
+                     Body_Mismatch := Body_Mismatch + 1;
+                     Log_Anomaly (I, "body bytes differ");
                   end if;
-               end loop;
-               if not All_Match then
-                  Body_Mismatch := Body_Mismatch + 1;
-                  Log_Anomaly (I, "body bytes differ");
-               end if;
-            end;
-         end if;
+               end;
+            end if;
          end;
          OK := OK + 1;
       end;
@@ -209,13 +203,10 @@ procedure Http2_Soak is
       when E : Http2_Core.Connection.Connect_Error =>
          Open_Fail := Open_Fail + 1;
          Log_Anomaly
-           (I, "Connect_Error: "
-               & Ada.Exceptions.Exception_Message (E));
+           (I, "Connect_Error: " & Ada.Exceptions.Exception_Message (E));
       when E : Http2_Core.Connection.RPC_Error =>
          RPC_Fail := RPC_Fail + 1;
-         Log_Anomaly
-           (I, "RPC_Error: "
-               & Ada.Exceptions.Exception_Message (E));
+         Log_Anomaly (I, "RPC_Error: " & Ada.Exceptions.Exception_Message (E));
       when E : others =>
          Other_Fail := Other_Fail + 1;
          Log_Anomaly
@@ -243,8 +234,13 @@ begin
    Put_Line (Anomaly_Log, "# http2_soak anomaly log");
    Flush (Anomaly_Log);
 
-   Put_Line ("http2_soak: " & Iterations'Image & " iterations against "
-             & Host (1 .. Host_Last) & ":" & Port'Image);
+   Put_Line
+     ("http2_soak: "
+      & Iterations'Image
+      & " iterations against "
+      & Host (1 .. Host_Last)
+      & ":"
+      & Port'Image);
    Start_Time := Clock;
 
    for I in 1 .. Iterations loop
@@ -252,21 +248,36 @@ begin
       One_Iteration (I);
       if I mod 50 = 0 then
          Put_Line
-           ("[" & I'Image & "]"
-            & " elapsed=" & Duration'Image (Clock - Start_Time) & "s"
-            & " ok=" & OK'Image
-            & " open_fail=" & Open_Fail'Image
-            & " rpc_fail=" & RPC_Fail'Image
-            & " body_mismatch=" & Body_Mismatch'Image);
+           ("["
+            & I'Image
+            & "]"
+            & " elapsed="
+            & Duration'Image (Clock - Start_Time)
+            & "s"
+            & " ok="
+            & OK'Image
+            & " open_fail="
+            & Open_Fail'Image
+            & " rpc_fail="
+            & RPC_Fail'Image
+            & " body_mismatch="
+            & Body_Mismatch'Image);
       end if;
    end loop;
 
    Put_Line ("=== final ===");
-   Put_Line ("total=" & Total'Image
-             & " ok=" & OK'Image
-             & " open_fail=" & Open_Fail'Image
-             & " rpc_fail=" & RPC_Fail'Image
-             & " body_mismatch=" & Body_Mismatch'Image
-             & " other_fail=" & Other_Fail'Image);
+   Put_Line
+     ("total="
+      & Total'Image
+      & " ok="
+      & OK'Image
+      & " open_fail="
+      & Open_Fail'Image
+      & " rpc_fail="
+      & RPC_Fail'Image
+      & " body_mismatch="
+      & Body_Mismatch'Image
+      & " other_fail="
+      & Other_Fail'Image);
    Close (Anomaly_Log);
 end Http2_Soak;

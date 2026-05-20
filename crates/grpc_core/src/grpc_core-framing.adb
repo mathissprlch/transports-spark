@@ -4,7 +4,6 @@ package body Grpc_Core.Framing
 with SPARK_Mode
 is
 
-   use type RFLX.RFLX_Types.Index;
    use type RFLX.RFLX_Builtin_Types.Byte;
 
    subtype U8 is RFLX.RFLX_Types.Byte;

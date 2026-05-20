@@ -4,6 +4,7 @@
 --  payloads via ``Protobuf_Core``. Status, metadata, deadline,
 --  trailers. Transport-agnostic: separate ``grpc_aws`` and
 --  ``grpc_embed`` crates wire the underlying I/O.
+
 package Grpc_Core is
 
 end Grpc_Core;
