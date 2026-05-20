@@ -186,7 +186,7 @@ package body Tls_Transport is
             "hs: state=" & State'Image (Current_State (Chan.Driver)));
 
          loop
-            if Current_State (Chan.Driver) = Awaiting_SF then
+            if Current_State (Chan.Driver) = Awaiting_Sf then
                Read_Flight (Chan.Tcp, In_Buf, In_Last, In_OK, Chan.Rflx_Buf);
             else
                Read_One_Record
