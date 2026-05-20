@@ -390,6 +390,15 @@ rflx-gen:
 	$(RFLX) generate -d crates/mqtt_core/generated  crates/mqtt_core/specs/*.rflx
 	$(RFLX) generate -d crates/http2_core/generated crates/http2_core/specs/*.rflx
 	$(RFLX) generate -d crates/tls_core/generated   crates/tls_core/specs/*.rflx
+	@#  rflx emits the shared RFLX runtime (rflx.ads, rflx-rflx_*) into
+	@#  every output dir, but those units live once in the rflx_runtime
+	@#  crate; leaving copies makes a unit "belong to several projects".
+	@#  Strip the rflx_runtime-owned files from each crate's generated/.
+	@for c in mqtt_core http2_core tls_core; do \
+	  for f in crates/rflx_runtime/src/*; do \
+	    rm -f "crates/$$c/generated/$$(basename "$$f")"; \
+	  done; \
+	done
 
 grpc-build:
 	@( cd crates/grpc_ada && $(ALR_ENV) alr build )
