@@ -29,15 +29,15 @@ library project Mqtt_Core is
          when "tcp" =>
             --  Hosted build: assertions enabled.
             for Default_Switches ("Ada") use
-              ("-g", "-O0", "-gnatwa", "-gnatVa", "-gnatyM100",
+              ("-g", "-O0", "-gnatwae", "-gnatW8", "-gnatVa", "-gnatyM100",
                "-gnata");
          when "tls" =>
             for Default_Switches ("Ada") use
-              ("-gnat2022", "-g", "-O0", "-gnatwa", "-gnatVa",
+              ("-gnat2022", "-g", "-O0", "-gnatwae", "-gnatW8", "-gnatVa",
                "-gnatyM120", "-gnata");
          when "bare" =>
             for Default_Switches ("Ada") use
-              ("-O2", "-gnatwa", "-gnatVa", "-gnatyM100",
+              ("-O2", "-gnatwae", "-gnatW8", "-gnatVa", "-gnatyM100",
                "-ffunction-sections", "-fdata-sections");
       end case;
    end Compiler;

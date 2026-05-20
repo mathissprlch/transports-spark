@@ -224,7 +224,6 @@ is
       Ctx : RFLX.Connect.Packet.Context;
       use type RFLX.Connect.Will_Flag_Bit;
       use type RFLX.Connect.Will_Retain_Bit;
-      use type RFLX.Connect.Will_QoS_Bits;
    begin
       Valid    := False;
       Client_Id := (others => ' ');

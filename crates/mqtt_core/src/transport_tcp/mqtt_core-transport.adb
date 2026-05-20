@@ -8,7 +8,6 @@ package body Mqtt_Core.Transport is
    --  RecordFlux apps.
 
    use type RFLX.RFLX_Types.Index;
-   use type RFLX.RFLX_Types.Length;
    use type Ada.Streams.Stream_Element_Offset;
 
    ---------------------------------------------------------------------
