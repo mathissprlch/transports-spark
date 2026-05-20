@@ -13,7 +13,7 @@ project Tls_Core_Tests is
       --  -gnata removed: see tls_core.gpr for rationale (abstract
       --  Spec_X ghost functions can't be runtime-evaluated).
       for Default_Switches ("Ada") use
-        ("-g", "-O2", "-gnat2022", "-gnatwa", "-gnatVa", "-gnatyM100");
+        ("-g", "-O2", "-gnat2022", "-gnatwae", "-gnatVa", "-gnatyM100");
       --  Note: -O2 here so the bench numbers are realistic. The
       --  test binary uses the same switches; performance figures
       --  reported are -O2, not -O0.
