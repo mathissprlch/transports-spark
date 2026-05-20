@@ -9,9 +9,22 @@ bin/
 alire/
 config/
 
-# Generated code (committed separately under crates/examples/generated/.gitkeep)
+# Generated code — not committed; regenerated from its source of truth.
+#   * RFLX SPARK (mqtt/http2/tls) <- crates/<c>/specs/*.rflx via RecordFlux
+#     (CI: pip install RecordFlux + `make rflx-gen`; Mac arm64: scripts/rflx)
+#   * protoc-gen-grpc-ada output (examples / protobuf_ada_tests)
+#     <- *.proto via `make grpc-codegen`
+# A .gitkeep keeps each directory present in a fresh checkout.
 crates/examples/generated/*.ad?
 !crates/examples/generated/.gitkeep
+crates/protobuf_ada_tests/generated/*.ad?
+!crates/protobuf_ada_tests/generated/.gitkeep
+crates/mqtt_core/generated/*.ad?
+!crates/mqtt_core/generated/.gitkeep
+crates/http2_core/generated/*.ad?
+!crates/http2_core/generated/.gitkeep
+crates/tls_core/generated/*.ad?
+!crates/tls_core/generated/.gitkeep
 
 # Vendored sources are bootstrapped, not committed.
 vendor/aws/

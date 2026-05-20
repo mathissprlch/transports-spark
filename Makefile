@@ -63,6 +63,7 @@ EXAMPLES_GEN := crates/examples/generated
         mqtt-build mqtt-test \
         http2-build http2-test \
         examples-build \
+        rflx-gen \
         docker-image docker-test docker-prove docker-interop docker-ci docker-shell
 
 # Default — build the production crate.
@@ -379,6 +380,25 @@ grpc-codegen: grpc-plugin
 	        --grpc-ada_out=$(EXAMPLES_GEN) \
 	        -I crates/examples/proto \
 	        crates/examples/proto/routeguide.proto
+
+# Regenerate the RFLX-derived SPARK from the *.rflx specs (source of
+# truth).  generated/ is gitignored; this repopulates it.  RFLX defaults
+# to the Docker wrapper because Mac arm64 has no RecordFlux wheel; CI
+# (amd64 Linux) installs the wheel and overrides:  RFLX=rflx make rflx-gen
+RFLX ?= scripts/rflx
+rflx-gen:
+	$(RFLX) generate -d crates/mqtt_core/generated  crates/mqtt_core/specs/*.rflx
+	$(RFLX) generate -d crates/http2_core/generated crates/http2_core/specs/*.rflx
+	$(RFLX) generate -d crates/tls_core/generated   crates/tls_core/specs/*.rflx
+	@#  rflx emits the shared RFLX runtime (rflx.ads, rflx-rflx_*) into
+	@#  every output dir, but those units live once in the rflx_runtime
+	@#  crate; leaving copies makes a unit "belong to several projects".
+	@#  Strip the rflx_runtime-owned files from each crate's generated/.
+	@for c in mqtt_core http2_core tls_core; do \
+	  for f in crates/rflx_runtime/src/*; do \
+	    rm -f "crates/$$c/generated/$$(basename "$$f")"; \
+	  done; \
+	done
 
 grpc-build:
 	@( cd crates/grpc_ada && $(ALR_ENV) alr build )

@@ -420,8 +420,32 @@ package body Codegen.Emit_Message is
          Codegen.Emit_Message_Bounded.Emit (Msg, Pkg_Prefix, Files);
          return;
       end if;
-      Add_With (Spec_Withs, "Ada.Strings.Unbounded");
-      Add_With (Spec_Withs, "Interfaces");
+      --  Only pull in Ada.Strings.Unbounded / Interfaces when a field
+      --  actually maps to one of those types (string/bytes -> Unbounded,
+      --  numeric scalars -> Interfaces.*); a message of only string or
+      --  only bool/enum/message fields would otherwise carry an unused
+      --  with clause, which -gnatwae rejects.
+      declare
+         Needs_Unbounded  : Boolean := False;
+         Needs_Interfaces : Boolean := False;
+      begin
+         for F of Msg.Fields loop
+            case F.Field_Kind is
+               when Type_String | Type_Bytes =>
+                  Needs_Unbounded := True;
+               when Type_Bool | Type_Enum | Type_Message =>
+                  null;
+               when others =>
+                  Needs_Interfaces := True;
+            end case;
+         end loop;
+         if Needs_Unbounded then
+            Add_With (Spec_Withs, "Ada.Strings.Unbounded");
+         end if;
+         if Needs_Interfaces then
+            Add_With (Spec_Withs, "Interfaces");
+         end if;
+      end;
       Add_With (Spec_Withs, "Protobuf.IO");
 
       Add_With (Bod_Withs, "Ada.Strings.Unbounded");
