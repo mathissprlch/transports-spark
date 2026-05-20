@@ -28,7 +28,6 @@
 --  will need an iterator-style API; deferred.
 
 with RFLX.RFLX_Types;
-with RFLX.RFLX_Builtin_Types;
 use type RFLX.RFLX_Types.Index;
 
 package Grpc_Core.Framing
