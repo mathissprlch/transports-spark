@@ -66,6 +66,8 @@ is
       Lemma_Carry26 (A (4) + Sw_C3 (A));
    end Lemma_Sweep5;
 
+   procedure Lemma_Fold (B : Big_Nat) is null;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

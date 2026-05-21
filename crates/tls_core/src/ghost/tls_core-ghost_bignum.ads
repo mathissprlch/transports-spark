@@ -333,4 +333,62 @@ is
                          A (I) = 0),
      Post => Val_Eq (A, Sweep5_Out (A), Sweep5_Chain (A));
 
+   ------------------------------------------------------------------
+   --  Mod-prime fold (HACL* carry_wide_felem5 z1 = z1 + (z1 << 2)).
+   --
+   --  After the sweep, limb 5 holds the top carry c4 at weight 2**130.
+   --  Since 2**130 = 5 + p, that carry folds back into limb 0 times 5,
+   --  changing the value by exactly -c4 * p (i.e. nothing, mod p). We
+   --  track this exactly: Fold_Out (B) is the reduced result, and
+   --  Fold_Plus_P (B) = Fold_Out (B) + c4 * P_Prime is value-equal to the
+   --  pre-fold B (Lemma_Fold). The "+ c4 * P_Prime" term is written inline
+   --  with P_Prime's concrete limbs (p0 = In_Cap - 4, p1..p4 = In_Cap) so
+   --  every product is a constant multiple of c4 (linear, no nonlinear VC).
+   ------------------------------------------------------------------
+
+   --  Top carry small enough that the folded limbs stay within Add_Cap.
+   --  (A real Poly1305 sweep yields c4 <= ~2**32, well under this.)
+   Fold_C_Cap : constant LLI := 2**35;
+
+   --  The reduced fold result: c4 (limb 5) folded into limb 0 times 5.
+   function Fold_Out (B : Big_Nat) return Big_Nat
+   is ([0      => B (0) + 5 * B (5),
+        1      => B (1),
+        2      => B (2),
+        3      => B (3),
+        4      => B (4),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
+             and then B (5) in 0 .. Fold_C_Cap,
+     Post => In_Bounds (Fold_Out'Result, Add_Cap);
+
+   --  Fold_Out (B) plus c4 * P_Prime, written with P_Prime's concrete limbs.
+   function Fold_Plus_P (B : Big_Nat) return Big_Nat
+   is ([0      => B (0) + 5 * B (5) + B (5) * (In_Cap - 4),
+        1      => B (1) + B (5) * In_Cap,
+        2      => B (2) + B (5) * In_Cap,
+        3      => B (3) + B (5) * In_Cap,
+        4      => B (4) + B (5) * In_Cap,
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
+             and then B (5) in 0 .. Fold_C_Cap,
+     Post => In_Bounds (Fold_Plus_P'Result, Add_Cap);
+
+   function Fold_Chain (C4 : LLI) return Carry_Array
+   is ([1 | 2 | 3 | 4 | 5 => C4, others => 0])
+   with Pre => C4 in 0 .. Fold_C_Cap, Post => Carry_Bounded (Fold_Chain'Result);
+
+   --  Fold_Plus_P (B) = Fold_Out (B) + c4 * P_Prime encodes the same integer
+   --  as the pre-fold B. So Fold_Out (B) = B - c4 * p, i.e. Fold_Out (B) is
+   --  congruent to B mod p (it differs by the multiple c4 * p).
+   procedure Lemma_Fold (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
+             and then B (5) in 0 .. Fold_C_Cap
+             and then (for all I in Limb_Index range 6 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Val_Eq (Fold_Plus_P (B), B, Fold_Chain (B (5)));
+
 end Tls_Core.Ghost_Bignum;
