@@ -1165,7 +1165,10 @@ is
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                          B (I) = 0)
              and then Sweep5_Out (B) (5) in 0 .. Fold_C_Cap,
-     Post => In_Bounds (Carry_Model'Result, Add_Cap);
+     Post => In_Bounds (Carry_Model'Result, Add_Cap)
+             and then (for all I in Limb_Index => Carry_Model'Result (I) < 2**27)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Carry_Model'Result (I) = 0);
 
    procedure Lemma_Carry_Fold (B : Big_Nat)
    with

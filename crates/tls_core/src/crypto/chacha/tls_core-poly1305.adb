@@ -4,6 +4,8 @@ is
 
    use Interfaces;
 
+   package GB renames Tls_Core.Ghost_Bignum;
+
    --  Limb_Index / Limbs are now declared in the spec so functional
    --  Posts on the private helpers can reference As_Nat5 / Feval5.
 
@@ -388,31 +390,143 @@ is
    --  + a partial fold of the high bits via × 5.
    ---------------------------------------------------------------------
 
-   procedure Carry (L : in out Limbs);
+   --  Carry correspondence: viewed through To_Big_Nat, the impl Carry computes
+   --  exactly GB.Carry_Model (sweep limbs 0..4, fold the limb-4 top carry into
+   --  limb 0 x5, one normalising 0->1 step). With inputs < 2**58 every U64
+   --  intermediate stays < 2**59, so Lemma_Shift_Mask_26 bridges each
+   --  Shift_Right/and to the Big_Nat Hi26/Lo26 split, step by step.
+   procedure Carry (L : in out Limbs)
+   with
+     Pre  => (for all I in Limb_Index => L (I) < 2**58),
+     Post =>
+       (for all I in Limb_Index => L (I) < 2**27)
+       and then GB."=" (To_Big_Nat (L), GB.Carry_Model (To_Big_Nat (L'Old)));
+
    procedure Carry (L : in out Limbs) is
-      C : U64;
+      C  : U64;
+      B0 : constant GB.Big_Nat := To_Big_Nat (L) with Ghost;
    begin
-      --  Propagate carries up.
+      pragma Assert (GB.In_Bounds (B0, GB.Carry_In_Cap));
+      GB.Lemma_Bounds_Mono (B0, GB.Carry_In_Cap, GB.Prod_Cap);
+      GB.Lemma_Sweep5_Tight_Carry (B0);
+
+      --  step 1: sweep limb 0 -> 1
+      Lemma_Shift_Mask_26 (L (0));
       C := Shift_Right (L (0), 26);
+      pragma Assert (C < 2**33);
       L (0) := L (0) and Mask_26;
       L (1) := L (1) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C0 (B0));
+      pragma Assert (GB.LLI (L (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (GB.LLI (L (1)) = B0 (1) + GB.Sw_C0 (B0));
+      pragma Assert (L (1) < 2**59);
+
+      --  step 2: sweep limb 1 -> 2
+      Lemma_Shift_Mask_26 (L (1));
       C := Shift_Right (L (1), 26);
+      pragma Assert (C < 2**33);
       L (1) := L (1) and Mask_26;
       L (2) := L (2) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C1 (B0));
+      pragma Assert (GB.LLI (L (1)) = GB.Sweep5_Out (B0) (1));
+      pragma Assert (GB.LLI (L (2)) = B0 (2) + GB.Sw_C1 (B0));
+      pragma Assert (L (2) < 2**59);
+      pragma Assert (GB.LLI (L (3)) = B0 (3));
+      pragma Assert (GB.LLI (L (4)) = B0 (4));
+
+      --  step 3: sweep limb 2 -> 3
+      Lemma_Shift_Mask_26 (L (2));
       C := Shift_Right (L (2), 26);
+      pragma Assert (C < 2**33);
       L (2) := L (2) and Mask_26;
       L (3) := L (3) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C2 (B0));
+      pragma Assert (GB.LLI (L (2)) = GB.Lo26 (B0 (2) + GB.Sw_C1 (B0)));
+      pragma Assert (GB.Sweep5_Out (B0) (2) = GB.Lo26 (B0 (2) + GB.Sw_C1 (B0)));
+      pragma Assert (GB.LLI (L (2)) = GB.Sweep5_Out (B0) (2));
+      pragma Assert (GB.LLI (L (3)) = B0 (3) + GB.Sw_C2 (B0));
+      pragma Assert (L (3) < 2**59);
+      pragma Assert (GB.LLI (L (4)) = B0 (4));
+
+      pragma Assert (GB.LLI (L (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (GB.LLI (L (1)) = GB.Sweep5_Out (B0) (1));
+
+      --  step 4: sweep limb 3 -> 4
+      Lemma_Shift_Mask_26 (L (3));
       C := Shift_Right (L (3), 26);
+      pragma Assert (C < 2**33);
       L (3) := L (3) and Mask_26;
+      pragma Assert (GB.LLI (L (4)) = B0 (4));
+      pragma Assert (L (4) < 2**58);
       L (4) := L (4) + C;
-      --  Top limb: any bits past 26 fold down with a × 5 (the modulus
-      --  trick: 2^130 ≡ 5 mod (2^130 − 5)).
+      pragma Assert (GB.LLI (C) = GB.Sw_C3 (B0));
+      pragma Assert (GB.LLI (L (3)) = GB.Lo26 (B0 (3) + GB.Sw_C2 (B0)));
+      pragma Assert (GB.Sweep5_Out (B0) (3) = GB.Lo26 (B0 (3) + GB.Sw_C2 (B0)));
+      pragma Assert (GB.LLI (L (3)) = GB.Sweep5_Out (B0) (3));
+      pragma Assert (GB.LLI (L (4)) = B0 (4) + GB.Sw_C3 (B0));
+      pragma Assert (L (4) < 2**59);
+      pragma Assert (GB.LLI (L (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (GB.LLI (L (1)) = GB.Sweep5_Out (B0) (1));
+      pragma Assert (GB.LLI (L (2)) = GB.Sweep5_Out (B0) (2));
+
+      --  step 5: top limb 4 folds into limb 0 x5 (2^130 == 5 mod p)
+      Lemma_Shift_Mask_26 (L (4));
       C := Shift_Right (L (4), 26);
+      pragma Assert (C < 2**33);
       L (4) := L (4) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C4 (B0));
+      pragma Assert (GB.LLI (C) = GB.Sweep5_Out (B0) (5));
+      pragma Assert (GB.LLI (L (4)) = GB.Lo26 (B0 (4) + GB.Sw_C3 (B0)));
+      pragma Assert (GB.Sweep5_Out (B0) (4) = GB.Lo26 (B0 (4) + GB.Sw_C3 (B0)));
+      pragma Assert (GB.LLI (L (4)) = GB.Sweep5_Out (B0) (4));
+      --  L (0) still holds Sweep5_Out (B0) (0) (untouched since step 1)
+      pragma Assert (GB.LLI (L (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (L (0) < 2**26);
       L (0) := L (0) + 5 * C;
+      pragma Assert
+        (GB.LLI (L (0))
+           = GB.Sweep5_Out (B0) (0) + 5 * GB.Sweep5_Out (B0) (5));
+      pragma Assert
+        (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)
+           = GB.Sweep5_Out (B0) (0) + 5 * GB.Sweep5_Out (B0) (5));
+      pragma Assert
+        (GB.LLI (L (0)) = GB.Fold_Out (GB.Sweep5_Out (B0)) (0));
+      pragma Assert (L (0) < 2**38);
+      --  Reduced limbs 1..4 (= Sweep5_Out (B0) (1..4)) survive untouched here.
+      pragma Assert (GB.LLI (L (1)) = GB.Sweep5_Out (B0) (1));
+      pragma Assert (GB.LLI (L (2)) = GB.Sweep5_Out (B0) (2));
+      pragma Assert (GB.LLI (L (3)) = GB.Sweep5_Out (B0) (3));
+      pragma Assert (GB.LLI (L (4)) = GB.Sweep5_Out (B0) (4));
+      pragma Assert (L (1) < 2**26);
+
+      --  step 6: one normalising carry limb 0 -> 1
+      Lemma_Shift_Mask_26 (L (0));
       C := Shift_Right (L (0), 26);
+      pragma Assert (C < 2**33);
       L (0) := L (0) and Mask_26;
       L (1) := L (1) + C;
+      --  Carry_Model = Step_Out (Fold_Out (Sweep5_Out (B0)), 0): limb 0 is
+      --  Lo26 of the folded limb 0; limb 1 gains its Hi26; 2..4 unchanged.
+      pragma Assert
+        (GB.Carry_Model (B0) (0)
+           = GB.Lo26 (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)));
+      pragma Assert
+        (GB.Carry_Model (B0) (1)
+           = GB.Sweep5_Out (B0) (1)
+             + GB.Hi26 (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)));
+      pragma Assert (GB.Carry_Model (B0) (2) = GB.Sweep5_Out (B0) (2));
+      pragma Assert (GB.Carry_Model (B0) (3) = GB.Sweep5_Out (B0) (3));
+      pragma Assert (GB.Carry_Model (B0) (4) = GB.Sweep5_Out (B0) (4));
+      pragma Assert (GB.LLI (L (0)) = GB.Carry_Model (B0) (0));
+      pragma Assert (GB.LLI (L (1)) = GB.Carry_Model (B0) (1));
+      pragma Assert (GB.LLI (L (2)) = GB.Carry_Model (B0) (2));
+      pragma Assert (GB.LLI (L (3)) = GB.Carry_Model (B0) (3));
+      pragma Assert (GB.LLI (L (4)) = GB.Carry_Model (B0) (4));
+
+      pragma Assert
+        (for all I in Limb_Index =>
+           GB.LLI (L (I)) = GB.Carry_Model (B0) (I));
+      pragma Assert (GB."=" (To_Big_Nat (L), GB.Carry_Model (B0)));
    end Carry;
 
    ---------------------------------------------------------------------
