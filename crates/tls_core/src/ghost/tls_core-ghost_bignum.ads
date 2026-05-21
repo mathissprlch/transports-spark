@@ -493,7 +493,11 @@ is
         9      => Sw9_C8 (A),
         others => 0])
    with Pre => In_Bounds (A, Prod_Cap),
-        Post => In_Bounds (Sweep9_Out'Result, Add_Cap);
+        Post => In_Bounds (Sweep9_Out'Result, Add_Cap)
+                and then (for all I in Limb_Index range 0 .. 8 =>
+                            Sweep9_Out'Result (I) in 0 .. In_Cap)
+                and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                            Sweep9_Out'Result (I) = 0);
 
    function Sweep9_Chain (A : Big_Nat) return Carry_Array
    is ([1      => Sw9_C0 (A),
