@@ -599,7 +599,12 @@ is
    with
      Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
              and then B (5) in 0 .. Fold_C_Cap,
-     Post => In_Bounds (Fold_Out'Result, Add_Cap);
+     Post => In_Bounds (Fold_Out'Result, Add_Cap)
+             and then Fold_Out'Result (0) in 0 .. In_Cap + 5 * Fold_C_Cap
+             and then (for all I in Limb_Index range 1 .. 4 =>
+                         Fold_Out'Result (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Fold_Out'Result (I) = 0);
 
    --  Fold_Out (B) plus c4 * P_Prime, written with P_Prime's concrete limbs.
    function Fold_Plus_P (B : Big_Nat) return Big_Nat
@@ -1045,6 +1050,20 @@ is
    --  rather than a passed-in bound. The final normalising step is
    --  value-exact (Lemma_Carry_Step) and is composed at the use site.
    ------------------------------------------------------------------
+
+   --  The exact five-limb result the impl Carry routine computes: sweep
+   --  (Sweep5), fold the limb-4 top carry into limb 0 times 5 (Fold), then
+   --  one normalising 0->1 step. The tight top carry Sweep5_Out (B) (5) <=
+   --  Fold_C_Cap is a Pre the caller discharges via Lemma_Sweep5_Tight_Carry
+   --  (same pattern as Lemma_Reduce_Round2's passed-in bound).
+   function Carry_Model (B : Big_Nat) return Big_Nat
+   is (Step_Out (Fold_Out (Sweep5_Out (B)), 0))
+   with
+     Pre  => In_Bounds (B, Carry_In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then Sweep5_Out (B) (5) in 0 .. Fold_C_Cap,
+     Post => In_Bounds (Carry_Model'Result, Add_Cap);
 
    procedure Lemma_Carry_Fold (B : Big_Nat)
    with
