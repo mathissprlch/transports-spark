@@ -143,6 +143,8 @@ is
 
    procedure Lemma_To_Big_Nat_Reduced (L : Limbs) is null;
 
+   procedure Lemma_To_Big_Nat_Mul_Cap (L : Limbs) is null;
+
    procedure Lemma_Add_Embed (A, B : Limbs) is null;
 
    procedure Lemma_Shift_Mask_26 (X : U64) is
@@ -331,10 +333,11 @@ is
       Final       : Boolean;
       Out_Limbs   : out Limbs)
    with
-     Pre =>
+     Pre  =>
        Block_Bytes in 1 .. 16
        and then Block_Bytes <= B'Length
-       and then B'Last < Integer'Last - 16;
+       and then B'Last < Integer'Last - 16,
+     Post => (for all I in Limb_Index => Out_Limbs (I) < 2**26);
 
    procedure Load_Block
      (B           : Octet_Array;
@@ -577,37 +580,478 @@ is
    --  multiply at most 5 limbs.
    ---------------------------------------------------------------------
 
-   procedure Multiply (Acc : in out Limbs; R : Limbs);
-   procedure Multiply (Acc : in out Limbs; R : Limbs) is
-      A0                 : constant U64 := Acc (0);
-      A1                 : constant U64 := Acc (1);
-      A2                 : constant U64 := Acc (2);
-      A3                 : constant U64 := Acc (3);
-      A4                 : constant U64 := Acc (4);
-      R0                 : constant U64 := R (0);
-      R1                 : constant U64 := R (1);
-      R2                 : constant U64 := R (2);
-      R3                 : constant U64 := R (3);
-      R4                 : constant U64 := R (4);
-      S1                 : constant U64 := R1 * 5;
-      S2                 : constant U64 := R2 * 5;
-      S3                 : constant U64 := R3 * 5;
-      S4                 : constant U64 := R4 * 5;
-      D0, D1, D2, D3, D4 : U64;
+   --  Conv_Of — the nine convolution columns embedded as a Big_Nat (limbs
+   --  0..8, zero above). A ghost helper so Reduce_Conv9 can state its
+   --  contract over the columns without a ghost parameter.
+   function Conv_Of
+     (C0, C1, C2, C3, C4, C5, C6, C7, C8 : U64) return GB.Big_Nat
+   is ([0      => GB.LLI (C0),
+        1      => GB.LLI (C1),
+        2      => GB.LLI (C2),
+        3      => GB.LLI (C3),
+        4      => GB.LLI (C4),
+        5      => GB.LLI (C5),
+        6      => GB.LLI (C6),
+        7      => GB.LLI (C7),
+        8      => GB.LLI (C8),
+        others => 0])
+   with
+     Ghost,
+     Pre =>
+       C0 < 2**63 and then C1 < 2**63 and then C2 < 2**63
+       and then C3 < 2**63 and then C4 < 2**63 and then C5 < 2**63
+       and then C6 < 2**63 and then C7 < 2**63 and then C8 < 2**63;
+
+   --  Reduce_Conv9 — the §0e-provable mod-p reduce of a nine-limb
+   --  convolution. Sweeps carries across columns 0..8 (Sweep9) then folds
+   --  the high positions 5..9 back into 0..4 (x5, Fold_High_9). Through
+   --  To_Big_Nat the five-limb result equals
+   --  Fold_High_9_Out (Sweep9_Out (Conv)). Isolated from Multiply so the
+   --  bridge proof runs in a small, stable SMT context (don't be
+   --  monolithic — §0e proof conventions).
+   procedure Reduce_Conv9
+     (C0, C1, C2, C3, C4, C5, C6, C7, C8 : U64; R1L : out Limbs)
+   with
+     Pre  =>
+       C0 < 2**58 and then C1 < 2**58 and then C2 < 2**58
+       and then C3 < 2**58 and then C4 < 2**58 and then C5 < 2**58
+       and then C6 < 2**58 and then C7 < 2**58 and then C8 < 2**58
+       and then GB.In_Bounds
+                  (Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8), GB.Prod_Cap)
+       and then GB.Sweep9_Out
+                  (Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8)) (9)
+                in 0 .. GB.Fold9_Top_Cap,
+     Post =>
+       (for all I in Limb_Index => R1L (I) < 2**58)
+       and then GB."="
+                  (To_Big_Nat (R1L),
+                   GB.Fold_High_9_Out
+                     (GB.Sweep9_Out
+                        (Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8))));
+
+   procedure Reduce_Conv9
+     (C0, C1, C2, C3, C4, C5, C6, C7, C8 : U64; R1L : out Limbs)
+   is
+      Conv : constant GB.Big_Nat :=
+        Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8)
+      with Ghost;
+
+      --  Sweep add (column + carry-in): Post carries the U64->LLI
+      --  distribution so the sweep bridge needn't re-derive it.
+      function Sweep_Add (X, Cy : U64) return U64
+      is (X + Cy)
+      with
+        Pre  => X < 2**58 and then Cy < 2**33,
+        Post => Sweep_Add'Result < 2**59
+                and then GB.LLI (Sweep_Add'Result) = GB.LLI (X) + GB.LLI (Cy);
+
+      --  Fold add (low limb + 5 * high limb): the Fold_High_9 step. Post
+      --  carries the U64->LLI distribution.
+      function Fold_Add (X, Y : U64) return U64
+      is (X + 5 * Y)
+      with
+        Pre  => X < 2**33 and then Y < 2**33,
+        Post => Fold_Add'Result < 2**37
+                and then GB.LLI (Fold_Add'Result) = GB.LLI (X) + 5 * GB.LLI (Y);
+
+      S0, S1, S2, S3, S4, S5, S6, S7, S8 : U64;
+      F0, F1, F2, F3, F4                 : U64;
+      Cf                                 : U64;
    begin
-      --  Mod 2^130-5 trick: any limb that "spills past" position 4
-      --  folds back down with a × 5.
-      D0 := A0 * R0 + A1 * S4 + A2 * S3 + A3 * S2 + A4 * S1;
-      D1 := A0 * R1 + A1 * R0 + A2 * S4 + A3 * S3 + A4 * S2;
-      D2 := A0 * R2 + A1 * R1 + A2 * R0 + A3 * S4 + A4 * S3;
-      D3 := A0 * R3 + A1 * R2 + A2 * R1 + A3 * R0 + A4 * S4;
-      D4 := A0 * R4 + A1 * R3 + A2 * R2 + A3 * R1 + A4 * R0;
-      Acc (0) := D0;
-      Acc (1) := D1;
-      Acc (2) := D2;
-      Acc (3) := D3;
-      Acc (4) := D4;
-      Carry (Acc);
+      GB.Lemma_Sweep9_Cols (Conv);
+
+      --  Sweep9: propagate carries across the nine columns; Cf holds the
+      --  running carry (= the matching Sw9_C of Conv), landing at limb 9.
+      Lemma_Shift_Mask_26 (C0);
+      S0 := C0 and Mask_26;
+      Cf := Shift_Right (C0, 26);
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C0 (Conv));
+      pragma Assert (GB.LLI (S0) = GB.Sweep9_Out (Conv) (0));
+
+      S1 := Sweep_Add (C1, Cf);
+      pragma Assert (GB.LLI (S1) = Conv (1) + GB.Sw9_C0 (Conv));
+      Lemma_Shift_Mask_26 (S1);
+      Cf := Shift_Right (S1, 26);
+      S1 := S1 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C1 (Conv));
+      pragma Assert (GB.LLI (S1) = GB.Sweep9_Out (Conv) (1));
+
+      S2 := Sweep_Add (C2, Cf);
+      pragma Assert (GB.LLI (S2) = Conv (2) + GB.Sw9_C1 (Conv));
+      Lemma_Shift_Mask_26 (S2);
+      Cf := Shift_Right (S2, 26);
+      S2 := S2 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C2 (Conv));
+      pragma Assert (GB.LLI (S2) = GB.Sweep9_Out (Conv) (2));
+
+      S3 := Sweep_Add (C3, Cf);
+      pragma Assert (GB.LLI (S3) = Conv (3) + GB.Sw9_C2 (Conv));
+      Lemma_Shift_Mask_26 (S3);
+      Cf := Shift_Right (S3, 26);
+      S3 := S3 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C3 (Conv));
+      pragma Assert (GB.LLI (S3) = GB.Sweep9_Out (Conv) (3));
+
+      S4 := Sweep_Add (C4, Cf);
+      pragma Assert (GB.LLI (S4) = Conv (4) + GB.Sw9_C3 (Conv));
+      Lemma_Shift_Mask_26 (S4);
+      Cf := Shift_Right (S4, 26);
+      S4 := S4 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C4 (Conv));
+      pragma Assert (GB.LLI (S4) = GB.Sweep9_Out (Conv) (4));
+
+      S5 := Sweep_Add (C5, Cf);
+      pragma Assert (GB.LLI (S5) = Conv (5) + GB.Sw9_C4 (Conv));
+      Lemma_Shift_Mask_26 (S5);
+      Cf := Shift_Right (S5, 26);
+      S5 := S5 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C5 (Conv));
+      pragma Assert (GB.LLI (S5) = GB.Sweep9_Out (Conv) (5));
+
+      S6 := Sweep_Add (C6, Cf);
+      pragma Assert (GB.LLI (S6) = Conv (6) + GB.Sw9_C5 (Conv));
+      Lemma_Shift_Mask_26 (S6);
+      Cf := Shift_Right (S6, 26);
+      S6 := S6 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C6 (Conv));
+      pragma Assert (GB.LLI (S6) = GB.Sweep9_Out (Conv) (6));
+
+      S7 := Sweep_Add (C7, Cf);
+      pragma Assert (GB.LLI (S7) = Conv (7) + GB.Sw9_C6 (Conv));
+      Lemma_Shift_Mask_26 (S7);
+      Cf := Shift_Right (S7, 26);
+      S7 := S7 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sw9_C7 (Conv));
+      pragma Assert (GB.LLI (S7) = GB.Sweep9_Out (Conv) (7));
+
+      S8 := Sweep_Add (C8, Cf);
+      pragma Assert (GB.LLI (S8) = Conv (8) + GB.Sw9_C7 (Conv));
+      Lemma_Shift_Mask_26 (S8);
+      Cf := Shift_Right (S8, 26);
+      S8 := S8 and Mask_26;
+      pragma Assert (Cf < 2**33);
+      pragma Assert (GB.LLI (Cf) = GB.Sweep9_Out (Conv) (9));
+      pragma Assert (GB.LLI (S8) = GB.Sweep9_Out (Conv) (8));
+
+      --  Keep all swept limbs alive for the fold (gnatprove drops facts
+      --  about untouched variables across many statements).
+      pragma Assert (GB.LLI (S0) = GB.Sweep9_Out (Conv) (0));
+      pragma Assert (GB.LLI (S1) = GB.Sweep9_Out (Conv) (1));
+      pragma Assert (GB.LLI (S2) = GB.Sweep9_Out (Conv) (2));
+      pragma Assert (GB.LLI (S3) = GB.Sweep9_Out (Conv) (3));
+      pragma Assert (GB.LLI (S4) = GB.Sweep9_Out (Conv) (4));
+      pragma Assert (GB.LLI (S5) = GB.Sweep9_Out (Conv) (5));
+      pragma Assert (GB.LLI (S6) = GB.Sweep9_Out (Conv) (6));
+      pragma Assert (GB.LLI (S7) = GB.Sweep9_Out (Conv) (7));
+      pragma Assert (S0 < 2**26 and S1 < 2**26 and S2 < 2**26);
+      pragma Assert (S3 < 2**26 and S4 < 2**26 and S5 < 2**26);
+      pragma Assert (S6 < 2**26 and S7 < 2**26 and S8 < 2**26);
+
+      --  Fold_High_9 into separate locals (facts on separate variables
+      --  survive; an array element's fact gets dropped on later writes).
+      F0 := Fold_Add (S0, S5);
+      F1 := Fold_Add (S1, S6);
+      F2 := Fold_Add (S2, S7);
+      F3 := Fold_Add (S3, S8);
+      F4 := Fold_Add (S4, Cf);
+      pragma Assert
+        (GB.LLI (F0) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (0));
+      pragma Assert
+        (GB.LLI (F1) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (1));
+      pragma Assert
+        (GB.LLI (F2) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (2));
+      pragma Assert
+        (GB.LLI (F3) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (3));
+      pragma Assert
+        (GB.LLI (F4) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (4));
+      pragma Assert
+        (F0 < 2**37 and then F1 < 2**37 and then F2 < 2**37
+         and then F3 < 2**37 and then F4 < 2**37);
+      R1L := [0 => F0, 1 => F1, 2 => F2, 3 => F3, 4 => F4];
+      pragma Assert
+        (for all I in Limb_Index =>
+           GB.LLI (R1L (I))
+           = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (I));
+      pragma Assert
+        (R1L (0) < 2**58 and then R1L (1) < 2**58 and then R1L (2) < 2**58
+         and then R1L (3) < 2**58 and then R1L (4) < 2**58);
+      pragma Assert
+        (GB."="
+           (To_Big_Nat (R1L),
+            GB.Fold_High_9_Out (GB.Sweep9_Out (Conv))));
+   end Reduce_Conv9;
+
+   --  Equal nine-limb convolutions reduce identically. Isolated so the
+   --  array-extensionality + function-congruence step runs in a minimal
+   --  context (the body's Conv = Prod is exactly such an equality).
+   procedure Lemma_Reduce_Cong (X, Y : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (X, Y)
+       and then GB.In_Bounds (X, GB.Prod_Cap)
+       and then GB.In_Bounds (Y, GB.Prod_Cap)
+       and then GB.Sweep9_Out (X) (9) in 0 .. GB.Fold9_Top_Cap
+       and then GB.Sweep9_Out (Y) (9) in 0 .. GB.Fold9_Top_Cap,
+     Post   =>
+       GB."="
+         (GB.Fold_High_9_Out (GB.Sweep9_Out (X)),
+          GB.Fold_High_9_Out (GB.Sweep9_Out (Y)));
+
+   procedure Lemma_Reduce_Cong (X, Y : GB.Big_Nat) is null;
+
+   --  Equal Carry_Model inputs carry to equal results. Isolated for the same
+   --  reason as Lemma_Reduce_Cong: gnatprove does not propagate an array
+   --  equality through the Carry_Model expression chain on its own.
+   procedure Lemma_Carry_Model_Cong (X, Y : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (X, Y)
+       and then GB.In_Bounds (X, GB.Carry_In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   X (I) = 0)
+       and then GB.Sweep5_Out (X) (5) in 0 .. GB.Fold_C_Cap
+       and then GB.In_Bounds (Y, GB.Carry_In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   Y (I) = 0)
+       and then GB.Sweep5_Out (Y) (5) in 0 .. GB.Fold_C_Cap,
+     Post   => GB."=" (GB.Carry_Model (X), GB.Carry_Model (Y));
+
+   procedure Lemma_Carry_Model_Cong (X, Y : GB.Big_Nat) is null;
+
+   --  Multiply correspondence (conv-then-reduce, the §0e-provable form). The
+   --  full nine-limb convolution Acc*R is reduced sweep-before-fold: Sweep9,
+   --  Fold_High_9 (limbs 5..9 fold into 0..4 x5), then the proven Carry
+   --  (= Sweep5 + Fold + normalising step). Through To_Big_Nat the result is
+   --  exactly Carry_Model (Fold_High_9_Out (Sweep9_Out (Acc_bn * R_bn))). The
+   --  mod-p equivalence to Acc_bn * R_bn is applied at the Mac use site via
+   --  Lemma_Mul_Reduce; here the contract is the exact computation.
+   procedure Multiply (Acc : in out Limbs; R : Limbs)
+   with
+     Pre  =>
+       (for all I in Limb_Index => Acc (I) < 2**27 and then R (I) < 2**26),
+     Post =>
+       (for all I in Limb_Index => Acc (I) < 2**27)
+       and then GB."="
+                  (To_Big_Nat (Acc),
+                   GB.Carry_Model
+                     (GB.Fold_High_9_Out
+                        (GB.Sweep9_Out
+                           (GB."*" (To_Big_Nat (Acc'Old), To_Big_Nat (R))))));
+
+   procedure Multiply (Acc : in out Limbs; R : Limbs) is
+      --  Range-constrained limbs so gnatprove bounds every product
+      --  (Acc_Limb * R_Limb < 2**53) by interval propagation.
+      subtype Acc_Limb is U64 range 0 .. 2**27 - 1;
+      subtype R_Limb is U64 range 0 .. 2**26 - 1;
+      A0 : constant Acc_Limb := Acc (0);
+      A1 : constant Acc_Limb := Acc (1);
+      A2 : constant Acc_Limb := Acc (2);
+      A3 : constant Acc_Limb := Acc (3);
+      A4 : constant Acc_Limb := Acc (4);
+      R0 : constant R_Limb := R (0);
+      R1 : constant R_Limb := R (1);
+      R2 : constant R_Limb := R (2);
+      R3 : constant R_Limb := R (3);
+      R4 : constant R_Limb := R (4);
+
+      A_Bn : constant GB.Big_Nat := To_Big_Nat (Acc) with Ghost;
+      R_Bn : constant GB.Big_Nat := To_Big_Nat (R) with Ghost;
+      Prod : constant GB.Big_Nat := GB."*" (A_Bn, R_Bn) with Ghost;
+
+      --  Dot-product helpers (1..5 terms) whose Post carries the U64->LLI
+      --  distribution: each product is < 2**54 and the sum < 2**57, so LLI is
+      --  exact and distributes. This encapsulates the convolution-limb bridge.
+      function Mul1 (X0, Y0 : U64) return U64
+      is (X0 * Y0)
+      with
+        Pre  => X0 < 2**27 and then Y0 < 2**27,
+        Post => GB.LLI (Mul1'Result) = GB.LLI (X0) * GB.LLI (Y0);
+
+      function Mul2 (X0, Y0, X1, Y1 : U64) return U64
+      is (X0 * Y0 + X1 * Y1)
+      with
+        Pre  =>
+          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
+          and then Y1 < 2**27,
+        Post =>
+          GB.LLI (Mul2'Result)
+          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1);
+
+      function Mul3 (X0, Y0, X1, Y1, X2, Y2 : U64) return U64
+      is (X0 * Y0 + X1 * Y1 + X2 * Y2)
+      with
+        Pre  =>
+          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
+          and then Y1 < 2**27 and then X2 < 2**27 and then Y2 < 2**27,
+        Post =>
+          GB.LLI (Mul3'Result)
+          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
+            + GB.LLI (X2) * GB.LLI (Y2);
+
+      function Mul4 (X0, Y0, X1, Y1, X2, Y2, X3, Y3 : U64) return U64
+      is (X0 * Y0 + X1 * Y1 + X2 * Y2 + X3 * Y3)
+      with
+        Pre  =>
+          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
+          and then Y1 < 2**27 and then X2 < 2**27 and then Y2 < 2**27
+          and then X3 < 2**27 and then Y3 < 2**27,
+        Post =>
+          GB.LLI (Mul4'Result)
+          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
+            + GB.LLI (X2) * GB.LLI (Y2) + GB.LLI (X3) * GB.LLI (Y3);
+
+      function Mul5 (X0, Y0, X1, Y1, X2, Y2, X3, Y3, X4, Y4 : U64) return U64
+      is (X0 * Y0 + X1 * Y1 + X2 * Y2 + X3 * Y3 + X4 * Y4)
+      with
+        Pre  =>
+          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
+          and then Y1 < 2**27 and then X2 < 2**27 and then Y2 < 2**27
+          and then X3 < 2**27 and then Y3 < 2**27 and then X4 < 2**27
+          and then Y4 < 2**27,
+        Post =>
+          GB.LLI (Mul5'Result)
+          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
+            + GB.LLI (X2) * GB.LLI (Y2) + GB.LLI (X3) * GB.LLI (Y3)
+            + GB.LLI (X4) * GB.LLI (Y4);
+
+      --  Sweep add (column + carry-in): Post carries the U64->LLI
+      --  distribution so the sweep bridge needn't re-derive it.
+      function Sweep_Add (X, Cy : U64) return U64
+      is (X + Cy)
+      with
+        Pre  => X < 2**58 and then Cy < 2**33,
+        Post => Sweep_Add'Result < 2**59
+                and then GB.LLI (Sweep_Add'Result) = GB.LLI (X) + GB.LLI (Cy);
+
+      --  Fold add (low limb + 5 * high limb): the Fold_High_9 step. Post
+      --  carries the U64->LLI distribution.
+      function Fold_Add (X, Y : U64) return U64
+      is (X + 5 * Y)
+      with
+        Pre  => X < 2**33 and then Y < 2**33,
+        Post => Fold_Add'Result < 2**37
+                and then GB.LLI (Fold_Add'Result) = GB.LLI (X) + 5 * GB.LLI (Y);
+
+      --  Nine-limb convolution columns (no fold): C (k) = sum A_i*R_j, i+j=k.
+      C0 : constant U64 := Mul1 (A0, R0);
+      C1 : constant U64 := Mul2 (A0, R1, A1, R0);
+      C2 : constant U64 := Mul3 (A0, R2, A1, R1, A2, R0);
+      C3 : constant U64 := Mul4 (A0, R3, A1, R2, A2, R1, A3, R0);
+      C4 : constant U64 := Mul5 (A0, R4, A1, R3, A2, R2, A3, R1, A4, R0);
+      C5 : constant U64 := Mul4 (A1, R4, A2, R3, A3, R2, A4, R1);
+      C6 : constant U64 := Mul3 (A2, R4, A3, R3, A4, R2);
+      C7 : constant U64 := Mul2 (A3, R4, A4, R3);
+      C8 : constant U64 := Mul1 (A4, R4);
+
+      Conv : constant GB.Big_Nat :=
+        Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8)
+      with Ghost;
+
+      R1L : Limbs;
+   begin
+      --  The convolution embeds to the Big_Nat product Prod = A_Bn * R_Bn.
+      Lemma_To_Big_Nat_Mul_Cap (Acc);
+      Lemma_To_Big_Nat_Mul_Cap (R);
+      GB.Lemma_Mul5_Cols (A_Bn, R_Bn, Prod);
+      --  Connection facts: each U64 limb constant embeds to the Big_Nat limb.
+      pragma Assert (GB.LLI (A0) = A_Bn (0));
+      pragma Assert (GB.LLI (A1) = A_Bn (1));
+      pragma Assert (GB.LLI (A2) = A_Bn (2));
+      pragma Assert (GB.LLI (A3) = A_Bn (3));
+      pragma Assert (GB.LLI (A4) = A_Bn (4));
+      pragma Assert (GB.LLI (R0) = R_Bn (0));
+      pragma Assert (GB.LLI (R1) = R_Bn (1));
+      pragma Assert (GB.LLI (R2) = R_Bn (2));
+      pragma Assert (GB.LLI (R3) = R_Bn (3));
+      pragma Assert (GB.LLI (R4) = R_Bn (4));
+      --  Each convolution column equals the matching product limb: the Mul
+      --  helper Post gives LLI (C_k) as the LLI-product sum; the connection
+      --  facts and Lemma_Mul5_Cols equate that to Prod (k).
+      pragma Assert (GB.LLI (C0) = Prod (0));
+      pragma Assert (GB.LLI (C1) = Prod (1));
+      pragma Assert (GB.LLI (C2) = Prod (2));
+      pragma Assert (GB.LLI (C3) = Prod (3));
+      pragma Assert (GB.LLI (C4) = Prod (4));
+      pragma Assert (GB.LLI (C5) = Prod (5));
+      pragma Assert (GB.LLI (C6) = Prod (6));
+      pragma Assert (GB.LLI (C7) = Prod (7));
+      pragma Assert (GB.LLI (C8) = Prod (8));
+      pragma Assert (GB."=" (Conv, Prod));
+      pragma Assert (GB.In_Bounds (Conv, GB.Conv_Col_Cap));
+      pragma Assert
+        (for all I in GB.Limb_Index range 9 .. GB.Max_Limbs - 1 =>
+           Conv (I) = 0);
+      --  Conv = Prod, so the Post's Prod-side bounds hold too.
+      pragma Assert (GB.In_Bounds (Prod, GB.Conv_Col_Cap));
+      GB.Lemma_Bounds_Mono (Conv, GB.Conv_Col_Cap, GB.Prod_Cap);
+      GB.Lemma_Bounds_Mono (Prod, GB.Conv_Col_Cap, GB.Prod_Cap);
+      pragma Assert
+        (for all I in GB.Limb_Index range 9 .. GB.Max_Limbs - 1 =>
+           Prod (I) = 0);
+      GB.Lemma_Sweep9_Conv (Conv);
+      GB.Lemma_Sweep9_Conv (Prod);
+      pragma Assert
+        (for all I in GB.Limb_Index range 0 .. 8 =>
+           GB.Sweep9_Out (Prod) (I) in 0 .. GB.In_Cap);
+      pragma Assert (GB.Sweep9_Out (Prod) (9) in 0 .. GB.Fold9_Top_Cap);
+      pragma Assert (GB.Sweep9_Out (Conv) (9) in 0 .. GB.Fold9_Top_Cap);
+      --  Each conv column is < 2**58 (<= Conv_Col_Cap), feeding Reduce_Conv9.
+      pragma Assert (C0 < 2**58 and C1 < 2**58 and C2 < 2**58);
+      pragma Assert (C3 < 2**58 and C4 < 2**58 and C5 < 2**58);
+      pragma Assert (C6 < 2**58 and C7 < 2**58 and C8 < 2**58);
+
+      --  Reduce the convolution mod p (Sweep9 + Fold_High_9), isolated for
+      --  proof stability: R1L = Fold_High_9_Out (Sweep9_Out (Conv)).
+      Reduce_Conv9 (C0, C1, C2, C3, C4, C5, C6, C7, C8, R1L);
+      --  Conv = Prod, so the reduced value is equally the Prod-side form the
+      --  Post names; the congruence is discharged in an isolated lemma.
+      Lemma_Reduce_Cong (Conv, Prod);
+
+      --  Carry_Model precondition (tight top carry) on the Prod-side reduced
+      --  value, for the Multiply Post. Fold_High_9_Out is Round1_Out_Cap-
+      --  bounded; widen to Carry_In_Cap then take the tight Sweep5 top carry.
+      GB.Lemma_Bounds_Mono
+        (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)),
+         GB.Round1_Out_Cap, GB.Carry_In_Cap);
+      GB.Lemma_Sweep5_Tight_Carry
+        (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
+
+      --  Final normalising carry (the proven Sweep5 + Fold + step). Capture
+      --  the pre-carry value as a flat ghost so Carry's Post chains by a
+      --  shallow congruence; R1L_Pre = Fold_High_9_Out (Sweep9_Out (Prod)).
+      declare
+         R1L_Pre : constant GB.Big_Nat := To_Big_Nat (R1L) with Ghost;
+      begin
+         pragma Assert
+           (GB."=" (R1L_Pre, GB.Fold_High_9_Out (GB.Sweep9_Out (Prod))));
+         GB.Lemma_Sweep5_Tight_Carry (R1L_Pre);
+         Carry (R1L);
+         --  Carry Post: To_Big_Nat (R1L) = Carry_Model (R1L_Pre). The flat
+         --  R1L_Pre equals the Prod-side reduced form, so the isolated
+         --  Carry_Model congruence rewrites to the form the Post names.
+         pragma Assert (GB."=" (To_Big_Nat (R1L), GB.Carry_Model (R1L_Pre)));
+         Lemma_Carry_Model_Cong
+           (R1L_Pre, GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
+         pragma Assert
+           (GB."="
+              (To_Big_Nat (R1L),
+               GB.Carry_Model (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)))));
+      end;
+      Acc := R1L;
+      --  To_Big_Nat (Acc) = Carry_Model (Fold_High_9_Out (Sweep9_Out (Prod)))
+      --  and Prod = Acc'Old * R, which is the Multiply Post.
    end Multiply;
 
    ---------------------------------------------------------------------
@@ -721,10 +1165,17 @@ is
          end;
       end;
 
+      --  r is a 26-bit-limb integer (no implicit-1 bit): every limb < 2**26,
+      --  so it meets Multiply's R-side precondition. r is never modified after
+      --  this point, so the bound persists across the block loop.
+      pragma Assert (for all I in Limb_Index => R (I) < 2**26);
+
       --  Process all complete 16-byte blocks (Final=False ⇒ implicit
       --  "1" appears at bit 128, the 17th byte).
       while Cursor + 16 <= Message'Length loop
          pragma Loop_Variant (Decreases => Message'Length - Cursor);
+         pragma Loop_Invariant (for all I in Limb_Index => Acc (I) < 2**27);
+         pragma Loop_Invariant (for all I in Limb_Index => R (I) < 2**26);
          Load_Block
            (Message (Message'First + Cursor .. Message'First + Cursor + 15),
             16,

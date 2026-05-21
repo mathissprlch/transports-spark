@@ -1006,7 +1006,13 @@ is
              and then B (9) in 0 .. Fold9_Top_Cap
              and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
                          B (I) = 0),
-     Post => In_Bounds (Fold_High_9_Out'Result, Add_Cap);
+     --  Limbs 0..3 = B (i) + 5 B (i+5) <= 6 In_Cap; limb 4 = B (4) + 5 B (9)
+     --  <= In_Cap + 5 Fold9_Top_Cap; all under Round1_Out_Cap (2**35). Limbs
+     --  5+ are zero. The tight bound lets the second reduce round / the impl
+     --  Carry consume the result.
+     Post => In_Bounds (Fold_High_9_Out'Result, Round1_Out_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Fold_High_9_Out'Result (I) = 0);
 
    function Fold_High_9_Plus_P (B : Big_Nat) return Big_Nat
    is ([0      => B (0) + 5 * B (5) + B (5) * (In_Cap - 4),

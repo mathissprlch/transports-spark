@@ -339,6 +339,19 @@ is
             Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
             To_Big_Nat (L) (I) = 0);
 
+   --  A limb vector with limbs < 2**27 embeds within Mul_Cap (the multiply
+   --  input acceptance bound), so its embedding can feed Ghost_Bignum."*".
+   procedure Lemma_To_Big_Nat_Mul_Cap (L : Limbs)
+   with
+     Ghost,
+     Pre  => (for all I in Limb_Index => L (I) < 2**27),
+     Post =>
+       Ghost_Bignum.In_Bounds (To_Big_Nat (L), Ghost_Bignum.Mul_Cap)
+       and then
+         (for all I in
+            Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
+            To_Big_Nat (L) (I) = 0);
+
    --  Limbwise sum of two reduced limb vectors (the impl's pre-carry Add).
    function Sum_Limbs (A, B : Limbs) return Limbs
    is ([for I in Limb_Index => A (I) + B (I)])
