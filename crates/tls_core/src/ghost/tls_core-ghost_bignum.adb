@@ -75,6 +75,8 @@ is
       Lemma_Fold (Shift1 (R));
    end Lemma_Rotate1;
 
+   procedure Lemma_Fold_High (B : Big_Nat) is null;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

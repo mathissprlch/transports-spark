@@ -475,4 +475,83 @@ is
        Val_Eq
          (Fold_Plus_P (Shift1 (R)), Shift1 (R), Fold_Chain (Shift1 (R) (5)));
 
+   ------------------------------------------------------------------
+   --  General high-limb fold (HACL* carry_wide_felem5 fold step).
+   --
+   --  Folds the four high positions 5..8 of a *reduced* value down into
+   --  positions 0..3 (each times 5, since 2**(26*(m+5)) = 2**130 * 2**(26m)
+   --  == 5 * 2**(26m) mod p). Because the inputs are reduced (limbs <=
+   --  In_Cap), every product limb*P stays <= ~In_Cap**2 < 2**54 and the
+   --  carry chain entries stay <= 4*In_Cap < Hi_Cap -- nothing overflows.
+   --
+   --  This one brick subsumes the field rotations (rotate_i (R) =
+   --  Fold_High_Out (Shift_i (R)), the unused high positions being zero)
+   --  and the reduce step of the field multiply (fold the reduced wide
+   --  product back to five limbs).
+   ------------------------------------------------------------------
+
+   function Fold_High_Out (B : Big_Nat) return Big_Nat
+   is ([0      => B (0) + 5 * B (5),
+        1      => B (1) + 5 * B (6),
+        2      => B (2) + 5 * B (7),
+        3      => B (3) + 5 * B (8),
+        4      => B (4),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Fold_High_Out'Result, Add_Cap);
+
+   --  Fold_High_Out (B) plus the four prime multiples (one per folded
+   --  position), written with P_Prime's concrete limbs so every product is
+   --  a constant multiple of a reduced limb (linear, no nonlinear VC).
+   function Fold_High_Plus_P (B : Big_Nat) return Big_Nat
+   is ([0      => B (0) + 5 * B (5) + B (5) * (In_Cap - 4),
+        1      => B (1) + 5 * B (6) + B (5) * In_Cap + B (6) * (In_Cap - 4),
+        2      =>
+          B (2) + 5 * B (7)
+          + B (5) * In_Cap + B (6) * In_Cap + B (7) * (In_Cap - 4),
+        3      =>
+          B (3) + 5 * B (8)
+          + B (5) * In_Cap + B (6) * In_Cap + B (7) * In_Cap
+          + B (8) * (In_Cap - 4),
+        4      =>
+          B (4)
+          + B (5) * In_Cap + B (6) * In_Cap + B (7) * In_Cap + B (8) * In_Cap,
+        5      => B (6) * In_Cap + B (7) * In_Cap + B (8) * In_Cap,
+        6      => B (7) * In_Cap + B (8) * In_Cap,
+        7      => B (8) * In_Cap,
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Fold_High_Plus_P'Result, Add_Cap);
+
+   function Fold_High_Chain (B : Big_Nat) return Carry_Array
+   is ([0      => 0,
+        1      => B (5),
+        2      => B (5) + B (6),
+        3      => B (5) + B (6) + B (7),
+        4      => B (5) + B (6) + B (7) + B (8),
+        5      => B (5) + B (6) + B (7) + B (8),
+        6      => B (6) + B (7) + B (8),
+        7      => B (7) + B (8),
+        8      => B (8),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap),
+     Post => Carry_Bounded (Fold_High_Chain'Result);
+
+   --  Fold_High_Plus_P (B) = Fold_High_Out (B) + (sum of the four folded
+   --  positions times the matching shift of p) is value-equal to B, so
+   --  Fold_High_Out (B) is congruent to B mod p.
+   procedure Lemma_Fold_High (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Val_Eq (Fold_High_Plus_P (B), B, Fold_High_Chain (B));
+
 end Tls_Core.Ghost_Bignum;
