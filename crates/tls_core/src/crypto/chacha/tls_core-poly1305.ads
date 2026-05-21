@@ -308,12 +308,19 @@ is
    --  the migration target: once the Mac Post is re-proved over Big_Nat the
    --  Big_Integers spec above is dropped.
 
+   --  Embeddable bound: limbs must fit Long_Long_Integer for the U64->LLI
+   --  conversion. 2**59 covers every Poly1305 intermediate (reduced limbs,
+   --  pre-carry sums ~2**27, even a mul_felem5 limb ~2**58).
+   function Limbs_Embeddable (L : Limbs) return Boolean
+   is (for all I in Limb_Index => L (I) < 2**59)
+   with Ghost;
+
    function To_Big_Nat (L : Limbs) return Ghost_Bignum.Big_Nat
    is ([for I in Ghost_Bignum.Limb_Index =>
           (if I <= 4 then Ghost_Bignum.LLI (L (I)) else 0)])
    with
      Ghost,
-     Pre  => All_Limbs_Fit_26 (L),
+     Pre  => Limbs_Embeddable (L),
      Post =>
        (for all I in Ghost_Bignum.Limb_Index =>
           To_Big_Nat'Result (I)
@@ -331,6 +338,22 @@ is
          (for all I in
             Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
             To_Big_Nat (L) (I) = 0);
+
+   --  Limbwise sum of two reduced limb vectors (the impl's pre-carry Add).
+   function Sum_Limbs (A, B : Limbs) return Limbs
+   is ([for I in Limb_Index => A (I) + B (I)])
+   with Ghost, Pre => All_Limbs_Fit_26 (A) and then All_Limbs_Fit_26 (B);
+
+   --  Add correspondence: the embedding of the limbwise sum equals the
+   --  Big_Nat sum of the embeddings (each <= 2*In_Cap, no U64 wrap).
+   procedure Lemma_Add_Embed (A, B : Limbs)
+   with
+     Ghost,
+     Pre  => All_Limbs_Fit_26 (A) and then All_Limbs_Fit_26 (B),
+     Post =>
+       Ghost_Bignum."="
+         (To_Big_Nat (Sum_Limbs (A, B)),
+          Ghost_Bignum."+" (To_Big_Nat (A), To_Big_Nat (B)));
 
    ------------------------------------------------------------------
    --  Bit-shift / mask decomposition lemma (foundation for the carry
