@@ -186,6 +186,36 @@ is
        (for all K in Limb_Index =>
           (if K >= Na + Nb - 1 then AB (K) = 0));
 
+   --  Explicit five-limb convolution: the nine product columns of AB = A * B
+   --  (reduced 5-limb operands, zero from limb 5) as concrete convolution
+   --  sums, plus zero from limb 9. Isolates the Mul_Col recurrence unfold so
+   --  a caller (the Poly1305 field multiply) can connect a hand-computed
+   --  convolution to the Big_Nat product in a small, stable proof context.
+   --  AB is a param to avoid indexing an operator result.
+   procedure Lemma_Mul5_Cols (A, B, AB : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then AB = A * B,
+     Post =>
+       AB (0) = A (0) * B (0)
+       and then AB (1) = A (0) * B (1) + A (1) * B (0)
+       and then AB (2) = A (0) * B (2) + A (1) * B (1) + A (2) * B (0)
+       and then AB (3) =
+         A (0) * B (3) + A (1) * B (2) + A (2) * B (1) + A (3) * B (0)
+       and then AB (4) =
+         A (0) * B (4) + A (1) * B (3) + A (2) * B (2) + A (3) * B (1)
+         + A (4) * B (0)
+       and then AB (5) =
+         A (1) * B (4) + A (2) * B (3) + A (3) * B (2) + A (4) * B (1)
+       and then AB (6) = A (2) * B (4) + A (3) * B (3) + A (4) * B (2)
+       and then AB (7) = A (3) * B (4) + A (4) * B (3)
+       and then AB (8) = A (4) * B (4)
+       and then (for all K in Limb_Index range 9 .. Max_Limbs - 1 =>
+                   AB (K) = 0);
+
    ------------------------------------------------------------------
    --  Carry foundation (toward carry-normalisation and mod-prime).
    --  Mirrors HACL* `carry26`: split a limb into its low 26 bits and the
@@ -580,6 +610,24 @@ is
              and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
                          A (I) = 0),
      Post => Sweep9_Out (A) (9) in 0 .. Conv_Carry_Cap;
+
+   --  Explicit nine-limb sweep columns: each Sweep9_Out limb as Lo26 of the
+   --  column plus the carry-in (and limb 9 = the top carry). By definition of
+   --  Sweep9_Out, but provided as a lemma so callers get all ten equalities in
+   --  one isolated step rather than relying on deep auto-unfolding.
+   procedure Lemma_Sweep9_Cols (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Prod_Cap),
+     Post => Sweep9_Out (A) (0) = Lo26 (A (0))
+             and then Sweep9_Out (A) (1) = Lo26 (A (1) + Sw9_C0 (A))
+             and then Sweep9_Out (A) (2) = Lo26 (A (2) + Sw9_C1 (A))
+             and then Sweep9_Out (A) (3) = Lo26 (A (3) + Sw9_C2 (A))
+             and then Sweep9_Out (A) (4) = Lo26 (A (4) + Sw9_C3 (A))
+             and then Sweep9_Out (A) (5) = Lo26 (A (5) + Sw9_C4 (A))
+             and then Sweep9_Out (A) (6) = Lo26 (A (6) + Sw9_C5 (A))
+             and then Sweep9_Out (A) (7) = Lo26 (A (7) + Sw9_C6 (A))
+             and then Sweep9_Out (A) (8) = Lo26 (A (8) + Sw9_C7 (A))
+             and then Sweep9_Out (A) (9) = Sw9_C8 (A);
 
    --  For a convolution-sized input, EVERY entry of the nine-limb sweep chain
    --  (not just the top carry) stays <= Conv_Carry_Cap. Sequential Hi26_Conv

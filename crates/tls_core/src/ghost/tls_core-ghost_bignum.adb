@@ -71,6 +71,92 @@ is
       end loop;
    end Lemma_Mul_Zero_High;
 
+   procedure Lemma_Mul5_Cols (A, B, AB : Big_Nat) is
+   begin
+      Lemma_Mul_Zero_High (A, B, AB, 5, 5);
+      --  AB (k) = Mul_Col (A, B, k, k) (from AB = A * B and the "*" Post);
+      --  unfold the Mul_Col recurrence one column at a time so it flattens to
+      --  the explicit convolution sum. Mul_Limb keeps every product bounded.
+
+      pragma Assert (Mul_Col (A, B, 1, 1)
+        = Mul_Col (A, B, 1, 0) + Mul_Limb (A (1)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 2, 1)
+        = Mul_Col (A, B, 2, 0) + Mul_Limb (A (1)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 2, 2)
+        = Mul_Col (A, B, 2, 1) + Mul_Limb (A (2)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 3, 1)
+        = Mul_Col (A, B, 3, 0) + Mul_Limb (A (1)) * Mul_Limb (B (2)));
+      pragma Assert (Mul_Col (A, B, 3, 2)
+        = Mul_Col (A, B, 3, 1) + Mul_Limb (A (2)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 3, 3)
+        = Mul_Col (A, B, 3, 2) + Mul_Limb (A (3)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 4, 1)
+        = Mul_Col (A, B, 4, 0) + Mul_Limb (A (1)) * Mul_Limb (B (3)));
+      pragma Assert (Mul_Col (A, B, 4, 2)
+        = Mul_Col (A, B, 4, 1) + Mul_Limb (A (2)) * Mul_Limb (B (2)));
+      pragma Assert (Mul_Col (A, B, 4, 3)
+        = Mul_Col (A, B, 4, 2) + Mul_Limb (A (3)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 4, 4)
+        = Mul_Col (A, B, 4, 3) + Mul_Limb (A (4)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 5, 1)
+        = Mul_Col (A, B, 5, 0) + Mul_Limb (A (1)) * Mul_Limb (B (4)));
+      pragma Assert (Mul_Col (A, B, 5, 2)
+        = Mul_Col (A, B, 5, 1) + Mul_Limb (A (2)) * Mul_Limb (B (3)));
+      pragma Assert (Mul_Col (A, B, 5, 3)
+        = Mul_Col (A, B, 5, 2) + Mul_Limb (A (3)) * Mul_Limb (B (2)));
+      pragma Assert (Mul_Col (A, B, 5, 4)
+        = Mul_Col (A, B, 5, 3) + Mul_Limb (A (4)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 5, 5)
+        = Mul_Col (A, B, 5, 4) + Mul_Limb (A (5)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 6, 2)
+        = Mul_Col (A, B, 6, 1) + Mul_Limb (A (2)) * Mul_Limb (B (4)));
+      pragma Assert (Mul_Col (A, B, 6, 3)
+        = Mul_Col (A, B, 6, 2) + Mul_Limb (A (3)) * Mul_Limb (B (3)));
+      pragma Assert (Mul_Col (A, B, 6, 4)
+        = Mul_Col (A, B, 6, 3) + Mul_Limb (A (4)) * Mul_Limb (B (2)));
+      pragma Assert (Mul_Col (A, B, 6, 5)
+        = Mul_Col (A, B, 6, 4) + Mul_Limb (A (5)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 6, 6)
+        = Mul_Col (A, B, 6, 5) + Mul_Limb (A (6)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 7, 1)
+        = Mul_Col (A, B, 7, 0) + Mul_Limb (A (1)) * Mul_Limb (B (6)));
+      pragma Assert (Mul_Col (A, B, 7, 2)
+        = Mul_Col (A, B, 7, 1) + Mul_Limb (A (2)) * Mul_Limb (B (5)));
+      pragma Assert (Mul_Col (A, B, 7, 3)
+        = Mul_Col (A, B, 7, 2) + Mul_Limb (A (3)) * Mul_Limb (B (4)));
+      pragma Assert (Mul_Col (A, B, 7, 4)
+        = Mul_Col (A, B, 7, 3) + Mul_Limb (A (4)) * Mul_Limb (B (3)));
+      pragma Assert (Mul_Col (A, B, 7, 5)
+        = Mul_Col (A, B, 7, 4) + Mul_Limb (A (5)) * Mul_Limb (B (2)));
+      pragma Assert (Mul_Col (A, B, 7, 6)
+        = Mul_Col (A, B, 7, 5) + Mul_Limb (A (6)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 7, 7)
+        = Mul_Col (A, B, 7, 6) + Mul_Limb (A (7)) * Mul_Limb (B (0)));
+
+      pragma Assert (Mul_Col (A, B, 8, 1)
+        = Mul_Col (A, B, 8, 0) + Mul_Limb (A (1)) * Mul_Limb (B (7)));
+      pragma Assert (Mul_Col (A, B, 8, 2)
+        = Mul_Col (A, B, 8, 1) + Mul_Limb (A (2)) * Mul_Limb (B (6)));
+      pragma Assert (Mul_Col (A, B, 8, 3)
+        = Mul_Col (A, B, 8, 2) + Mul_Limb (A (3)) * Mul_Limb (B (5)));
+      pragma Assert (Mul_Col (A, B, 8, 4)
+        = Mul_Col (A, B, 8, 3) + Mul_Limb (A (4)) * Mul_Limb (B (4)));
+      pragma Assert (Mul_Col (A, B, 8, 5)
+        = Mul_Col (A, B, 8, 4) + Mul_Limb (A (5)) * Mul_Limb (B (3)));
+      pragma Assert (Mul_Col (A, B, 8, 6)
+        = Mul_Col (A, B, 8, 5) + Mul_Limb (A (6)) * Mul_Limb (B (2)));
+      pragma Assert (Mul_Col (A, B, 8, 7)
+        = Mul_Col (A, B, 8, 6) + Mul_Limb (A (7)) * Mul_Limb (B (1)));
+      pragma Assert (Mul_Col (A, B, 8, 8)
+        = Mul_Col (A, B, 8, 7) + Mul_Limb (A (8)) * Mul_Limb (B (0)));
+   end Lemma_Mul5_Cols;
+
    procedure Lemma_Carry26 (X : LLI) is null;
 
    procedure Lemma_Hi26_Bound (X : LLI) is null;
@@ -167,6 +253,8 @@ is
       Lemma_Hi26_Conv (A (7) + Sw9_C6 (A));
       Lemma_Hi26_Conv (A (8) + Sw9_C7 (A));
    end Lemma_Sweep9_Conv;
+
+   procedure Lemma_Sweep9_Cols (A : Big_Nat) is null;
 
    procedure Lemma_Sweep9_Chain_Tight (A : Big_Nat) is
    begin
