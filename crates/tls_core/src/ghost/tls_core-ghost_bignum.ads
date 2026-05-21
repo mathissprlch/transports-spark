@@ -527,6 +527,17 @@ is
      Post => (for all J in Carry_Array'Range =>
                 Sweep5_Chain (A) (J) in 0 .. Conv_Carry_Cap);
 
+   --  For a multiply-input-sized value (limbs <= Mul_Cap = 2**27) every
+   --  sequential sweep carry is tiny: Hi26 of a value < 2**28 is <= 2, so the
+   --  top carry out of limb 4 is <= 2. Far tighter than Fold_C_Cap; this is
+   --  what lets Fold_Out (Sweep5_Out (B)) stay within Round1_Out_Cap so a
+   --  second reduce round (Lemma_Reduce_Round2) can consume the impl
+   --  accumulator (each impl op ends in Carry_Model, limbs < 2**27).
+   procedure Lemma_Sweep5_Acc_Carry (B : Big_Nat)
+   with
+     Pre  => In_Bounds (B, Mul_Cap),
+     Post => Sweep5_Out (B) (5) <= 2;
+
    ------------------------------------------------------------------
    --  Exact carry sweep of a wide nine-limb value (the convolution of two
    --  five-limb numbers has columns 0..8). Same shape as Sweep5 but over

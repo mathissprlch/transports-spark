@@ -228,6 +228,18 @@ is
       Lemma_Hi26_Conv (A (4) + Sw_C3 (A));
    end Lemma_Sweep5_Chain_Tight;
 
+   procedure Lemma_Sweep5_Acc_Carry (B : Big_Nat) is
+   begin
+      --  Each limb <= Mul_Cap = 2**27, each carry-in <= 2, so every column is
+      --  < 2**28 and Hi26 (= /2**26) of it is <= 2. Chain the five carries.
+      Lemma_Bounds_Mono (B, Mul_Cap, Prod_Cap);
+      pragma Assert (Sw_C0 (B) <= 2);
+      pragma Assert (Sw_C1 (B) <= 2);
+      pragma Assert (Sw_C2 (B) <= 2);
+      pragma Assert (Sw_C3 (B) <= 2);
+      pragma Assert (Sw_C4 (B) <= 2);
+   end Lemma_Sweep5_Acc_Carry;
+
    procedure Lemma_Sweep9 (A : Big_Nat) is
    begin
       Lemma_Carry26 (A (0));
