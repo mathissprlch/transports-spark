@@ -1201,10 +1201,54 @@ is
          end;
       end if;
 
-      --  Final reduction: ensure Acc < 2^130-5. Two extra carries
-      --  bring it into canonical form.
+      --  Partial reduction: the carry-fold brings Acc into [0, 2^130).
       Carry (Acc);
       Carry (Acc);
+
+      --  RFC 8439 §2.5.1 final reduction ("freeze"). The carry-fold above
+      --  only guarantees Acc < 2^130, NOT Acc < p (= 2^130 - 5): the five
+      --  values in [2^130 - 5, 2^130) are a fixed point of Carry, so they
+      --  reach this point un-reduced. Conditionally subtract p to land on
+      --  the canonical representative < p (matching HACL* poly1305_finish).
+      --  Without this step (acc + s) mod 2^128 disagrees with the spec's
+      --  (acc mod p + s) mod 2^128 by p mod 2^128 = 2^128 - 5 whenever Acc
+      --  falls in that window. Constant-time: no data-dependent branch.
+      declare
+         G    : Limbs := [others => 0];
+         C    : U64;
+         Tmp  : U64;
+         Mask : U64;
+      begin
+         --  Clean carry so each limb < 2**26 (Acc < 2^130 ⇒ no carry out).
+         C := 0;
+         for I in Limb_Index loop
+            Tmp := Acc (I) + C;
+            Acc (I) := Tmp and Mask_26;
+            C := Shift_Right (Tmp, 26);
+            pragma Loop_Invariant
+              (for all J in Limb_Index =>
+                 (if J <= I then Acc (J) < 2**26 else Acc (J) < 2**27));
+            pragma Loop_Invariant (C <= 2);
+         end loop;
+
+         --  g = Acc + 5, carry-propagated. The carry out of limb 4 lands at
+         --  weight 2^130 and is 1 iff Acc + 5 >= 2^130, i.e. iff Acc >= p.
+         C := 5;
+         for I in Limb_Index loop
+            Tmp := Acc (I) + C;
+            G (I) := Tmp and Mask_26;
+            C := Shift_Right (Tmp, 26);
+            pragma Loop_Invariant (C <= 1);
+            pragma Loop_Invariant (for all J in Limb_Index => G (J) < 2**26);
+         end loop;
+
+         --  Mask = all-ones iff Acc >= p (select g = Acc - p), else 0 (keep
+         --  Acc). Branchless select.
+         Mask := U64'(0) - (C and 1);
+         for I in Limb_Index loop
+            Acc (I) := (Acc (I) and not Mask) or (G (I) and Mask);
+         end loop;
+      end;
 
       --  Acc := Acc + s (mod 2^128). Then serialize as little-endian.
       declare
