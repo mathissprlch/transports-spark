@@ -939,4 +939,29 @@ is
                          B (I) = 0),
      Post => Val_Eq (Fold_High_9_Plus_P (B), B, Fold_High_9_Chain (B));
 
+   ------------------------------------------------------------------
+   --  First reduction round of a convolution, composed end-to-end. S and C1
+   --  are the swept value Sweep9_Out (Conv) and its chain (passed in so the
+   --  contract can discharge Fold_High_9's input bounds without re-deriving
+   --  the runtime conv-tight top-carry bound). The convolution is then
+   --  value-equal (SVal_Eq) to Fold_High_9_Plus_P (S) -- i.e. congruent mod p
+   --  to the folded five-limb form Fold_High_9_Out (S), since the difference
+   --  is the prime multiples. Composes Sweep9 (exact) with Fold_High_9
+   --  (mod p) via the SVal_Eq lift / symmetry / transitivity lemmas.
+   ------------------------------------------------------------------
+
+   procedure Lemma_Reduce_Conv_Round1 (Conv, S : Big_Nat; C1 : Carry_Array)
+   with
+     Pre  => In_Bounds (Conv, Conv_Col_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Conv (I) = 0)
+             and then S = Sweep9_Out (Conv)
+             and then C1 = Sweep9_Chain (Conv)
+             and then S (9) in 0 .. Fold9_Top_Cap,
+     Post =>
+       SVal_Eq
+         (Conv,
+          Fold_High_9_Plus_P (S),
+          Add_Carry (C1, Neg_Carry (Fold_High_9_Chain (S))));
+
 end Tls_Core.Ghost_Bignum;

@@ -207,6 +207,19 @@ is
 
    procedure Lemma_Fold_High_9 (B : Big_Nat) is null;
 
+   procedure Lemma_Reduce_Conv_Round1 (Conv, S : Big_Nat; C1 : Carry_Array) is
+      C2 : constant Carry_Array := Fold_High_9_Chain (S);
+   begin
+      Lemma_Sweep9 (Conv);                                --  Val_Eq(Conv,S,C1)
+      Lemma_Val_To_SVal (Conv, S, C1);                    --  SVal_Eq(Conv,S,C1)
+      Lemma_Fold_High_9 (S);                              --  Val_Eq(P9(S),S,C2)
+      Lemma_Val_To_SVal (Fold_High_9_Plus_P (S), S, C2);  --  SVal_Eq(P9(S),S,C2)
+      Lemma_SVal_Sym (Fold_High_9_Plus_P (S), S, C2);     --  SVal_Eq(S,P9(S),-C2)
+      pragma Assert (SC_Bounded (Add_Carry (C1, Neg_Carry (C2))));
+      Lemma_SVal_Trans
+        (Conv, S, Fold_High_9_Plus_P (S), C1, Neg_Carry (C2));
+   end Lemma_Reduce_Conv_Round1;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin
