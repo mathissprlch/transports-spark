@@ -980,4 +980,28 @@ is
           Fold_High_9_Plus_P (S),
           Add_Carry (C1, Neg_Carry (Fold_High_9_Chain (S))));
 
+   ------------------------------------------------------------------
+   --  Second reduction round: the round-1 output R1 (Fold_High_9_Out, limbs
+   --  <= Round1_Out_Cap, zero from 5) is value-equal (SVal_Eq) to
+   --  Fold_Plus_P (T) where T = Sweep5_Out (R1) -- i.e. congruent mod p to
+   --  the single-fold result Fold_Out (T). T and D1 (= Sweep5_Chain (R1))
+   --  and the conv-tight top carry T (5) <= Fold_C_Cap are passed in so the
+   --  contract discharges Lemma_Fold's input bounds. Composes Sweep5 (exact)
+   --  with Fold (mod p) through SVal_Eq.
+   ------------------------------------------------------------------
+
+   procedure Lemma_Reduce_Round2 (R1, T : Big_Nat; D1 : Carry_Array)
+   with
+     Pre  => In_Bounds (R1, Round1_Out_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R1 (I) = 0)
+             and then T = Sweep5_Out (R1)
+             and then D1 = Sweep5_Chain (R1)
+             and then T (5) in 0 .. Fold_C_Cap,
+     Post =>
+       SVal_Eq
+         (R1,
+          Fold_Plus_P (T),
+          Add_Carry (D1, Neg_Carry (Fold_Chain (T (5)))));
+
 end Tls_Core.Ghost_Bignum;

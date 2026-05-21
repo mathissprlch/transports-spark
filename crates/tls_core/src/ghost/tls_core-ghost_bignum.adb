@@ -222,6 +222,18 @@ is
         (Conv, S, Fold_High_9_Plus_P (S), C1, Neg_Carry (C2));
    end Lemma_Reduce_Conv_Round1;
 
+   procedure Lemma_Reduce_Round2 (R1, T : Big_Nat; D1 : Carry_Array) is
+      D2 : constant Carry_Array := Fold_Chain (T (5));
+   begin
+      Lemma_Sweep5 (R1);                          --  Val_Eq(R1, T, D1)
+      Lemma_Val_To_SVal (R1, T, D1);              --  SVal_Eq(R1, T, D1)
+      Lemma_Fold (T);                             --  Val_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_Val_To_SVal (Fold_Plus_P (T), T, D2); --  SVal_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_SVal_Sym (Fold_Plus_P (T), T, D2);    --  SVal_Eq(T,Fold_Plus_P(T),-D2)
+      pragma Assert (SC_Bounded (Add_Carry (D1, Neg_Carry (D2))));
+      Lemma_SVal_Trans (R1, T, Fold_Plus_P (T), D1, Neg_Carry (D2));
+   end Lemma_Reduce_Round2;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin
