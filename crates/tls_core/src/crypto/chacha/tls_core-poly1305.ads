@@ -29,6 +29,7 @@
 --  computable expression in `Big_Integers_Ghost` (no stubs).
 
 with Interfaces;
+with Tls_Core.Ghost_Bignum;
 pragma Warnings (Off, "is an internal GNAT unit");
 pragma Warnings (Off, "use of this unit is non-portable");
 with Ada.Numerics.Big_Numbers.Big_Integers_Ghost;
@@ -295,6 +296,41 @@ is
    function Feval5 (L : Limbs) return Big.Big_Natural
    is (As_Nat5 (L) mod Spec_Prime)
    with Ghost;
+
+   ------------------------------------------------------------------
+   --  Ghost_Bignum bridge (scalar-free value type, replaces Big_Integers)
+   ------------------------------------------------------------------
+   --
+   --  Embeds the impl's five-limb representation into Tls_Core.Ghost_Bignum's
+   --  Big_Nat (limbs 0..4, zero above) so the imperative Add / Multiply /
+   --  Carry can be connected to the proven Big_Nat reduce algebra without
+   --  the Ada.Numerics.Big_Numbers axiomatisation (the §0e wall). This is
+   --  the migration target: once the Mac Post is re-proved over Big_Nat the
+   --  Big_Integers spec above is dropped.
+
+   function To_Big_Nat (L : Limbs) return Ghost_Bignum.Big_Nat
+   is ([for I in Ghost_Bignum.Limb_Index =>
+          (if I <= 4 then Ghost_Bignum.LLI (L (I)) else 0)])
+   with
+     Ghost,
+     Pre  => All_Limbs_Fit_26 (L),
+     Post =>
+       (for all I in Ghost_Bignum.Limb_Index =>
+          To_Big_Nat'Result (I)
+          = (if I <= 4 then Ghost_Bignum.LLI (L (I)) else 0));
+
+   --  A reduced five-limb value embeds to a Big_Nat that meets the reduce
+   --  bricks' input contract (limbs 0..4 <= In_Cap, zero from 5).
+   procedure Lemma_To_Big_Nat_Reduced (L : Limbs)
+   with
+     Ghost,
+     Pre  => All_Limbs_Fit_26 (L),
+     Post =>
+       Ghost_Bignum.In_Bounds (To_Big_Nat (L), Ghost_Bignum.In_Cap)
+       and then
+         (for all I in
+            Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
+            To_Big_Nat (L) (I) = 0);
 
    ------------------------------------------------------------------
    --  Bit-shift / mask decomposition lemma (foundation for the carry

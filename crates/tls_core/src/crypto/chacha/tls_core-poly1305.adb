@@ -139,6 +139,8 @@ is
 
    --  Lemma_As_Nat5_Linear body deferred (see ads-side TODO).
 
+   procedure Lemma_To_Big_Nat_Reduced (L : Limbs) is null;
+
    procedure Lemma_Bytes_Bound (B : Octet_Array) is
    begin
       if B'Length = 0 then
