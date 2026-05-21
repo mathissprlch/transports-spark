@@ -337,6 +337,19 @@ is
              and then SVal_Eq (A, B, C1) and then SVal_Eq (B, D, C2),
      Post => SVal_Eq (A, D, Add_Carry (C1, C2));
 
+   --  Adding the same M to both sides preserves SVal_Eq with the SAME chain
+   --  (each column just gains M(I) on both sides). Used to align a reduction
+   --  round's clean output with the previous round's "+ prime multiples"
+   --  form before composing with transitivity.
+   procedure Lemma_SVal_Add_Const (X, Y, M : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (X, Add_Cap) and then In_Bounds (Y, Add_Cap)
+             and then In_Bounds (M, Add_Cap)
+             and then In_Bounds (X + M, Add_Cap)
+             and then In_Bounds (Y + M, Add_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (X, Y, C),
+     Post => SVal_Eq (X + M, Y + M, C);
+
    --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
    --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)
    function Step_Out (A : Big_Nat; I : Limb_Index) return Big_Nat

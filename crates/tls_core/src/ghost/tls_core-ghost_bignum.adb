@@ -107,6 +107,14 @@ is
            = D (I) + Limb_Base * (C1 (I + 1) + C2 (I + 1)));
    end Lemma_SVal_Trans;
 
+   procedure Lemma_SVal_Add_Const (X, Y, M : Big_Nat; C : Carry_Array) is
+   begin
+      pragma Assert
+        (for all I in Limb_Index =>
+           (X (I) + M (I)) + C (I)
+           = (Y (I) + M (I)) + Limb_Base * C (I + 1));
+   end Lemma_SVal_Add_Const;
+
    procedure Lemma_Carry_Step (A : Big_Nat; I : Limb_Index) is
    begin
       Lemma_Carry26 (A (I));
