@@ -57,6 +57,15 @@ is
       Lemma_Carry26 (A (I));
    end Lemma_Carry_Step;
 
+   procedure Lemma_Sweep5 (A : Big_Nat) is
+   begin
+      Lemma_Carry26 (A (0));
+      Lemma_Carry26 (A (1) + Sw_C0 (A));
+      Lemma_Carry26 (A (2) + Sw_C1 (A));
+      Lemma_Carry26 (A (3) + Sw_C2 (A));
+      Lemma_Carry26 (A (4) + Sw_C3 (A));
+   end Lemma_Sweep5;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

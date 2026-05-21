@@ -274,4 +274,63 @@ is
      Post => (for all I in Limb_Index => Smul'Result (I) = K * A (I))
              and then In_Bounds (Smul'Result, Add_Cap);
 
+   ------------------------------------------------------------------
+   --  Exact carry sweep of a wide five-limb value (HACL*
+   --  carry_wide_felem5, exact-value part — the prime fold is applied
+   --  separately, see Smul / P_Prime above).
+   --
+   --  Input A holds five wide limbs (limbs 0..4 up to Prod_Cap, limbs 5+
+   --  zero). The sweep propagates carries left-to-right; the carry out of
+   --  limb 4 lands at limb 5 (weight 2**130), to be folded next. Output
+   --  limbs 0..4 are reduced (< 2**26) and limb 5 holds that top carry.
+   --  Sweep5_Out and the net carry chain Sweep5_Chain link A to the swept
+   --  value by Val_Eq (exact same integer).
+   ------------------------------------------------------------------
+
+   --  The five sequential carries (Sw_Ci is the carry into limb i+1).
+   function Sw_C0 (A : Big_Nat) return LLI is (Hi26 (A (0)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw_C0'Result in 0 .. Hi_Cap;
+
+   function Sw_C1 (A : Big_Nat) return LLI is (Hi26 (A (1) + Sw_C0 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw_C1'Result in 0 .. Hi_Cap;
+
+   function Sw_C2 (A : Big_Nat) return LLI is (Hi26 (A (2) + Sw_C1 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw_C2'Result in 0 .. Hi_Cap;
+
+   function Sw_C3 (A : Big_Nat) return LLI is (Hi26 (A (3) + Sw_C2 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw_C3'Result in 0 .. Hi_Cap;
+
+   function Sw_C4 (A : Big_Nat) return LLI is (Hi26 (A (4) + Sw_C3 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw_C4'Result in 0 .. Hi_Cap;
+
+   function Sweep5_Out (A : Big_Nat) return Big_Nat
+   is ([0      => Lo26 (A (0)),
+        1      => Lo26 (A (1) + Sw_C0 (A)),
+        2      => Lo26 (A (2) + Sw_C1 (A)),
+        3      => Lo26 (A (3) + Sw_C2 (A)),
+        4      => Lo26 (A (4) + Sw_C3 (A)),
+        5      => Sw_C4 (A),
+        others => 0])
+   with Pre => In_Bounds (A, Prod_Cap),
+        Post => In_Bounds (Sweep5_Out'Result, Add_Cap);
+
+   function Sweep5_Chain (A : Big_Nat) return Carry_Array
+   is ([1      => Sw_C0 (A),
+        2      => Sw_C1 (A),
+        3      => Sw_C2 (A),
+        4      => Sw_C3 (A),
+        5      => Sw_C4 (A),
+        others => 0])
+   with Pre => In_Bounds (A, Prod_Cap),
+        Post => Carry_Bounded (Sweep5_Chain'Result);
+
+   --  The sweep is value-preserving: a five-limb wide A and its swept form
+   --  encode the same integer (the carry out lives at limb 5).
+   procedure Lemma_Sweep5 (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Prod_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         A (I) = 0),
+     Post => Val_Eq (A, Sweep5_Out (A), Sweep5_Chain (A));
+
 end Tls_Core.Ghost_Bignum;
