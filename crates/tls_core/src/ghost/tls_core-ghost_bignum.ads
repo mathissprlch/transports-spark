@@ -487,6 +487,16 @@ is
      Pre  => In_Bounds (A, Carry_In_Cap),
      Post => Sweep5_Out (A) (5) in 0 .. Fold_C_Cap;
 
+   --  For a round-1-output-sized input (limbs <= Round1_Out_Cap), every entry
+   --  of the five-limb sweep chain stays <= Conv_Carry_Cap (Round1_Out_Cap <=
+   --  Conv_Col_Cap, so Hi26_Conv applies). Used with Lemma_Sweep9_Chain_Tight
+   --  to keep the two-round reduce's combined carry chain within Hi_Cap.
+   procedure Lemma_Sweep5_Chain_Tight (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Round1_Out_Cap),
+     Post => (for all J in Carry_Array'Range =>
+                Sweep5_Chain (A) (J) in 0 .. Conv_Carry_Cap);
+
    ------------------------------------------------------------------
    --  Exact carry sweep of a wide nine-limb value (the convolution of two
    --  five-limb numbers has columns 0..8). Same shape as Sweep5 but over
@@ -571,6 +581,18 @@ is
                          A (I) = 0),
      Post => Sweep9_Out (A) (9) in 0 .. Conv_Carry_Cap;
 
+   --  For a convolution-sized input, EVERY entry of the nine-limb sweep chain
+   --  (not just the top carry) stays <= Conv_Carry_Cap. Sequential Hi26_Conv
+   --  down the cascade. Needed so the two-round reduce's combined carry chain
+   --  stays within Hi_Cap (the SVal_Eq base*carry ceiling).
+   procedure Lemma_Sweep9_Chain_Tight (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Conv_Col_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         A (I) = 0),
+     Post => (for all J in Carry_Array'Range =>
+                Sweep9_Chain (A) (J) in 0 .. Conv_Carry_Cap);
+
    ------------------------------------------------------------------
    --  Mod-prime fold (HACL* carry_wide_felem5 z1 = z1 + (z1 << 2)).
    --
@@ -617,7 +639,12 @@ is
    with
      Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
              and then B (5) in 0 .. Fold_C_Cap,
-     Post => In_Bounds (Fold_Plus_P'Result, Add_Cap);
+     Post => In_Bounds (Fold_Plus_P'Result, Add_Cap)
+             and then (for all I in Limb_Index range 0 .. 4 =>
+                         Fold_Plus_P'Result (I)
+                         in 0 .. In_Cap + 5 * Fold_C_Cap + Fold_C_Cap * In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Fold_Plus_P'Result (I) = 0);
 
    function Fold_Chain (C4 : LLI) return Carry_Array
    is ([1 | 2 | 3 | 4 | 5 => C4, others => 0])
@@ -1033,6 +1060,81 @@ is
          (R1,
           Fold_Plus_P (T),
           Add_Carry (D1, Neg_Carry (Fold_Chain (T (5)))));
+
+   ------------------------------------------------------------------
+   --  Full convolution reduce, composed end-to-end (the multiply math half).
+   --  A field multiply A*R is the nine-limb convolution Conv. This lemma
+   --  reduces it to a five-limb form congruent mod p, chaining the two
+   --  reduction rounds: Round1 (Sweep9 then Fold_High_9) yields R1 =
+   --  Fold_High_9_Out (Sweep9_Out (Conv)) <= Round1_Out_Cap; Round2 (Sweep5
+   --  then Fold) yields Fold_Out (Sweep5_Out (R1)). Conv is value-equal
+   --  (SVal_Eq) to Fold_Plus_P (T) + Fold_High_9_PrimePart (S) -- i.e.
+   --  congruent mod p to the canonical Fold_Out (Sweep5_Out (R1)). Round1
+   --  relates Conv to the +P form Fold_High_9_Plus_P (S); the prime part
+   --  Fold_High_9_PrimePart (S) (Plus_P minus Out) is added to Round2's plain
+   --  output via Lemma_SVal_Add_Const before transitivity. The combined two-
+   --  round carry chain stays within Hi_Cap because both sweep chains are
+   --  conv-tight (Lemma_Sweep9/5_Chain_Tight). S, R1, T and the chains are
+   --  passed in (like the round lemmas) so the contract discharges bounds
+   --  without re-deriving the runtime tight top carries.
+   ------------------------------------------------------------------
+
+   --  Prime part of Fold_High_9 (Fold_High_9_Plus_P minus Fold_High_9_Out):
+   --  the per-position shifts of p folded back. Splitting it out lets Round2's
+   --  plain-form output be lifted to Round1's +P form.
+   function Fold_High_9_PrimePart (B : Big_Nat) return Big_Nat
+   is ([0      => B (5) * (In_Cap - 4),
+        1      => B (5) * In_Cap + B (6) * (In_Cap - 4),
+        2      => B (5) * In_Cap + B (6) * In_Cap + B (7) * (In_Cap - 4),
+        3      =>
+          B (5) * In_Cap + B (6) * In_Cap + B (7) * In_Cap
+          + B (8) * (In_Cap - 4),
+        4      =>
+          B (5) * In_Cap + B (6) * In_Cap + B (7) * In_Cap + B (8) * In_Cap
+          + B (9) * (In_Cap - 4),
+        5      =>
+          B (6) * In_Cap + B (7) * In_Cap + B (8) * In_Cap + B (9) * In_Cap,
+        6      => B (7) * In_Cap + B (8) * In_Cap + B (9) * In_Cap,
+        7      => B (8) * In_Cap + B (9) * In_Cap,
+        8      => B (9) * In_Cap,
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap,
+     Post => In_Bounds (Fold_High_9_PrimePart'Result, Add_Cap)
+             and then (for all I in Limb_Index range 0 .. 8 =>
+                         Fold_High_9_PrimePart'Result (I)
+                         in 0 .. 4 * In_Cap * In_Cap + Fold9_Top_Cap * In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Fold_High_9_PrimePart'Result (I) = 0);
+
+   procedure Lemma_Mul_Reduce
+     (Conv, S, R1, T : Big_Nat; C1, D1 : Carry_Array)
+   with
+     Pre  => In_Bounds (Conv, Conv_Col_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Conv (I) = 0)
+             and then S = Sweep9_Out (Conv)
+             and then C1 = Sweep9_Chain (Conv)
+             and then (for all I in Limb_Index range 0 .. 8 =>
+                         S (I) in 0 .. In_Cap)
+             and then S (9) in 0 .. Fold9_Top_Cap
+             and then R1 = Fold_High_9_Out (S)
+             and then In_Bounds (R1, Round1_Out_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R1 (I) = 0)
+             and then T = Sweep5_Out (R1)
+             and then D1 = Sweep5_Chain (R1)
+             and then (for all I in Limb_Index range 0 .. 4 =>
+                         T (I) in 0 .. In_Cap)
+             and then T (5) in 0 .. Fold_C_Cap,
+     Post =>
+       SVal_Eq
+         (Conv,
+          Fold_Plus_P (T) + Fold_High_9_PrimePart (S),
+          Add_Carry
+            (Add_Carry (C1, Neg_Carry (Fold_High_9_Chain (S))),
+             Add_Carry (D1, Neg_Carry (Fold_Chain (T (5))))));
 
    ------------------------------------------------------------------
    --  Carry correspondence (math half). The Poly1305 impl Carry routine

@@ -133,6 +133,15 @@ is
 
    procedure Lemma_Sweep5_Tight_Carry (A : Big_Nat) is null;
 
+   procedure Lemma_Sweep5_Chain_Tight (A : Big_Nat) is
+   begin
+      Lemma_Hi26_Conv (A (0));
+      Lemma_Hi26_Conv (A (1) + Sw_C0 (A));
+      Lemma_Hi26_Conv (A (2) + Sw_C1 (A));
+      Lemma_Hi26_Conv (A (3) + Sw_C2 (A));
+      Lemma_Hi26_Conv (A (4) + Sw_C3 (A));
+   end Lemma_Sweep5_Chain_Tight;
+
    procedure Lemma_Sweep9 (A : Big_Nat) is
    begin
       Lemma_Carry26 (A (0));
@@ -158,6 +167,19 @@ is
       Lemma_Hi26_Conv (A (7) + Sw9_C6 (A));
       Lemma_Hi26_Conv (A (8) + Sw9_C7 (A));
    end Lemma_Sweep9_Conv;
+
+   procedure Lemma_Sweep9_Chain_Tight (A : Big_Nat) is
+   begin
+      Lemma_Hi26_Conv (A (0));
+      Lemma_Hi26_Conv (A (1) + Sw9_C0 (A));
+      Lemma_Hi26_Conv (A (2) + Sw9_C1 (A));
+      Lemma_Hi26_Conv (A (3) + Sw9_C2 (A));
+      Lemma_Hi26_Conv (A (4) + Sw9_C3 (A));
+      Lemma_Hi26_Conv (A (5) + Sw9_C4 (A));
+      Lemma_Hi26_Conv (A (6) + Sw9_C5 (A));
+      Lemma_Hi26_Conv (A (7) + Sw9_C6 (A));
+      Lemma_Hi26_Conv (A (8) + Sw9_C7 (A));
+   end Lemma_Sweep9_Chain_Tight;
 
    procedure Lemma_Fold (B : Big_Nat) is null;
 
@@ -243,6 +265,46 @@ is
       pragma Assert (SC_Bounded (Add_Carry (D1, Neg_Carry (D2))));
       Lemma_SVal_Trans (R1, T, Fold_Plus_P (T), D1, Neg_Carry (D2));
    end Lemma_Reduce_Round2;
+
+   procedure Lemma_Mul_Reduce
+     (Conv, S, R1, T : Big_Nat; C1, D1 : Carry_Array)
+   is
+      C2  : constant Carry_Array := Fold_High_9_Chain (S);
+      D2  : constant Carry_Array := Fold_Chain (T (5));
+      M1  : constant Big_Nat := Fold_High_9_PrimePart (S);
+      Ch1 : constant Carry_Array := Add_Carry (C1, Neg_Carry (C2));
+      Ch2 : constant Carry_Array := Add_Carry (D1, Neg_Carry (D2));
+   begin
+      --  Conv-tight chain bounds so the combined chain stays within Hi_Cap.
+      Lemma_Sweep9_Conv (Conv);          --  S (9) and the C2 entries are tight
+      Lemma_Sweep9_Chain_Tight (Conv);   --  C1 entries <= Conv_Carry_Cap
+      Lemma_Sweep5_Chain_Tight (R1);     --  D1 entries <= Conv_Carry_Cap
+      Lemma_Reduce_Conv_Round1 (Conv, S, C1);
+      --  SVal_Eq (Conv, Fold_High_9_Plus_P (S), Ch1)
+      Lemma_Reduce_Round2 (R1, T, D1);
+      --  SVal_Eq (R1, Fold_Plus_P (T), Ch2)
+      pragma Assert (Fold_High_9_Out (S) + M1 = Fold_High_9_Plus_P (S));
+      Lemma_SVal_Add_Const (R1, Fold_Plus_P (T), M1, Ch2);
+      --  SVal_Eq (Fold_High_9_Plus_P (S), Fold_Plus_P (T) + M1, Ch2)
+      --  Component bounds so the combined chain stays within Hi_Cap:
+      --  C1, D1 conv-tight; C2 <= 4*In_Cap+Fold9_Top_Cap; D2 <= Fold_C_Cap.
+      pragma Assert
+        (for all J in Carry_Array'Range => C1 (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range =>
+           C2 (J) in 0 .. 4 * In_Cap + Fold9_Top_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => D2 (J) in 0 .. Fold_C_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => Ch1 (J) = C1 (J) - C2 (J));
+      pragma Assert
+        (for all J in Carry_Array'Range => Ch2 (J) = D1 (J) - D2 (J));
+      pragma Assert (SC_Bounded (Add_Carry (Ch1, Ch2)));
+      Lemma_SVal_Trans
+        (Conv, Fold_High_9_Plus_P (S), Fold_Plus_P (T) + M1, Ch1, Ch2);
+   end Lemma_Mul_Reduce;
 
    procedure Lemma_Carry_Fold (B : Big_Nat) is
       T  : constant Big_Nat     := Sweep5_Out (B);
