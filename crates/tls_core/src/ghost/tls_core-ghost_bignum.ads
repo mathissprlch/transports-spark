@@ -391,4 +391,43 @@ is
                          B (I) = 0),
      Post => Val_Eq (Fold_Plus_P (B), B, Fold_Chain (B (5)));
 
+   ------------------------------------------------------------------
+   --  Final canonical reduce (HACL* subtract_p5).
+   --
+   --  Input B is fully reduced (limbs 0..4 <= In_Cap, 5+ = 0), so its value
+   --  is < 2**130 and hence in [0, 2p). If it is >= p -- top four limbs all
+   --  2**26-1 (= In_Cap) and limb 0 >= 2**26-5 (= In_Cap - 4) -- subtract p
+   --  once. In that branch the subtraction is *exact limbwise* (no borrow),
+   --  since limb 0 >= ml and limbs 1..4 equal mh, so Subtract_P5_Out (B) plus
+   --  the conditional p equals B exactly (Val_Eq with the zero carry chain).
+   --  The output is therefore congruent to B mod p and is itself < p.
+   ------------------------------------------------------------------
+
+   function Sub_Cond (B : Big_Nat) return Boolean
+   is (B (4) = In_Cap and then B (3) = In_Cap and then B (2) = In_Cap
+       and then B (1) = In_Cap and then B (0) >= In_Cap - 4);
+
+   function Subtract_P5_Out (B : Big_Nat) return Big_Nat
+   is (if Sub_Cond (B)
+       then [0 => B (0) - (In_Cap - 4), others => 0]
+       else B)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Subtract_P5_Out'Result, In_Cap);
+
+   function Sub_Sel_P (B : Big_Nat) return Big_Nat
+   is (if Sub_Cond (B) then P_Prime else Zero)
+   with Post => In_Bounds (Sub_Sel_P'Result, In_Cap);
+
+   --  Subtract_P5_Out (B) + (cond ? p : 0) equals B exactly, so the output
+   --  is congruent to B mod p (differs by the single multiple cond * p).
+   procedure Lemma_Subtract_P5 (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Val_Eq (Subtract_P5_Out (B) + Sub_Sel_P (B), B, Zero_Carry);
+
 end Tls_Core.Ghost_Bignum;

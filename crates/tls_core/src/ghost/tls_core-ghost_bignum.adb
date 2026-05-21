@@ -68,6 +68,8 @@ is
 
    procedure Lemma_Fold (B : Big_Nat) is null;
 
+   procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin
