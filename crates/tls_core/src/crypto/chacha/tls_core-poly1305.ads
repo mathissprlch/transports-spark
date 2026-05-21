@@ -355,6 +355,19 @@ is
          (To_Big_Nat (Sum_Limbs (A, B)),
           Ghost_Bignum."+" (To_Big_Nat (A), To_Big_Nat (B)));
 
+   --  U64 carry-split bridges to the Big_Nat Lo26/Hi26 split: the impl's
+   --  Shift_Right (x, 26) and (x and Mask_26) are exactly Hi26/Lo26 of the
+   --  LLI value. Foundation for the Carry correspondence.
+   procedure Lemma_Shift_Mask_26 (X : U64)
+   with
+     Ghost,
+     Pre  => X < 2**59,
+     Post =>
+       Ghost_Bignum.LLI (Interfaces.Shift_Right (X, 26))
+       = Ghost_Bignum.Hi26 (Ghost_Bignum.LLI (X))
+       and then Ghost_Bignum.LLI (X and 16#03FF_FFFF#)
+                = Ghost_Bignum.Lo26 (Ghost_Bignum.LLI (X));
+
    ------------------------------------------------------------------
    --  Bit-shift / mask decomposition lemma (foundation for the carry
    --  and multiply correspondence proofs)

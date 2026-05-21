@@ -143,6 +143,12 @@ is
 
    procedure Lemma_Add_Embed (A, B : Limbs) is null;
 
+   procedure Lemma_Shift_Mask_26 (X : U64) is
+   begin
+      pragma Assert (Interfaces.Shift_Right (X, 26) = X / 2**26);
+      pragma Assert ((X and 16#03FF_FFFF#) = X mod 2**26);
+   end Lemma_Shift_Mask_26;
+
    procedure Lemma_Bytes_Bound (B : Octet_Array) is
    begin
       if B'Length = 0 then
