@@ -178,6 +178,8 @@ is
       pragma Assert (M (7) = In_Cap * B (8));
    end Lemma_Fold_High_Mul_Form;
 
+   procedure Lemma_Fold_High_9 (B : Big_Nat) is null;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

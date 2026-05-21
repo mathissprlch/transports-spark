@@ -781,4 +781,80 @@ is
                          B (I) = 0),
      Post => Fold_High_Plus_P (B) = Fold_High_Out (B) + P_Prime * High4 (B);
 
+   ------------------------------------------------------------------
+   --  Five-position high fold (5..9 -> 0..4, x5). Used on the swept
+   --  convolution, whose carry out of column 8 lands at limb 9. Limbs 5..8
+   --  are reduced (<= In_Cap); limb 9 is the small top carry (<= Fold9_Top_
+   --  Cap) so the chain entry B5+..+B9 stays within Hi_Cap. Same shape as
+   --  Fold_High with one more folded position.
+   ------------------------------------------------------------------
+
+   Fold9_Top_Cap : constant LLI := 2**30;
+
+   function Fold_High_9_Out (B : Big_Nat) return Big_Nat
+   is ([0      => B (0) + 5 * B (5),
+        1      => B (1) + 5 * B (6),
+        2      => B (2) + 5 * B (7),
+        3      => B (3) + 5 * B (8),
+        4      => B (4) + 5 * B (9),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap
+             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Fold_High_9_Out'Result, Add_Cap);
+
+   function Fold_High_9_Plus_P (B : Big_Nat) return Big_Nat
+   is ([0      => B (0) + 5 * B (5) + B (5) * (In_Cap - 4),
+        1      => B (1) + 5 * B (6) + B (5) * In_Cap + B (6) * (In_Cap - 4),
+        2      =>
+          B (2) + 5 * B (7)
+          + B (5) * In_Cap + B (6) * In_Cap + B (7) * (In_Cap - 4),
+        3      =>
+          B (3) + 5 * B (8)
+          + B (5) * In_Cap + B (6) * In_Cap + B (7) * In_Cap
+          + B (8) * (In_Cap - 4),
+        4      =>
+          B (4) + 5 * B (9)
+          + B (5) * In_Cap + B (6) * In_Cap + B (7) * In_Cap + B (8) * In_Cap
+          + B (9) * (In_Cap - 4),
+        5      =>
+          B (6) * In_Cap + B (7) * In_Cap + B (8) * In_Cap + B (9) * In_Cap,
+        6      => B (7) * In_Cap + B (8) * In_Cap + B (9) * In_Cap,
+        7      => B (8) * In_Cap + B (9) * In_Cap,
+        8      => B (9) * In_Cap,
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap
+             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Fold_High_9_Plus_P'Result, Add_Cap);
+
+   function Fold_High_9_Chain (B : Big_Nat) return Carry_Array
+   is ([0      => 0,
+        1      => B (5),
+        2      => B (5) + B (6),
+        3      => B (5) + B (6) + B (7),
+        4      => B (5) + B (6) + B (7) + B (8),
+        5      => B (5) + B (6) + B (7) + B (8) + B (9),
+        6      => B (6) + B (7) + B (8) + B (9),
+        7      => B (7) + B (8) + B (9),
+        8      => B (8) + B (9),
+        9      => B (9),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap,
+     Post => Carry_Bounded (Fold_High_9_Chain'Result);
+
+   procedure Lemma_Fold_High_9 (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap
+             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Val_Eq (Fold_High_9_Plus_P (B), B, Fold_High_9_Chain (B));
+
 end Tls_Core.Ghost_Bignum;
