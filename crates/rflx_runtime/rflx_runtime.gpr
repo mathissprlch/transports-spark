@@ -28,11 +28,15 @@ library project Rflx_Runtime is
    for Library_Dir use "lib";
    for Create_Missing_Dirs use "True";
 
+   --  -gnatw.X disables the "may call Last_Chance_Handler" warning class
+   --  emitted under the No_Exception_Propagation restriction of the light
+   --  bare-metal runtimes; a no-op on hosted full runtimes, so it stays on
+   --  unconditionally while still honouring -gnatwae.
    package Compiler is
       for Default_Switches ("Ada") use
         ("-g",
          "-O0",
-         "-gnat2022", "-gnatwae",
+         "-gnat2022", "-gnatwae", "-gnatw.X",
          "-gnatVa",
          "-gnatyM100",
          "-gnata");

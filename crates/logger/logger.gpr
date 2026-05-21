@@ -11,15 +11,19 @@ library project Logger is
    for Library_Kind use "static";
    for Create_Missing_Dirs use "True";
 
+   --  -gnatw.X disables the "may call Last_Chance_Handler" warning class,
+   --  which fires only under the No_Exception_Propagation restriction of the
+   --  light bare-metal runtimes. It is a no-op on hosted full runtimes, so it
+   --  stays on unconditionally while still honouring -gnatwae.
    package Compiler is
       case Build_Mode is
          when "release" =>
             for Default_Switches ("Ada") use
-              ("-gnat2022", "-gnatwae", "-gnatyM120", "-g", "-O2",
+              ("-gnat2022", "-gnatwae", "-gnatw.X", "-gnatyM120", "-g", "-O2",
                "-gnatn");
          when "debug" =>
             for Default_Switches ("Ada") use
-              ("-gnat2022", "-gnatwae", "-gnatyM120", "-g", "-O1");
+              ("-gnat2022", "-gnatwae", "-gnatw.X", "-gnatyM120", "-g", "-O1");
       end case;
    end Compiler;
 
