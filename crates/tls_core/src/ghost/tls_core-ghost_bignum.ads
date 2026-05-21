@@ -749,6 +749,44 @@ is
      Post => Val_Eq (Subtract_P5_Out (B) + Sub_Sel_P (B), B, Zero_Carry);
 
    ------------------------------------------------------------------
+   --  Canonical reduce (the freeze, at the Big_Nat level). For a value
+   --  already in [0, 2**130) -- i.e. one whose clean Sweep5 has no carry out
+   --  of limb 4 -- one Sweep5 settles every limb below In_Cap and one
+   --  conditional subtract of p maps [0, 2p) onto the unique representative
+   --  < p. This is HACL* poly1305_finish's freeze; the impl Mac mirrors it.
+   ------------------------------------------------------------------
+
+   function Reduce_Canonical (B : Big_Nat) return Big_Nat
+   is (Subtract_P5_Out (Sweep5_Out (B)))
+   with
+     Pre  => In_Bounds (B, Prod_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then Sweep5_Out (B) (5) = 0,
+     Post => In_Bounds (Reduce_Canonical'Result, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Reduce_Canonical'Result (I) = 0)
+             --  Canonical: limbs reduced AND value < p (the result is never
+             --  itself >= p, so a second subtract is never needed).
+             and then not Sub_Cond (Reduce_Canonical'Result);
+
+   --  Reduce_Canonical is value-preserving mod p: B equals the canonical
+   --  result plus the conditional prime multiple (Sub_Sel_P of the swept
+   --  form), linked by the sweep carry chain. Hence B is congruent to
+   --  Reduce_Canonical (B) mod p.
+   procedure Lemma_Reduce_Canonical (B : Big_Nat)
+   with
+     Pre  => In_Bounds (B, Prod_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then Sweep5_Out (B) (5) = 0,
+     Post =>
+       SVal_Eq
+         (B,
+          Reduce_Canonical (B) + Sub_Sel_P (Sweep5_Out (B)),
+          Sweep5_Chain (B));
+
+   ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).
    --
    --  This is the first multiply brick. The field multiply expresses the

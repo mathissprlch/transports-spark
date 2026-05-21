@@ -273,6 +273,24 @@ is
 
    procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
 
+   procedure Lemma_Reduce_Canonical (B : Big_Nat) is
+      S   : constant Big_Nat := Sweep5_Out (B);
+      Sum : constant Big_Nat := Subtract_P5_Out (S) + Sub_Sel_P (S);
+   begin
+      --  B =val S (the sweep is exact); S = Subtract_P5_Out (S) + Sub_Sel_P (S)
+      --  limbwise (the subtract is exact). Lift both to SVal_Eq and compose:
+      --  B =val[Sweep5_Chain] S =val[0] Sum, so B =val[Sweep5_Chain] Sum.
+      Lemma_Bounds_Mono (B, Prod_Cap, Add_Cap);
+      Lemma_Sweep5 (B);
+      Lemma_Val_To_SVal (B, S, Sweep5_Chain (B));
+      Lemma_Subtract_P5 (S);
+      Lemma_Val_To_SVal (Sum, S, Zero_Carry);
+      Lemma_SVal_Sym (Sum, S, Zero_Carry);
+      Lemma_SVal_Trans (B, S, Sum, Sweep5_Chain (B), Neg_Carry (Zero_Carry));
+      pragma Assert
+        (Add_Carry (Sweep5_Chain (B), Neg_Carry (Zero_Carry)) = Sweep5_Chain (B));
+   end Lemma_Reduce_Canonical;
+
    procedure Lemma_Rotate1 (R : Big_Nat) is
    begin
       Lemma_Fold (Shift1 (R));
