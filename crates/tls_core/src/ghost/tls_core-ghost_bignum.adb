@@ -46,6 +46,31 @@ is
       end loop;
    end Lemma_Mul_Distrib;
 
+   procedure Lemma_Mul_Col_Zero
+     (A, B : Big_Nat; K, T, Na, Nb : Limb_Index) is
+   begin
+      if T = 0 then
+         --  Mul_Col = A(0)*B(K); K >= Na+Nb-1 >= Nb (Na>=1), so B(K) = 0.
+         pragma Assert (B (K) = 0);
+      else
+         Lemma_Mul_Col_Zero (A, B, K, T - 1, Na, Nb);
+         --  Term A(T)*B(K-T): T>=Na => A(T)=0; else K-T>=Nb => B(K-T)=0.
+         pragma Assert (if T >= Na then A (T) = 0 else B (K - T) = 0);
+      end if;
+   end Lemma_Mul_Col_Zero;
+
+   procedure Lemma_Mul_Zero_High (A, B, AB : Big_Nat; Na, Nb : Limb_Index) is
+   begin
+      for K in Limb_Index loop
+         if K >= Na + Nb - 1 then
+            Lemma_Mul_Col_Zero (A, B, K, K, Na, Nb);
+         end if;
+         pragma Loop_Invariant
+           (for all J in 0 .. K =>
+              (if J >= Na + Nb - 1 then AB (J) = 0));
+      end loop;
+   end Lemma_Mul_Zero_High;
+
    procedure Lemma_Carry26 (X : LLI) is null;
 
    procedure Lemma_Hi26_Bound (X : LLI) is null;

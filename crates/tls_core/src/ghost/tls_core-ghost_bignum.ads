@@ -153,6 +153,39 @@ is
        and then (for all I in Limb_Index => BC (I) = B (I) + C (I)),
      Post => A * BC = A * B + A * C;
 
+   --  Convolution support: if A is zero from index Na on and B from index Nb
+   --  on, the product A * B is zero from index Na + Nb - 1 on. (The product
+   --  of two operands with highest set limbs Na-1 and Nb-1 has highest set
+   --  limb (Na-1)+(Nb-1).) Needed so array-equality proofs over the product
+   --  know its high limbs vanish. Proven by induction on T over Mul_Col.
+   procedure Lemma_Mul_Col_Zero
+     (A, B : Big_Nat; K, T, Na, Nb : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then T <= K
+       and then Na >= 1 and then Nb >= 1
+       and then Na + Nb - 1 <= K
+       and then (for all I in Limb_Index => (if I >= Na then A (I) = 0))
+       and then (for all I in Limb_Index => (if I >= Nb then B (I) = 0)),
+     Post               => Mul_Col (A, B, K, T) = 0,
+     Subprogram_Variant => (Decreases => T);
+
+   --  AB is the precomputed product A * B (param, so the contract indexes a
+   --  plain array rather than an operator result).
+   procedure Lemma_Mul_Zero_High (A, B, AB : Big_Nat; Na, Nb : Limb_Index)
+   with
+     Pre  =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then Na >= 1 and then Nb >= 1
+       and then Na + Nb - 1 <= Max_Limbs - 1
+       and then (for all I in Limb_Index => (if I >= Na then A (I) = 0))
+       and then (for all I in Limb_Index => (if I >= Nb then B (I) = 0))
+       and then AB = A * B,
+     Post =>
+       (for all K in Limb_Index =>
+          (if K >= Na + Nb - 1 then AB (K) = 0));
+
    ------------------------------------------------------------------
    --  Carry foundation (toward carry-normalisation and mod-prime).
    --  Mirrors HACL* `carry26`: split a limb into its low 26 bits and the
