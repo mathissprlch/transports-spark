@@ -670,4 +670,33 @@ is
        Val_Eq
          (Fold_High_Plus_P (Shift4 (R)), Shift4 (R), Fold_High_Chain (Shift4 (R)));
 
+   ------------------------------------------------------------------
+   --  Bridge: the high-fold multiple in convolution form.
+   --
+   --  Fold_High_Plus_P (B) = Fold_High_Out (B) + p * High4 (B), where
+   --  High4 (B) = (B5, B6, B7, B8) collects the four folded positions.
+   --  This recasts the proven Lemma_Fold_High into the "+ Mul (P_Prime, Q)"
+   --  shape used by the congruence relation Cong_P_W, so congruence is
+   --  preserved by add (via Lemma_Mul_Distrib on p) and by scalar multiply.
+   ------------------------------------------------------------------
+
+   function High4 (B : Big_Nat) return Big_Nat
+   is ([0      => B (5),
+        1      => B (6),
+        2      => B (7),
+        3      => B (8),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap),
+     Post => In_Bounds (High4'Result, In_Cap)
+             and then (for all I in Limb_Index range 4 .. Max_Limbs - 1 =>
+                         High4'Result (I) = 0);
+
+   procedure Lemma_Fold_High_Mul_Form (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Fold_High_Plus_P (B) = Fold_High_Out (B) + P_Prime * High4 (B);
+
 end Tls_Core.Ghost_Bignum;

@@ -117,6 +117,38 @@ is
       Lemma_Fold_High (Shift4 (R));
    end Lemma_Rotate4;
 
+   procedure Lemma_Fold_High_Mul_Form (B : Big_Nat) is
+      H : constant Big_Nat := High4 (B);
+      M : constant Big_Nat := P_Prime * H;
+   begin
+      --  High product limbs vanish: P_Prime is zero from index 5, H from
+      --  index 4, so M is zero from index 8 on.
+      Lemma_Mul_Zero_High (P_Prime, H, M, 5, 4);
+      --  Zero facts so the deep convolution unfolds drop their high terms.
+      pragma Assert (P_Prime (5) = 0);
+      pragma Assert (H (4) = 0 and then H (5) = 0);
+      --  Low columns by unfolding the convolution (M (K) = Mul_Col from the
+      --  "*" postcondition); P_Prime = (In_Cap-4, In_Cap, In_Cap, In_Cap,
+      --  In_Cap) and H = (B5, B6, B7, B8).
+      pragma Assert (M (0) = (In_Cap - 4) * B (5));
+      pragma Assert (M (1) = (In_Cap - 4) * B (6) + In_Cap * B (5));
+      pragma Assert
+        (M (2) = (In_Cap - 4) * B (7) + In_Cap * B (6) + In_Cap * B (5));
+      pragma Assert
+        (M (3) =
+           (In_Cap - 4) * B (8) + In_Cap * B (7) + In_Cap * B (6)
+           + In_Cap * B (5));
+      pragma Assert
+        (M (4) =
+           In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6) + In_Cap * B (5));
+      pragma Assert
+        (Mul_Col (P_Prime, H, 5, 4)
+         = In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6));
+      pragma Assert (M (5) = In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6));
+      pragma Assert (M (6) = In_Cap * B (8) + In_Cap * B (7));
+      pragma Assert (M (7) = In_Cap * B (8));
+   end Lemma_Fold_High_Mul_Form;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin
