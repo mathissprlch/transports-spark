@@ -77,6 +77,22 @@ is
 
    procedure Lemma_Val_Eq_Refl (A : Big_Nat) is null;
 
+   procedure Lemma_Val_Eq_Unique (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      for I in Limb_Index loop
+         --  C (I) = 0 holds: from Val_Eq for I = 0, from the prior iteration
+         --  invariant otherwise. The column gives A(I)-B(I) = Limb_Base*C(I+1)
+         --  with |A(I)-B(I)| <= In_Cap < Limb_Base, forcing C(I+1) = 0.
+         pragma Assert (C (I) = 0);
+         pragma Assert (A (I) + C (I) = B (I) + Limb_Base * C (I + 1));
+         pragma Assert (Limb_Base * C (I + 1) = A (I) - B (I));
+         pragma Assert (C (I + 1) = 0);
+         pragma Assert (A (I) = B (I));
+         pragma Loop_Invariant (C (I + 1) = 0);
+         pragma Loop_Invariant (for all J in 0 .. I => A (J) = B (J));
+      end loop;
+   end Lemma_Val_Eq_Unique;
+
    procedure Lemma_Carry_Step (A : Big_Nat; I : Limb_Index) is
    begin
       Lemma_Carry26 (A (I));

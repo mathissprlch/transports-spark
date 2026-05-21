@@ -257,6 +257,18 @@ is
      Pre  => In_Bounds (A, Add_Cap),
      Post => Val_Eq (A, A, Zero_Carry);
 
+   --  Uniqueness: two *reduced* values (limbs <= In_Cap < 2**26) that are
+   --  value-equal are limb-equal. The base-2**26 representation is unique
+   --  below the base, so the linking carry chain is forced to all zero. This
+   --  is the foundation for canonical-form matching (e.g. proving the
+   --  imperative reduced result equals the spec's reduced value).
+   procedure Lemma_Val_Eq_Unique (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+             and then Carry_Bounded (C)
+             and then Val_Eq (A, B, C),
+     Post => A = B;
+
    --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
    --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)
    function Step_Out (A : Big_Nat; I : Limb_Index) return Big_Nat
