@@ -533,12 +533,39 @@ is
    --  Acc := Acc + N
    ---------------------------------------------------------------------
 
-   procedure Add (Acc : in out Limbs; N : Limbs);
+   --  Add correspondence: limbwise sum (each input limb < 2**27, so the sum
+   --  < 2**28) then Carry. Through To_Big_Nat the result is Carry_Model of the
+   --  Big_Nat sum of the embeddings (Carry_Model = reduce mod p).
+   procedure Add (Acc : in out Limbs; N : Limbs)
+   with
+     Pre  =>
+       (for all I in Limb_Index => Acc (I) < 2**27 and then N (I) < 2**27),
+     Post =>
+       (for all I in Limb_Index => Acc (I) < 2**27)
+       and then GB."="
+                  (To_Big_Nat (Acc),
+                   GB.Carry_Model
+                     (GB."+" (To_Big_Nat (Acc'Old), To_Big_Nat (N))));
+
    procedure Add (Acc : in out Limbs; N : Limbs) is
+      Acc0 : constant GB.Big_Nat := To_Big_Nat (Acc) with Ghost;
+      Nn   : constant GB.Big_Nat := To_Big_Nat (N) with Ghost;
    begin
       for I in Limb_Index loop
          Acc (I) := Acc (I) + N (I);
+         pragma Loop_Invariant
+           (for all J in Limb_Index =>
+              (if J <= I then Acc (J) = Acc'Loop_Entry (J) + N (J)
+               else Acc (J) = Acc'Loop_Entry (J)));
+         pragma Loop_Invariant (for all J in Limb_Index => Acc (J) < 2**28);
       end loop;
+      --  Acc now holds the limbwise sum; its embedding is Acc0 + Nn.
+      pragma Assert
+        (for all I in Limb_Index =>
+           GB.LLI (Acc (I)) = Acc0 (I) + Nn (I));
+      pragma Assert
+        (GB."=" (To_Big_Nat (Acc), GB."+" (Acc0, Nn)));
+      GB.Lemma_Sweep5_Tight_Carry (GB."+" (Acc0, Nn));
       Carry (Acc);
    end Add;
 
