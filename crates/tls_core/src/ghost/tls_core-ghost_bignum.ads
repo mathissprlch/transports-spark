@@ -217,6 +217,18 @@ is
      Pre  => X in 0 .. Prod_Cap,
      Post => Hi26 (X) in 0 .. Hi_Cap;
 
+   --  A convolution column of two five-limb (<= Mul_Cap) operands is a sum
+   --  of at most nine products of two 2**27 limbs: <= 9 * 2**54. The carry
+   --  out of such a column (and the cascade through a nine-limb sweep) then
+   --  stays under Conv_Carry_Cap = 2**32 -- tight enough for Fold_High_9.
+   Conv_Col_Cap   : constant LLI := LLI (9) * Two_Pow_54;
+   Conv_Carry_Cap : constant LLI := 2**32;
+
+   procedure Lemma_Hi26_Conv (X : LLI)
+   with
+     Pre  => X in 0 .. Conv_Col_Cap + Conv_Carry_Cap,
+     Post => Hi26 (X) in 0 .. Conv_Carry_Cap;
+
    ------------------------------------------------------------------
    --  Scalar-free same-value relation (toward mod-prime / Feval5).
    --
@@ -503,6 +515,16 @@ is
              and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
                          A (I) = 0),
      Post => Val_Eq (A, Sweep9_Out (A), Sweep9_Chain (A));
+
+   --  For a convolution-sized input (columns <= Conv_Col_Cap) the sweep's
+   --  carries -- including the top carry at limb 9 -- stay <= Conv_Carry_Cap
+   --  (= Fold9_Top_Cap), so Sweep9_Out can be consumed by Fold_High_9.
+   procedure Lemma_Sweep9_Conv (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Conv_Col_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         A (I) = 0),
+     Post => Sweep9_Out (A) (9) in 0 .. Conv_Carry_Cap;
 
    ------------------------------------------------------------------
    --  Mod-prime fold (HACL* carry_wide_felem5 z1 = z1 + (z1 << 2)).
@@ -845,7 +867,7 @@ is
    --  Fold_High with one more folded position.
    ------------------------------------------------------------------
 
-   Fold9_Top_Cap : constant LLI := 2**30;
+   Fold9_Top_Cap : constant LLI := 2**32;
 
    function Fold_High_9_Out (B : Big_Nat) return Big_Nat
    is ([0      => B (0) + 5 * B (5),
