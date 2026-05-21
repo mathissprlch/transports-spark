@@ -46,6 +46,8 @@ is
       end loop;
    end Lemma_Mul_Distrib;
 
+   procedure Lemma_Carry26 (X : LLI) is null;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

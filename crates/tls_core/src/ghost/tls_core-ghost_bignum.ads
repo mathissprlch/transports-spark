@@ -153,4 +153,27 @@ is
        and then (for all I in Limb_Index => BC (I) = B (I) + C (I)),
      Post => A * BC = A * B + A * C;
 
+   ------------------------------------------------------------------
+   --  Carry foundation (toward carry-normalisation and mod-prime).
+   --  Mirrors HACL* `carry26`: split a limb into its low 26 bits and the
+   --  carry-out, with x = Lo (x) + 2**26 * Hi (x). This is the building
+   --  block of the value-preserving carry sweep.
+   ------------------------------------------------------------------
+
+   Limb_Base : constant LLI := 2**26;
+
+   function Lo26 (X : LLI) return LLI
+   is (X mod Limb_Base) with Pre => X >= 0;
+
+   function Hi26 (X : LLI) return LLI
+   is (X / Limb_Base) with Pre => X >= 0;
+
+   --  Euclidean split: the low part is a valid 26-bit limb and the value
+   --  decomposes exactly. (HACL* lemma_carry26 / the carry invariant.)
+   procedure Lemma_Carry26 (X : LLI)
+   with
+     Pre  => X >= 0,
+     Post => Lo26 (X) in 0 .. In_Cap
+             and then X = Lo26 (X) + Limb_Base * Hi26 (X);
+
 end Tls_Core.Ghost_Bignum;
