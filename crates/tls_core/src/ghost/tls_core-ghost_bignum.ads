@@ -176,4 +176,77 @@ is
      Post => Lo26 (X) in 0 .. In_Cap
              and then X = Lo26 (X) + Limb_Base * Hi26 (X);
 
+   --  Carry out of one Prod_Cap-bounded limb: Hi26 (X) <= 2**36.
+   Hi_Cap : constant LLI := 2**36;
+
+   procedure Lemma_Hi26_Bound (X : LLI)
+   with
+     Pre  => X in 0 .. Prod_Cap,
+     Post => Hi26 (X) in 0 .. Hi_Cap;
+
+   ------------------------------------------------------------------
+   --  Scalar-free same-value relation (toward mod-prime / Feval5).
+   --
+   --  HACL* states value preservation over `as_nat5 : nat` (an unbounded
+   --  F* integer). We never have an unbounded scalar (the §0e ban on
+   --  Big_Integer is exactly why this type exists), and a 130-bit value
+   --  overflows Long_Long_Integer. So same-value is expressed *relationally*
+   --  via a base-2**26 carry chain instead of via a scalar:
+   --
+   --    A and B encode the same integer  <=>  there is a carry chain C with
+   --      C (0) = 0,  C (Max_Limbs) = 0,  and for every limb I
+   --        A (I) + C (I) = B (I) + 2**26 * C (I + 1).
+   --
+   --  This is exactly base-2**26 carry propagation, column by column; the
+   --  full value is never formed, so the arithmetic stays inside LLI.
+   ------------------------------------------------------------------
+
+   --  Carry chain: one slot per limb plus the carry out of the top limb.
+   type Carry_Array is array (Natural range 0 .. Max_Limbs) of LLI;
+
+   function Carry_Bounded (C : Carry_Array) return Boolean
+   is (for all J in C'Range => C (J) in 0 .. Hi_Cap);
+
+   Zero_Carry : constant Carry_Array := [others => 0];
+
+   function Val_Eq (A, B : Big_Nat; C : Carry_Array) return Boolean
+   is (C (0) = 0
+       and then C (Max_Limbs) = 0
+       and then (for all I in Limb_Index =>
+                   A (I) + C (I) = B (I) + Limb_Base * C (I + 1)))
+   with
+     Pre => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+            and then Carry_Bounded (C);
+
+   --  Reflexivity: the all-zero carry chain links A to itself.
+   procedure Lemma_Val_Eq_Refl (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Add_Cap),
+     Post => Val_Eq (A, A, Zero_Carry);
+
+   --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
+   --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)
+   function Step_Out (A : Big_Nat; I : Limb_Index) return Big_Nat
+   is ([for J in Limb_Index =>
+          (if J = I then Lo26 (A (I))
+           elsif J = I + 1 then A (I + 1) + Hi26 (A (I))
+           else A (J))])
+   with
+     Pre  => In_Bounds (A, Prod_Cap) and then I < Max_Limbs - 1,
+     Post => In_Bounds (Step_Out'Result, Add_Cap);
+
+   function Step_Carry (A : Big_Nat; I : Limb_Index) return Carry_Array
+   is ([for J in 0 .. Max_Limbs =>
+          (if J = I + 1 then Hi26 (A (I)) else 0)])
+   with
+     Pre  => In_Bounds (A, Prod_Cap) and then I < Max_Limbs - 1,
+     Post => Carry_Bounded (Step_Carry'Result);
+
+   --  The carry step is value-preserving: A and Step_Out (A, I) are linked
+   --  by the single-entry carry chain Step_Carry (A, I).
+   procedure Lemma_Carry_Step (A : Big_Nat; I : Limb_Index)
+   with
+     Pre  => In_Bounds (A, Prod_Cap) and then I < Max_Limbs - 1,
+     Post => Val_Eq (A, Step_Out (A, I), Step_Carry (A, I));
+
 end Tls_Core.Ghost_Bignum;

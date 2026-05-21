@@ -48,6 +48,15 @@ is
 
    procedure Lemma_Carry26 (X : LLI) is null;
 
+   procedure Lemma_Hi26_Bound (X : LLI) is null;
+
+   procedure Lemma_Val_Eq_Refl (A : Big_Nat) is null;
+
+   procedure Lemma_Carry_Step (A : Big_Nat; I : Limb_Index) is
+   begin
+      Lemma_Carry26 (A (I));
+   end Lemma_Carry_Step;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin
