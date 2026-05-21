@@ -37,6 +37,12 @@ project Examples is
    type Build_Mode_Kind is ("debug", "release");
    Build_Mode : Build_Mode_Kind := external ("BUILD_MODE", "debug");
 
+   --  Kept on -gnatwa (warnings on, not -gnatwae) on purpose: the demos
+   --  link the protoc-generated gRPC stubs under crates/examples/generated,
+   --  which still carry known warnings. Those go away with the gRPC codegen
+   --  redesign (deferred — see the claude-memory note "gRPC codegen
+   --  Go-parity redesign"); flip this crate to -gnatwae after that lands.
+   --  examples is a demo crate, not built in CI.
    package Compiler is
       case Build_Mode is
          when "release" =>

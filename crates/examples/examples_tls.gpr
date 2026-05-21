@@ -15,6 +15,11 @@ project Examples_Tls is
                  "greeter_client_tls.adb",
                  "mqtt_demo_tls.adb");
 
+   --  Kept on -gnatwa (not -gnatwae): the TLS demos link the protoc-
+   --  generated gRPC stubs, which still carry known warnings pending the
+   --  gRPC codegen redesign (deferred — see the claude-memory note "gRPC
+   --  codegen Go-parity redesign"). Flip to -gnatwae after that lands.
+   --  Demo crate, not built in CI.
    package Compiler is
       for Default_Switches ("Ada") use
         ("-gnat2022", "-g", "-O0", "-gnatwa", "-gnatVa",
