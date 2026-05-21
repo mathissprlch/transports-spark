@@ -249,4 +249,29 @@ is
      Pre  => In_Bounds (A, Prod_Cap) and then I < Max_Limbs - 1,
      Post => Val_Eq (A, Step_Out (A, I), Step_Carry (A, I));
 
+   ------------------------------------------------------------------
+   --  Prime constant and scalar multiply (toward the mod-prime fold).
+   --
+   --  Poly1305 reduces mod p = 2**130 - 5. In base 2**26 that is the
+   --  five-limb value [2**26 - 5, 2**26 - 1, 2**26 - 1, 2**26 - 1,
+   --  2**26 - 1] (matching HACL* subtract_p5: ml = 0x3fffffb,
+   --  mh = 0x3ffffff). The mod-prime fold (carry out of limb 4 at weight
+   --  2**130 folds back to limb 0 times 5, since 2**130 == 5 mod p) is
+   --  tracked as exact value-equality with an explicit "+ k * P" term, so
+   --  no separate abstract congruence relation is needed.
+   ------------------------------------------------------------------
+
+   P_Prime : constant Big_Nat :=
+     [0 => In_Cap - 4, 1 | 2 | 3 | 4 => In_Cap, others => 0];
+
+   --  Scalar multiply, limbwise, no carry (HACL* smul_felem5 shape). K is a
+   --  fold carry (<= Hi_Cap) and A's limbs are reduced (<= In_Cap), so each
+   --  product K * A (I) stays inside Long_Long_Integer.
+   function Smul (K : LLI; A : Big_Nat) return Big_Nat
+   is ([for I in Limb_Index => K * A (I)])
+   with
+     Pre  => K in 0 .. Hi_Cap and then In_Bounds (A, In_Cap),
+     Post => (for all I in Limb_Index => Smul'Result (I) = K * A (I))
+             and then In_Bounds (Smul'Result, Add_Cap);
+
 end Tls_Core.Ghost_Bignum;
