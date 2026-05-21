@@ -131,6 +131,8 @@ is
 
    procedure Lemma_Sweep5_Tight (A : Big_Nat) is null;
 
+   procedure Lemma_Sweep5_Tight_Carry (A : Big_Nat) is null;
+
    procedure Lemma_Sweep9 (A : Big_Nat) is
    begin
       Lemma_Carry26 (A (0));

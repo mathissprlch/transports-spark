@@ -475,6 +475,18 @@ is
      Pre  => In_Bounds (A, Round1_Out_Cap),
      Post => Sweep5_Out (A) (5) in 0 .. Fold_C_Cap;
 
+   --  Any embeddable five-limb value (the impl's Carry input -- a limbwise
+   --  Add sum or a mul_felem5 output, both well under 2**59) sweeps to a top
+   --  carry <= Fold_C_Cap (Hi26 (2**59) = 2**33 < Fold_C_Cap = 2**35), so the
+   --  prime fold can consume it. This is the bound the impl Carry's fold step
+   --  needs, for any Carry input.
+   Carry_In_Cap : constant LLI := 2**59;
+
+   procedure Lemma_Sweep5_Tight_Carry (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Carry_In_Cap),
+     Post => Sweep5_Out (A) (5) in 0 .. Fold_C_Cap;
+
    ------------------------------------------------------------------
    --  Exact carry sweep of a wide nine-limb value (the convolution of two
    --  five-limb numbers has columns 0..8). Same shape as Sweep5 but over
