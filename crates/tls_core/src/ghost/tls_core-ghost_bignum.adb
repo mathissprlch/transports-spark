@@ -77,6 +77,21 @@ is
 
    procedure Lemma_Fold_High (B : Big_Nat) is null;
 
+   procedure Lemma_Rotate2 (R : Big_Nat) is
+   begin
+      Lemma_Fold_High (Shift2 (R));
+   end Lemma_Rotate2;
+
+   procedure Lemma_Rotate3 (R : Big_Nat) is
+   begin
+      Lemma_Fold_High (Shift3 (R));
+   end Lemma_Rotate3;
+
+   procedure Lemma_Rotate4 (R : Big_Nat) is
+   begin
+      Lemma_Fold_High (Shift4 (R));
+   end Lemma_Rotate4;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

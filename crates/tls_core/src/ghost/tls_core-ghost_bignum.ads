@@ -554,4 +554,87 @@ is
                          B (I) = 0),
      Post => Val_Eq (Fold_High_Plus_P (B), B, Fold_High_Chain (B));
 
+   ------------------------------------------------------------------
+   --  Field rotations by 2, 3, 4 positions (HACL* lemma_fmul5_pow52 /
+   --  pow78 / pow104). Each is just Fold_High applied to r shifted up by
+   --  the matching number of limbs: the wrapped top limbs land in the high
+   --  positions (all <= In_Cap because r is reduced) and Fold_High folds
+   --  them back x5. rotate_i (R) = Fold_High_Out (Shift_i (R)).
+   ------------------------------------------------------------------
+
+   function Shift2 (R : Big_Nat) return Big_Nat
+   is ([0 | 1  => 0,
+        2      => R (0),
+        3      => R (1),
+        4      => R (2),
+        5      => R (3),
+        6      => R (4),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => (for all I in Limb_Index range 0 .. 8 => Shift2'Result (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Shift2'Result (I) = 0);
+
+   function Shift3 (R : Big_Nat) return Big_Nat
+   is ([0 | 1 | 2 => 0,
+        3          => R (0),
+        4          => R (1),
+        5          => R (2),
+        6          => R (3),
+        7          => R (4),
+        others     => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => (for all I in Limb_Index range 0 .. 8 => Shift3'Result (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Shift3'Result (I) = 0);
+
+   function Shift4 (R : Big_Nat) return Big_Nat
+   is ([0 | 1 | 2 | 3 => 0,
+        4              => R (0),
+        5              => R (1),
+        6              => R (2),
+        7              => R (3),
+        8              => R (4),
+        others         => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => (for all I in Limb_Index range 0 .. 8 => Shift4'Result (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Shift4'Result (I) = 0);
+
+   procedure Lemma_Rotate2 (R : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post =>
+       Val_Eq
+         (Fold_High_Plus_P (Shift2 (R)), Shift2 (R), Fold_High_Chain (Shift2 (R)));
+
+   procedure Lemma_Rotate3 (R : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post =>
+       Val_Eq
+         (Fold_High_Plus_P (Shift3 (R)), Shift3 (R), Fold_High_Chain (Shift3 (R)));
+
+   procedure Lemma_Rotate4 (R : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post =>
+       Val_Eq
+         (Fold_High_Plus_P (Shift4 (R)), Shift4 (R), Fold_High_Chain (Shift4 (R)));
+
 end Tls_Core.Ghost_Bignum;
