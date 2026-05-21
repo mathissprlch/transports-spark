@@ -70,6 +70,11 @@ is
 
    procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
 
+   procedure Lemma_Rotate1 (R : Big_Nat) is
+   begin
+      Lemma_Fold (Shift1 (R));
+   end Lemma_Rotate1;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin

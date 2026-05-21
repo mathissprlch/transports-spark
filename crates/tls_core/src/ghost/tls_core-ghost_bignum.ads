@@ -430,4 +430,49 @@ is
                          B (I) = 0),
      Post => Val_Eq (Subtract_P5_Out (B) + Sub_Sel_P (B), B, Zero_Carry);
 
+   ------------------------------------------------------------------
+   --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).
+   --
+   --  This is the first multiply brick. The field multiply expresses the
+   --  product as a sum of single-limb scalings of *rotations* of r, where
+   --  each rotation r * 2**(26*i) mod p keeps r's limbs reduced -- so the
+   --  products stay inside Long_Long_Integer and the wide convolution is
+   --  never formed. Rotation by one position is just a shift-up followed by
+   --  the existing prime fold: shifting reduced r up one limb puts r4 at
+   --  position 5 (weight 2**130), and folding it back (x5) gives
+   --  (5*r4, r0, r1, r2, r3) == r * 2**26 mod p. Because r is reduced, the
+   --  fold carry r4 <= In_Cap is small, so this is just Lemma_Fold applied
+   --  to the shifted r -- no new overflow.
+   ------------------------------------------------------------------
+
+   --  r shifted up one 26-bit limb position: value = r * 2**26. Reduced r
+   --  in, so limbs 0..4 stay reduced and r4 lands (reduced) at limb 5.
+   function Shift1 (R : Big_Nat) return Big_Nat
+   is ([0      => 0,
+        1      => R (0),
+        2      => R (1),
+        3      => R (2),
+        4      => R (3),
+        5      => R (4),
+        others => 0])
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => (for all I in Limb_Index range 0 .. 4 => Shift1'Result (I) in 0 .. In_Cap)
+             and then Shift1'Result (5) in 0 .. Fold_C_Cap
+             and then (for all I in Limb_Index range 6 .. Max_Limbs - 1 =>
+                         Shift1'Result (I) = 0);
+
+   --  Fold_Out (Shift1 (R)) = (5*r4, r0, r1, r2, r3) = rotate-by-one of r,
+   --  and it is congruent to Shift1 (R) = r * 2**26 mod p (Lemma_Fold).
+   procedure Lemma_Rotate1 (R : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 4 => R (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post =>
+       Val_Eq
+         (Fold_Plus_P (Shift1 (R)), Shift1 (R), Fold_Chain (Shift1 (R) (5)));
+
 end Tls_Core.Ghost_Bignum;
