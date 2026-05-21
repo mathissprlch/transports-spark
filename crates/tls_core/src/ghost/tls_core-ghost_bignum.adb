@@ -93,6 +93,18 @@ is
       end loop;
    end Lemma_Val_Eq_Unique;
 
+   procedure Lemma_Val_To_SVal (A, B : Big_Nat; C : Carry_Array) is null;
+
+   procedure Lemma_SVal_Sym (A, B : Big_Nat; C : Carry_Array) is null;
+
+   procedure Lemma_SVal_Trans (A, B, D : Big_Nat; C1, C2 : Carry_Array) is
+   begin
+      pragma Assert
+        (for all I in Limb_Index =>
+           A (I) + (C1 (I) + C2 (I))
+           = D (I) + Limb_Base * (C1 (I + 1) + C2 (I + 1)));
+   end Lemma_SVal_Trans;
+
    procedure Lemma_Carry_Step (A : Big_Nat; I : Limb_Index) is
    begin
       Lemma_Carry26 (A (I));

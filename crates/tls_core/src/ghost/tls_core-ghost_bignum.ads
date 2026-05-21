@@ -269,6 +269,62 @@ is
              and then Val_Eq (A, B, C),
      Post => A = B;
 
+   ------------------------------------------------------------------
+   --  Signed-carry value-equality (a proper equivalence for COMPOSING
+   --  reduction steps). Val_Eq's carry chain is non-negative, so it is
+   --  directional and does not compose: chaining "A =val S" and "T =val S"
+   --  to "A =val T" needs the difference of the two chains, which is signed.
+   --  SVal_Eq is the same column relation with a signed carry chain, giving
+   --  symmetry and transitivity. Operands stay <= Add_Cap and |carry| <=
+   --  Hi_Cap so the column arithmetic still fits Long_Long_Integer
+   --  (Add_Cap + 2**26 * Hi_Cap = 2**63 - 1).
+   ------------------------------------------------------------------
+
+   function SC_Bounded (C : Carry_Array) return Boolean
+   is (for all J in C'Range => C (J) in -Hi_Cap .. Hi_Cap);
+
+   function Neg_Carry (C : Carry_Array) return Carry_Array
+   is ([for J in C'Range => -C (J)])
+   with Pre => SC_Bounded (C), Post => SC_Bounded (Neg_Carry'Result);
+
+   function Add_Carry (C1, C2 : Carry_Array) return Carry_Array
+   is ([for J in C1'Range => C1 (J) + C2 (J)])
+   with Pre => SC_Bounded (C1) and then SC_Bounded (C2);
+
+   function SVal_Eq (A, B : Big_Nat; C : Carry_Array) return Boolean
+   is (C (0) = 0
+       and then C (Max_Limbs) = 0
+       and then (for all I in Limb_Index =>
+                   A (I) + C (I) = B (I) + Limb_Base * C (I + 1)))
+   with
+     Pre => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+            and then SC_Bounded (C);
+
+   --  Every Val_Eq is an SVal_Eq (a non-negative chain is signed-bounded).
+   procedure Lemma_Val_To_SVal (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then Carry_Bounded (C) and then Val_Eq (A, B, C),
+     Post => SVal_Eq (A, B, C);
+
+   --  Symmetry: negate the carry chain.
+   procedure Lemma_SVal_Sym (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (A, B, C),
+     Post => SVal_Eq (B, A, Neg_Carry (C));
+
+   --  Transitivity: add the carry chains. The caller must keep the summed
+   --  chain within Hi_Cap (true for the small chains of a reduction).
+   procedure Lemma_SVal_Trans (A, B, D : Big_Nat; C1, C2 : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then In_Bounds (D, Add_Cap)
+             and then SC_Bounded (C1) and then SC_Bounded (C2)
+             and then SC_Bounded (Add_Carry (C1, C2))
+             and then SVal_Eq (A, B, C1) and then SVal_Eq (B, D, C2),
+     Post => SVal_Eq (A, D, Add_Carry (C1, C2));
+
    --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
    --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)
    function Step_Out (A : Big_Nat; I : Limb_Index) return Big_Nat
