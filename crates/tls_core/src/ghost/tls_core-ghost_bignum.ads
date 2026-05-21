@@ -1029,4 +1029,34 @@ is
           Fold_Plus_P (T),
           Add_Carry (D1, Neg_Carry (Fold_Chain (T (5)))));
 
+   ------------------------------------------------------------------
+   --  Carry correspondence (math half). The Poly1305 impl Carry routine
+   --  is, limbwise: sweep limbs 0..4 (Sweep5), fold the limb-4 top carry
+   --  into limb 0 times 5 (Fold), then one normalising 0->1 step. Its
+   --  input B is a multiply / add accumulator with limbs up to
+   --  Carry_In_Cap (= 2**59, the mul_felem5 output width). This lemma is
+   --  the value-relevant part: B is value-equal (SVal_Eq, exact integer)
+   --  to Fold_Plus_P (Sweep5_Out (B)) -- i.e. congruent mod p to the
+   --  single-fold five-limb form Fold_Out (Sweep5_Out (B)), the
+   --  difference being the prime multiple Sweep5_Out (B) (5) * p. Same
+   --  Sweep5 (exact) + Fold (mod p) composition as Lemma_Reduce_Round2,
+   --  but for the wider Carry input; the tight top carry
+   --  Sweep5_Out (B) (5) <= Fold_C_Cap comes from Lemma_Sweep5_Tight_Carry
+   --  rather than a passed-in bound. The final normalising step is
+   --  value-exact (Lemma_Carry_Step) and is composed at the use site.
+   ------------------------------------------------------------------
+
+   procedure Lemma_Carry_Fold (B : Big_Nat)
+   with
+     Pre  => In_Bounds (B, Carry_In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post =>
+       SVal_Eq
+         (B,
+          Fold_Plus_P (Sweep5_Out (B)),
+          Add_Carry
+            (Sweep5_Chain (B),
+             Neg_Carry (Fold_Chain (Sweep5_Out (B) (5)))));
+
 end Tls_Core.Ghost_Bignum;

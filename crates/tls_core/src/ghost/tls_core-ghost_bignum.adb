@@ -244,6 +244,21 @@ is
       Lemma_SVal_Trans (R1, T, Fold_Plus_P (T), D1, Neg_Carry (D2));
    end Lemma_Reduce_Round2;
 
+   procedure Lemma_Carry_Fold (B : Big_Nat) is
+      T  : constant Big_Nat     := Sweep5_Out (B);
+      D1 : constant Carry_Array := Sweep5_Chain (B);
+      D2 : constant Carry_Array := Fold_Chain (T (5));
+   begin
+      Lemma_Sweep5_Tight_Carry (B);               --  T (5) <= Fold_C_Cap
+      Lemma_Sweep5 (B);                           --  Val_Eq(B, T, D1)
+      Lemma_Val_To_SVal (B, T, D1);               --  SVal_Eq(B, T, D1)
+      Lemma_Fold (T);                             --  Val_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_Val_To_SVal (Fold_Plus_P (T), T, D2); --  SVal_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_SVal_Sym (Fold_Plus_P (T), T, D2);    --  SVal_Eq(T,Fold_Plus_P(T),-D2)
+      pragma Assert (SC_Bounded (Add_Carry (D1, Neg_Carry (D2))));
+      Lemma_SVal_Trans (B, T, Fold_Plus_P (T), D1, Neg_Carry (D2));
+   end Lemma_Carry_Fold;
+
    function "*" (A, B : Big_Nat) return Big_Nat is
       R : Big_Nat := Zero;
    begin
