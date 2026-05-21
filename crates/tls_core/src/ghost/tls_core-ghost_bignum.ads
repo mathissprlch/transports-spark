@@ -379,6 +379,76 @@ is
      Post => Val_Eq (A, Sweep5_Out (A), Sweep5_Chain (A));
 
    ------------------------------------------------------------------
+   --  Exact carry sweep of a wide nine-limb value (the convolution of two
+   --  five-limb numbers has columns 0..8). Same shape as Sweep5 but over
+   --  nine limbs; the carry out of limb 8 lands at limb 9, ready to be
+   --  folded back (positions 5..9 -> 0..4) by the mod-prime reduce.
+   ------------------------------------------------------------------
+
+   function Sw9_C0 (A : Big_Nat) return LLI is (Hi26 (A (0)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C0'Result in 0 .. Hi_Cap;
+
+   function Sw9_C1 (A : Big_Nat) return LLI is (Hi26 (A (1) + Sw9_C0 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C1'Result in 0 .. Hi_Cap;
+
+   function Sw9_C2 (A : Big_Nat) return LLI is (Hi26 (A (2) + Sw9_C1 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C2'Result in 0 .. Hi_Cap;
+
+   function Sw9_C3 (A : Big_Nat) return LLI is (Hi26 (A (3) + Sw9_C2 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C3'Result in 0 .. Hi_Cap;
+
+   function Sw9_C4 (A : Big_Nat) return LLI is (Hi26 (A (4) + Sw9_C3 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C4'Result in 0 .. Hi_Cap;
+
+   function Sw9_C5 (A : Big_Nat) return LLI is (Hi26 (A (5) + Sw9_C4 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C5'Result in 0 .. Hi_Cap;
+
+   function Sw9_C6 (A : Big_Nat) return LLI is (Hi26 (A (6) + Sw9_C5 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C6'Result in 0 .. Hi_Cap;
+
+   function Sw9_C7 (A : Big_Nat) return LLI is (Hi26 (A (7) + Sw9_C6 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C7'Result in 0 .. Hi_Cap;
+
+   function Sw9_C8 (A : Big_Nat) return LLI is (Hi26 (A (8) + Sw9_C7 (A)))
+   with Pre => In_Bounds (A, Prod_Cap), Post => Sw9_C8'Result in 0 .. Hi_Cap;
+
+   function Sweep9_Out (A : Big_Nat) return Big_Nat
+   is ([0      => Lo26 (A (0)),
+        1      => Lo26 (A (1) + Sw9_C0 (A)),
+        2      => Lo26 (A (2) + Sw9_C1 (A)),
+        3      => Lo26 (A (3) + Sw9_C2 (A)),
+        4      => Lo26 (A (4) + Sw9_C3 (A)),
+        5      => Lo26 (A (5) + Sw9_C4 (A)),
+        6      => Lo26 (A (6) + Sw9_C5 (A)),
+        7      => Lo26 (A (7) + Sw9_C6 (A)),
+        8      => Lo26 (A (8) + Sw9_C7 (A)),
+        9      => Sw9_C8 (A),
+        others => 0])
+   with Pre => In_Bounds (A, Prod_Cap),
+        Post => In_Bounds (Sweep9_Out'Result, Add_Cap);
+
+   function Sweep9_Chain (A : Big_Nat) return Carry_Array
+   is ([1      => Sw9_C0 (A),
+        2      => Sw9_C1 (A),
+        3      => Sw9_C2 (A),
+        4      => Sw9_C3 (A),
+        5      => Sw9_C4 (A),
+        6      => Sw9_C5 (A),
+        7      => Sw9_C6 (A),
+        8      => Sw9_C7 (A),
+        9      => Sw9_C8 (A),
+        others => 0])
+   with Pre => In_Bounds (A, Prod_Cap),
+        Post => Carry_Bounded (Sweep9_Chain'Result);
+
+   procedure Lemma_Sweep9 (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Prod_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         A (I) = 0),
+     Post => Val_Eq (A, Sweep9_Out (A), Sweep9_Chain (A));
+
+   ------------------------------------------------------------------
    --  Mod-prime fold (HACL* carry_wide_felem5 z1 = z1 + (z1 << 2)).
    --
    --  After the sweep, limb 5 holds the top carry c4 at weight 2**130.

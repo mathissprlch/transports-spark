@@ -107,6 +107,19 @@ is
       Lemma_Carry26 (A (4) + Sw_C3 (A));
    end Lemma_Sweep5;
 
+   procedure Lemma_Sweep9 (A : Big_Nat) is
+   begin
+      Lemma_Carry26 (A (0));
+      Lemma_Carry26 (A (1) + Sw9_C0 (A));
+      Lemma_Carry26 (A (2) + Sw9_C1 (A));
+      Lemma_Carry26 (A (3) + Sw9_C2 (A));
+      Lemma_Carry26 (A (4) + Sw9_C3 (A));
+      Lemma_Carry26 (A (5) + Sw9_C4 (A));
+      Lemma_Carry26 (A (6) + Sw9_C5 (A));
+      Lemma_Carry26 (A (7) + Sw9_C6 (A));
+      Lemma_Carry26 (A (8) + Sw9_C7 (A));
+   end Lemma_Sweep9;
+
    procedure Lemma_Fold (B : Big_Nat) is null;
 
    procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
