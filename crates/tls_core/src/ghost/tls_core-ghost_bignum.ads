@@ -2,7 +2,8 @@
 --  as the *value type* of the crypto functional specs, replacing
 --  Ada.Numerics.Big_Numbers.
 --
---  Why this exists (CLAUDE.md §0e): SPARK's stdlib Big_Integers has an
+--  Why this exists (§0e of the proof conventions): SPARK's stdlib
+--  Big_Integers has an
 --  opaque `To_Big_Integer` (body SPARK_Mode => Off), so the prover cannot
 --  relate `To_Big_Integer (x + y)` to `To_Big_Integer (x) + To_Big_Integer
 --  (y)` — every limb->value bridge bounces off it. The stdlib unit is also
