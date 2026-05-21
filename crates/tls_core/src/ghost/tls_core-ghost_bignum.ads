@@ -425,7 +425,11 @@ is
         5      => Sw_C4 (A),
         others => 0])
    with Pre => In_Bounds (A, Prod_Cap),
-        Post => In_Bounds (Sweep5_Out'Result, Add_Cap);
+        Post => In_Bounds (Sweep5_Out'Result, Add_Cap)
+                and then (for all I in Limb_Index range 0 .. 4 =>
+                            Sweep5_Out'Result (I) in 0 .. In_Cap)
+                and then (for all I in Limb_Index range 6 .. Max_Limbs - 1 =>
+                            Sweep5_Out'Result (I) = 0);
 
    function Sweep5_Chain (A : Big_Nat) return Carry_Array
    is ([1      => Sw_C0 (A),
@@ -445,6 +449,18 @@ is
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                          A (I) = 0),
      Post => Val_Eq (A, Sweep5_Out (A), Sweep5_Chain (A));
+
+   --  Output of the first reduction round (Fold_High_9_Out): limbs 0..3 are
+   --  <= 6*In_Cap and limb 4 <= In_Cap + 5*Fold9_Top_Cap, all under 2**35.
+   Round1_Out_Cap : constant LLI := 2**35;
+
+   --  For such a (round-1-sized) input the second sweep's top carry is tiny
+   --  (<= Fold_C_Cap), so the single prime fold (Lemma_Fold) can consume
+   --  Sweep5_Out.
+   procedure Lemma_Sweep5_Tight (A : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Round1_Out_Cap),
+     Post => Sweep5_Out (A) (5) in 0 .. Fold_C_Cap;
 
    ------------------------------------------------------------------
    --  Exact carry sweep of a wide nine-limb value (the convolution of two
