@@ -999,8 +999,9 @@ is
              and then Sweep5_Out (Normalize'Result.Val) (5) = 0
              and then In_Bounds (Normalize'Result.PMult, Add_Cap)
              --  PMult is a genuine multiple of p (KMult copies), exposed so the
-             --  congruence can feed Lemma_Mod_P_Unique_Gen.
-             and then Normalize'Result.KMult in 0 .. Mult_Cap
+             --  congruence can feed Lemma_Mod_P_Unique_Gen. KMult <= 4: two
+             --  fold rounds, each carry <= 2.
+             and then Normalize'Result.KMult in 0 .. 4
              and then Normalize'Result.PMult
                       = Smul (Normalize'Result.KMult, P_Prime)
              and then SC_Bounded (Normalize'Result.Cn)
@@ -1008,6 +1009,39 @@ is
                         (B,
                          Normalize'Result.Val + Normalize'Result.PMult,
                          Normalize'Result.Cn);
+
+   ------------------------------------------------------------------
+   --  Canonical reduce of an accumulator-sized value: the unique
+   --  representative < p of its residue. This is the field-element function
+   --  (HACL* feval): Canonical (B) = Reduce_Canonical (Normalize (B).Val).
+   --  poly1305's Feval_BN is exactly Canonical (To_Big_Nat (L)).
+   ------------------------------------------------------------------
+
+   function Canonical (B : Big_Nat) return Big_Nat
+   is (Reduce_Canonical (Normalize (B).Val))
+   with
+     Ghost,
+     Pre  => In_Bounds (B, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Canonical'Result, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Canonical'Result (I) = 0)
+             and then not Sub_Cond (Canonical'Result);
+
+   --  Canonical is congruent to its argument mod p: B == Canonical (B) + Kc*p
+   --  for a small multiple Kc (Normalize's KMult plus the final conditional
+   --  subtract, so Kc <= 5). Witnesses Kc, Cc are returned so the per-op
+   --  correspondence can chain this with the input congruence and discharge
+   --  Lemma_Mod_P_Unique_Gen. (The field-element-respects-congruence step.)
+   procedure Lemma_Canonical_Cong (B : Big_Nat; Kc : out LLI; Cc : out Carry_Array)
+   with
+     Ghost,
+     Pre  => In_Bounds (B, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Kc in 0 .. Mult_Cap and then SC_Bounded (Cc)
+             and then SVal_Eq (B, Canonical (B) + Smul (Kc, P_Prime), Cc);
 
    ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).

@@ -669,10 +669,44 @@ is
          pragma Assert (S2 (5) in 0 .. 2);
          Lemma_Smul_Add (S2 (5), S1 (5), P_Prime);
          pragma Assert (PM = Smul (KM, P_Prime));
-         pragma Assert (KM in 0 .. Mult_Cap);
+         pragma Assert (KM in 0 .. 4);
          return (Val => S3, PMult => PM, KMult => KM, Cn => Chain);
       end;
    end Normalize;
+
+   procedure Lemma_Canonical_Cong
+     (B : Big_Nat; Kc : out LLI; Cc : out Carry_Array)
+   is
+      N   : constant Norm_Result := Normalize (B);
+      Val : constant Big_Nat := N.Val;
+      Kr  : constant LLI := (if Sub_Cond (Val) then 1 else 0);
+   begin
+      --  Canonical (B) = Reduce_Canonical (Val) = Subtract_P5_Out (Val): Val is
+      --  reduced (Normalize's output), so its sweep is the identity.
+      Lemma_Reduced_No_Carry (Val);
+      pragma Assert (Canonical (B) = Subtract_P5_Out (Val));
+
+      --  Val = Subtract_P5_Out (Val) + Sub_Sel_P (Val), exactly (zero chain),
+      --  and Sub_Sel_P (Val) is Kr copies of p (Kr in {0,1}).
+      Lemma_Subtract_P5 (Val);
+      pragma Assert (Subtract_P5_Out (Val) + Sub_Sel_P (Val) = Val);
+      pragma Assert (Smul (1, P_Prime) = P_Prime);
+      pragma Assert (Smul (0, P_Prime) = Zero);
+      pragma Assert (Sub_Sel_P (Val) = Smul (Kr, P_Prime));
+      pragma Assert (Canonical (B) + Smul (Kr, P_Prime) = Val);
+
+      --  Fold Normalize's KMult copies and the final Kr into one multiple.
+      Kc := Kr + N.KMult;
+      Cc := N.Cn;
+      Lemma_Bounds_Mono (Canonical (B), In_Cap, Assoc_Cap);
+      pragma Assert (In_Bounds (Smul (Kr, P_Prime), Assoc_Cap));
+      pragma Assert (In_Bounds (Smul (N.KMult, P_Prime), Assoc_Cap));
+      Lemma_Add_Assoc
+        (Canonical (B), Smul (Kr, P_Prime), Smul (N.KMult, P_Prime));
+      Lemma_Smul_Add (Kr, N.KMult, P_Prime);
+      pragma Assert (Val + N.PMult = Canonical (B) + Smul (Kc, P_Prime));
+      pragma Assert (SVal_Eq (B, Canonical (B) + Smul (Kc, P_Prime), Cc));
+   end Lemma_Canonical_Cong;
 
    procedure Lemma_Rotate1 (R : Big_Nat) is
    begin
