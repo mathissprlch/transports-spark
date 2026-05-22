@@ -387,6 +387,101 @@ is
         (Add_Carry (Sweep5_Chain (B), Neg_Carry (Zero_Carry)) = Sweep5_Chain (B));
    end Lemma_Reduce_Canonical;
 
+   procedure Lemma_Pos_Mult_Forces_Sub_Cond
+     (A, B : Big_Nat; K : LLI; C : Carry_Array)
+   is
+      M : constant Big_Nat := B + Smul (K, P_Prime);
+   begin
+      --  M's limbs: M (I) = B (I) + K * P_Prime (I).  P_Prime is the five-limb
+      --  encoding of p; limbs 0..4 are (In_Cap-4, In_Cap, In_Cap, In_Cap,
+      --  In_Cap), limbs 5.. are zero.
+      pragma Assert (P_Prime (0) = In_Cap - 4);
+      pragma Assert
+        (P_Prime (1) = In_Cap and then P_Prime (2) = In_Cap
+         and then P_Prime (3) = In_Cap and then P_Prime (4) = In_Cap);
+      pragma Assert
+        (for all J in Limb_Index range 5 .. Max_Limbs - 1 => P_Prime (J) = 0);
+      pragma Assert (for all I in Limb_Index => M (I) = B (I) + K * P_Prime (I));
+
+      --  Upper region: A and M are zero for limbs 5.., so the carry chain is
+      --  forced to all zero there (from C (Max_Limbs)=0 downward).
+      pragma Assert (C (Max_Limbs) = 0);
+      for J in reverse 5 .. Max_Limbs - 1 loop
+         pragma Assert (A (J) = 0);
+         pragma Assert (M (J) = 0);
+         pragma Assert (A (J) + C (J) = M (J) + Limb_Base * C (J + 1));
+         pragma Assert (C (J) = Limb_Base * C (J + 1));
+         pragma Loop_Invariant (for all P2 in J .. Max_Limbs => C (P2) = 0);
+      end loop;
+      pragma Assert (C (5) = 0);
+
+      --  The five column equations (substituting M (I) = B (I) + K*P_Prime(I)).
+      pragma Assert (A (4) + C (4) = B (4) + K * In_Cap + Limb_Base * C (5));
+      pragma Assert (A (3) + C (3) = B (3) + K * In_Cap + Limb_Base * C (4));
+      pragma Assert (A (2) + C (2) = B (2) + K * In_Cap + Limb_Base * C (3));
+      pragma Assert (A (1) + C (1) = B (1) + K * In_Cap + Limb_Base * C (2));
+      pragma Assert
+        (A (0) + C (0) = B (0) + K * (In_Cap - 4) + Limb_Base * C (1));
+
+      --  Each "intrinsic" column term E_i = K*P_Prime(i) - (A(i)-B(i)) is
+      --  non-negative for K >= 1 (K*In_Cap >= In_Cap >= A(i)), hence so is each
+      --  carry c4..c1 (a non-negative term plus Limb_Base * (next carry)).
+      pragma Assert (B (4) + K * In_Cap - A (4) >= 0);
+      pragma Assert (B (3) + K * In_Cap - A (3) >= 0);
+      pragma Assert (B (2) + K * In_Cap - A (2) >= 0);
+      pragma Assert (B (1) + K * In_Cap - A (1) >= 0);
+      pragma Assert (C (4) >= 0);
+      pragma Assert (C (3) >= 0);
+      pragma Assert (C (2) >= 0);
+      pragma Assert (C (1) >= 0);
+
+      --  Top-down forcing. c1 <= Hi_Cap with E1 >= 0 bounds Limb_Base*c2, which
+      --  caps c2 below Limb_Base; c2's own column then pins c3 = 0, c3 pins
+      --  c4 = 0 and E3 = 0, and c4 = 0 forces K = 1 and A(4) = In_Cap.
+      pragma Assert (Limb_Base * C (2) <= Hi_Cap);
+      pragma Assert (C (2) <= Hi_Cap / Limb_Base);
+      pragma Assert (Limb_Base * C (3) <= C (2));
+      pragma Assert (C (3) = 0);
+      pragma Assert (C (4) = 0);
+      pragma Assert (B (3) + K * In_Cap - A (3) = 0);
+      pragma Assert (A (4) = B (4) + K * In_Cap);
+      pragma Assert (K = 1);
+      pragma Assert (A (4) = In_Cap);
+      pragma Assert (A (3) = In_Cap);
+
+      --  Bottom column: c0 = 0 with K = 1 gives Limb_Base*c1 = A(0)-B(0)-(p0),
+      --  which is <= 4, so c1 = 0; that pins c2 = 0 and reads off A(1), A(2),
+      --  and the low limb bound A(0) >= In_Cap-4 -- exactly Sub_Cond (A).
+      pragma Assert (Limb_Base * C (1) = A (0) - B (0) - (In_Cap - 4));
+      pragma Assert (Limb_Base * C (1) <= 4);
+      pragma Assert (C (1) = 0);
+      pragma Assert (C (2) = 0);
+      pragma Assert (A (1) = In_Cap);
+      pragma Assert (A (2) = In_Cap);
+      pragma Assert (A (0) >= In_Cap - 4);
+      pragma Assert (Sub_Cond (A));
+   end Lemma_Pos_Mult_Forces_Sub_Cond;
+
+   procedure Lemma_Mod_P_Unique (A, B : Big_Nat; K : LLI; C : Carry_Array) is
+   begin
+      if K = 0 then
+         --  Smul (0, P_Prime) = Zero, so the operand is B and exact uniqueness
+         --  applies.
+         pragma Assert
+           (for all I in Limb_Index => Smul (K, P_Prime) (I) = 0);
+         pragma Assert (Smul (K, P_Prime) = Zero);
+         Lemma_Add_Zero_R (B);
+         pragma Assert (B + Smul (K, P_Prime) = B);
+         Lemma_SVal_Eq_Unique (A, B, C);
+      else
+         --  K >= 1: the positive prime multiple forces Sub_Cond (A), which
+         --  contradicts the precondition not Sub_Cond (A); A = B holds
+         --  vacuously.
+         Lemma_Pos_Mult_Forces_Sub_Cond (A, B, K, C);
+         pragma Assert (Sub_Cond (A));
+      end if;
+   end Lemma_Mod_P_Unique;
+
    function Normalize (B : Big_Nat) return Norm_Result is
       S1, R1, S2, R2, S3 : Big_Nat;
    begin

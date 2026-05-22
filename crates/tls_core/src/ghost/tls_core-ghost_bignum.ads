@@ -871,6 +871,57 @@ is
           Sweep5_Chain (B));
 
    ------------------------------------------------------------------
+   --  Mod-p uniqueness. Two canonical values (reduced AND < p) that are
+   --  congruent mod p are limb-equal. Exact uniqueness (Lemma_SVal_Eq_Unique)
+   --  handles a zero prime multiple; the remaining job is to rule out a
+   --  non-zero multiple, which is the magnitude argument done structurally
+   --  (no integer projection): if A = B + K*p with K >= 1 and both A, B < p,
+   --  then A >= p -- contradiction. The "A >= p" is read off the carry chain.
+   ------------------------------------------------------------------
+
+   --  A positive prime multiple between two reduced values forces the larger
+   --  to be >= p. If SVal_Eq (A, B + K*p, C) with K >= 1 and both A, B reduced
+   --  (limbs <= In_Cap, zero from 5), then A satisfies Sub_Cond (A >= p). The
+   --  proof is the base-2**26 carry cascade: limbs 5.. force C(5)=0; then the
+   --  five columns, with each carry pinned non-negative and bounded by Hi_Cap,
+   --  force C(4..1)=0, K=1, and A(4..1)=In_Cap, A(0) >= In_Cap-4 -- exactly
+   --  Sub_Cond (A). No value is ever formed.
+   procedure Lemma_Pos_Mult_Forces_Sub_Cond
+     (A, B : Big_Nat; K : LLI; C : Carry_Array)
+   with
+     Pre  =>
+       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   B (I) = 0)
+       and then K in 1 .. Hi_Cap
+       and then SC_Bounded (C)
+       and then SVal_Eq (A, B + Smul (K, P_Prime), C),
+     Post => Sub_Cond (A);
+
+   --  Mod-p uniqueness. If A and B are both canonical (reduced, zero from 5,
+   --  and < p) and congruent mod p -- A = B + K*p for some K >= 0, the only
+   --  well-formed direction since Smul needs K >= 0 -- then A = B. K = 0 gives
+   --  exact equality (Lemma_SVal_Eq_Unique); K >= 1 would force Sub_Cond (A),
+   --  contradicting A < p. The caller orients A, B so that K >= 0. This is the
+   --  collapse a field element's canonical residue is unique that the per-op
+   --  Feval correspondence and the Mac freeze rely on.
+   procedure Lemma_Mod_P_Unique (A, B : Big_Nat; K : LLI; C : Carry_Array)
+   with
+     Pre  =>
+       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   B (I) = 0)
+       and then not Sub_Cond (A)
+       and then K in 0 .. Hi_Cap
+       and then SC_Bounded (C)
+       and then SVal_Eq (A, B + Smul (K, P_Prime), C),
+     Post => A = B;
+
+   ------------------------------------------------------------------
    --  Wide reduce ("normalize"). Brings an accumulator-sized value (limbs
    --  <= Mul_Cap -- the shape of every impl op output, value < 2**131) to a
    --  fully reduced five-limb form (limbs <= In_Cap, value < 2**130) by two
