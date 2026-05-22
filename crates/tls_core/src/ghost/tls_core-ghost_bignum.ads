@@ -520,6 +520,21 @@ is
                          B (I) = 0),
      Post => (for all J in 5 .. Max_Limbs => C (J) = 0);
 
+   --  Operand cap for re-chaining: the reduced augmented forms X + Kc*p (X a
+   --  Carry_Model output < 2**27, Kc <= a few) stay well under 2**32.
+   Rechain_Cap : constant LLI := 2**32;
+
+   --  Re-chain: a *wide* carry chain between two Rechain_Cap-bounded values is
+   --  actually narrow. The base-2**26 carry chain of two small equal-valued
+   --  arrays is unique and bounded by ~Rechain_Cap/Limb_Base, so the same chain
+   --  C satisfies the narrow SVal_Eq. This narrows the (wide) product congruence
+   --  to feed Canonical_Unique_Gen, whose mod-p cascade needs a Hi_Cap chain.
+   procedure Lemma_Rechain_Narrow (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Rechain_Cap) and then In_Bounds (B, Rechain_Cap)
+             and then SC_Wide (C) and then SVal_Wide (A, B, C),
+     Post => SVal_Eq (A, B, C);
+
    ------------------------------------------------------------------
    --  Multiply-preserves-congruence chain algebra. Multiplying both sides of
    --  an SVal_Eq congruence by a fixed reduced R preserves it, with the carry

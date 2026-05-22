@@ -168,6 +168,27 @@ is
       end loop;
    end Lemma_SVal_Chain_Zero_High;
 
+   procedure Lemma_Rechain_Narrow (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      --  The chain is forced by A, B (C (0) = 0, C (K+1) = (A(K)+C(K)-B(K)) /
+      --  Limb_Base). For Rechain_Cap-bounded A, B it stays under 2*Rechain_Cap.
+      pragma Assert (C (0) = 0);
+      for K in Limb_Index loop
+         pragma Assert (A (K) + C (K) = B (K) + Limb_Base * C (K + 1));
+         pragma Assert (Limb_Base * C (K + 1) = A (K) + C (K) - B (K));
+         pragma Assert
+           (Limb_Base * C (K + 1) in -(3 * Rechain_Cap) .. 3 * Rechain_Cap);
+         pragma Assert (C (K + 1) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
+         pragma Loop_Invariant
+           (for all J in 0 .. K + 1 =>
+              C (J) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
+      end loop;
+      pragma Assert
+        (for all J in Carry_Array'Range =>
+           C (J) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
+      pragma Assert (SC_Bounded (C));
+   end Lemma_Rechain_Narrow;
+
    procedure Lemma_Conv_Chain_Zero
      (C : Carry_Array; R : Big_Nat; K, T : Limb_Index) is
    begin
