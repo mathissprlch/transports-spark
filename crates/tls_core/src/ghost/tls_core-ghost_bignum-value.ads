@@ -117,4 +117,31 @@ is
        and then SC_Wide (C) and then SVal_Wide (A, B, C),
      Post => Val (A) = Val (B);
 
+   ------------------------------------------------------------------
+   --  Value homomorphisms feeding the convolution faithfulness theorem.
+   ------------------------------------------------------------------
+
+   --  A tail of zero limbs contributes nothing to the Horner value.
+   procedure Lemma_Val_From_Zero_High (A : Big_Nat; N, I : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Val_Cap)
+       and then (for all K in Limb_Index range N .. Max_Limbs - 1 => A (K) = 0)
+       and then I >= N,
+     Post               => Val_From (A, I) = 0,
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   --  Scalar homomorphism: Val (Smul (S, A)) = Limb_Val (S) * Val (A).
+   procedure Lemma_Val_From_Smul (S : LLI; A : Big_Nat; I : Limb_Index)
+   with
+     Pre                => S in 0 .. Smul_Cap and then In_Bounds (A, In_Cap),
+     Post               =>
+       Val_From (Smul (S, A), I) = Limb_Val (S) * Val_From (A, I),
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   procedure Lemma_Val_Smul (S : LLI; A : Big_Nat)
+   with
+     Pre  => S in 0 .. Smul_Cap and then In_Bounds (A, In_Cap),
+     Post => Val (Smul (S, A)) = Limb_Val (S) * Val (A);
+
 end Tls_Core.Ghost_Bignum.Value;

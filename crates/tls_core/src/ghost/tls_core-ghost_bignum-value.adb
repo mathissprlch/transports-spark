@@ -94,4 +94,36 @@ is
       pragma Assert (C (0) = 0);                   --  Limb_Val (0) = 0.
    end Lemma_SVal_To_Val;
 
+   procedure Lemma_Val_From_Zero_High (A : Big_Nat; N, I : Limb_Index) is
+   begin
+      pragma Assert (A (I) = 0);                   --  I >= N.
+      if I /= Max_Limbs - 1 then
+         Lemma_Val_From_Zero_High (A, N, I + 1);
+      end if;
+   end Lemma_Val_From_Zero_High;
+
+   procedure Lemma_Val_From_Smul (S : LLI; A : Big_Nat; I : Limb_Index) is
+   begin
+      Lemma_Limb_Val_Mul (A (I), S);   --  Limb_Val (A(I)*S) = Limb_Val(A(I))*Limb_Val(S).
+      pragma Assert (Smul (S, A) (I) = S * A (I));
+      pragma Assert
+        (Limb_Val (Smul (S, A) (I)) = Limb_Val (S) * Limb_Val (A (I)));
+      if I /= Max_Limbs - 1 then
+         Lemma_Val_From_Smul (S, A, I + 1);        --  IH.
+         pragma Assert
+           (Val_From (Smul (S, A), I)
+            = Limb_Val (S) * Limb_Val (A (I))
+              + Base * (Limb_Val (S) * Val_From (A, I + 1)));
+         pragma Assert
+           (Limb_Val (S) * Limb_Val (A (I))
+            + Base * (Limb_Val (S) * Val_From (A, I + 1))
+            = Limb_Val (S) * (Limb_Val (A (I)) + Base * Val_From (A, I + 1)));
+      end if;
+   end Lemma_Val_From_Smul;
+
+   procedure Lemma_Val_Smul (S : LLI; A : Big_Nat) is
+   begin
+      Lemma_Val_From_Smul (S, A, 0);
+   end Lemma_Val_Smul;
+
 end Tls_Core.Ghost_Bignum.Value;
