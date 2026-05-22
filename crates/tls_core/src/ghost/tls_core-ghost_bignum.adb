@@ -608,6 +608,7 @@ is
       declare
          PM    : constant Big_Nat :=
            Smul (S2 (5), P_Prime) + Smul (S1 (5), P_Prime);
+         KM    : constant LLI := S2 (5) + S1 (5);
          Ch12  : constant Carry_Array :=
            Add_Carry
              (Add_Carry (Sweep5_Chain (B), Neg_Carry (Fold_Chain (S1 (5)))),
@@ -660,7 +661,16 @@ is
          pragma Assert (SC_Bounded (Add_Carry (Ch12, Sweep5_Chain (R2))));
          Lemma_SVal_Trans (B, R2 + PM, S3 + PM, Ch12, Sweep5_Chain (R2));
          --  SVal_Eq (B, S3 + PM, Chain)
-         return (Val => S3, PMult => PM, Cn => Chain);
+
+         --  PM is exactly KM copies of p: Smul (S2(5), p) + Smul (S1(5), p) =
+         --  Smul (S2(5)+S1(5), p). Both carries are <= 2 (Acc_Carry), so
+         --  KM <= 4 <= Mult_Cap.
+         pragma Assert (S1 (5) in 0 .. 2);
+         pragma Assert (S2 (5) in 0 .. 2);
+         Lemma_Smul_Add (S2 (5), S1 (5), P_Prime);
+         pragma Assert (PM = Smul (KM, P_Prime));
+         pragma Assert (KM in 0 .. Mult_Cap);
+         return (Val => S3, PMult => PM, KMult => KM, Cn => Chain);
       end;
    end Normalize;
 

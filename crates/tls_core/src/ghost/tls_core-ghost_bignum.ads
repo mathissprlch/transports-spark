@@ -983,6 +983,7 @@ is
    type Norm_Result is record
       Val   : Big_Nat;
       PMult : Big_Nat;
+      KMult : LLI;
       Cn    : Carry_Array;
    end record;
 
@@ -997,6 +998,11 @@ is
                          Normalize'Result.Val (I) = 0)
              and then Sweep5_Out (Normalize'Result.Val) (5) = 0
              and then In_Bounds (Normalize'Result.PMult, Add_Cap)
+             --  PMult is a genuine multiple of p (KMult copies), exposed so the
+             --  congruence can feed Lemma_Mod_P_Unique_Gen.
+             and then Normalize'Result.KMult in 0 .. Mult_Cap
+             and then Normalize'Result.PMult
+                      = Smul (Normalize'Result.KMult, P_Prime)
              and then SC_Bounded (Normalize'Result.Cn)
              and then SVal_Eq
                         (B,
