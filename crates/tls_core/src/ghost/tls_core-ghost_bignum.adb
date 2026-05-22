@@ -986,4 +986,69 @@ is
       return R;
    end "*";
 
+   procedure Lemma_Carry_Mod_P (B : Big_Nat; K : out LLI; C : out Carry_Array) is
+      T    : constant Big_Nat     := Sweep5_Out (B);
+      FO   : constant Big_Nat     := Fold_Out (T);
+      CM   : constant Big_Nat     := Carry_Model (B);
+      D1   : constant Carry_Array := Sweep5_Chain (B);
+      SK   : constant Big_Nat     := Smul (T (5), P_Prime);
+      SCFO : constant Carry_Array := Step_Carry (FO, 0);
+      Ch1  : constant Carry_Array :=
+        Add_Carry (D1, Neg_Carry (Fold_Chain (T (5))));
+      FOSK : constant Big_Nat := FO + SK;
+      CMSK : constant Big_Nat := CM + SK;
+   begin
+      Lemma_Bounds_Mono (B, Mul_Cap, Carry_In_Cap);
+      Lemma_Sweep5_Acc_Carry (B);          --  T (5) <= 2
+      K := T (5);
+
+      --  Sweep5 output is reduced; Fold_Out limb 0 stays small (T (5) <= 2).
+      pragma Assert
+        (for all I in Limb_Index range 0 .. 4 => T (I) in 0 .. In_Cap);
+      pragma Assert (T (5) in 0 .. 2);
+      pragma Assert
+        (for all I in Limb_Index range 6 .. Max_Limbs - 1 => T (I) = 0);
+      pragma Assert (FO (0) <= In_Cap + 10);
+      pragma Assert (In_Bounds (FO, Prod_Cap));
+
+      --  Step 1: B == Fold_Plus_P (T) == FO + Smul (K, P).
+      Lemma_Carry_Fold (B);
+      Lemma_Fold_Plus_P_Eq (T);
+      pragma Assert (Fold_Plus_P (T) = FOSK);
+      pragma Assert (SVal_Eq (B, FOSK, Ch1));
+
+      --  Step 2: FO == Carry_Model (B) exactly (the normalising Step_Out).
+      pragma Assert (CM = Step_Out (FO, 0));
+      Lemma_Carry_Step (FO, 0);
+      pragma Assert (Val_Eq (FO, CM, SCFO));
+      Lemma_Val_To_SVal (FO, CM, SCFO);
+
+      --  Step 3: add Smul (K, P) to both, then transitivity.
+      pragma Assert (In_Bounds (SK, Add_Cap));
+      pragma Assert (for all I in Limb_Index => SK (I) = T (5) * P_Prime (I));
+      pragma Assert (for all I in Limb_Index => SK (I) <= 2 * In_Cap);
+      pragma Assert (for all I in Limb_Index => FOSK (I) <= 3 * In_Cap + 10);
+      pragma Assert (In_Bounds (FOSK, Add_Cap));
+      pragma Assert (In_Bounds (CMSK, Add_Cap));
+      Lemma_SVal_Add_Const (FO, CM, SK, SCFO);
+
+      --  Chain bounds: D1 <= Conv_Carry_Cap, Fold_Chain (K) <= 2,
+      --  Step_Carry (FO,0)(1) = Hi26 (FO(0)) <= 1, so C is tight.
+      Lemma_Sweep5_Chain_Tight (B);
+      pragma Assert
+        (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => Fold_Chain (T (5)) (J) in 0 .. 2);
+      pragma Assert (Hi26 (FO (0)) <= 1);
+      pragma Assert (for all J in Carry_Array'Range => SCFO (J) in 0 .. 1);
+      pragma Assert
+        (for all J in Carry_Array'Range => Ch1 (J) in -2 .. Conv_Carry_Cap);
+      C := Add_Carry (Ch1, SCFO);
+      pragma Assert
+        (for all J in Carry_Array'Range => C (J) in -Cong_Cap .. Cong_Cap);
+      Lemma_Bounds_Mono (B, Mul_Cap, Add_Cap);
+      Lemma_SVal_Trans (B, FOSK, CMSK, Ch1, SCFO);
+      pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
+   end Lemma_Carry_Mod_P;
+
 end Tls_Core.Ghost_Bignum;

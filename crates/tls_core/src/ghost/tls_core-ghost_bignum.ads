@@ -1608,4 +1608,24 @@ is
             (Sweep5_Chain (B),
              Neg_Carry (Fold_Chain (Sweep5_Out (B) (5)))));
 
+   --  Per-op congruence: Carry_Model (B) is congruent to B mod p. For an
+   --  accumulator-sized B (limbs <= Mul_Cap) the multiple is K = Sweep5_Out
+   --  (B)(5) <= 2 and the chain is tight (<= Cong_Cap). Every impl op result
+   --  is Carry_Model of its pre-carry value; chained with Lemma_Canonical_
+   --  Unique this turns "To_Big_Nat (op result) == field op mod p" into the
+   --  Feval equality the Mac loop invariant needs. Witnesses K, C are returned.
+   procedure Lemma_Carry_Mod_P (B : Big_Nat; K : out LLI; C : out Carry_Array)
+   with
+     Ghost,
+     Pre  => In_Bounds (B, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then Sweep5_Out (B) (5) <= Fold_C_Cap,
+     Post => K = Sweep5_Out (B) (5)
+             and then K in 0 .. 2
+             and then SC_Bounded (C)
+             and then (for all J in Carry_Array'Range =>
+                         C (J) in -Cong_Cap .. Cong_Cap)
+             and then SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C);
+
 end Tls_Core.Ghost_Bignum;
