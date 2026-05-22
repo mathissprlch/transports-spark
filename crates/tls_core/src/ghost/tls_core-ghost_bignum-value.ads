@@ -75,4 +75,46 @@ is
      Post               => Limb_Val (X * Y) = Limb_Val (X) * Limb_Val (Y),
      Subprogram_Variant => (Decreases => abs Y);
 
+   ------------------------------------------------------------------
+   --  Big_Nat value: Horner evaluation in base Base = Limb_Val (Limb_Base).
+   --  Val (A) = sum_k Limb_Val (A (k)) * Base**k. Base is OUR ingress of the
+   --  limb radix 2**26 -- never To_Big_Integer.
+   ------------------------------------------------------------------
+
+   Base : constant BI.Big_Integer := Limb_Val (Limb_Base);
+
+   function Val_From (A : Big_Nat; I : Limb_Index) return BI.Big_Integer
+   is (if I = Max_Limbs - 1 then Limb_Val (A (I))
+       else Limb_Val (A (I)) + Base * Val_From (A, I + 1))
+   with
+     Pre                => In_Bounds (A, Val_Cap),
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   function Val (A : Big_Nat) return BI.Big_Integer is (Val_From (A, 0))
+   with Pre => In_Bounds (A, Val_Cap);
+
+   ------------------------------------------------------------------
+   --  Master lift: a wide signed value-equality (SVal_Wide) is a Val-equality.
+   --  Telescopes the column relation; the pillars collapse each column. This
+   --  lifts ALL the existing SVal_Wide / SVal_Eq congruence machinery into the
+   --  value layer in one shot.
+   ------------------------------------------------------------------
+
+   --  Partial-Horner invariant: A and B differ by exactly the carry into I.
+   procedure Lemma_Val_Tele (A, B : Big_Nat; C : Carry_Array; I : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+       and then SC_Wide (C) and then SVal_Wide (A, B, C),
+     Post               =>
+       Val_From (A, I) + Limb_Val (C (I)) = Val_From (B, I),
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   procedure Lemma_SVal_To_Val (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  =>
+       In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+       and then SC_Wide (C) and then SVal_Wide (A, B, C),
+     Post => Val (A) = Val (B);
+
 end Tls_Core.Ghost_Bignum.Value;

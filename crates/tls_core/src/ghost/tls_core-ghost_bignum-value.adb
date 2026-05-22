@@ -67,4 +67,31 @@ is
       end if;
    end Lemma_Limb_Val_Mul;
 
+   procedure Lemma_Val_Tele (A, B : Big_Nat; C : Carry_Array; I : Limb_Index) is
+   begin
+      --  Collapse column I:  A(I)+C(I) = B(I)+Limb_Base*C(I+1)  (SVal_Wide).
+      Lemma_Limb_Val_Add (A (I), C (I));
+      Lemma_Limb_Val_Add (B (I), Limb_Base * C (I + 1));
+      Lemma_Limb_Val_Mul (Limb_Base, C (I + 1));
+      pragma Assert
+        (Limb_Val (A (I)) + Limb_Val (C (I))
+         = Limb_Val (B (I)) + Base * Limb_Val (C (I + 1)));
+
+      if I = Max_Limbs - 1 then
+         pragma Assert (C (I + 1) = 0);            --  C(Max_Limbs) = 0.
+      else
+         Lemma_Val_Tele (A, B, C, I + 1);          --  IH at I+1.
+         pragma Assert
+           (Val_From (A, I) + Limb_Val (C (I))
+            = Limb_Val (B (I))
+              + Base * (Limb_Val (C (I + 1)) + Val_From (A, I + 1)));
+      end if;
+   end Lemma_Val_Tele;
+
+   procedure Lemma_SVal_To_Val (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      Lemma_Val_Tele (A, B, C, 0);
+      pragma Assert (C (0) = 0);                   --  Limb_Val (0) = 0.
+   end Lemma_SVal_To_Val;
+
 end Tls_Core.Ghost_Bignum.Value;
