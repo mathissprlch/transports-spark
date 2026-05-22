@@ -349,6 +349,16 @@ is
              and then Carry_Bounded (C) and then Val_Eq (A, B, C),
      Post => SVal_Eq (A, B, C);
 
+   --  Exact uniqueness for the signed relation: two reduced values that are
+   --  SVal_Eq (exact same integer, signed chain) are limb-equal. Same column-
+   --  forcing as Lemma_Val_Eq_Unique -- the signed chain is still forced to
+   --  all zero because |A(I) - B(I)| <= In_Cap < Limb_Base.
+   procedure Lemma_SVal_Eq_Unique (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (A, B, C),
+     Post => A = B;
+
    --  Symmetry: negate the carry chain.
    procedure Lemma_SVal_Sym (A, B : Big_Nat; C : Carry_Array)
    with

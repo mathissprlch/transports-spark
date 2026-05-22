@@ -183,6 +183,22 @@ is
 
    procedure Lemma_Val_To_SVal (A, B : Big_Nat; C : Carry_Array) is null;
 
+   procedure Lemma_SVal_Eq_Unique (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      --  Identical column-forcing to Lemma_Val_Eq_Unique: C (0) = 0, and each
+      --  column gives A(I) - B(I) = Limb_Base * C(I+1) with |A(I)-B(I)| <=
+      --  In_Cap < Limb_Base, forcing C(I+1) = 0 and A(I) = B(I).
+      for I in Limb_Index loop
+         pragma Assert (C (I) = 0);
+         pragma Assert (A (I) + C (I) = B (I) + Limb_Base * C (I + 1));
+         pragma Assert (Limb_Base * C (I + 1) = A (I) - B (I));
+         pragma Assert (C (I + 1) = 0);
+         pragma Assert (A (I) = B (I));
+         pragma Loop_Invariant (C (I + 1) = 0);
+         pragma Loop_Invariant (for all J in 0 .. I => A (J) = B (J));
+      end loop;
+   end Lemma_SVal_Eq_Unique;
+
    procedure Lemma_SVal_Sym (A, B : Big_Nat; C : Carry_Array) is null;
 
    procedure Lemma_SVal_Trans (A, B, D : Big_Nat; C1, C2 : Carry_Array) is
