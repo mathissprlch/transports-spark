@@ -950,6 +950,12 @@ is
    --  Smul/Add stay inside Assoc_Cap.
    Mult_Cap : constant LLI := 2**30;
 
+   --  Tight bound on a reduce congruence chain: three sweep chains (each <=
+   --  Conv_Carry_Cap = 2**32) plus tiny fold chains, so well under 2**34. Far
+   --  below Hi_Cap = 2**36, leaving room to compose three such chains (the
+   --  Canonical(X) == X == Y == Canonical(Y) transitivity) inside SC_Bounded.
+   Cong_Cap : constant LLI := 2**34;
+
    procedure Lemma_Mod_P_Unique_Gen
      (A, B : Big_Nat; Ka, Kb : LLI; C : Carry_Array)
    with
@@ -1005,6 +1011,10 @@ is
              and then Normalize'Result.PMult
                       = Smul (Normalize'Result.KMult, P_Prime)
              and then SC_Bounded (Normalize'Result.Cn)
+             --  Tight chain bound (<= Cong_Cap, far below Hi_Cap) so the
+             --  congruence can be composed three deep without overflow.
+             and then (for all J in Carry_Array'Range =>
+                         Normalize'Result.Cn (J) in -Cong_Cap .. Cong_Cap)
              and then SVal_Eq
                         (B,
                          Normalize'Result.Val + Normalize'Result.PMult,
@@ -1040,8 +1050,36 @@ is
      Pre  => In_Bounds (B, Mul_Cap)
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                          B (I) = 0),
-     Post => Kc in 0 .. Mult_Cap and then SC_Bounded (Cc)
+     Post => Kc in 0 .. 5 and then SC_Bounded (Cc)
+             and then (for all J in Carry_Array'Range =>
+                         Cc (J) in -Cong_Cap .. Cong_Cap)
              and then SVal_Eq (B, Canonical (B) + Smul (Kc, P_Prime), Cc);
+
+   --  Field-element uniqueness (Feval respects congruence): two accumulator-
+   --  sized values congruent mod p have the same canonical residue. Composes
+   --  Canonical(X) == X == Y == Canonical(Y) (the input congruence sandwiched
+   --  between the two Canonical_Cong congruences) and discharges
+   --  Lemma_Mod_P_Unique_Gen. The tight Cong_Cap chains keep the three-deep
+   --  transitivity inside SC_Bounded. This is the bridge that turns the per-op
+   --  "impl op result == field op mod p" congruences into Feval equalities.
+   procedure Lemma_Canonical_Unique
+     (X, Y : Big_Nat; Kin : LLI; C : Carry_Array)
+   with
+     Ghost,
+     Pre  =>
+       In_Bounds (X, Mul_Cap) and then In_Bounds (Y, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   X (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   Y (I) = 0)
+       --  Kin is the residue gap multiple; for accumulator-sized X, Y (value
+       --  < 2**132) it is < 4. Capped at 4 so the small Smul bounds discharge.
+       and then Kin in 0 .. 4
+       and then (for all J in Carry_Array'Range =>
+                   C (J) in -Cong_Cap .. Cong_Cap)
+       and then In_Bounds (Y + Smul (Kin, P_Prime), Add_Cap)
+       and then SVal_Eq (X, Y + Smul (Kin, P_Prime), C),
+     Post => Canonical (X) = Canonical (Y);
 
    ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).

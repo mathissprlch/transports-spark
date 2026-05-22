@@ -670,6 +670,28 @@ is
          Lemma_Smul_Add (S2 (5), S1 (5), P_Prime);
          pragma Assert (PM = Smul (KM, P_Prime));
          pragma Assert (KM in 0 .. 4);
+
+         --  Tight chain bound: Ch12 = two sweep chains (<= Conv_Carry_Cap)
+         --  minus two fold chains (each entry <= 2), so |Ch12| <= 2**33;
+         --  Chain adds one more sweep chain, so |Chain| <= 3*Conv_Carry_Cap
+         --  < Cong_Cap = 2**34.
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Sweep5_Chain (B) (J) in 0 .. Conv_Carry_Cap);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Sweep5_Chain (R1) (J) in 0 .. Conv_Carry_Cap);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Fold_Chain (S1 (5)) (J) in 0 .. 2);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Fold_Chain (S2 (5)) (J) in 0 .. 2);
+         pragma Assert
+           (for all J in Carry_Array'Range => Ch12 (J) in -Cong_Cap .. Cong_Cap);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Chain (J) in -Cong_Cap .. Cong_Cap);
          return (Val => S3, PMult => PM, KMult => KM, Cn => Chain);
       end;
    end Normalize;
@@ -707,6 +729,78 @@ is
       pragma Assert (Val + N.PMult = Canonical (B) + Smul (Kc, P_Prime));
       pragma Assert (SVal_Eq (B, Canonical (B) + Smul (Kc, P_Prime), Cc));
    end Lemma_Canonical_Cong;
+
+   procedure Lemma_Canonical_Unique
+     (X, Y : Big_Nat; Kin : LLI; C : Carry_Array)
+   is
+      KcX, KcY : LLI;
+      CcX, CcY : Carry_Array;
+   begin
+      Lemma_Canonical_Cong (X, KcX, CcX);   --  X == CX + Smul (KcX, p)
+      Lemma_Canonical_Cong (Y, KcY, CcY);   --  Y == CY + Smul (KcY, p)
+      declare
+         CX  : constant Big_Nat := Canonical (X);
+         CY  : constant Big_Nat := Canonical (Y);
+         SKX : constant Big_Nat := Smul (KcX, P_Prime);
+         SKY : constant Big_Nat := Smul (KcY, P_Prime);
+         SKI : constant Big_Nat := Smul (Kin, P_Prime);
+         SX  : constant Big_Nat := CX + SKX;
+         SY  : constant Big_Nat := CY + SKY;
+         YK  : constant Big_Nat := Y + SKI;
+         SYK : constant Big_Nat := SY + SKI;
+         NCX : constant Carry_Array := Neg_Carry (CcX);
+         Ch2 : constant Carry_Array := Add_Carry (NCX, C);
+         Net : constant Carry_Array := Add_Carry (Ch2, CcY);
+      begin
+         --  In-bounds nudges (the operands are reduced + small multiples).
+         --  Smul-Post link through the constants, then the small-K bounds
+         --  (KcX, KcY <= 5; Kin <= 4), mirroring Normalize's pattern.
+         Lemma_Bounds_Mono (X, Mul_Cap, Add_Cap);
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SKX (I) = KcX * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKY (I) = KcY * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKI (I) = Kin * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKX (I) <= 5 * In_Cap);
+         pragma Assert (for all I in Limb_Index => SKY (I) <= 5 * In_Cap);
+         pragma Assert (for all I in Limb_Index => SKI (I) <= 4 * In_Cap);
+         pragma Assert (In_Bounds (SX, Add_Cap));
+         pragma Assert (In_Bounds (SY, Add_Cap));
+         pragma Assert (for all I in Limb_Index => SYK (I) <= 10 * In_Cap);
+         pragma Assert (In_Bounds (SYK, Add_Cap));
+
+         --  CX + Smul (KcX, p) == X (Sym of Canonical_Cong on X), then
+         --  == Y + Smul (Kin, p) (input), then == CY + Smul (KcY, p) + Kin*p.
+         Lemma_SVal_Sym (X, SX, CcX);
+         pragma Assert
+           (for all J in Carry_Array'Range => NCX (J) in -Cong_Cap .. Cong_Cap);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Ch2 (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
+         pragma Assert (SC_Bounded (Ch2));
+         Lemma_SVal_Trans (SX, X, YK, NCX, C);          --  SVal_Eq (SX, YK, Ch2)
+
+         Lemma_SVal_Add_Const (Y, SY, SKI, CcY);        --  SVal_Eq (YK, SYK, CcY)
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Net (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
+         pragma Assert (SC_Bounded (Net));
+         Lemma_SVal_Trans (SX, YK, SYK, Ch2, CcY);      --  SVal_Eq (SX, SYK, Net)
+
+         --  SYK = (CY + Smul (KcY, p)) + Smul (Kin, p) = CY + Smul (KcY+Kin, p).
+         Lemma_Bounds_Mono (CY, In_Cap, Assoc_Cap);
+         pragma Assert (In_Bounds (SKY, Assoc_Cap));
+         pragma Assert (In_Bounds (SKI, Assoc_Cap));
+         Lemma_Add_Assoc (CY, SKY, SKI);
+         Lemma_Smul_Add (KcY, Kin, P_Prime);
+         pragma Assert (SYK = CY + Smul (KcY + Kin, P_Prime));
+         pragma Assert
+           (SVal_Eq (SX, CY + Smul (KcY + Kin, P_Prime), Net));
+
+         --  Both CX, CY are canonical (< p); the residual multiples cancel.
+         Lemma_Mod_P_Unique_Gen (CX, CY, KcX, KcY + Kin, Net);
+         pragma Assert (Canonical (X) = Canonical (Y));
+      end;
+   end Lemma_Canonical_Unique;
 
    procedure Lemma_Rotate1 (R : Big_Nat) is
    begin
