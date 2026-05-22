@@ -287,6 +287,15 @@ is
    --  carry or prime multiple well under this.
    Smul_Cap : constant LLI := 2**36;
 
+   --  Wide carry-chain ceiling for the *product* congruence (SVal_Wide).
+   --  Multiplying an SVal_Eq chain by R scales each entry by up to a limb
+   --  (~2**26), pushing a Hi_Cap-bounded chain to ~Max_Limbs*Hi_Cap*Mul_Cap =
+   --  160 * 2**40 * 2**27 < 2**75. Hi_Cap itself cannot grow (it must stay <
+   --  Limb_Base**2 = 2**52 for the mod-p uniqueness cascade), so the product
+   --  step uses this separate, wider bound. The column arithmetic still fits
+   --  the 128-bit word: Add_Cap + Limb_Base*Wide_Cap = 2**62 + 2**106 < 2**127.
+   Wide_Cap : constant LLI := 2**80;
+
    procedure Lemma_Hi26_Bound (X : LLI)
    with
      Pre  => X in 0 .. Prod_Cap,
@@ -436,6 +445,45 @@ is
      Post => SVal_Eq (X + M, Y + M, C);
 
    ------------------------------------------------------------------
+   --  Wide signed-carry value-equality. Same column relation as SVal_Eq, but
+   --  with the wider Wide_Cap chain bound -- the carry chain a multiply induces
+   --  (the narrow chain convolved by R) is too big for Hi_Cap, which is pinned
+   --  below Limb_Base**2 by the mod-p uniqueness cascade.
+   ------------------------------------------------------------------
+
+   function SC_Wide (C : Carry_Array) return Boolean
+   is (for all J in C'Range => C (J) in -Wide_Cap .. Wide_Cap);
+
+   function SVal_Wide (A, B : Big_Nat; C : Carry_Array) return Boolean
+   is (C (0) = 0
+       and then C (Max_Limbs) = 0
+       and then (for all I in Limb_Index =>
+                   A (I) + C (I) = B (I) + Limb_Base * C (I + 1)))
+   with
+     Pre => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+            and then SC_Wide (C);
+
+   --  An SVal_Eq chain is a fortiori SC_Wide (Hi_Cap <= Wide_Cap).
+   procedure Lemma_SVal_To_Wide (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (A, B, C),
+     Post => SVal_Wide (A, B, C);
+
+   --  An SVal_Eq chain between two values both zero from limb 5 is itself zero
+   --  from limb 5 (back-substitution from C (Max_Limbs) = 0 via the relation
+   --  C (I) = Limb_Base * C (I+1) for I >= 5).
+   procedure Lemma_SVal_Chain_Zero_High (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (A, B, C)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         A (I) = 0)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => (for all J in 5 .. Max_Limbs => C (J) = 0);
+
+   ------------------------------------------------------------------
    --  Multiply-preserves-congruence chain algebra. Multiplying both sides of
    --  an SVal_Eq congruence by a fixed reduced R preserves it, with the carry
    --  chain itself convolved by R. These helpers build that convolved chain and
@@ -526,6 +574,43 @@ is
        Diff_Col (A, B, R, K, K)
        = Limb_Base * Conv_Chain_Col (C, R, K + 1, K + 1)
          - Conv_Chain_Col (C, R, K, K);
+
+   --  Conv_Chain_Col vanishes for columns >= 9 when C and R are both zero from
+   --  limb 5 (each term C (J)*R (K-J) has J >= 5 or K-J >= 5). By induction T.
+   procedure Lemma_Conv_Chain_Zero
+     (C : Carry_Array; R : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                =>
+       SC_Bounded (C) and then In_Bounds (R, Mul_Cap) and then T <= K
+       and then K >= 9
+       and then (for all J in 5 .. Max_Limbs => C (J) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R (I) = 0),
+     Post               => Conv_Chain_Col (C, R, K, T) = 0,
+     Subprogram_Variant => (Decreases => T);
+
+   --  The carry chain multiplication by R induces on an SVal_Eq congruence:
+   --  G (K) = Conv_Chain_Col (C, R, K, K), with G (Max_Limbs) = 0.
+   function Carry_Conv (C : Carry_Array; R : Big_Nat) return Carry_Array
+   is ([for K in 0 .. Max_Limbs =>
+          (if K <= Max_Limbs - 1 then Conv_Chain_Col (C, R, K, K) else 0)])
+   with
+     Pre  => SC_Bounded (C) and then In_Bounds (R, Mul_Cap),
+     Post => SC_Wide (Carry_Conv'Result);
+
+   --  Multiplying both sides of an SVal_Eq congruence by a fixed reduced R
+   --  preserves it as an SVal_Wide congruence with the convolved carry chain.
+   --  Column relation: Lemma_Diff_Col_Eq + Lemma_Diff_Col_Chain in columns < 9,
+   --  trivial (both products zero, chain zero) in columns >= 9.
+   procedure Lemma_Mul_SVal_Cong (A, B, R : Big_Nat; C : Carry_Array)
+   with
+     Pre  =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then In_Bounds (R, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R (I) = 0)
+       and then SC_Bounded (C) and then SVal_Eq (A, B, C),
+     Post => SVal_Wide (A * R, B * R, Carry_Conv (C, R));
 
    --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
    --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)

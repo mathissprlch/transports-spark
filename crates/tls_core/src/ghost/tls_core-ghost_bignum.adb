@@ -96,6 +96,57 @@ is
       --                           = Shift_Chain_Col (K,K)   (C (0) = 0).
    end Lemma_Diff_Col_Chain;
 
+   procedure Lemma_SVal_To_Wide (A, B : Big_Nat; C : Carry_Array) is null;
+
+   procedure Lemma_SVal_Chain_Zero_High (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      for K in reverse 5 .. Max_Limbs - 1 loop
+         pragma Assert (A (K) + C (K) = B (K) + Limb_Base * C (K + 1));
+         pragma Assert (C (K) = Limb_Base * C (K + 1));
+         pragma Loop_Invariant (for all J in K .. Max_Limbs => C (J) = 0);
+      end loop;
+   end Lemma_SVal_Chain_Zero_High;
+
+   procedure Lemma_Conv_Chain_Zero
+     (C : Carry_Array; R : Big_Nat; K, T : Limb_Index) is
+   begin
+      if T /= 0 then
+         Lemma_Conv_Chain_Zero (C, R, K, T - 1);
+      end if;
+      --  Term T: T >= 5 => C (T) = 0; else K - T >= 5 (K >= 9, T <= 4) => R = 0.
+      pragma Assert (if T >= 5 then C (T) = 0 else R (K - T) = 0);
+      pragma Assert (C (T) * R (K - T) = 0);
+   end Lemma_Conv_Chain_Zero;
+
+   procedure Lemma_Mul_SVal_Cong (A, B, R : Big_Nat; C : Carry_Array) is
+      GA : constant Big_Nat     := A * R;
+      GB : constant Big_Nat     := B * R;
+      G  : constant Carry_Array := Carry_Conv (C, R);
+   begin
+      Lemma_SVal_Chain_Zero_High (A, B, C);   --  C zero from limb 5
+      Lemma_Mul5_Cols (A, R, GA);             --  GA zero from limb 9
+      Lemma_Mul5_Cols (B, R, GB);             --  GB zero from limb 9
+      for I in Limb_Index loop
+         if I < 9 then
+            Lemma_Diff_Col_Eq (A, B, R, I, I);
+            Lemma_Diff_Col_Chain (A, B, R, C, I);
+            --  GA (I) - GB (I) = Diff_Col = Limb_Base*G (I+1) - G (I).
+         else
+            Lemma_Conv_Chain_Zero (C, R, I, I);                --  G (I) = 0
+            if I < Max_Limbs - 1 then
+               Lemma_Conv_Chain_Zero (C, R, I + 1, I + 1);     --  G (I+1) = 0
+            end if;
+            --  GA (I) = GB (I) = 0; relation is 0 = 0.
+         end if;
+         pragma Loop_Invariant
+           (for all J in 0 .. I =>
+              GA (J) + G (J) = GB (J) + Limb_Base * G (J + 1));
+      end loop;
+      pragma Assert (G (0) = 0);
+      pragma Assert (G (Max_Limbs) = 0);
+      pragma Assert (SVal_Wide (GA, GB, G));
+   end Lemma_Mul_SVal_Cong;
+
    procedure Lemma_Mul_Distrib (A, B, C, BC : Big_Nat) is
       L  : constant Big_Nat := A * BC;
       R1 : constant Big_Nat := A * B;
