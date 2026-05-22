@@ -720,6 +720,19 @@ is
                          B (I) = 0),
      Post => Val_Eq (Fold_Plus_P (B), B, Fold_Chain (B (5)));
 
+   --  Fold_Plus_P (B) = Fold_Out (B) + B (5) * P_Prime, written as a Big_Nat
+   --  identity (Fold_Plus_P's inline prime terms equal Smul (B (5), P_Prime)).
+   --  Lets a reduce round's "+ prime multiple" be expressed as Smul for
+   --  composition (the Two_Round / Normalize congruence).
+   procedure Lemma_Fold_Plus_P_Eq (B : Big_Nat)
+   with
+     Global => null,
+     Pre    => (for all I in Limb_Index range 0 .. 4 => B (I) in 0 .. In_Cap)
+               and then B (5) in 0 .. Fold_C_Cap
+               and then (for all I in Limb_Index range 6 .. Max_Limbs - 1 =>
+                           B (I) = 0),
+     Post   => Fold_Out (B) + Smul (B (5), P_Prime) = Fold_Plus_P (B);
+
    ------------------------------------------------------------------
    --  Final canonical reduce (HACL* subtract_p5).
    --
@@ -1310,6 +1323,44 @@ is
           Add_Carry
             (Add_Carry (C1, Neg_Carry (Fold_High_9_Chain (S))),
              Add_Carry (D1, Neg_Carry (Fold_Chain (T (5))))));
+
+   ------------------------------------------------------------------
+   --  Two-round reduce congruence (the math core of Normalize's mod-p
+   --  congruence). Two Sweep5 + Fold rounds on an accumulator-sized value B
+   --  (limbs <= Mul_Cap) leave Fold_Out (S2) value-equal (SVal_Eq, exact
+   --  integer) to B plus the two rounds' prime multiples -- i.e. B is
+   --  congruent to Fold_Out (S2) mod p. Same composition as Lemma_Mul_Reduce
+   --  (Reduce_Round2 x2 aligned with SVal_Add_Const, joined by SVal_Trans),
+   --  but with Sweep5 + Fold for BOTH rounds. The tight top carries
+   --  S1 (5), S2 (5) <= 2 (Lemma_Sweep5_Acc_Carry) keep the prime terms and
+   --  the combined carry chain small. Normalize's congruence is this plus the
+   --  final value-exact Sweep5 (R2 =val S3).
+   ------------------------------------------------------------------
+
+   procedure Lemma_Two_Round_Cong
+     (B, S1, R1, S2 : Big_Nat; CA, CB : Carry_Array)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then S1 = Sweep5_Out (B)
+       and then CA = Sweep5_Chain (B)
+       and then S1 (5) in 0 .. 2
+       and then R1 = Fold_Out (S1)
+       and then In_Bounds (R1, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0)
+       and then S2 = Sweep5_Out (R1)
+       and then CB = Sweep5_Chain (R1)
+       and then S2 (5) in 0 .. 2,
+     Post   =>
+       SVal_Eq
+         (B,
+          Fold_Plus_P (S2) + Smul (S1 (5), P_Prime),
+          Add_Carry
+            (Add_Carry (CA, Neg_Carry (Fold_Chain (S1 (5)))),
+             Add_Carry (CB, Neg_Carry (Fold_Chain (S2 (5))))));
 
    ------------------------------------------------------------------
    --  Carry correspondence (math half). The Poly1305 impl Carry routine

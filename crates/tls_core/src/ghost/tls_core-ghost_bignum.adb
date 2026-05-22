@@ -283,6 +283,20 @@ is
 
    procedure Lemma_Fold (B : Big_Nat) is null;
 
+   procedure Lemma_Fold_Plus_P_Eq (B : Big_Nat) is
+      M : constant Big_Nat := Smul (B (5), P_Prime);
+   begin
+      --  Smul (B (5), P_Prime) is exactly Fold_Plus_P's inline prime terms.
+      pragma Assert (M (0) = B (5) * (In_Cap - 4));
+      pragma Assert
+        (for all I in Limb_Index range 1 .. 4 => M (I) = B (5) * In_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => M (I) = 0);
+      pragma Assert
+        (for all I in Limb_Index =>
+           Fold_Out (B) (I) + M (I) = Fold_Plus_P (B) (I));
+   end Lemma_Fold_Plus_P_Eq;
+
    procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
 
    procedure Lemma_Reduced_No_Carry (X : Big_Nat) is
@@ -532,6 +546,42 @@ is
       Lemma_SVal_Trans
         (Conv, Fold_High_9_Plus_P (S), Fold_Plus_P (T) + M1, Ch1, Ch2);
    end Lemma_Mul_Reduce;
+
+   procedure Lemma_Two_Round_Cong
+     (B, S1, R1, S2 : Big_Nat; CA, CB : Carry_Array)
+   is
+      M_A : constant Big_Nat := Smul (S1 (5), P_Prime);
+      ChA : constant Carry_Array :=
+        Add_Carry (CA, Neg_Carry (Fold_Chain (S1 (5))));
+      ChB : constant Carry_Array :=
+        Add_Carry (CB, Neg_Carry (Fold_Chain (S2 (5))));
+   begin
+      Lemma_Sweep5_Chain_Tight (B);    --  CA entries <= Conv_Carry_Cap
+      Lemma_Sweep5_Chain_Tight (R1);   --  CB entries <= Conv_Carry_Cap
+      Lemma_Reduce_Round2 (B, S1, CA);   --  SVal_Eq (B,  Fold_Plus_P (S1), ChA)
+      Lemma_Reduce_Round2 (R1, S2, CB);  --  SVal_Eq (R1, Fold_Plus_P (S2), ChB)
+
+      --  Fold_Plus_P (S1) = Fold_Out (S1) + M_A = R1 + M_A, so adding M_A to
+      --  both sides of round B aligns its left side with round A's right side.
+      Lemma_Fold_Plus_P_Eq (S1);             --  Fold_Out (S1) + M_A = P+P (S1)
+      pragma Assert (R1 + M_A = Fold_Plus_P (S1));
+      Lemma_SVal_Add_Const (R1, Fold_Plus_P (S2), M_A, ChB);
+      --  SVal_Eq (Fold_Plus_P (S1), Fold_Plus_P (S2) + M_A, ChB)
+
+      --  Combined chain stays within Hi_Cap: CA, CB <= Conv_Carry_Cap; the
+      --  Fold_Chains <= S(5) <= 2.
+      pragma Assert
+        (for all J in Carry_Array'Range => CA (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => CB (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => Fold_Chain (S1 (5)) (J) in 0 .. 2);
+      pragma Assert
+        (for all J in Carry_Array'Range => Fold_Chain (S2 (5)) (J) in 0 .. 2);
+      pragma Assert (SC_Bounded (Add_Carry (ChA, ChB)));
+      Lemma_SVal_Trans (B, Fold_Plus_P (S1), Fold_Plus_P (S2) + M_A, ChA, ChB);
+      --  SVal_Eq (B, Fold_Plus_P (S2) + M_A, ChA + ChB) = Post
+   end Lemma_Two_Round_Cong;
 
    procedure Lemma_Carry_Fold (B : Big_Nat) is
       T  : constant Big_Nat     := Sweep5_Out (B);
