@@ -1065,4 +1065,43 @@ is
       pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
    end Lemma_Carry_Mod_P;
 
+   procedure Lemma_Carry_Model_Lt (B : Big_Nat) is
+      S  : constant Big_Nat := Sweep5_Out (B);
+      FO : constant Big_Nat := Fold_Out (S);
+      CM : constant Big_Nat := Carry_Model (B);
+   begin
+      --  S reduced (limbs 0..4 <= In_Cap), S (5) <= Fold_C_Cap (Pre).
+      pragma Assert
+        (for all I in Limb_Index range 0 .. 4 => S (I) in 0 .. In_Cap);
+      pragma Assert (S (5) <= Fold_C_Cap);
+
+      --  FO = Fold_Out (S): limb0 = S(0)+5*S(5) <= In_Cap + 5*Fold_C_Cap,
+      --  limbs 1..4 reduced.
+      pragma Assert (FO (0) <= In_Cap + 5 * Fold_C_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 1 .. 4 => FO (I) in 0 .. In_Cap);
+
+      --  CM = Step_Out (FO, 0): limb0 < 2**26, limb1 = FO(1)+Hi26(FO(0)), the
+      --  carry Hi26(FO(0)) < 2**12 so limb1 < 2**27; limbs 2..4 reduced.
+      pragma Assert (CM = Step_Out (FO, 0));
+      pragma Assert (CM (0) < Limb_Base);
+      pragma Assert (Hi26 (FO (0)) < 2**12);
+      pragma Assert (CM (1) = FO (1) + Hi26 (FO (0)));
+      pragma Assert (CM (1) < 2**27);
+      pragma Assert
+        (for all I in Limb_Index range 2 .. 4 => CM (I) in 0 .. In_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => CM (I) = 0);
+      pragma Assert (In_Bounds (CM, Prod_Cap));
+
+      --  Sweep5 of CM: c0 = 0 (CM(0) < 2**26); each later carry <= 1 because
+      --  the running limb stays < 2**27. So the carry out of limb 4 is <= 1.
+      pragma Assert (Sw_C0 (CM) = 0);
+      pragma Assert (Sw_C1 (CM) <= 1);
+      pragma Assert (Sw_C2 (CM) <= 1);
+      pragma Assert (Sw_C3 (CM) <= 1);
+      pragma Assert (Sw_C4 (CM) <= 1);
+      pragma Assert (Sweep5_Out (CM) (5) = Sw_C4 (CM));
+   end Lemma_Carry_Model_Lt;
+
 end Tls_Core.Ghost_Bignum;

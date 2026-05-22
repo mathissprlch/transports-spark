@@ -1651,4 +1651,18 @@ is
                          C (J) in -Cong_Cap .. Cong_Cap)
              and then SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C);
 
+   --  Carry_Model output value bound: one fold brings any Carry_Model-input
+   --  below 2**131, i.e. Sweep5_Out (Carry_Model (B)) (5) <= 1. This is the
+   --  magnitude invariant the Mac loop carries on its accumulator: every impl
+   --  op result is Carry_Model of something, so the accumulator stays < 2**131,
+   --  which keeps the next op's reduction carry small (<= 4 -> Mod_P uniqueness).
+   procedure Lemma_Carry_Model_Lt (B : Big_Nat)
+   with
+     Ghost,
+     Pre  => In_Bounds (B, Carry_In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then Sweep5_Out (B) (5) <= Fold_C_Cap,
+     Post => Sweep5_Out (Carry_Model (B)) (5) <= 1;
+
 end Tls_Core.Ghost_Bignum;
