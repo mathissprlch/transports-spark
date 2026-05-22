@@ -857,14 +857,14 @@ is
          Lemma_SVal_Add_Const (SX, X, SKx, NCX);       --  SVal_Eq (SXx, XKx, NCX)
          pragma Assert
            (for all J in Carry_Array'Range =>
-              Ch2 (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
+              Ch2 (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
          pragma Assert (SC_Bounded (Ch2));
          Lemma_SVal_Trans (SXx, XKx, YKy, NCX, C);     --  SVal_Eq (SXx, YKy, Ch2)
 
          Lemma_SVal_Add_Const (Y, SYc, SKy, CcY);      --  SVal_Eq (YKy, SYy, CcY)
          pragma Assert
            (for all J in Carry_Array'Range =>
-              Net (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
+              Net (J) in -(4 * Cong_Cap) .. 4 * Cong_Cap);
          pragma Assert (SC_Bounded (Net));
          Lemma_SVal_Trans (SXx, YKy, SYy, Ch2, CcY);   --  SVal_Eq (SXx, SYy, Net)
 
@@ -1304,5 +1304,75 @@ is
       Lemma_SVal_Trans (B, FOSK, CMSK, Ch1, SCFO);
       pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
    end Lemma_Carry_Mod_P_Wide;
+
+   procedure Lemma_Field_Add_Bridge (Ab, Nb, Xr : Big_Nat) is
+      Sum : constant Big_Nat := Ab + Nb;
+      K1  : LLI;
+      C1  : Carry_Array;
+      Kc  : LLI;
+      Cc  : Carry_Array;
+   begin
+      --  X side: Sum == Carry_Model (Sum) + K1*p == Xr + K1*p.
+      Lemma_Carry_Mod_P_Wide (Sum, K1, C1);
+      pragma Assert (Xr = Carry_Model (Sum));
+      pragma Assert (K1 in 0 .. Conv_Carry_Cap);
+
+      --  Y side: Ab == Canonical (Ab) + Kc*p.
+      Lemma_Canonical_Cong (Ab, Kc, Cc);
+
+      declare
+         CanAb : constant Big_Nat     := Canonical (Ab);
+         SK1   : constant Big_Nat     := Smul (K1, P_Prime);
+         SKc   : constant Big_Nat     := Smul (Kc, P_Prime);
+         Y     : constant Big_Nat     := CanAb + Nb;
+         RhsY  : constant Big_Nat     := CanAb + SKc;
+         XK1   : constant Big_Nat     := Xr + SK1;
+         YKc   : constant Big_Nat     := Y + SKc;
+         NC1   : constant Carry_Array := Neg_Carry (C1);
+         Cbr   : constant Carry_Array := Add_Carry (NC1, Cc);
+      begin
+         --  Shapes of X, Y for Canonical_Unique_Gen.
+         pragma Assert (In_Bounds (Y, Mul_Cap));
+         pragma Assert
+           (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0);
+
+         --  Smul-post links + in-bounds (small Kc, K1 <= Conv_Carry_Cap).
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SK1 (I) = K1 * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKc (I) = Kc * P_Prime (I));
+         pragma Assert (In_Bounds (SK1, Add_Cap));
+         pragma Assert (In_Bounds (SKc, Add_Cap));
+         pragma Assert (In_Bounds (RhsY, Add_Cap));
+         pragma Assert (In_Bounds (XK1, Add_Cap));
+         pragma Assert (In_Bounds (YKc, Add_Cap));
+
+         --  Y side congruence: add Nb to both sides of Canonical_Cong, then
+         --  realign (CanAb + SKc) + Nb == (CanAb + Nb) + SKc.
+         pragma Assert (SVal_Eq (Ab, RhsY, Cc));
+         Lemma_SVal_Add_Const (Ab, RhsY, Nb, Cc);   --  SVal_Eq (Sum, RhsY+Nb, Cc)
+         pragma Assert (RhsY + Nb = YKc);
+         pragma Assert (SVal_Eq (Sum, YKc, Cc));
+
+         --  X side: SVal_Eq (Sum, XK1, C1); flip then compose.
+         pragma Assert (SVal_Eq (Sum, XK1, C1));
+         Lemma_SVal_Sym (Sum, XK1, C1);             --  SVal_Eq (XK1, Sum, NC1)
+         pragma Assert
+           (for all J in Carry_Array'Range => NC1 (J) in -Cong_Cap .. Cong_Cap);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Cbr (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
+         pragma Assert (SC_Bounded (Cbr));
+         Lemma_SVal_Trans (XK1, Sum, YKc, NC1, Cc); --  SVal_Eq (XK1, YKc, Cbr)
+
+         --  Two-sided uniqueness: Canonical (Xr) = Canonical (Y).
+         pragma Assert (K1 in 0 .. Mult_Cap - 6);
+         pragma Assert (Kc in 0 .. Mult_Cap - 6);
+         Lemma_Canonical_Unique_Gen (Xr, Y, K1, Kc, Cbr);
+         pragma Assert (Canonical (Xr) = Canonical (Y));
+
+         --  Field_Add (CanAb, Nb) = Canonical (CanAb + Nb) = Canonical (Y).
+         pragma Assert (Field_Add (CanAb, Nb) = Canonical (Y));
+      end;
+   end Lemma_Field_Add_Bridge;
 
 end Tls_Core.Ghost_Bignum;

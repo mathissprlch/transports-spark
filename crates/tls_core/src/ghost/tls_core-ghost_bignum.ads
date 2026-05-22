@@ -1113,7 +1113,7 @@ is
                    Y (I) = 0)
        and then Kx in 0 .. Mult_Cap - 6 and then Ky in 0 .. Mult_Cap - 6
        and then (for all J in Carry_Array'Range =>
-                   C (J) in -Cong_Cap .. Cong_Cap)
+                   C (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap)
        and then In_Bounds (X + Smul (Kx, P_Prime), Add_Cap)
        and then In_Bounds (Y + Smul (Ky, P_Prime), Add_Cap)
        and then SVal_Eq
@@ -1143,7 +1143,10 @@ is
      Post => In_Bounds (Field_Add'Result, In_Cap)
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                          Field_Add'Result (I) = 0)
-             and then not Sub_Cond (Field_Add'Result);
+             and then not Sub_Cond (Field_Add'Result)
+             --  Definitional: lets the per-op bridge equate the field add to
+             --  the canonical reduce of the limbwise sum.
+             and then Field_Add'Result = Canonical (A + N);
 
    --  Field multiply: canonical residue of A * R mod p. The convolution A * R
    --  (nine columns) is swept (Sweep9), folded high->low x5 (Fold_High_9), and
@@ -1746,5 +1749,39 @@ is
              and then (for all J in Carry_Array'Range =>
                          C (J) in -Cong_Cap .. Cong_Cap)
              and then SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C);
+
+   ------------------------------------------------------------------
+   --  Per-op Feval bridges. These turn the impl Add / Multiply Posts (which
+   --  give To_Big_Nat (op result) = Carry_Model (...) definitionally) into
+   --  the field-op equalities the Poly1305 Mac loop invariant needs:
+   --  Feval_BN (op result) = Field_op (Feval_BN (inputs)). Both are pure
+   --  Big_Nat statements; the impl result Xr = Carry_Model (...) is passed
+   --  in (the caller discharges its well-formedness from the impl Post).
+   ------------------------------------------------------------------
+
+   --  Add bridge. Xr = Carry_Model (Ab + Nb) is the impl Add output (the
+   --  pre-carry sum Ab + Nb has limbs < 2**28, swept-carry K <= Conv_Carry_Cap
+   --  -- the caller supplies that bound). Then Canonical (Xr) equals the field
+   --  add of Canonical (Ab) and the (already reduced) Nb. Composition:
+   --  Carry_Mod_P_Wide gives Ab+Nb == Xr + K1*p; Canonical_Cong (Ab) + Nb gives
+   --  Ab+Nb == (Canonical (Ab)+Nb) + Kc*p; cancel the common sum and discharge
+   --  Canonical_Unique_Gen. The combined chain is <= 2*Cong_Cap (Gen's relaxed
+   --  input bound).
+   procedure Lemma_Field_Add_Bridge (Ab, Nb, Xr : Big_Nat)
+   with
+     Ghost,
+     Pre  => In_Bounds (Ab, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Ab (I) = 0)
+             and then In_Bounds (Nb, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Nb (I) = 0)
+             and then In_Bounds (Xr, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Xr (I) = 0)
+             and then In_Bounds (Ab + Nb, Round1_Out_Cap)
+             and then Sweep5_Out (Ab + Nb) (5) <= Conv_Carry_Cap
+             and then Xr = Carry_Model (Ab + Nb),
+     Post => Canonical (Xr) = Field_Add (Canonical (Ab), Nb);
 
 end Tls_Core.Ghost_Bignum;
