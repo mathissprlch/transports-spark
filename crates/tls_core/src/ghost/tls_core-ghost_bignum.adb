@@ -48,6 +48,19 @@ is
          = (A (T) - B (T)) * R (K - T));
    end Lemma_Diff_Col_Eq;
 
+   procedure Lemma_Diff3_Col_Eq
+     (W, Wc, P, R : Big_Nat; Kc : LLI; K, T : Limb_Index) is
+   begin
+      if T /= 0 then
+         Lemma_Diff3_Col_Eq (W, Wc, P, R, Kc, K, T - 1);
+      end if;
+      pragma Assert
+        (Mul_Limb (W (T)) * Mul_Limb (R (K - T))
+         - Mul_Limb (Wc (T)) * Mul_Limb (R (K - T))
+         - Kc * (Mul_Limb (P (T)) * Mul_Limb (R (K - T)))
+         = (W (T) - Wc (T) - Kc * P (T)) * R (K - T));
+   end Lemma_Diff3_Col_Eq;
+
    procedure Lemma_Diff_Chain_Step
      (A, B, R : Big_Nat; C : Carry_Array; K, T : Limb_Index) is
    begin
@@ -95,6 +108,54 @@ is
       --  Conv_Chain_Col (K+1,K+1) = C (0)*R(K+1) + Shift_Chain_Col (K,K)
       --                           = Shift_Chain_Col (K,K)   (C (0) = 0).
    end Lemma_Diff_Col_Chain;
+
+   procedure Lemma_Diff3_Chain_Step
+     (W, Wc, P, R : Big_Nat; Kc : LLI; Cc : Carry_Array; K, T : Limb_Index) is
+   begin
+      --  Staged: substitute the column relation, then distribute over R (K-T).
+      pragma Assert
+        (W (T) - Wc (T) - Kc * P (T) = Limb_Base * Cc (T + 1) - Cc (T));
+      pragma Assert
+        ((W (T) - Wc (T) - Kc * P (T)) * R (K - T)
+         = (Limb_Base * Cc (T + 1) - Cc (T)) * R (K - T));
+      pragma Assert
+        ((Limb_Base * Cc (T + 1) - Cc (T)) * R (K - T)
+         = Limb_Base * (Cc (T + 1) * R (K - T)) - Cc (T) * R (K - T));
+      if T = 0 then
+         pragma Assert
+           (Diff3_Col (W, Wc, P, R, Kc, K, 0)
+            = (W (0) - Wc (0) - Kc * P (0)) * R (K - 0));
+         pragma Assert (Shift_Chain_Col (Cc, R, K, 0) = Cc (1) * R (K - 0));
+         pragma Assert (Conv_Chain_Col (Cc, R, K, 0) = Cc (0) * R (K - 0));
+         pragma Assert
+           (Diff3_Col (W, Wc, P, R, Kc, K, T)
+            = Limb_Base * Shift_Chain_Col (Cc, R, K, T)
+              - Conv_Chain_Col (Cc, R, K, T));
+      else
+         Lemma_Diff3_Chain_Step (W, Wc, P, R, Kc, Cc, K, T - 1);
+         pragma Assert
+           (Diff3_Col (W, Wc, P, R, Kc, K, T)
+            = Diff3_Col (W, Wc, P, R, Kc, K, T - 1)
+              + (W (T) - Wc (T) - Kc * P (T)) * R (K - T));
+         pragma Assert
+           (Shift_Chain_Col (Cc, R, K, T)
+            = Shift_Chain_Col (Cc, R, K, T - 1) + Cc (T + 1) * R (K - T));
+         pragma Assert
+           (Conv_Chain_Col (Cc, R, K, T)
+            = Conv_Chain_Col (Cc, R, K, T - 1) + Cc (T) * R (K - T));
+         pragma Assert
+           (Diff3_Col (W, Wc, P, R, Kc, K, T)
+            = Limb_Base * Shift_Chain_Col (Cc, R, K, T)
+              - Conv_Chain_Col (Cc, R, K, T));
+      end if;
+   end Lemma_Diff3_Chain_Step;
+
+   procedure Lemma_Diff3_Col_Chain
+     (W, Wc, P, R : Big_Nat; Kc : LLI; Cc : Carry_Array; K : Limb_Index) is
+   begin
+      Lemma_Diff3_Chain_Step (W, Wc, P, R, Kc, Cc, K, K);
+      Lemma_Chain_Reindex (Cc, R, K, K);
+   end Lemma_Diff3_Col_Chain;
 
    procedure Lemma_SVal_To_Wide (A, B : Big_Nat; C : Carry_Array) is null;
 

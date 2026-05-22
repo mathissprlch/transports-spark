@@ -187,6 +187,43 @@ is
        Mul_Col (A, R, K, T) - Mul_Col (B, R, K, T) = Diff_Col (A, B, R, K, T),
      Subprogram_Variant => (Decreases => T);
 
+   --  Prime-split signed difference convolution: the per-column value
+   --  (W*R)(K) - (Wc*R)(K) - Kc*(P*R)(K). The bridge needs this because W is
+   --  congruent (not equal) to its canonical form: W == Wc + Kc*P (mod the
+   --  carry chain), and Wc + Kc*P overflows Mul_Cap so cannot be multiplied
+   --  directly. Kc is small (<= 5, the Canonical_Cong multiple).
+   function Diff3_Col
+     (W, Wc, P, R : Big_Nat; Kc : LLI; K, T : Limb_Index) return LLI
+   is (if T = 0
+       then (W (0) - Wc (0) - Kc * P (0)) * R (K)
+       else Diff3_Col (W, Wc, P, R, Kc, K, T - 1)
+            + (W (T) - Wc (T) - Kc * P (T)) * R (K - T))
+   with
+     Pre                =>
+       In_Bounds (W, Mul_Cap) and then In_Bounds (Wc, Mul_Cap)
+       and then In_Bounds (P, Mul_Cap) and then In_Bounds (R, Mul_Cap)
+       and then Kc in 0 .. 5 and then T <= K,
+     Post               =>
+       Diff3_Col'Result
+       in -(LLI (T + 1) * (7 * Two_Pow_54))
+          .. LLI (T + 1) * (7 * Two_Pow_54),
+     Subprogram_Variant => (Decreases => T);
+
+   --  Mul_Col (W,R) - Mul_Col (Wc,R) - Kc*Mul_Col (P,R) = Diff3_Col, by
+   --  induction on T (per-term integer algebra).
+   procedure Lemma_Diff3_Col_Eq
+     (W, Wc, P, R : Big_Nat; Kc : LLI; K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (W, Mul_Cap) and then In_Bounds (Wc, Mul_Cap)
+       and then In_Bounds (P, Mul_Cap) and then In_Bounds (R, Mul_Cap)
+       and then Kc in 0 .. 5 and then T <= K,
+     Post               =>
+       Mul_Col (W, R, K, T) - Mul_Col (Wc, R, K, T)
+       - Kc * Mul_Col (P, R, K, T)
+       = Diff3_Col (W, Wc, P, R, Kc, K, T),
+     Subprogram_Variant => (Decreases => T);
+
    --  Convolution support: if A is zero from index Na on and B from index Nb
    --  on, the product A * B is zero from index Na + Nb - 1 on. (The product
    --  of two operands with highest set limbs Na-1 and Nb-1 has highest set
@@ -574,6 +611,42 @@ is
        Diff_Col (A, B, R, K, K)
        = Limb_Base * Conv_Chain_Col (C, R, K + 1, K + 1)
          - Conv_Chain_Col (C, R, K, K);
+
+   --  Prime-split versions of the chain step / column identity: the relation is
+   --  W (I) - Wc (I) - Kc*P (I) = Limb_Base*Cc (I+1) - Cc (I) (i.e. W is
+   --  congruent to Wc + Kc*P), and the conclusion involves Diff3_Col.
+   procedure Lemma_Diff3_Chain_Step
+     (W, Wc, P, R : Big_Nat; Kc : LLI; Cc : Carry_Array; K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (W, Mul_Cap) and then In_Bounds (Wc, Mul_Cap)
+       and then In_Bounds (P, Mul_Cap) and then In_Bounds (R, Mul_Cap)
+       and then Kc in 0 .. 5 and then SC_Bounded (Cc) and then T <= K
+       and then (for all I in Limb_Index =>
+                   W (I) - Wc (I) - Kc * P (I)
+                   = Limb_Base * Cc (I + 1) - Cc (I)),
+     Post               =>
+       Diff3_Col (W, Wc, P, R, Kc, K, T)
+       = Limb_Base * Shift_Chain_Col (Cc, R, K, T)
+         - Conv_Chain_Col (Cc, R, K, T),
+     Subprogram_Variant => (Decreases => T);
+
+   procedure Lemma_Diff3_Col_Chain
+     (W, Wc, P, R : Big_Nat; Kc : LLI; Cc : Carry_Array; K : Limb_Index)
+   with
+     Pre  =>
+       In_Bounds (W, Mul_Cap) and then In_Bounds (Wc, Mul_Cap)
+       and then In_Bounds (P, Mul_Cap) and then In_Bounds (R, Mul_Cap)
+       and then Kc in 0 .. 5 and then SC_Bounded (Cc)
+       and then K < Max_Limbs - 1
+       and then Cc (0) = 0
+       and then (for all I in Limb_Index =>
+                   W (I) - Wc (I) - Kc * P (I)
+                   = Limb_Base * Cc (I + 1) - Cc (I)),
+     Post =>
+       Diff3_Col (W, Wc, P, R, Kc, K, K)
+       = Limb_Base * Conv_Chain_Col (Cc, R, K + 1, K + 1)
+         - Conv_Chain_Col (Cc, R, K, K);
 
    --  Conv_Chain_Col vanishes for columns >= 9 when C and R are both zero from
    --  limb 5 (each term C (J)*R (K-J) has J >= 5 or K-J >= 5). By induction T.
