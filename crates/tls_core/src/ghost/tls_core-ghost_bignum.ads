@@ -866,21 +866,37 @@ is
    --  fully reduced five-limb form (limbs <= In_Cap, value < 2**130) by two
    --  Sweep5 + Fold rounds. This is a ghost function WITH A BODY: the body
    --  runs the magnitude case-split (Acc_Carry / Ripple / Reduced_No_Carry /
-   --  Low_Only) so well-formedness rests on runtime lemmas, while the Post
-   --  exposes only the reduced result + its no-carry certificate -- which
-   --  makes Reduce_Canonical (Normalize (..)) well-formed at contract level.
+   --  Low_Only) and the mod-p congruence (Two_Round_Cong + the final exact
+   --  sweep), exposing in the Post both the reduced result and the congruence
+   --  witnesses -- so Reduce_Canonical (Normalize (..).Val) is well-formed at
+   --  contract level and downstream gets B = Val + PMult (a prime multiple).
    ------------------------------------------------------------------
 
-   function Normalize (B : Big_Nat) return Big_Nat
+   --  Reduced value plus its congruence witnesses: B is value-equal (SVal_Eq)
+   --  to Val + PMult via the signed chain Cn, with PMult a multiple of p, so B
+   --  is congruent to Val mod p (and Val is the < 2**130 reduced form).
+   type Norm_Result is record
+      Val   : Big_Nat;
+      PMult : Big_Nat;
+      Cn    : Carry_Array;
+   end record;
+
+   function Normalize (B : Big_Nat) return Norm_Result
    with
      Ghost,
      Pre  => In_Bounds (B, Mul_Cap)
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                          B (I) = 0),
-     Post => In_Bounds (Normalize'Result, In_Cap)
+     Post => In_Bounds (Normalize'Result.Val, In_Cap)
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         Normalize'Result (I) = 0)
-             and then Sweep5_Out (Normalize'Result) (5) = 0;
+                         Normalize'Result.Val (I) = 0)
+             and then Sweep5_Out (Normalize'Result.Val) (5) = 0
+             and then In_Bounds (Normalize'Result.PMult, Add_Cap)
+             and then SC_Bounded (Normalize'Result.Cn)
+             and then SVal_Eq
+                        (B,
+                         Normalize'Result.Val + Normalize'Result.PMult,
+                         Normalize'Result.Cn);
 
    ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).

@@ -371,7 +371,7 @@ is
         (Add_Carry (Sweep5_Chain (B), Neg_Carry (Zero_Carry)) = Sweep5_Chain (B));
    end Lemma_Reduce_Canonical;
 
-   function Normalize (B : Big_Nat) return Big_Nat is
+   function Normalize (B : Big_Nat) return Norm_Result is
       S1, R1, S2, R2, S3 : Big_Nat;
    begin
       Lemma_Bounds_Mono (B, Mul_Cap, Prod_Cap);
@@ -423,7 +423,66 @@ is
         (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S3 (I) = 0);
       pragma Assert (In_Bounds (S3, In_Cap));
       Lemma_Reduced_No_Carry (S3);         --  Sweep5_Out (S3) (5) = 0
-      return S3;
+
+      --  Congruence: B is value-equal (SVal_Eq) to S3 + PM (PM a prime
+      --  multiple), so B is congruent to S3 mod p.
+      declare
+         PM    : constant Big_Nat :=
+           Smul (S2 (5), P_Prime) + Smul (S1 (5), P_Prime);
+         Ch12  : constant Carry_Array :=
+           Add_Carry
+             (Add_Carry (Sweep5_Chain (B), Neg_Carry (Fold_Chain (S1 (5)))),
+              Add_Carry (Sweep5_Chain (R1), Neg_Carry (Fold_Chain (S2 (5)))));
+         Chain : constant Carry_Array :=
+           Add_Carry (Ch12, Sweep5_Chain (R2));
+      begin
+         Lemma_Two_Round_Cong
+           (B, S1, R1, S2, Sweep5_Chain (B), Sweep5_Chain (R1));
+         --  SVal_Eq (B, Fold_Plus_P (S2) + Smul (S1 (5), P_Prime), Ch12)
+
+         --  PM = Smul (S2 (5), P) + Smul (S1 (5), P): each Smul limb is
+         --  S (5) * P_Prime (i) <= 2 In_Cap, so PM <= 4 In_Cap (well within
+         --  Add_Cap; needed because "+" does not carry In_Bounds).
+         pragma Assert
+           (for all I in Limb_Index =>
+              Smul (S2 (5), P_Prime) (I) <= 2 * In_Cap);
+         pragma Assert
+           (for all I in Limb_Index =>
+              Smul (S1 (5), P_Prime) (I) <= 2 * In_Cap);
+         pragma Assert (for all I in Limb_Index => PM (I) <= 4 * In_Cap);
+         pragma Assert (In_Bounds (PM, Add_Cap));
+         Lemma_Bounds_Mono (B, Prod_Cap, Add_Cap);
+
+         --  Fold_Plus_P (S2) + Smul (S1 (5), P) = R2 + PM (Fold_Plus_P_Eq +
+         --  associativity), so the round result is B =val R2 + PM.
+         Lemma_Fold_Plus_P_Eq (S2);
+         Lemma_Add_Assoc (R2, Smul (S2 (5), P_Prime), Smul (S1 (5), P_Prime));
+         pragma Assert
+           (Fold_Plus_P (S2) + Smul (S1 (5), P_Prime) = R2 + PM);
+         pragma Assert (SVal_Eq (B, R2 + PM, Ch12));
+
+         --  Final sweep R2 =val S3; add PM to both sides and compose.
+         Lemma_Sweep5 (R2);
+         Lemma_Val_To_SVal (R2, S3, Sweep5_Chain (R2));
+         pragma Assert (for all I in Limb_Index => S3 (I) + PM (I) <= 5 * In_Cap);
+         pragma Assert (In_Bounds (S3 + PM, Add_Cap));
+         Lemma_SVal_Add_Const (R2, S3, PM, Sweep5_Chain (R2));
+         --  SVal_Eq (R2 + PM, S3 + PM, Sweep5_Chain (R2))
+
+         --  Combined chain within Hi_Cap: Ch12 small (CA, CB <=
+         --  Conv_Carry_Cap, Fold_Chains <= 2); Sweep5_Chain (R2) <=
+         --  Conv_Carry_Cap.
+         Lemma_Sweep5_Chain_Tight (B);
+         Lemma_Sweep5_Chain_Tight (R1);
+         Lemma_Sweep5_Chain_Tight (R2);
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Sweep5_Chain (R2) (J) in 0 .. Conv_Carry_Cap);
+         pragma Assert (SC_Bounded (Add_Carry (Ch12, Sweep5_Chain (R2))));
+         Lemma_SVal_Trans (B, R2 + PM, S3 + PM, Ch12, Sweep5_Chain (R2));
+         --  SVal_Eq (B, S3 + PM, Chain)
+         return (Val => S3, PMult => PM, Cn => Chain);
+      end;
    end Normalize;
 
    procedure Lemma_Rotate1 (R : Big_Nat) is
