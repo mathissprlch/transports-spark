@@ -814,6 +814,43 @@ is
       return Canonical (S);
    end Field_Add;
 
+   function Field_Mul (A, R : Big_Nat) return Big_Nat is
+      Conv : constant Big_Nat := A * R;
+      S    : constant Big_Nat := Sweep9_Out (Conv);
+      R1   : constant Big_Nat := Fold_High_9_Out (S);
+   begin
+      --  Conv = A*R: nine convolution columns (<= 5*Two_Pow_54 each), zero from
+      --  limb 9.  "*" Post gives Conv (K) = Mul_Col (..) <= (K+1)*Two_Pow_54;
+      --  Lemma_Mul5_Cols gives the zero-from-9.
+      Lemma_Mul5_Cols (A, R, Conv);
+      pragma Assert
+        (for all K in Limb_Index range 9 .. Max_Limbs - 1 => Conv (K) = 0);
+      pragma Assert
+        (for all K in Limb_Index =>
+           Conv (K) <= LLI (K + 1) * Two_Pow_54);
+      pragma Assert (In_Bounds (Conv, Prod_Cap));
+      pragma Assert (In_Bounds (Conv, Conv_Col_Cap));
+
+      --  Sweep9 then Fold_High_9: S (0..8) reduced, S (9) = top carry <=
+      --  Fold9_Top_Cap (Sweep9_Conv); R1 = Fold_High_9_Out (S) is
+      --  Round1_Out_Cap-bounded and zero from 5.
+      Lemma_Sweep9_Conv (Conv);
+      pragma Assert
+        (for all I in Limb_Index range 0 .. 8 => S (I) in 0 .. In_Cap);
+      pragma Assert (S (9) in 0 .. Fold9_Top_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 10 .. Max_Limbs - 1 => S (I) = 0);
+      pragma Assert (In_Bounds (R1, Round1_Out_Cap));
+      pragma Assert
+        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0);
+
+      --  Carry_Model (R1): establish its Pre (Carry_In_Cap, Sweep5 top carry),
+      --  then reduce to canonical.
+      Lemma_Bounds_Mono (R1, Round1_Out_Cap, Carry_In_Cap);
+      Lemma_Sweep5_Tight_Carry (R1);
+      return Canonical (Carry_Model (R1));
+   end Field_Mul;
+
    procedure Lemma_Rotate1 (R : Big_Nat) is
    begin
       Lemma_Fold (Shift1 (R));

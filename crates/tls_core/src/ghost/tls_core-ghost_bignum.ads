@@ -1106,6 +1106,24 @@ is
                          Field_Add'Result (I) = 0)
              and then not Sub_Cond (Field_Add'Result);
 
+   --  Field multiply: canonical residue of A * R mod p. The convolution A * R
+   --  (nine columns) is swept (Sweep9), folded high->low x5 (Fold_High_9), and
+   --  the resulting accumulator-sized value is reduced (Carry_Model + Canonical)
+   --  -- the same reduce the impl Multiply computes, so the impl matches it
+   --  through To_Big_Nat definitionally. Ghost function with a body.
+   function Field_Mul (A, R : Big_Nat) return Big_Nat
+   with
+     Ghost,
+     Pre  => In_Bounds (A, Mul_Cap) and then In_Bounds (R, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         A (I) = 0)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => In_Bounds (Field_Mul'Result, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Field_Mul'Result (I) = 0)
+             and then not Sub_Cond (Field_Mul'Result);
+
    ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).
    --
