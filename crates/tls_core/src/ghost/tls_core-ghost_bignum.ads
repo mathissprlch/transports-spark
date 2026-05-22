@@ -962,7 +962,7 @@ is
    --  multiple). Reduces to Lemma_Mod_P_Unique after cancelling the smaller
    --  multiple. Multiples are capped well below Hi_Cap so the intermediate
    --  Smul/Add stay inside Assoc_Cap.
-   Mult_Cap : constant LLI := 2**30;
+   Mult_Cap : constant LLI := 2**34;
 
    --  Tight bound on a reduce congruence chain: three sweep chains (each <=
    --  Conv_Carry_Cap = 2**32) plus tiny fold chains, so well under 2**34. Far
@@ -1111,7 +1111,7 @@ is
                    X (I) = 0)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                    Y (I) = 0)
-       and then Kx in 0 .. 16 and then Ky in 0 .. 16
+       and then Kx in 0 .. Mult_Cap - 6 and then Ky in 0 .. Mult_Cap - 6
        and then (for all J in Carry_Array'Range =>
                    C (J) in -Cong_Cap .. Cong_Cap)
        and then In_Bounds (X + Smul (Kx, P_Prime), Add_Cap)

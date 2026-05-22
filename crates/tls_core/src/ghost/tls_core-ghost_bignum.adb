@@ -841,14 +841,12 @@ is
          pragma Assert (for all I in Limb_Index => SKcY (I) = KcY * P_Prime (I));
          pragma Assert (for all I in Limb_Index => SKx (I) = Kx * P_Prime (I));
          pragma Assert (for all I in Limb_Index => SKy (I) = Ky * P_Prime (I));
-         pragma Assert (for all I in Limb_Index => SKcX (I) <= 5 * In_Cap);
-         pragma Assert (for all I in Limb_Index => SKcY (I) <= 5 * In_Cap);
-         pragma Assert (for all I in Limb_Index => SKx (I) <= 16 * In_Cap);
-         pragma Assert (for all I in Limb_Index => SKy (I) <= 16 * In_Cap);
+         pragma Assert (In_Bounds (SKcX, Add_Cap));
+         pragma Assert (In_Bounds (SKcY, Add_Cap));
+         pragma Assert (In_Bounds (SKx, Add_Cap));
+         pragma Assert (In_Bounds (SKy, Add_Cap));
          pragma Assert (In_Bounds (SX, Add_Cap));
          pragma Assert (In_Bounds (SYc, Add_Cap));
-         pragma Assert (for all I in Limb_Index => SXx (I) <= 22 * In_Cap);
-         pragma Assert (for all I in Limb_Index => SYy (I) <= 22 * In_Cap);
          pragma Assert (In_Bounds (SXx, Add_Cap));
          pragma Assert (In_Bounds (SYy, Add_Cap));
 
