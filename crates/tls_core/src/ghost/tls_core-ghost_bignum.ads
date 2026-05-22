@@ -435,6 +435,98 @@ is
              and then SC_Bounded (C) and then SVal_Eq (X, Y, C),
      Post => SVal_Eq (X + M, Y + M, C);
 
+   ------------------------------------------------------------------
+   --  Multiply-preserves-congruence chain algebra. Multiplying both sides of
+   --  an SVal_Eq congruence by a fixed reduced R preserves it, with the carry
+   --  chain itself convolved by R. These helpers build that convolved chain and
+   --  prove the column identity (no value projection -- pure column algebra).
+   ------------------------------------------------------------------
+
+   --  One signed product term bound: |C (J)| <= Hi_Cap, R limb <= Mul_Cap.
+   Chain_Conv_Term : constant LLI := Hi_Cap * Mul_Cap;
+
+   --  Convolution of a carry chain with R, column K, partial to term T:
+   --  sum_{j=0..T} C (J) * R (K - J). The carry chain multiplication by R
+   --  induces on an SVal_Eq congruence.
+   function Conv_Chain_Col (C : Carry_Array; R : Big_Nat; K, T : Limb_Index)
+     return LLI
+   is (if T = 0
+       then C (0) * R (K)
+       else Conv_Chain_Col (C, R, K, T - 1) + C (T) * R (K - T))
+   with
+     Pre                =>
+       SC_Bounded (C) and then In_Bounds (R, Mul_Cap) and then T <= K,
+     Post               =>
+       Conv_Chain_Col'Result
+       in -(LLI (T + 1) * Chain_Conv_Term) .. LLI (T + 1) * Chain_Conv_Term,
+     Subprogram_Variant => (Decreases => T);
+
+   --  Shifted convolution: sum_{i=0..T} C (I+1) * R (K - I).
+   function Shift_Chain_Col (C : Carry_Array; R : Big_Nat; K, T : Limb_Index)
+     return LLI
+   is (if T = 0
+       then C (1) * R (K)
+       else Shift_Chain_Col (C, R, K, T - 1) + C (T + 1) * R (K - T))
+   with
+     Pre                =>
+       SC_Bounded (C) and then In_Bounds (R, Mul_Cap) and then T <= K,
+     Post               =>
+       Shift_Chain_Col'Result
+       in -(LLI (T + 1) * Chain_Conv_Term) .. LLI (T + 1) * Chain_Conv_Term,
+     Subprogram_Variant => (Decreases => T);
+
+   --  Per-term invariant: the signed product-difference convolution equals
+   --  Limb_Base * (shifted chain) - (chain), under the SVal_Eq column relation.
+   --  Proven by induction on T (substitute A (I) - B (I) = Limb_Base * C (I+1)
+   --  - C (I) into each term).
+   procedure Lemma_Diff_Chain_Step
+     (A, B, R : Big_Nat; C : Carry_Array; K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then In_Bounds (R, Mul_Cap) and then SC_Bounded (C)
+       and then T <= K
+       and then C (0) = 0
+       and then (for all I in Limb_Index =>
+                   A (I) + C (I) = B (I) + Limb_Base * C (I + 1)),
+     Post               =>
+       Diff_Col (A, B, R, K, T)
+       = Limb_Base * Shift_Chain_Col (C, R, K, T)
+         - Conv_Chain_Col (C, R, K, T),
+     Subprogram_Variant => (Decreases => T);
+
+   --  Reindex (j = i + 1): the shifted chain at K is the convolution chain at
+   --  K+1, minus the j=0 term C (0) * R (K+1). Proven by induction on T.
+   procedure Lemma_Chain_Reindex
+     (C : Carry_Array; R : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                =>
+       SC_Bounded (C) and then In_Bounds (R, Mul_Cap)
+       and then K < Max_Limbs - 1 and then T <= K,
+     Post               =>
+       Conv_Chain_Col (C, R, K + 1, T + 1)
+       = C (0) * R (K + 1) + Shift_Chain_Col (C, R, K, T),
+     Subprogram_Variant => (Decreases => T);
+
+   --  Combined column identity: the product difference at column K equals
+   --  Limb_Base * G (K+1) - G (K) where G (K) = Conv_Chain_Col (C, R, K, K) is
+   --  the convolved carry chain. This is the SVal_Eq column relation for the
+   --  two products A*R and B*R -- the heart of multiply-respects-congruence.
+   procedure Lemma_Diff_Col_Chain
+     (A, B, R : Big_Nat; C : Carry_Array; K : Limb_Index)
+   with
+     Pre  =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then In_Bounds (R, Mul_Cap) and then SC_Bounded (C)
+       and then K < Max_Limbs - 1
+       and then C (0) = 0
+       and then (for all I in Limb_Index =>
+                   A (I) + C (I) = B (I) + Limb_Base * C (I + 1)),
+     Post =>
+       Diff_Col (A, B, R, K, K)
+       = Limb_Base * Conv_Chain_Col (C, R, K + 1, K + 1)
+         - Conv_Chain_Col (C, R, K, K);
+
    --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
    --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)
    function Step_Out (A : Big_Nat; I : Limb_Index) return Big_Nat

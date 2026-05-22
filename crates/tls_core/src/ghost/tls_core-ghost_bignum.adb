@@ -48,6 +48,54 @@ is
          = (A (T) - B (T)) * R (K - T));
    end Lemma_Diff_Col_Eq;
 
+   procedure Lemma_Diff_Chain_Step
+     (A, B, R : Big_Nat; C : Carry_Array; K, T : Limb_Index) is
+   begin
+      --  Term T: the SVal column relation at I = T gives
+      --  A (T) - B (T) = Limb_Base * C (T+1) - C (T); multiplying by R (K-T)
+      --  matches the T-th terms of Limb_Base*Shift_Chain_Col - Conv_Chain_Col.
+      pragma Assert (A (T) - B (T) = Limb_Base * C (T + 1) - C (T));
+      pragma Assert
+        ((A (T) - B (T)) * R (K - T)
+         = Limb_Base * (C (T + 1) * R (K - T)) - C (T) * R (K - T));
+      if T /= 0 then
+         Lemma_Diff_Chain_Step (A, B, R, C, K, T - 1);
+         --  Make the three expression-function recurrences explicit so the
+         --  inductive hypothesis composes with the term-T identity.
+         pragma Assert
+           (Diff_Col (A, B, R, K, T)
+            = Diff_Col (A, B, R, K, T - 1) + (A (T) - B (T)) * R (K - T));
+         pragma Assert
+           (Shift_Chain_Col (C, R, K, T)
+            = Shift_Chain_Col (C, R, K, T - 1) + C (T + 1) * R (K - T));
+         pragma Assert
+           (Conv_Chain_Col (C, R, K, T)
+            = Conv_Chain_Col (C, R, K, T - 1) + C (T) * R (K - T));
+      end if;
+   end Lemma_Diff_Chain_Step;
+
+   procedure Lemma_Chain_Reindex
+     (C : Carry_Array; R : Big_Nat; K, T : Limb_Index) is
+   begin
+      if T /= 0 then
+         Lemma_Chain_Reindex (C, R, K, T - 1);
+      end if;
+      --  Conv_Chain_Col (.., K+1, T+1) unfolds to add C (T+1) * R (K-T), the
+      --  same T-th term Shift_Chain_Col (.., K, T) adds; the inductive
+      --  hypothesis handles the rest. (K + 1 - (T + 1) = K - T.)
+      null;
+   end Lemma_Chain_Reindex;
+
+   procedure Lemma_Diff_Col_Chain
+     (A, B, R : Big_Nat; C : Carry_Array; K : Limb_Index) is
+   begin
+      Lemma_Diff_Chain_Step (A, B, R, C, K, K);
+      --  Diff_Col (K,K) = Limb_Base * Shift_Chain_Col (K,K) - Conv_Chain_Col (K,K).
+      Lemma_Chain_Reindex (C, R, K, K);
+      --  Conv_Chain_Col (K+1,K+1) = C (0)*R(K+1) + Shift_Chain_Col (K,K)
+      --                           = Shift_Chain_Col (K,K)   (C (0) = 0).
+   end Lemma_Diff_Col_Chain;
+
    procedure Lemma_Mul_Distrib (A, B, C, BC : Big_Nat) is
       L  : constant Big_Nat := A * BC;
       R1 : constant Big_Nat := A * B;
