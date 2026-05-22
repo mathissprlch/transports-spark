@@ -1490,6 +1490,20 @@ is
                          Field_Mul'Result (I) = 0)
              and then not Sub_Cond (Field_Mul'Result);
 
+   --  Zero is its own canonical form.
+   procedure Lemma_Canonical_Zero
+   with
+     Ghost,
+     Post => Canonical (Zero) = Zero;
+
+   --  The prime canonicalizes to zero (val (P_Prime) = p, residue 0). Base case
+   --  (rot_0) toward P_Prime * R ≡ 0 mod p: P_Prime ≡ Zero mod p with multiple
+   --  1, discharged by Canonical_Unique_Gen.
+   procedure Lemma_Canonical_P_Prime
+   with
+     Ghost,
+     Post => Canonical (P_Prime) = Zero;
+
    ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).
    --

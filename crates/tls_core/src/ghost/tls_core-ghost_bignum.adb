@@ -1132,6 +1132,34 @@ is
       end;
    end Lemma_Canonical_Unique_Gen;
 
+   procedure Lemma_Canonical_Zero is
+      Kc : LLI;
+      Cc : Carry_Array;
+   begin
+      Lemma_Canonical_Cong (Zero, Kc, Cc);
+      --  SVal_Eq (Zero, Canonical (Zero) + Smul (Kc, P), Cc); both reduced and
+      --  not Sub_Cond, so mod-p uniqueness forces Zero = Canonical (Zero).
+      Lemma_Mod_P_Unique (Zero, Canonical (Zero), Kc, Cc);
+   end Lemma_Canonical_Zero;
+
+   procedure Lemma_Canonical_P_Prime is
+      S0 : constant Big_Nat := Smul (0, P_Prime);
+      S1 : constant Big_Nat := Smul (1, P_Prime);
+      L  : constant Big_Nat := P_Prime + S0;
+      Rr : constant Big_Nat := Zero + S1;
+   begin
+      Lemma_Canonical_Zero;   --  Canonical (Zero) = Zero
+      pragma Assert (for all I in Limb_Index => S0 (I) = 0);
+      pragma Assert (for all I in Limb_Index => S1 (I) = P_Prime (I));
+      pragma Assert (L = P_Prime);
+      pragma Assert (Rr = P_Prime);
+      Lemma_Val_Eq_Refl (P_Prime);
+      Lemma_Val_To_SVal (P_Prime, P_Prime, Zero_Carry);
+      pragma Assert (SVal_Eq (L, Rr, Zero_Carry));
+      --  P_Prime == Zero + 1*p, so Canonical (P_Prime) = Canonical (Zero) = Zero.
+      Lemma_Canonical_Unique_Gen (P_Prime, Zero, 0, 1, Zero_Carry);
+   end Lemma_Canonical_P_Prime;
+
    function Field_Add (A, N : Big_Nat) return Big_Nat is
       S : constant Big_Nat := A + N;
    begin
