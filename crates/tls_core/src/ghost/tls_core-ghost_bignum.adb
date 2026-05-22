@@ -285,6 +285,20 @@ is
 
    procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
 
+   procedure Lemma_Reduced_No_Carry (X : Big_Nat) is
+   begin
+      Lemma_Bounds_Mono (X, In_Cap, Prod_Cap);
+      --  Each limb <= In_Cap < 2**26, every carry-in is 0, so every Hi26 is 0
+      --  and Lo26 is the identity: the sweep reproduces X with no carry out.
+      pragma Assert (Sw_C0 (X) = 0);
+      pragma Assert (Sw_C1 (X) = 0);
+      pragma Assert (Sw_C2 (X) = 0);
+      pragma Assert (Sw_C3 (X) = 0);
+      pragma Assert (Sw_C4 (X) = 0);
+      pragma Assert
+        (for all I in Limb_Index => Sweep5_Out (X) (I) = X (I));
+   end Lemma_Reduced_No_Carry;
+
    procedure Lemma_Reduce_Canonical (B : Big_Nat) is
       S   : constant Big_Nat := Sweep5_Out (B);
       Sum : constant Big_Nat := Subtract_P5_Out (S) + Sub_Sel_P (S);

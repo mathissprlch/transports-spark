@@ -760,6 +760,28 @@ is
      Post => Val_Eq (Subtract_P5_Out (B) + Sub_Sel_P (B), B, Zero_Carry);
 
    ------------------------------------------------------------------
+   --  Magnitude layer. The Val_Eq / SVal_Eq relations track congruence
+   --  (equality mod p), not ordering. The canonical reduce and the Mac
+   --  freeze additionally need a magnitude fact -- the result is < 2**130 --
+   --  to terminate at the unique representative < p. We express that fact
+   --  WITHOUT an integer projection (which would reintroduce the §0e
+   --  Big_Integer wall): "value < 2**130" is exactly "the clean Sweep5 has
+   --  no carry out of limb 4", a limb-level statement. The certificate is
+   --  structural: a reduced value (limbs <= In_Cap) is already swept, so
+   --  every Hi26 is 0 and the carry out is 0.
+   ------------------------------------------------------------------
+
+   --  A reduced value (limbs <= In_Cap, zero from 5) is its own swept form
+   --  and has no carry out of limb 4: each Hi26 (<= In_Cap) = 0, so the sweep
+   --  moves nothing. This is the limb-level "value < 2**130" certificate.
+   procedure Lemma_Reduced_No_Carry (X : Big_Nat)
+   with
+     Pre  => In_Bounds (X, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         X (I) = 0),
+     Post => Sweep5_Out (X) (5) = 0 and then Sweep5_Out (X) = X;
+
+   ------------------------------------------------------------------
    --  Canonical reduce (the freeze, at the Big_Nat level). For a value
    --  already in [0, 2**130) -- i.e. one whose clean Sweep5 has no carry out
    --  of limb 4 -- one Sweep5 settles every limb below In_Cap and one
