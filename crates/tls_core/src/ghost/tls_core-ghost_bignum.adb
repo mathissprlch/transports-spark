@@ -482,6 +482,74 @@ is
       end if;
    end Lemma_Mod_P_Unique;
 
+   procedure Lemma_Smul_Add (K1, K2 : LLI; A : Big_Nat) is
+      S1  : constant Big_Nat := Smul (K1, A);
+      S2  : constant Big_Nat := Smul (K2, A);
+      S12 : constant Big_Nat := Smul (K1 + K2, A);
+      Sum : constant Big_Nat := S1 + S2;
+   begin
+      pragma Assert (for all I in Limb_Index => Sum (I) = S12 (I));
+   end Lemma_Smul_Add;
+
+   procedure Lemma_SVal_Cancel_Const (X, Y, M : Big_Nat; C : Carry_Array) is
+   begin
+      pragma Assert (C (0) = 0);
+      pragma Assert (C (Max_Limbs) = 0);
+      pragma Assert
+        (for all I in Limb_Index =>
+           X (I) + C (I) = Y (I) + Limb_Base * C (I + 1));
+   end Lemma_SVal_Cancel_Const;
+
+   procedure Lemma_Mod_P_Unique_Gen
+     (A, B : Big_Nat; Ka, Kb : LLI; C : Carry_Array)
+   is
+   begin
+      if Kb >= Ka then
+         --  B + Kb*p = (B + (Kb-Ka)*p) + Ka*p; cancel the common Ka*p.
+         Lemma_Smul_Add (Kb - Ka, Ka, P_Prime);
+         Lemma_Bounds_Mono (B, In_Cap, Assoc_Cap);
+         pragma Assert
+           (In_Bounds (Smul (Kb - Ka, P_Prime), Assoc_Cap));
+         pragma Assert (In_Bounds (Smul (Ka, P_Prime), Assoc_Cap));
+         Lemma_Add_Assoc (B, Smul (Kb - Ka, P_Prime), Smul (Ka, P_Prime));
+         pragma Assert
+           (B + Smul (Kb, P_Prime)
+            = (B + Smul (Kb - Ka, P_Prime)) + Smul (Ka, P_Prime));
+         pragma Assert (In_Bounds (B + Smul (Kb - Ka, P_Prime), Add_Cap));
+         pragma Assert
+           (SVal_Eq
+              (A + Smul (Ka, P_Prime),
+               (B + Smul (Kb - Ka, P_Prime)) + Smul (Ka, P_Prime),
+               C));
+         Lemma_SVal_Cancel_Const
+           (A, B + Smul (Kb - Ka, P_Prime), Smul (Ka, P_Prime), C);
+         Lemma_Mod_P_Unique (A, B, Kb - Ka, C);
+      else
+         --  A + Ka*p = (A + (Ka-Kb)*p) + Kb*p; flip sides and cancel Kb*p.
+         Lemma_SVal_Sym
+           (A + Smul (Ka, P_Prime), B + Smul (Kb, P_Prime), C);
+         Lemma_Smul_Add (Ka - Kb, Kb, P_Prime);
+         Lemma_Bounds_Mono (A, In_Cap, Assoc_Cap);
+         pragma Assert
+           (In_Bounds (Smul (Ka - Kb, P_Prime), Assoc_Cap));
+         pragma Assert (In_Bounds (Smul (Kb, P_Prime), Assoc_Cap));
+         Lemma_Add_Assoc (A, Smul (Ka - Kb, P_Prime), Smul (Kb, P_Prime));
+         pragma Assert
+           (A + Smul (Ka, P_Prime)
+            = (A + Smul (Ka - Kb, P_Prime)) + Smul (Kb, P_Prime));
+         pragma Assert (In_Bounds (A + Smul (Ka - Kb, P_Prime), Add_Cap));
+         pragma Assert
+           (SVal_Eq
+              (B + Smul (Kb, P_Prime),
+               (A + Smul (Ka - Kb, P_Prime)) + Smul (Kb, P_Prime),
+               Neg_Carry (C)));
+         Lemma_SVal_Cancel_Const
+           (B, A + Smul (Ka - Kb, P_Prime), Smul (Kb, P_Prime),
+            Neg_Carry (C));
+         Lemma_Mod_P_Unique (B, A, Ka - Kb, Neg_Carry (C));
+      end if;
+   end Lemma_Mod_P_Unique_Gen;
+
    function Normalize (B : Big_Nat) return Norm_Result is
       S1, R1, S2, R2, S3 : Big_Nat;
    begin

@@ -921,6 +921,50 @@ is
        and then SVal_Eq (A, B + Smul (K, P_Prime), C),
      Post => A = B;
 
+   --  Scalar multiply is additive in the scalar: K1*A + K2*A = (K1+K2)*A,
+   --  limbwise. Lets composed congruences fold their separate prime-multiple
+   --  terms (Smul (K1, p) + Smul (K2, p)) into one Smul (K1+K2, p).
+   procedure Lemma_Smul_Add (K1, K2 : LLI; A : Big_Nat)
+   with
+     Pre  => K1 in 0 .. Hi_Cap and then K2 in 0 .. Hi_Cap
+             and then K1 + K2 <= Hi_Cap and then In_Bounds (A, In_Cap),
+     Post => Smul (K1, A) + Smul (K2, A) = Smul (K1 + K2, A);
+
+   --  Cancellation: SVal_Eq is preserved when the same M is removed from both
+   --  sides (the inverse of Lemma_SVal_Add_Const; M cancels columnwise so the
+   --  carry chain is unchanged).
+   procedure Lemma_SVal_Cancel_Const (X, Y, M : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (X, Add_Cap) and then In_Bounds (Y, Add_Cap)
+             and then In_Bounds (M, Add_Cap)
+             and then In_Bounds (X + M, Add_Cap)
+             and then In_Bounds (Y + M, Add_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (X + M, Y + M, C),
+     Post => SVal_Eq (X, Y, C);
+
+   --  Two-sided mod-p uniqueness: A + Ka*p == B + Kb*p with both A, B canonical
+   --  (reduced, zero from 5, < p) forces A = B. This is the form composed
+   --  congruences produce (each side carries its own accumulated prime
+   --  multiple). Reduces to Lemma_Mod_P_Unique after cancelling the smaller
+   --  multiple. Multiples are capped well below Hi_Cap so the intermediate
+   --  Smul/Add stay inside Assoc_Cap.
+   Mult_Cap : constant LLI := 2**30;
+
+   procedure Lemma_Mod_P_Unique_Gen
+     (A, B : Big_Nat; Ka, Kb : LLI; C : Carry_Array)
+   with
+     Pre  =>
+       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   B (I) = 0)
+       and then not Sub_Cond (A) and then not Sub_Cond (B)
+       and then Ka in 0 .. Mult_Cap and then Kb in 0 .. Mult_Cap
+       and then SC_Bounded (C)
+       and then SVal_Eq (A + Smul (Ka, P_Prime), B + Smul (Kb, P_Prime), C),
+     Post => A = B;
+
    ------------------------------------------------------------------
    --  Wide reduce ("normalize"). Brings an accumulator-sized value (limbs
    --  <= Mul_Cap -- the shape of every impl op output, value < 2**131) to a
