@@ -208,6 +208,52 @@ is
       pragma Assert (SVal_Wide (GA, GB, G));
    end Lemma_Mul_SVal_Cong;
 
+   procedure Lemma_Mul_Cong_Prime
+     (W, Wc, P, R, GWc, GPr, B : Big_Nat; Kc : LLI; Cc : Carry_Array) is
+      GW : constant Big_Nat     := W * R;
+      G  : constant Carry_Array := Carry_Conv (Cc, R);
+   begin
+      Lemma_Mul5_Cols (W, R, GW);     --  GW zero from limb 9
+      Lemma_Mul5_Cols (Wc, R, GWc);   --  GWc zero from limb 9
+      Lemma_Mul5_Cols (P, R, GPr);    --  GPr zero from limb 9
+      for I in Limb_Index loop
+         if I < 9 then
+            Lemma_Diff3_Col_Eq (W, Wc, P, R, Kc, I, I);
+            Lemma_Diff3_Col_Chain (W, Wc, P, R, Kc, Cc, I);
+            pragma Assert (GW (I) = Mul_Col (W, R, I, I));
+            pragma Assert (GWc (I) = Mul_Col (Wc, R, I, I));
+            pragma Assert (GPr (I) = Mul_Col (P, R, I, I));
+            pragma Assert (G (I) = Conv_Chain_Col (Cc, R, I, I));
+            pragma Assert (G (I + 1) = Conv_Chain_Col (Cc, R, I + 1, I + 1));
+            pragma Assert
+              (GW (I) - GWc (I) - Kc * GPr (I)
+               = Limb_Base * G (I + 1) - G (I));
+            pragma Assert
+              (GW (I) + G (I) = B (I) + Limb_Base * G (I + 1));
+         else
+            Lemma_Conv_Chain_Zero (Cc, R, I, I);
+            pragma Assert (GW (I) = 0);
+            pragma Assert (GWc (I) = 0 and then GPr (I) = 0);
+            pragma Assert (B (I) = 0);
+            pragma Assert (G (I) = 0);
+            if I < Max_Limbs - 1 then
+               Lemma_Conv_Chain_Zero (Cc, R, I + 1, I + 1);
+               pragma Assert (G (I + 1) = 0);
+            else
+               pragma Assert (G (I + 1) = 0);
+            end if;
+            pragma Assert
+              (GW (I) + G (I) = B (I) + Limb_Base * G (I + 1));
+         end if;
+         pragma Loop_Invariant
+           (for all J in 0 .. I =>
+              GW (J) + G (J) = B (J) + Limb_Base * G (J + 1));
+      end loop;
+      pragma Assert (G (0) = 0);
+      pragma Assert (G (Max_Limbs) = 0);
+      pragma Assert (SVal_Wide (GW, B, G));
+   end Lemma_Mul_Cong_Prime;
+
    procedure Lemma_Mul_Distrib (A, B, C, BC : Big_Nat) is
       L  : constant Big_Nat := A * BC;
       R1 : constant Big_Nat := A * B;

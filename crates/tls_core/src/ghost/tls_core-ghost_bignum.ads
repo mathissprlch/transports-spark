@@ -685,6 +685,34 @@ is
        and then SC_Bounded (C) and then SVal_Eq (A, B, C),
      Post => SVal_Wide (A * R, B * R, Carry_Conv (C, R));
 
+   --  Prime-split multiply-preserves-congruence. W is congruent (not equal) to
+   --  its canonical Wc: W (I) - Wc (I) - Kc*P (I) = Limb_Base*Cc (I+1) - Cc (I).
+   --  Multiplying by reduced R gives an SVal_Wide congruence whose right side
+   --  carries the prime product Kc*(P*R). The products GWc = Wc*R, GPr = P*R and
+   --  the combined operand B (limbs GWc (I) + Kc*GPr (I)) are passed in -- the
+   --  caller bounds B (Lemma_Mul5_Cols gives the tight 5-limb column bound, so
+   --  the prime term Kc*GPr cannot be formed inline without overflowing Add_Cap).
+   procedure Lemma_Mul_Cong_Prime
+     (W, Wc, P, R, GWc, GPr, B : Big_Nat; Kc : LLI; Cc : Carry_Array)
+   with
+     Pre  =>
+       In_Bounds (W, Mul_Cap) and then In_Bounds (Wc, In_Cap)
+       and then In_Bounds (P, In_Cap) and then In_Bounds (R, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => W (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Wc (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => P (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R (I) = 0)
+       and then Kc in 0 .. 5 and then SC_Bounded (Cc)
+       and then Cc (0) = 0
+       and then (for all J in 5 .. Max_Limbs => Cc (J) = 0)
+       and then (for all I in Limb_Index =>
+                   W (I) - Wc (I) - Kc * P (I)
+                   = Limb_Base * Cc (I + 1) - Cc (I))
+       and then GWc = Wc * R and then GPr = P * R
+       and then (for all I in Limb_Index => B (I) = GWc (I) + Kc * GPr (I))
+       and then In_Bounds (B, Add_Cap),
+     Post => SVal_Wide (W * R, B, Carry_Conv (Cc, R));
+
    --  One base-2**26 carry step at position I: limb I keeps its low 26 bits;
    --  its high part moves into limb I+1. (HACL* carry26 inside the sweep.)
    function Step_Out (A : Big_Nat; I : Limb_Index) return Big_Nat
