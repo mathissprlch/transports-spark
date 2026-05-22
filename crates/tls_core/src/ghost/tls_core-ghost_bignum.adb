@@ -299,6 +299,33 @@ is
         (for all I in Limb_Index => Sweep5_Out (X) (I) = X (I));
    end Lemma_Reduced_No_Carry;
 
+   procedure Lemma_Sweep5_Ripple (X : Big_Nat) is
+   begin
+      pragma Assert (In_Bounds (X, Mul_Cap));
+      Lemma_Bounds_Mono (X, Mul_Cap, Prod_Cap);
+      --  X(0) < 2**27 and each carry-in <= 1, so every Sw_Ci is 0 or 1.
+      pragma Assert (Sw_C0 (X) <= 1);
+      pragma Assert (Sw_C1 (X) <= 1);
+      pragma Assert (Sw_C2 (X) <= 1);
+      pragma Assert (Sw_C3 (X) <= 1);
+      pragma Assert (Sw_C4 (X) <= 1);
+      --  A surviving carry forces the limb to In_Cap and the prior carry to 1
+      --  (X(i) + Sw_C{i-1} = 2**26 is the only way Hi26 = 1 when both are
+      --  bounded), so the swept limb is Lo26 (In_Cap + 1) = Lo26 (2**26) = 0.
+      pragma Assert
+        (if Sw_C1 (X) = 1 then X (1) = In_Cap and then Sw_C0 (X) = 1);
+      pragma Assert
+        (if Sw_C2 (X) = 1 then X (2) = In_Cap and then Sw_C1 (X) = 1);
+      pragma Assert
+        (if Sw_C3 (X) = 1 then X (3) = In_Cap and then Sw_C2 (X) = 1);
+      pragma Assert
+        (if Sw_C4 (X) = 1 then X (4) = In_Cap and then Sw_C3 (X) = 1);
+      pragma Assert
+        (if Sw_C4 (X) = 1
+         then Sweep5_Out (X) (4) = 0 and then Sweep5_Out (X) (3) = 0
+              and then Sweep5_Out (X) (2) = 0 and then Sweep5_Out (X) (1) = 0);
+   end Lemma_Sweep5_Ripple;
+
    procedure Lemma_Reduce_Canonical (B : Big_Nat) is
       S   : constant Big_Nat := Sweep5_Out (B);
       Sum : constant Big_Nat := Subtract_P5_Out (S) + Sub_Sel_P (S);

@@ -781,6 +781,23 @@ is
                          X (I) = 0),
      Post => Sweep5_Out (X) (5) = 0 and then Sweep5_Out (X) = X;
 
+   --  Sweep5 ripple. If the sweep of X carries all the way out of limb 4
+   --  (Sweep5_Out (X) (5) >= 1, i.e. value >= 2**130), then for an input whose
+   --  limbs 1..4 are each <= In_Cap the swept limbs 1..4 all collapse to 0: a
+   --  surviving carry Sw_Ci = 1 forces X(i) = In_Cap and Sw_C{i-1} = 1, so the
+   --  swept limb is Lo26 (In_Cap + 1) = 0. The wide canonical reduce uses this
+   --  to show the value after the second fold round is < 2**130.
+   procedure Lemma_Sweep5_Ripple (X : Big_Nat)
+   with
+     Pre  => X (0) in 0 .. 2**27 - 1
+             and then (for all I in Limb_Index range 1 .. 4 =>
+                         X (I) in 0 .. In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         X (I) = 0),
+     Post => (if Sweep5_Out (X) (5) >= 1
+              then (for all I in Limb_Index range 1 .. 4 =>
+                      Sweep5_Out (X) (I) = 0));
+
    ------------------------------------------------------------------
    --  Canonical reduce (the freeze, at the Big_Nat level). For a value
    --  already in [0, 2**130) -- i.e. one whose clean Sweep5 has no carry out
