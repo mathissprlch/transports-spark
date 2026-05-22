@@ -352,6 +352,30 @@ is
             Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
             To_Big_Nat (L) (I) = 0);
 
+   --  Feval_BN: the field element (canonical residue mod p) of an impl limb
+   --  vector, over Ghost_Bignum -- the Big_Nat replacement for Feval5. For an
+   --  impl op output (limbs < 2**27, the shape of every Add / Multiply / Carry
+   --  result) it is the unique < p representative of To_Big_Nat (L)'s residue:
+   --  Normalize to the < 2**130 reduced form, then conditionally subtract p.
+   function Feval_BN (L : Limbs) return Ghost_Bignum.Big_Nat
+   is (Ghost_Bignum.Reduce_Canonical
+         (Ghost_Bignum.Normalize (To_Big_Nat (L)).Val))
+   with
+     Ghost,
+     Pre => (for all I in Limb_Index => L (I) < 2**27);
+
+   --  Feval_BN is canonical: limbs <= In_Cap, zero from 5, and < p.
+   procedure Lemma_Feval_BN_Lt_P (L : Limbs)
+   with
+     Ghost,
+     Pre  => (for all I in Limb_Index => L (I) < 2**27),
+     Post => Ghost_Bignum.In_Bounds (Feval_BN (L), Ghost_Bignum.In_Cap)
+             and then
+               (for all I in
+                  Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1
+                => Feval_BN (L) (I) = 0)
+             and then not Ghost_Bignum.Sub_Cond (Feval_BN (L));
+
    --  Limbwise sum of two reduced limb vectors (the impl's pre-carry Add).
    function Sum_Limbs (A, B : Limbs) return Limbs
    is ([for I in Limb_Index => A (I) + B (I)])

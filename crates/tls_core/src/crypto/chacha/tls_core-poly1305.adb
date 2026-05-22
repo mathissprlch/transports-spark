@@ -145,6 +145,14 @@ is
 
    procedure Lemma_To_Big_Nat_Mul_Cap (L : Limbs) is null;
 
+   procedure Lemma_Feval_BN_Lt_P (L : Limbs) is
+   begin
+      --  Establish Normalize's precondition (In_Bounds (To_Big_Nat (L),
+      --  Mul_Cap)); the Post then follows from Reduce_Canonical's Post
+      --  (In_Bounds (In_Cap) + zero from 5 + not Sub_Cond, i.e. < p).
+      Lemma_To_Big_Nat_Mul_Cap (L);
+   end Lemma_Feval_BN_Lt_P;
+
    procedure Lemma_Add_Embed (A, B : Limbs) is null;
 
    procedure Lemma_Shift_Mask_26 (X : U64) is
