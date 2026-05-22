@@ -1082,6 +1082,29 @@ is
      Post => Canonical (X) = Canonical (Y);
 
    ------------------------------------------------------------------
+   --  Field operations over reduced (< p) operands. These are the Big_Nat
+   --  field add / multiply the Poly1305 spec computes; the impl Add / Multiply
+   --  match them through To_Big_Nat (definitionally, via their Carry_Model
+   --  Posts). Each is a ghost function with a body because the inner
+   --  Carry_Model's well-formedness needs runtime lemmas (as with Normalize).
+   ------------------------------------------------------------------
+
+   --  Field add: canonical residue of A + N mod p. With A, N reduced the sum
+   --  is within Mul_Cap, so one Carry_Model + Canonical reduces it.
+   function Field_Add (A, N : Big_Nat) return Big_Nat
+   with
+     Ghost,
+     Pre  => In_Bounds (A, In_Cap) and then In_Bounds (N, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         A (I) = 0)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         N (I) = 0),
+     Post => In_Bounds (Field_Add'Result, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Field_Add'Result (I) = 0)
+             and then not Sub_Cond (Field_Add'Result);
+
+   ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).
    --
    --  This is the first multiply brick. The field multiply expresses the

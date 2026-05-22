@@ -802,6 +802,20 @@ is
       end;
    end Lemma_Canonical_Unique;
 
+   function Field_Add (A, N : Big_Nat) return Big_Nat is
+      S : constant Big_Nat := A + N;
+   begin
+      --  A, N reduced => S = A + N has limbs <= 2*In_Cap < Mul_Cap, zero from
+      --  5; establish Carry_Model's Pre then reduce.
+      pragma Assert (for all I in Limb_Index => S (I) <= 2 * In_Cap);
+      pragma Assert (In_Bounds (S, Mul_Cap));
+      pragma Assert
+        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S (I) = 0);
+      Lemma_Bounds_Mono (S, Mul_Cap, Carry_In_Cap);
+      Lemma_Sweep5_Tight_Carry (S);
+      return Canonical (Carry_Model (S));
+   end Field_Add;
+
    procedure Lemma_Rotate1 (R : Big_Nat) is
    begin
       Lemma_Fold (Shift1 (R));
