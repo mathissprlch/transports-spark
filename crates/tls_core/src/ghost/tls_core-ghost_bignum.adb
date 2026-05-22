@@ -1104,4 +1104,81 @@ is
       pragma Assert (Sweep5_Out (CM) (5) = Sw_C4 (CM));
    end Lemma_Carry_Model_Lt;
 
+   procedure Lemma_Carry_Mod_P_Wide
+     (B : Big_Nat; K : out LLI; C : out Carry_Array)
+   is
+      T    : constant Big_Nat     := Sweep5_Out (B);
+      FO   : constant Big_Nat     := Fold_Out (T);
+      CM   : constant Big_Nat     := Carry_Model (B);
+      D1   : constant Carry_Array := Sweep5_Chain (B);
+      SK   : constant Big_Nat     := Smul (T (5), P_Prime);
+      SCFO : constant Carry_Array := Step_Carry (FO, 0);
+      Ch1  : constant Carry_Array :=
+        Add_Carry (D1, Neg_Carry (Fold_Chain (T (5))));
+      FOSK : constant Big_Nat := FO + SK;
+      CMSK : constant Big_Nat := CM + SK;
+   begin
+      Lemma_Bounds_Mono (B, Round1_Out_Cap, Carry_In_Cap);
+      K := T (5);
+
+      --  T = Sweep5_Out (B): limbs 0..4 reduced, T (5) = K <= Conv_Carry_Cap
+      --  (Pre). Fold_Out limb 0 = T(0)+5*K stays well below Prod_Cap.
+      pragma Assert
+        (for all I in Limb_Index range 0 .. 4 => T (I) in 0 .. In_Cap);
+      pragma Assert (T (5) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 6 .. Max_Limbs - 1 => T (I) = 0);
+      pragma Assert (FO (0) <= In_Cap + 5 * Conv_Carry_Cap);
+      pragma Assert (In_Bounds (FO, Prod_Cap));
+
+      --  Step 1: B == Fold_Plus_P (T) == FO + Smul (K, P).
+      Lemma_Carry_Fold (B);
+      Lemma_Fold_Plus_P_Eq (T);
+      pragma Assert (Fold_Plus_P (T) = FOSK);
+      pragma Assert (SVal_Eq (B, FOSK, Ch1));
+      --  FOSK = Fold_Plus_P (T) is In_Bounds (Add_Cap) by Fold_Plus_P's Post --
+      --  no need to bound the (large-K) Smul term directly.
+      pragma Assert (In_Bounds (FOSK, Add_Cap));
+      pragma Assert
+        (for all I in Limb_Index =>
+           FOSK (I) <= In_Cap + 5 * Fold_C_Cap + Fold_C_Cap * In_Cap);
+
+      --  Step 2: FO == Carry_Model (B) exactly (the normalising Step_Out).
+      pragma Assert (CM = Step_Out (FO, 0));
+      Lemma_Carry_Step (FO, 0);
+      pragma Assert (Val_Eq (FO, CM, SCFO));
+      Lemma_Val_To_SVal (FO, CM, SCFO);
+
+      --  Step 3: CMSK = CM + SK differs from FOSK = FO + SK only in limbs 0,1
+      --  (Step_Out): CMSK(I) <= FOSK(I) + Hi26(FO(0)). SK cancels, so no
+      --  large-K Smul bound is needed; In_Bounds (CMSK) follows.
+      pragma Assert (In_Bounds (SK, Add_Cap));
+      pragma Assert (Hi26 (FO (0)) <= 2**9);
+      pragma Assert
+        (for all I in Limb_Index => CMSK (I) <= FOSK (I) + Hi26 (FO (0)));
+      pragma Assert (In_Bounds (CMSK, Add_Cap));
+      Lemma_SVal_Add_Const (FO, CM, SK, SCFO);
+
+      --  Chain: D1 <= Conv_Carry_Cap (Sweep5_Chain_Tight), Fold_Chain (K) <= K
+      --  <= Conv_Carry_Cap, Step_Carry (FO,0)(1) = Hi26 (FO(0)) <= 2**9. So C
+      --  stays within Cong_Cap.
+      Lemma_Sweep5_Chain_Tight (B);
+      pragma Assert
+        (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range =>
+           Fold_Chain (T (5)) (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert
+        (for all J in Carry_Array'Range => SCFO (J) in 0 .. 2**9);
+      pragma Assert
+        (for all J in Carry_Array'Range =>
+           Ch1 (J) in -Conv_Carry_Cap .. Conv_Carry_Cap);
+      C := Add_Carry (Ch1, SCFO);
+      pragma Assert
+        (for all J in Carry_Array'Range => C (J) in -Cong_Cap .. Cong_Cap);
+      Lemma_Bounds_Mono (B, Round1_Out_Cap, Add_Cap);
+      Lemma_SVal_Trans (B, FOSK, CMSK, Ch1, SCFO);
+      pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
+   end Lemma_Carry_Mod_P_Wide;
+
 end Tls_Core.Ghost_Bignum;

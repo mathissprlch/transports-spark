@@ -1665,4 +1665,27 @@ is
              and then Sweep5_Out (B) (5) <= Fold_C_Cap,
      Post => Sweep5_Out (Carry_Model (B)) (5) <= 1;
 
+   --  Wide per-op congruence: Carry_Model (B) congruent to B mod p for a
+   --  Round1_Out_Cap-sized B (the impl Add's 2**28 sum or the Multiply fold's
+   --  2**35 first-round output, NOT just Mul_Cap). The fold carry K =
+   --  Sweep5_Out (B)(5) is supplied (<= Conv_Carry_Cap; for the Add sum the
+   --  loop value bound gives <= 4, for the Multiply fold <= ~2**11), keeping
+   --  the chain tight (<= Cong_Cap). Sweep5_Chain_Tight applies because
+   --  Round1_Out_Cap <= Conv_Col_Cap. This is the Carry_Mod_P the Add / Multiply
+   --  Feval correspondences consume.
+   procedure Lemma_Carry_Mod_P_Wide
+     (B : Big_Nat; K : out LLI; C : out Carry_Array)
+   with
+     Ghost,
+     Pre  => In_Bounds (B, Round1_Out_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then Sweep5_Out (B) (5) <= Conv_Carry_Cap,
+     Post => K = Sweep5_Out (B) (5)
+             and then K in 0 .. Conv_Carry_Cap
+             and then SC_Bounded (C)
+             and then (for all J in Carry_Array'Range =>
+                         C (J) in -Cong_Cap .. Cong_Cap)
+             and then SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C);
+
 end Tls_Core.Ghost_Bignum;
