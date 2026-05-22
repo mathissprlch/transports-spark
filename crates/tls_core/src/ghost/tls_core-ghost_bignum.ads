@@ -1090,7 +1090,9 @@ is
    ------------------------------------------------------------------
 
    --  Field add: canonical residue of A + N mod p. With A, N reduced the sum
-   --  is within Mul_Cap, so one Carry_Model + Canonical reduces it.
+   --  is within Mul_Cap, so Canonical reduces it directly (no Carry_Model --
+   --  keeping Field_Add (A', N) free of an outer Carry_Model lets the Add
+   --  Feval correspondence compose within the SVal chain budget).
    function Field_Add (A, N : Big_Nat) return Big_Nat
    with
      Ghost,
