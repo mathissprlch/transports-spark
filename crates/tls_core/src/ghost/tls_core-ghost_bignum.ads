@@ -1081,6 +1081,31 @@ is
        and then SVal_Eq (X, Y + Smul (Kin, P_Prime), C),
      Post => Canonical (X) = Canonical (Y);
 
+   --  Two-sided field-element uniqueness: X + Kx*p == Y + Ky*p (both
+   --  accumulator-sized) => Canonical (X) = Canonical (Y). This is the form the
+   --  per-op bridges produce -- composing the impl op's Carry_Mod_P congruence
+   --  (which puts the impl result on the smaller side) with the input's
+   --  Canonical_Cong gives a multiple on each side. Generalizes
+   --  Lemma_Canonical_Unique (Kx = 0); same 3-deep internal chain budget.
+   procedure Lemma_Canonical_Unique_Gen
+     (X, Y : Big_Nat; Kx, Ky : LLI; C : Carry_Array)
+   with
+     Ghost,
+     Pre  =>
+       In_Bounds (X, Mul_Cap) and then In_Bounds (Y, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   X (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   Y (I) = 0)
+       and then Kx in 0 .. 16 and then Ky in 0 .. 16
+       and then (for all J in Carry_Array'Range =>
+                   C (J) in -Cong_Cap .. Cong_Cap)
+       and then In_Bounds (X + Smul (Kx, P_Prime), Add_Cap)
+       and then In_Bounds (Y + Smul (Ky, P_Prime), Add_Cap)
+       and then SVal_Eq
+                  (X + Smul (Kx, P_Prime), Y + Smul (Ky, P_Prime), C),
+     Post => Canonical (X) = Canonical (Y);
+
    ------------------------------------------------------------------
    --  Field operations over reduced (< p) operands. These are the Big_Nat
    --  field add / multiply the Poly1305 spec computes; the impl Add / Multiply

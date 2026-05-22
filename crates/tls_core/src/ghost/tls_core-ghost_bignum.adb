@@ -802,6 +802,90 @@ is
       end;
    end Lemma_Canonical_Unique;
 
+   procedure Lemma_Canonical_Unique_Gen
+     (X, Y : Big_Nat; Kx, Ky : LLI; C : Carry_Array)
+   is
+      KcX, KcY : LLI;
+      CcX, CcY : Carry_Array;
+   begin
+      Lemma_Canonical_Cong (X, KcX, CcX);   --  X == CX + Smul (KcX, p)
+      Lemma_Canonical_Cong (Y, KcY, CcY);   --  Y == CY + Smul (KcY, p)
+      declare
+         CX   : constant Big_Nat := Canonical (X);
+         CY   : constant Big_Nat := Canonical (Y);
+         SKcX : constant Big_Nat := Smul (KcX, P_Prime);
+         SKcY : constant Big_Nat := Smul (KcY, P_Prime);
+         SKx  : constant Big_Nat := Smul (Kx, P_Prime);
+         SKy  : constant Big_Nat := Smul (Ky, P_Prime);
+         XKx  : constant Big_Nat := X + SKx;
+         YKy  : constant Big_Nat := Y + SKy;
+         SX   : constant Big_Nat := CX + SKcX;
+         SXx  : constant Big_Nat := SX + SKx;          --  = CX + (KcX+Kx)*p
+         SYc  : constant Big_Nat := CY + SKcY;
+         SYy  : constant Big_Nat := SYc + SKy;         --  = CY + (KcY+Ky)*p
+         NCX  : constant Carry_Array := Neg_Carry (CcX);
+         Ch2  : constant Carry_Array := Add_Carry (NCX, C);
+         Net  : constant Carry_Array := Add_Carry (Ch2, CcY);
+      begin
+         --  In-bounds nudges (reduced bases + small multiples).
+         Lemma_Bounds_Mono (X, Mul_Cap, Add_Cap);
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SKcX (I) = KcX * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKcY (I) = KcY * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKx (I) = Kx * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKy (I) = Ky * P_Prime (I));
+         pragma Assert (for all I in Limb_Index => SKcX (I) <= 5 * In_Cap);
+         pragma Assert (for all I in Limb_Index => SKcY (I) <= 5 * In_Cap);
+         pragma Assert (for all I in Limb_Index => SKx (I) <= 16 * In_Cap);
+         pragma Assert (for all I in Limb_Index => SKy (I) <= 16 * In_Cap);
+         pragma Assert (In_Bounds (SX, Add_Cap));
+         pragma Assert (In_Bounds (SYc, Add_Cap));
+         pragma Assert (for all I in Limb_Index => SXx (I) <= 22 * In_Cap);
+         pragma Assert (for all I in Limb_Index => SYy (I) <= 22 * In_Cap);
+         pragma Assert (In_Bounds (SXx, Add_Cap));
+         pragma Assert (In_Bounds (SYy, Add_Cap));
+
+         --  CX + (KcX)*p == X (sym), + Kx*p both sides; then input; then Y side.
+         Lemma_SVal_Sym (X, SX, CcX);                  --  SVal_Eq (SX, X, NCX)
+         pragma Assert
+           (for all J in Carry_Array'Range => NCX (J) in -Cong_Cap .. Cong_Cap);
+         Lemma_SVal_Add_Const (SX, X, SKx, NCX);       --  SVal_Eq (SXx, XKx, NCX)
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Ch2 (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
+         pragma Assert (SC_Bounded (Ch2));
+         Lemma_SVal_Trans (SXx, XKx, YKy, NCX, C);     --  SVal_Eq (SXx, YKy, Ch2)
+
+         Lemma_SVal_Add_Const (Y, SYc, SKy, CcY);      --  SVal_Eq (YKy, SYy, CcY)
+         pragma Assert
+           (for all J in Carry_Array'Range =>
+              Net (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
+         pragma Assert (SC_Bounded (Net));
+         Lemma_SVal_Trans (SXx, YKy, SYy, Ch2, CcY);   --  SVal_Eq (SXx, SYy, Net)
+
+         --  SXx = CX + Smul (KcX+Kx, p); SYy = CY + Smul (KcY+Ky, p).
+         Lemma_Bounds_Mono (CX, In_Cap, Assoc_Cap);
+         Lemma_Bounds_Mono (CY, In_Cap, Assoc_Cap);
+         pragma Assert (In_Bounds (SKcX, Assoc_Cap));
+         pragma Assert (In_Bounds (SKx, Assoc_Cap));
+         pragma Assert (In_Bounds (SKcY, Assoc_Cap));
+         pragma Assert (In_Bounds (SKy, Assoc_Cap));
+         Lemma_Add_Assoc (CX, SKcX, SKx);
+         Lemma_Smul_Add (KcX, Kx, P_Prime);
+         pragma Assert (SXx = CX + Smul (KcX + Kx, P_Prime));
+         Lemma_Add_Assoc (CY, SKcY, SKy);
+         Lemma_Smul_Add (KcY, Ky, P_Prime);
+         pragma Assert (SYy = CY + Smul (KcY + Ky, P_Prime));
+         pragma Assert
+           (SVal_Eq
+              (CX + Smul (KcX + Kx, P_Prime),
+               CY + Smul (KcY + Ky, P_Prime), Net));
+
+         Lemma_Mod_P_Unique_Gen (CX, CY, KcX + Kx, KcY + Ky, Net);
+         pragma Assert (Canonical (X) = Canonical (Y));
+      end;
+   end Lemma_Canonical_Unique_Gen;
+
    function Field_Add (A, N : Big_Nat) return Big_Nat is
       S : constant Big_Nat := A + N;
    begin
