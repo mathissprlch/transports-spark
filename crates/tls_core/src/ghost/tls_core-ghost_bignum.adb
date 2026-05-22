@@ -326,6 +326,19 @@ is
               and then Sweep5_Out (X) (2) = 0 and then Sweep5_Out (X) (1) = 0);
    end Lemma_Sweep5_Ripple;
 
+   procedure Lemma_Sweep5_Low_Only (X : Big_Nat) is
+   begin
+      pragma Assert (In_Bounds (X, Mul_Cap));
+      Lemma_Bounds_Mono (X, Mul_Cap, Prod_Cap);
+      --  limb0 < 2**27 => Sw_C0 <= 1; limbs 1..4 = 0 so each later carry-in
+      --  is Hi26 (0 + previous carry) = Hi26 (<= 1) = 0.
+      pragma Assert (Sw_C0 (X) <= 1);
+      pragma Assert (Sw_C1 (X) = 0);
+      pragma Assert (Sw_C2 (X) = 0);
+      pragma Assert (Sw_C3 (X) = 0);
+      pragma Assert (Sw_C4 (X) = 0);
+   end Lemma_Sweep5_Low_Only;
+
    procedure Lemma_Reduce_Canonical (B : Big_Nat) is
       S   : constant Big_Nat := Sweep5_Out (B);
       Sum : constant Big_Nat := Subtract_P5_Out (S) + Sub_Sel_P (S);
@@ -343,6 +356,61 @@ is
       pragma Assert
         (Add_Carry (Sweep5_Chain (B), Neg_Carry (Zero_Carry)) = Sweep5_Chain (B));
    end Lemma_Reduce_Canonical;
+
+   function Normalize (B : Big_Nat) return Big_Nat is
+      S1, R1, S2, R2, S3 : Big_Nat;
+   begin
+      Lemma_Bounds_Mono (B, Mul_Cap, Prod_Cap);
+      Lemma_Sweep5_Acc_Carry (B);          --  Sweep5_Out (B) (5) <= 2
+      S1 := Sweep5_Out (B);
+      R1 := Fold_Out (S1);                 --  Pre: S1 (5) <= Fold_C_Cap (ok)
+
+      --  R1 = first fold round: limb0 <= In_Cap + 10 (= S1(0)+5*S1(5),
+      --  S1(5) <= 2), limbs 1..4 <= In_Cap, zero from 5. So R1 is Mul_Cap-
+      --  bounded and feeds the second round.
+      pragma Assert (R1 (0) <= In_Cap + 10);
+      pragma Assert
+        (for all I in Limb_Index range 1 .. 4 => R1 (I) in 0 .. In_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0);
+      pragma Assert (In_Bounds (R1, Mul_Cap));
+
+      Lemma_Sweep5_Acc_Carry (R1);         --  Sweep5_Out (R1) (5) <= 2
+      S2 := Sweep5_Out (R1);
+      R2 := Fold_Out (S2);                 --  Pre: S2 (5) <= Fold_C_Cap (ok)
+
+      if S2 (5) >= 1 then
+         --  Carry survived: by the ripple lemma the swept limbs 1..4 are 0,
+         --  so R2 collapses to [<= In_Cap + 10, 0, 0, 0, 0] and its sweep
+         --  has no carry out (value < 2**130).
+         Lemma_Sweep5_Ripple (R1);
+         pragma Assert (for all I in Limb_Index range 1 .. 4 => S2 (I) = 0);
+         pragma Assert (R2 (0) <= In_Cap + 10);
+         pragma Assert
+           (for all I in Limb_Index range 1 .. Max_Limbs - 1 => R2 (I) = 0);
+         Lemma_Sweep5_Low_Only (R2);
+      else
+         --  No carry: R2 = S2 is already reduced (limbs <= In_Cap).
+         pragma Assert
+           (for all I in Limb_Index range 0 .. 4 => R2 (I) in 0 .. In_Cap);
+         pragma Assert
+           (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R2 (I) = 0);
+         pragma Assert (In_Bounds (R2, In_Cap));
+         Lemma_Reduced_No_Carry (R2);
+      end if;
+
+      --  Both branches: Sweep5_Out (R2) (5) = 0, so the third sweep S3 is a
+      --  fully reduced five-limb value (< 2**130).
+      pragma Assert (Sweep5_Out (R2) (5) = 0);
+      S3 := Sweep5_Out (R2);
+      pragma Assert
+        (for all I in Limb_Index range 0 .. 4 => S3 (I) in 0 .. In_Cap);
+      pragma Assert
+        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S3 (I) = 0);
+      pragma Assert (In_Bounds (S3, In_Cap));
+      Lemma_Reduced_No_Carry (S3);         --  Sweep5_Out (S3) (5) = 0
+      return S3;
+   end Normalize;
 
    procedure Lemma_Rotate1 (R : Big_Nat) is
    begin

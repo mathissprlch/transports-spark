@@ -798,6 +798,17 @@ is
               then (for all I in Limb_Index range 1 .. 4 =>
                       Sweep5_Out (X) (I) = 0));
 
+   --  If only limb 0 is populated (limbs 1..4 = 0, limb0 < 2**27) the sweep's
+   --  carry out of limb 0 (<= 1) lands in limb 1 and stops -- Hi26 of <= 1 is
+   --  0 -- so there is no carry out of limb 4. The second-fold "collapsed"
+   --  case ([small, 0, 0, 0, 0]) of the wide reduce uses this.
+   procedure Lemma_Sweep5_Low_Only (X : Big_Nat)
+   with
+     Pre  => X (0) in 0 .. 2**27 - 1
+             and then (for all I in Limb_Index range 1 .. Max_Limbs - 1 =>
+                         X (I) = 0),
+     Post => Sweep5_Out (X) (5) = 0;
+
    ------------------------------------------------------------------
    --  Canonical reduce (the freeze, at the Big_Nat level). For a value
    --  already in [0, 2**130) -- i.e. one whose clean Sweep5 has no carry out
@@ -835,6 +846,28 @@ is
          (B,
           Reduce_Canonical (B) + Sub_Sel_P (Sweep5_Out (B)),
           Sweep5_Chain (B));
+
+   ------------------------------------------------------------------
+   --  Wide reduce ("normalize"). Brings an accumulator-sized value (limbs
+   --  <= Mul_Cap -- the shape of every impl op output, value < 2**131) to a
+   --  fully reduced five-limb form (limbs <= In_Cap, value < 2**130) by two
+   --  Sweep5 + Fold rounds. This is a ghost function WITH A BODY: the body
+   --  runs the magnitude case-split (Acc_Carry / Ripple / Reduced_No_Carry /
+   --  Low_Only) so well-formedness rests on runtime lemmas, while the Post
+   --  exposes only the reduced result + its no-carry certificate -- which
+   --  makes Reduce_Canonical (Normalize (..)) well-formed at contract level.
+   ------------------------------------------------------------------
+
+   function Normalize (B : Big_Nat) return Big_Nat
+   with
+     Ghost,
+     Pre  => In_Bounds (B, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => In_Bounds (Normalize'Result, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Normalize'Result (I) = 0)
+             and then Sweep5_Out (Normalize'Result) (5) = 0;
 
    ------------------------------------------------------------------
    --  Field rotation: r * 2**26 mod p (HACL* lemma_fmul5_pow26).
