@@ -526,6 +526,13 @@ is
          Lemma_Mod_P_Unique (A, B, Kb - Ka, C);
       else
          --  A + Ka*p = (A + (Ka-Kb)*p) + Kb*p; flip sides and cancel Kb*p.
+         --  Establish In_Bounds for both sides before SVal_Sym:
+         Lemma_Bounds_Mono (A, In_Cap, Assoc_Cap);
+         Lemma_Bounds_Mono (B, In_Cap, Assoc_Cap);
+         pragma Assert (In_Bounds (Smul (Ka, P_Prime), Assoc_Cap));
+         pragma Assert (In_Bounds (Smul (Kb, P_Prime), Assoc_Cap));
+         pragma Assert (In_Bounds (A + Smul (Ka, P_Prime), Add_Cap));
+         pragma Assert (In_Bounds (B + Smul (Kb, P_Prime), Add_Cap));
          Lemma_SVal_Sym
            (A + Smul (Ka, P_Prime), B + Smul (Kb, P_Prime), C);
          Lemma_Smul_Add (Ka - Kb, Kb, P_Prime);

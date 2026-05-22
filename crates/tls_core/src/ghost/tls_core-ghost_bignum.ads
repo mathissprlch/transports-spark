@@ -23,14 +23,17 @@
 --  products of two 26-bit limbs stays below Long_Long_Integer'Last:
 --  160 * (2**26)**2 = 2**59.3 < 2**63. (felem_fits5 discipline.)
 --
---  Entirely Ghost: never runs, no runtime cost, uses only Long_Long_Integer
---  (no 128-bit type, no Big_Numbers) so it compiles on every target.
+--  Entirely Ghost: never runs and is erased from release builds, so its limb
+--  word may be wider than the target supports. It uses Long_Long_Long_Integer
+--  (128-bit) purely to give the carry-chain arithmetic generous headroom; this
+--  is a proof-only choice with zero production cost (the §0e ban on 128-bit
+--  int in *production* code does not reach here). No Big_Numbers.
 
 package Tls_Core.Ghost_Bignum
   with SPARK_Mode, Ghost
 is
 
-   subtype LLI is Long_Long_Integer;
+   subtype LLI is Long_Long_Long_Integer;
 
    Max_Limbs : constant := 160;          --  >= an RSA-2048 product in 26-bit limbs
    subtype Limb_Index is Natural range 0 .. Max_Limbs - 1;
@@ -239,8 +242,19 @@ is
      Post => Lo26 (X) in 0 .. In_Cap
              and then X = Lo26 (X) + Limb_Base * Hi26 (X);
 
-   --  Carry out of one Prod_Cap-bounded limb: Hi26 (X) <= 2**36.
-   Hi_Cap : constant LLI := 2**36;
+   --  Carry-chain ceiling (the SVal_Eq / Val_Eq base*carry bound). Raised to
+   --  2**40 (only possible because the limb word is now 128-bit: Add_Cap +
+   --  Limb_Base*Hi_Cap = 2**62 + 2**66 < 2**127) to give chain composition
+   --  generous headroom. Must stay < Limb_Base**2 = 2**52 so the mod-p
+   --  uniqueness cascade still forces carries to zero (Hi_Cap/Limb_Base <
+   --  Limb_Base). A single Hi26 of a Prod_Cap value is really <= 2**36; this
+   --  bound is just looser.
+   Hi_Cap : constant LLI := 2**40;
+
+   --  Smul's scalar bound: K * In_Cap must fit Add_Cap, so K <= ~2**36
+   --  (independent of the raised Hi_Cap). Every Smul call uses a small fold
+   --  carry or prime multiple well under this.
+   Smul_Cap : constant LLI := 2**36;
 
    procedure Lemma_Hi26_Bound (X : LLI)
    with
@@ -431,12 +445,12 @@ is
      [0 => In_Cap - 4, 1 | 2 | 3 | 4 => In_Cap, others => 0];
 
    --  Scalar multiply, limbwise, no carry (HACL* smul_felem5 shape). K is a
-   --  fold carry (<= Hi_Cap) and A's limbs are reduced (<= In_Cap), so each
-   --  product K * A (I) stays inside Long_Long_Integer.
+   --  fold carry / prime multiple (<= Smul_Cap) and A's limbs are reduced
+   --  (<= In_Cap), so each product K * A (I) stays within Add_Cap.
    function Smul (K : LLI; A : Big_Nat) return Big_Nat
    is ([for I in Limb_Index => K * A (I)])
    with
-     Pre  => K in 0 .. Hi_Cap and then In_Bounds (A, In_Cap),
+     Pre  => K in 0 .. Smul_Cap and then In_Bounds (A, In_Cap),
      Post => (for all I in Limb_Index => Smul'Result (I) = K * A (I))
              and then In_Bounds (Smul'Result, Add_Cap);
 
@@ -895,7 +909,7 @@ is
                    A (I) = 0)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                    B (I) = 0)
-       and then K in 1 .. Hi_Cap
+       and then K in 1 .. Smul_Cap
        and then SC_Bounded (C)
        and then SVal_Eq (A, B + Smul (K, P_Prime), C),
      Post => Sub_Cond (A);
@@ -916,7 +930,7 @@ is
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                    B (I) = 0)
        and then not Sub_Cond (A)
-       and then K in 0 .. Hi_Cap
+       and then K in 0 .. Smul_Cap
        and then SC_Bounded (C)
        and then SVal_Eq (A, B + Smul (K, P_Prime), C),
      Post => A = B;
@@ -926,8 +940,8 @@ is
    --  terms (Smul (K1, p) + Smul (K2, p)) into one Smul (K1+K2, p).
    procedure Lemma_Smul_Add (K1, K2 : LLI; A : Big_Nat)
    with
-     Pre  => K1 in 0 .. Hi_Cap and then K2 in 0 .. Hi_Cap
-             and then K1 + K2 <= Hi_Cap and then In_Bounds (A, In_Cap),
+     Pre  => K1 in 0 .. Smul_Cap and then K2 in 0 .. Smul_Cap
+             and then K1 + K2 <= Smul_Cap and then In_Bounds (A, In_Cap),
      Post => Smul (K1, A) + Smul (K2, A) = Smul (K1 + K2, A);
 
    --  Cancellation: SVal_Eq is preserved when the same M is removed from both
