@@ -34,6 +34,20 @@ is
            + Mul_Limb (A (T)) * Mul_Limb (C (K - T)));
    end Lemma_Mul_Col_Distrib;
 
+   procedure Lemma_Diff_Col_Eq (A, B, R : Big_Nat; K, T : Limb_Index) is
+   begin
+      if T /= 0 then
+         Lemma_Diff_Col_Eq (A, B, R, K, T - 1);
+      end if;
+      --  Per-term: the difference of the T-th column products is the signed
+      --  product (A (T) - B (T)) * R (K - T); the rest is the inductive
+      --  hypothesis plus the Mul_Col recurrence.
+      pragma Assert
+        (Mul_Limb (A (T)) * Mul_Limb (R (K - T))
+         - Mul_Limb (B (T)) * Mul_Limb (R (K - T))
+         = (A (T) - B (T)) * R (K - T));
+   end Lemma_Diff_Col_Eq;
+
    procedure Lemma_Mul_Distrib (A, B, C, BC : Big_Nat) is
       L  : constant Big_Nat := A * BC;
       R1 : constant Big_Nat := A * B;

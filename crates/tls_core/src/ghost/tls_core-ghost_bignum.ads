@@ -156,6 +156,37 @@ is
        and then (for all I in Limb_Index => BC (I) = B (I) + C (I)),
      Post => A * BC = A * B + A * C;
 
+   --  Signed difference convolution: sum_{i=0..T} (A (I) - B (I)) * R (K - I).
+   --  The per-column difference of the two products A*R and B*R. Limbs may
+   --  differ by a signed amount (A, B need not be limbwise comparable), so this
+   --  uses raw LLI products rather than the Mul_Limb-typed Mul_Col. Used to show
+   --  that multiplying an SVal_Eq congruence by R preserves it (the difference
+   --  telescopes to the carry chain convolved with R).
+   function Diff_Col (A, B, R : Big_Nat; K, T : Limb_Index) return LLI
+   is (if T = 0
+       then (A (0) - B (0)) * R (K)
+       else Diff_Col (A, B, R, K, T - 1) + (A (T) - B (T)) * R (K - T))
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then In_Bounds (R, Mul_Cap) and then T <= K,
+     Post               =>
+       Diff_Col'Result
+       in -(LLI (T + 1) * Two_Pow_54) .. LLI (T + 1) * Two_Pow_54,
+     Subprogram_Variant => (Decreases => T);
+
+   --  The difference of the two products is the signed difference convolution:
+   --  Mul_Col (A, R, K, T) - Mul_Col (B, R, K, T) = Diff_Col (A, B, R, K, T).
+   --  Proven by induction on T (the per-term identity is plain integer algebra).
+   procedure Lemma_Diff_Col_Eq (A, B, R : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+       and then In_Bounds (R, Mul_Cap) and then T <= K,
+     Post               =>
+       Mul_Col (A, R, K, T) - Mul_Col (B, R, K, T) = Diff_Col (A, B, R, K, T),
+     Subprogram_Variant => (Decreases => T);
+
    --  Convolution support: if A is zero from index Na on and B from index Nb
    --  on, the product A * B is zero from index Na + Nb - 1 on. (The product
    --  of two operands with highest set limbs Na-1 and Nb-1 has highest set
