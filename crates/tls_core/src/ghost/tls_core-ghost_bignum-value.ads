@@ -358,4 +358,22 @@ is
              and then Carry_Bounded (C) and then Val_Eq (A, B, C),
      Post => Val (A) = Val (B);
 
+   ------------------------------------------------------------------
+   --  Value bounds on reduced Big_Nats (toward "reduced & not Sub_Cond =>
+   --  0 <= Val < p", the magnitude half of mod-p uniqueness in the value layer).
+   ------------------------------------------------------------------
+
+   --  Limb_Val is non-negative and monotone on the non-negative domain.
+   procedure Lemma_Limb_Val_Nonneg (X : Val_Int)
+   with
+     Pre                => X >= 0,
+     Post               => Limb_Val (X) >= 0,
+     Subprogram_Variant => (Decreases => X);
+
+   procedure Lemma_Limb_Val_Mono (X, Y : Val_Int)
+   with
+     Pre                => 0 <= X and then X <= Y,
+     Post               => Limb_Val (X) <= Limb_Val (Y),
+     Subprogram_Variant => (Decreases => Y - X);
+
 end Tls_Core.Ghost_Bignum.Value;

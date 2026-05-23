@@ -352,6 +352,20 @@ is
       Lemma_SVal_To_Val (A, B, C);            --  Val (A) = Val (B).
    end Lemma_ValEq_To_Val;
 
+   procedure Lemma_Limb_Val_Nonneg (X : Val_Int) is
+   begin
+      if X /= 0 then
+         Lemma_Limb_Val_Nonneg (X - 1);       --  Limb_Val (X) = Limb_Val (X-1) + 1.
+      end if;
+   end Lemma_Limb_Val_Nonneg;
+
+   procedure Lemma_Limb_Val_Mono (X, Y : Val_Int) is
+   begin
+      if X /= Y then
+         Lemma_Limb_Val_Mono (X, Y - 1);      --  Limb_Val (Y) = Limb_Val (Y-1) + 1.
+      end if;
+   end Lemma_Limb_Val_Mono;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
