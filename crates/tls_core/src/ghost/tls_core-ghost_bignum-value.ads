@@ -262,4 +262,72 @@ is
      Pre  => In_Bounds (A, In_Cap) and then V in 0 .. Mul_Cap,
      Post => A * Unit_Limb (V, M) = Smul (V, Shift_By (A, M));
 
+   ------------------------------------------------------------------
+   --  Convolution faithfulness Val (A * B) = Val (A) * Val (B), by peeling B
+   --  one limb at a time (single induction; each step a single-limb multiply).
+   ------------------------------------------------------------------
+
+   subtype Lo_Count is Natural range 0 .. Max_Limbs;
+
+   --  Low part of B: limbs 0 .. M-1 kept, the rest zeroed.
+   function B_Lo (B : Big_Nat; M : Lo_Count) return Big_Nat
+   is ([for K in Limb_Index => (if K < M then B (K) else 0)]);
+
+   --  Congruence of "*" in the second operand (column level, then full).
+   procedure Lemma_Mul_Col_Cong (A, X, Y : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (X, Mul_Cap)
+       and then In_Bounds (Y, Mul_Cap) and then X = Y and then T <= K,
+     Post               => Mul_Col (A, X, K, T) = Mul_Col (A, Y, K, T),
+     Subprogram_Variant => (Decreases => T);
+
+   procedure Lemma_Mul_Cong_R (A, X, Y : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Mul_Cap) and then In_Bounds (X, Mul_Cap)
+             and then In_Bounds (Y, Mul_Cap) and then X = Y,
+     Post => A * X = A * Y;
+
+   procedure Lemma_Mul_Zero_Col (A : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                => In_Bounds (A, Mul_Cap) and then T <= K,
+     Post               => Mul_Col (A, Zero, K, T) = 0,
+     Subprogram_Variant => (Decreases => T);
+
+   procedure Lemma_Mul_Zero_R (A : Big_Nat)
+   with Pre => In_Bounds (A, Mul_Cap), Post => A * Zero = Zero;
+
+   --  Val (Unit_Limb (v, m)) = Limb_Val (v) * Base_Pow (m).
+   procedure Lemma_Val_Unit (V : LLI; M : Limb_Index)
+   with
+     Pre  => V in 0 .. In_Cap,
+     Post => Val (Unit_Limb (V, M)) = Limb_Val (V) * Base_Pow (M);
+
+   --  One-limb extension of the low part.
+   procedure Lemma_Val_Lo_Step (B : Big_Nat; M : Limb_Index)
+   with
+     Pre  => In_Bounds (B, In_Cap),
+     Post => Val (B_Lo (B, M + 1))
+             = Val (B_Lo (B, M)) + Limb_Val (B (M)) * Base_Pow (M);
+
+   procedure Lemma_Val_Mul_Acc (A, B : Big_Nat; Na, Nb, M : Lo_Count)
+   with
+     Pre                =>
+       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+       and then (for all K in Limb_Index range Na .. Max_Limbs - 1 => A (K) = 0)
+       and then (for all K in Limb_Index range Nb .. Max_Limbs - 1 => B (K) = 0)
+       and then Na + Nb <= Max_Limbs and then M <= Nb,
+     Post               =>
+       Val (A * B_Lo (B, M)) = Val (A) * Val (B_Lo (B, M)),
+     Subprogram_Variant => (Decreases => M);
+
+   procedure Lemma_Val_Mul (A, B : Big_Nat; Na, Nb : Lo_Count)
+   with
+     Pre  =>
+       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+       and then (for all K in Limb_Index range Na .. Max_Limbs - 1 => A (K) = 0)
+       and then (for all K in Limb_Index range Nb .. Max_Limbs - 1 => B (K) = 0)
+       and then Na + Nb <= Max_Limbs,
+     Post => Val (A * B) = Val (A) * Val (B);
+
 end Tls_Core.Ghost_Bignum.Value;

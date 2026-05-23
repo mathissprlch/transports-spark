@@ -205,6 +205,118 @@ is
       pragma Assert (P = SS);
    end Lemma_Mul_Unit;
 
+   procedure Lemma_Mul_Col_Cong (A, X, Y : Big_Nat; K, T : Limb_Index) is
+   begin
+      if T /= 0 then
+         Lemma_Mul_Col_Cong (A, X, Y, K, T - 1);   --  IH; X (K-T) = Y (K-T) from X = Y.
+      end if;
+   end Lemma_Mul_Col_Cong;
+
+   procedure Lemma_Mul_Cong_R (A, X, Y : Big_Nat) is
+      PX : constant Big_Nat := A * X;
+      PY : constant Big_Nat := A * Y;
+   begin
+      for K in Limb_Index loop
+         Lemma_Mul_Col_Cong (A, X, Y, K, K);
+         pragma Assert (PX (K) = PY (K));
+         pragma Loop_Invariant
+           (for all KK in Limb_Index range 0 .. K => PX (KK) = PY (KK));
+      end loop;
+      pragma Assert (PX = PY);
+   end Lemma_Mul_Cong_R;
+
+   procedure Lemma_Mul_Zero_Col (A : Big_Nat; K, T : Limb_Index) is
+   begin
+      pragma Assert (Zero (K - T) = 0);
+      if T /= 0 then
+         Lemma_Mul_Zero_Col (A, K, T - 1);
+      end if;
+   end Lemma_Mul_Zero_Col;
+
+   procedure Lemma_Mul_Zero_R (A : Big_Nat) is
+      P : constant Big_Nat := A * Zero;
+   begin
+      for K in Limb_Index loop
+         Lemma_Mul_Zero_Col (A, K, K);
+         pragma Assert (P (K) = 0);
+         pragma Loop_Invariant
+           (for all KK in Limb_Index range 0 .. K => P (KK) = 0);
+      end loop;
+      pragma Assert (P = Zero);
+   end Lemma_Mul_Zero_R;
+
+   procedure Lemma_Val_Unit (V : LLI; M : Limb_Index) is
+      U0 : constant Big_Nat := Unit_Limb (V, 0);
+   begin
+      Lemma_Val_From_Zero_High (U0, 1, 1);     --  Val_From (U0, 1) = 0.
+      pragma Assert (Val (U0) = Limb_Val (V));
+      pragma Assert
+        (for all K in Limb_Index => Unit_Limb (V, M) (K) = Shift_By (U0, M) (K));
+      pragma Assert (Unit_Limb (V, M) = Shift_By (U0, M));
+      Lemma_Val_Cong (Unit_Limb (V, M), Shift_By (U0, M));
+      Lemma_Val_Shift_By (U0, M);              --  Val (Shift_By (U0,M)) = Base_Pow(M)*Val(U0).
+   end Lemma_Val_Unit;
+
+   procedure Lemma_Val_Lo_Step (B : Big_Nat; M : Limb_Index) is
+      Lo : constant Big_Nat := B_Lo (B, M);
+      U  : constant Big_Nat := Unit_Limb (B (M), M);
+   begin
+      pragma Assert
+        (for all K in Limb_Index => B_Lo (B, M + 1) (K) = Lo (K) + U (K));
+      pragma Assert (B_Lo (B, M + 1) = Lo + U);
+      Lemma_Val_Add (Lo, U);
+      Lemma_Val_Cong (B_Lo (B, M + 1), Lo + U);
+      Lemma_Val_Unit (B (M), M);
+   end Lemma_Val_Lo_Step;
+
+   procedure Lemma_Val_Mul_Acc (A, B : Big_Nat; Na, Nb, M : Lo_Count) is
+   begin
+      if M = 0 then
+         pragma Assert (B_Lo (B, 0) = Zero);
+         Lemma_Mul_Zero_R (A);                 --  A * Zero = Zero.
+         Lemma_Mul_Cong_R (A, B_Lo (B, 0), Zero);
+         Lemma_Val_From_Zero_High (Zero, 0, 0);
+         Lemma_Val_Cong (A * B_Lo (B, 0), Zero);
+         Lemma_Val_Cong (B_Lo (B, 0), Zero);
+      else
+         Lemma_Val_Mul_Acc (A, B, Na, Nb, M - 1);   --  IH.
+         declare
+            Lo1 : constant Big_Nat := B_Lo (B, M - 1);
+            LoM : constant Big_Nat := B_Lo (B, M);
+            U   : constant Big_Nat := Unit_Limb (B (M - 1), M - 1);
+            SH  : constant Big_Nat := Shift_By (A, M - 1);
+         begin
+            pragma Assert
+              (for all K in Limb_Index => LoM (K) = Lo1 (K) + U (K));
+            Lemma_Mul_Distrib (A, Lo1, U, LoM);       --  A*LoM = A*Lo1 + A*U.
+            Lemma_Mul_Unit (A, B (M - 1), M - 1);     --  A*U = Smul (B(M-1), SH).
+            Lemma_Val_Add (A * Lo1, A * U);
+            Lemma_Val_Cong (A * LoM, A * Lo1 + A * U);
+            Lemma_Val_Cong (A * U, Smul (B (M - 1), SH));
+            Lemma_Val_Smul (B (M - 1), SH);
+            pragma Assert
+              (for all K in Limb_Index range Max_Limbs - (M - 1) .. Max_Limbs - 1
+               => A (K) = 0);
+            Lemma_Val_Shift_By (A, M - 1);            --  Val(SH) = Base_Pow(M-1)*Val(A).
+            Lemma_Val_Lo_Step (B, M - 1);             --  Val(LoM) = Val(Lo1)+Limb_Val(B(M-1))*Base_Pow(M-1).
+            pragma Assert
+              (Val (A * LoM)
+               = Val (A) * Val (Lo1)
+                 + Limb_Val (B (M - 1)) * Base_Pow (M - 1) * Val (A));
+         end;
+      end if;
+   end Lemma_Val_Mul_Acc;
+
+   procedure Lemma_Val_Mul (A, B : Big_Nat; Na, Nb : Lo_Count) is
+   begin
+      Lemma_Val_Mul_Acc (A, B, Na, Nb, Nb);
+      pragma Assert (for all K in Limb_Index => B_Lo (B, Nb) (K) = B (K));
+      pragma Assert (B_Lo (B, Nb) = B);
+      Lemma_Mul_Cong_R (A, B_Lo (B, Nb), B);
+      Lemma_Val_Cong (A * B_Lo (B, Nb), A * B);
+      Lemma_Val_Cong (B_Lo (B, Nb), B);
+   end Lemma_Val_Mul;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
