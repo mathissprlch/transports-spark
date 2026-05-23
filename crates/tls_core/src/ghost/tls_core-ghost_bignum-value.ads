@@ -455,4 +455,42 @@ is
        and then Val (X) = Val (Y),
      Post => X = Y;
 
+   ------------------------------------------------------------------
+   --  Mod-p uniqueness capstone: canonical residues are unique. This is what
+   --  the Field_Mul bridge consumes -- it turns the value-level congruences the
+   --  reduction lifts produce into limb equalities.
+   ------------------------------------------------------------------
+
+   --  Base_Pow (N) >= 1 (so p = Base_Pow (5) - 5 > 0).
+   procedure Lemma_Base_Pow_Ge_1 (N : Limb_Index)
+   with
+     Post               => Base_Pow (N) >= 1,
+     Subprogram_Variant => (Decreases => N);
+
+   --  Two canonical Big_Nats whose values differ by a multiple of p (the
+   --  concrete "+ Ka*p / + Kb*p" form the reduction folds produce) are equal.
+   procedure Lemma_Val_Canonical_Eq
+     (X, Y : Big_Nat; Ka, Kb : BI.Big_Integer)
+   with
+     Pre  =>
+       In_Bounds (X, In_Cap) and then In_Bounds (Y, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0)
+       and then not Sub_Cond (X) and then not Sub_Cond (Y)
+       and then Ka >= 0 and then Kb >= 0
+       and then Val (X) + Ka * (Base_Pow (5) - 5)
+                = Val (Y) + Kb * (Base_Pow (5) - 5),
+     Post => X = Y;
+
+   --  Corollary: a canonical Big_Nat whose value is a multiple of p is Zero.
+   procedure Lemma_Val_Canonical_Zero (X : Big_Nat; Ka : BI.Big_Integer)
+   with
+     Pre  =>
+       In_Bounds (X, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then not Sub_Cond (X)
+       and then Ka >= 0
+       and then Val (X) = Ka * (Base_Pow (5) - 5),
+     Post => X = Zero;
+
 end Tls_Core.Ghost_Bignum.Value;

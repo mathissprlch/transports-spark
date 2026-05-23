@@ -526,6 +526,49 @@ is
       pragma Assert (X = Y);
    end Lemma_Val_Inj_Reduced;
 
+   procedure Lemma_Base_Pow_Ge_1 (N : Limb_Index) is
+   begin
+      Lemma_Limb_Val_Nonneg (Limb_Base - 1);       --  Base >= 1.
+      if N /= 0 then
+         Lemma_Base_Pow_Ge_1 (N - 1);              --  Base_Pow(N) = Base*Base_Pow(N-1).
+         Lemma_BI_Mul_Mono (Base, 1, Base_Pow (N - 1));
+      end if;
+   end Lemma_Base_Pow_Ge_1;
+
+   procedure Lemma_Val_Canonical_Eq
+     (X, Y : Big_Nat; Ka, Kb : BI.Big_Integer)
+   is
+      P : constant BI.Big_Integer := Base_Pow (5) - 5;
+   begin
+      Lemma_Base_Ge_6;                             --  Base >= 6.
+      Lemma_Base_Pow_Ge_1 (4);
+      pragma Assert (Base_Pow (5) = Base * Base_Pow (4));
+      Lemma_BI_Mul_Mono (Base, 1, Base_Pow (4));   --  Base_Pow(5) >= Base >= 6.
+      pragma Assert (P >= 1);
+      Lemma_Val_Lt_P (X);                          --  0 <= Val(X) < P.
+      Lemma_Val_Lt_P (Y);                          --  0 <= Val(Y) < P.
+      --  Val(X) - Val(Y) = (Kb - Ka)*P, and |Val(X)-Val(Y)| < P -> Kb = Ka.
+      if Ka < Kb then
+         Lemma_BI_Mul_Mono (P, 1, Kb - Ka);
+         pragma Assert ((Kb - Ka) * P >= P);       --  but = Val(X)-Val(Y) < P.
+         pragma Assert (False);
+      elsif Kb < Ka then
+         Lemma_BI_Mul_Mono (P, 1, Ka - Kb);
+         pragma Assert ((Ka - Kb) * P >= P);
+         pragma Assert (False);
+      end if;
+      pragma Assert (Ka = Kb);
+      pragma Assert (Val (X) = Val (Y));
+      Lemma_Val_Inj_Reduced (X, Y);
+   end Lemma_Val_Canonical_Eq;
+
+   procedure Lemma_Val_Canonical_Zero (X : Big_Nat; Ka : BI.Big_Integer) is
+   begin
+      Lemma_Val_From_Zero_High (Zero, 0, 0);       --  Val(Zero) = 0.
+      pragma Assert (not Sub_Cond (Zero));         --  Zero(4)=0 /= In_Cap.
+      Lemma_Val_Canonical_Eq (X, Zero, 0, Ka);     --  Val(X)+0*p = Val(Zero)+Ka*p.
+   end Lemma_Val_Canonical_Zero;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
