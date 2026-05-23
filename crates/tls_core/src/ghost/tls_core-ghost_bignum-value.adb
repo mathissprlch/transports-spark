@@ -386,6 +386,92 @@ is
       end if;
    end Lemma_Val_From_Reduced_Ub;
 
+   procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Mul_Mono;
+
+   procedure Lemma_Val_From_Max_Forces (X : Big_Nat; K : Lo_Count) is
+   begin
+      if K = 5 then
+         null;  --  range 5 .. 4 empty.
+      else
+         Lemma_Limb_Val_Nonneg (Limb_Base - 1);    --  Base >= 1.
+         Lemma_Val_From_Reduced_Ub (X, K + 1);     --  Val_From(X,K+1) <= Base_Pow(4-K)-1.
+         Lemma_Limb_Val_Mono (X (K), In_Cap);
+         Lemma_Limb_Val_Pred (Limb_Base);          --  Limb_Val(In_Cap) = Base-1.
+         pragma Assert (Limb_Val (X (K)) <= Base - 1);
+         pragma Assert (Base_Pow (5 - K) = Base * Base_Pow (4 - K));
+         pragma Assert
+           (Base * Val_From (X, K + 1) <= Base * (Base_Pow (4 - K) - 1));
+         --  sum = sum-of-maxes and each <= its max => each = its max.
+         pragma Assert (Limb_Val (X (K)) = Base - 1);
+         --  Cancellation-free: a strictly smaller suffix would drop the sum by
+         --  >= Base (multiply-monotone), contradicting the maximal sum.
+         if Val_From (X, K + 1) < Base_Pow (4 - K) - 1 then
+            pragma Assert (Val_From (X, K + 1) <= Base_Pow (4 - K) - 2);
+            Lemma_BI_Mul_Mono
+              (Base, Val_From (X, K + 1), Base_Pow (4 - K) - 2);
+            pragma Assert
+              (Base * (Base_Pow (4 - K) - 2)
+               = Base * (Base_Pow (4 - K) - 1) - Base);
+            pragma Assert (False);
+         end if;
+         pragma Assert (Val_From (X, K + 1) = Base_Pow (4 - K) - 1);
+         --  Limb_Val(X(K)) = Base-1 = Limb_Val(In_Cap) forces X(K) = In_Cap.
+         if X (K) < In_Cap then
+            Lemma_Limb_Val_Succ (X (K));
+            Lemma_Limb_Val_Mono (X (K) + 1, In_Cap);
+            pragma Assert (Limb_Val (X (K)) <= Base - 2);   --  contradiction.
+         end if;
+         pragma Assert (X (K) = In_Cap);
+         Lemma_Val_From_Max_Forces (X, K + 1);     --  IH on the rest.
+      end if;
+   end Lemma_Val_From_Max_Forces;
+
+   procedure Lemma_Base_Ge_6 is
+   begin
+      Lemma_Limb_Val_Mono (6, Limb_Base);          --  Limb_Val(6) <= Base.
+      pragma Assert (Limb_Val (6) = 6);            --  unit recursion, 6 deep.
+   end Lemma_Base_Ge_6;
+
+   procedure Lemma_Val_Lt_P (X : Big_Nat) is
+   begin
+      Lemma_Base_Ge_6;                             --  Base >= 6.
+      Lemma_Val_From_Reduced_Ub (X, 0);            --  0 <= Val(X) <= Base_Pow(5)-1.
+      Lemma_Val_From_Reduced_Ub (X, 1);            --  Val_From(X,1) <= Base_Pow(4)-1.
+      Lemma_Limb_Val_Nonneg (X (0));
+      Lemma_Limb_Val_Mono (X (0), In_Cap);
+      Lemma_Limb_Val_Pred (Limb_Base);             --  Limb_Val(In_Cap) = Base-1.
+      pragma Assert (Base_Pow (5) = Base * Base_Pow (4));
+      pragma Assert (Val (X) = Limb_Val (X (0)) + Base * Val_From (X, 1));
+
+      if Val_From (X, 1) <= Base_Pow (4) - 2 then
+         --  Case A: top 4 not all maxed -> Base deficit dominates the 5 margin.
+         pragma Assert
+           (Base * Val_From (X, 1) <= Base * (Base_Pow (4) - 2));
+         pragma Assert (Val (X) <= (Base - 1) + Base * (Base_Pow (4) - 2));
+         pragma Assert (Val (X) <= Base_Pow (5) - Base - 1);
+      else
+         --  Case B: Val_From(X,1) = Base_Pow(4)-1 -> X(1..4) all = In_Cap.
+         pragma Assert (Val_From (X, 1) = Base_Pow (4) - 1);
+         Lemma_Val_From_Max_Forces (X, 1);
+         pragma Assert (X (1) = In_Cap and then X (2) = In_Cap
+                        and then X (3) = In_Cap and then X (4) = In_Cap);
+         pragma Assert (X (0) < In_Cap - 4);       --  from not Sub_Cond.
+         --  Limb_Val(X(0)) <= Limb_Val(In_Cap-5) = Base-6.
+         Lemma_Limb_Val_Pred (Limb_Base - 1);
+         Lemma_Limb_Val_Pred (Limb_Base - 2);
+         Lemma_Limb_Val_Pred (Limb_Base - 3);
+         Lemma_Limb_Val_Pred (Limb_Base - 4);
+         Lemma_Limb_Val_Pred (Limb_Base - 5);      --  Limb_Val(In_Cap-5)=Base-6.
+         Lemma_Limb_Val_Mono (X (0), In_Cap - 5);
+         pragma Assert (Limb_Val (X (0)) <= Base - 6);
+         pragma Assert (Val (X) <= (Base - 6) + Base * (Base_Pow (4) - 1));
+         pragma Assert (Val (X) <= Base_Pow (5) - 6);
+      end if;
+   end Lemma_Val_Lt_P;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then

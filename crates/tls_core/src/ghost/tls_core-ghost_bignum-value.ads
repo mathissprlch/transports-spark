@@ -389,4 +389,38 @@ is
        and then Val_From (X, K) <= Base_Pow (5 - K) - 1,
      Subprogram_Variant => (Decreases => 5 - K);
 
+   --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
+   --  nonlinear fact in a tiny context).
+   procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)
+   with
+     Pre  => C >= 0 and then A <= B,
+     Post => C * A <= C * B;
+
+   --  Converse of the upper bound: a Horner suffix at its maximum forces every
+   --  limb in the suffix to be In_Cap (uniqueness of the max representation).
+   procedure Lemma_Val_From_Max_Forces (X : Big_Nat; K : Lo_Count)
+   with
+     Pre                =>
+       In_Bounds (X, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then K <= 5
+       and then Val_From (X, K) = Base_Pow (5 - K) - 1,
+     Post               =>
+       (for all J in Limb_Index range K .. 4 => X (J) = In_Cap),
+     Subprogram_Variant => (Decreases => 5 - K);
+
+   --  Base is at least 6 (= Limb_Val (2**26)); used in the < p margin.
+   procedure Lemma_Base_Ge_6
+   with Post => Base >= 6;
+
+   --  Magnitude half of mod-p uniqueness: a canonical Big_Nat (reduced AND
+   --  not Sub_Cond, i.e. < p) has 0 <= Val (X) < p = Base_Pow (5) - 5.
+   procedure Lemma_Val_Lt_P (X : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (X, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then not Sub_Cond (X),
+     Post => Val (X) >= 0 and then Val (X) < Base_Pow (5) - 5;
+
 end Tls_Core.Ghost_Bignum.Value;
