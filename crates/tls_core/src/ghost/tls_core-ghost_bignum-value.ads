@@ -330,4 +330,9 @@ is
        and then Na + Nb <= Max_Limbs,
      Post => Val (A * B) = Val (A) * Val (B);
 
+   --  The value of the prime p = 2**130 - 5 in our base: Base_Pow (5) = 2**130.
+   --  The five-limb P_Prime telescopes to Base**5 - 5.
+   procedure Lemma_Val_P_Prime
+   with Post => Val (P_Prime) = Base_Pow (5) - 5;
+
 end Tls_Core.Ghost_Bignum.Value;

@@ -317,6 +317,27 @@ is
       Lemma_Val_Cong (B_Lo (B, Nb), B);
    end Lemma_Val_Mul;
 
+   procedure Lemma_Val_P_Prime is
+   begin
+      Lemma_Limb_Val_Pred (Limb_Base);         --  Limb_Val (In_Cap)   = Base - 1.
+      Lemma_Limb_Val_Pred (Limb_Base - 1);
+      Lemma_Limb_Val_Pred (Limb_Base - 2);
+      Lemma_Limb_Val_Pred (Limb_Base - 3);
+      Lemma_Limb_Val_Pred (Limb_Base - 4);     --  Limb_Val (In_Cap-4) = Base - 5.
+      Lemma_Val_From_Zero_High (P_Prime, 5, 5);
+      pragma Assert (Limb_Val (P_Prime (0)) = Base - 5);
+      pragma Assert
+        (for all K in Limb_Index range 1 .. 4 => Limb_Val (P_Prime (K)) = Base - 1);
+      --  Telescope the all-(Base-1) tail: Val_From (P_Prime, k) = Base**(5-k) - 1.
+      pragma Assert (Val_From (P_Prime, 4) = Base - 1);
+      pragma Assert (Val_From (P_Prime, 3) = Base * Base - 1);
+      pragma Assert (Val_From (P_Prime, 2) = Base * Base * Base - 1);
+      pragma Assert (Val_From (P_Prime, 1) = Base * Base * Base * Base - 1);
+      pragma Assert
+        (Val_From (P_Prime, 0) = Base * Base * Base * Base * Base - 5);
+      pragma Assert (Base_Pow (5) = Base * (Base * (Base * (Base * Base))));
+   end Lemma_Val_P_Prime;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
