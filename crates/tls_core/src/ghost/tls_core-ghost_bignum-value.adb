@@ -562,6 +562,42 @@ is
       Lemma_Val_Inj_Reduced (X, Y);
    end Lemma_Val_Canonical_Eq;
 
+   procedure Lemma_Val_B_From
+     (GWc, GPr, B : Big_Nat; Kc : LLI; I : Limb_Index) is
+   begin
+      Lemma_Limb_Val_Mul (Kc, GPr (I));
+      --  Limb_Val (Kc * GPr(I)) = Limb_Val (Kc) * Limb_Val (GPr(I)).
+      Lemma_Limb_Val_Add (GWc (I), Kc * GPr (I));
+      pragma Assert
+        (Limb_Val (B (I))
+         = Limb_Val (GWc (I)) + Limb_Val (Kc) * Limb_Val (GPr (I)));
+      if I /= Max_Limbs - 1 then
+         Lemma_Val_B_From (GWc, GPr, B, Kc, I + 1);   --  IH.
+         pragma Assert
+           (Val_From (B, I)
+            = (Limb_Val (GWc (I)) + Limb_Val (Kc) * Limb_Val (GPr (I)))
+              + Base
+                * (Val_From (GWc, I + 1)
+                   + Limb_Val (Kc) * Val_From (GPr, I + 1)));
+         pragma Assert
+           (Base * (Limb_Val (Kc) * Val_From (GPr, I + 1))
+            = Limb_Val (Kc) * (Base * Val_From (GPr, I + 1)));
+         pragma Assert
+           (Limb_Val (Kc) * Limb_Val (GPr (I))
+            + Limb_Val (Kc) * (Base * Val_From (GPr, I + 1))
+            = Limb_Val (Kc)
+              * (Limb_Val (GPr (I)) + Base * Val_From (GPr, I + 1)));
+         pragma Assert
+           (Val_From (B, I)
+            = Val_From (GWc, I) + Limb_Val (Kc) * Val_From (GPr, I));
+      end if;
+   end Lemma_Val_B_From;
+
+   procedure Lemma_Val_B_Combine (GWc, GPr, B : Big_Nat; Kc : LLI) is
+   begin
+      Lemma_Val_B_From (GWc, GPr, B, Kc, 0);
+   end Lemma_Val_B_Combine;
+
    procedure Lemma_Val_From_Nonneg (X : Big_Nat; I : Limb_Index) is
    begin
       Lemma_Limb_Val_Nonneg (Limb_Base - 1);       --  Base >= 1.

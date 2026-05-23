@@ -482,6 +482,29 @@ is
                 = Val (Y) + Kb * (Base_Pow (5) - 5),
      Post => X = Y;
 
+   --  Value of a per-limb combine B(I) = GWc(I) + Kc*GPr(I):
+   --  Val (B) = Val (GWc) + Limb_Val (Kc) * Val (GPr). (The Lemma_Mul_Cong_Prime
+   --  combined operand, lifted to the value layer.)
+   procedure Lemma_Val_B_From
+     (GWc, GPr, B : Big_Nat; Kc : LLI; I : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (GWc, Conv_Col_Cap) and then In_Bounds (GPr, Conv_Col_Cap)
+       and then In_Bounds (B, Add_Cap) and then Kc in 0 .. 5
+       and then (for all J in Limb_Index => B (J) = GWc (J) + Kc * GPr (J)),
+     Post               =>
+       Val_From (B, I)
+       = Val_From (GWc, I) + Limb_Val (Kc) * Val_From (GPr, I),
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   procedure Lemma_Val_B_Combine (GWc, GPr, B : Big_Nat; Kc : LLI)
+   with
+     Pre  =>
+       In_Bounds (GWc, Conv_Col_Cap) and then In_Bounds (GPr, Conv_Col_Cap)
+       and then In_Bounds (B, Add_Cap) and then Kc in 0 .. 5
+       and then (for all J in Limb_Index => B (J) = GWc (J) + Kc * GPr (J)),
+     Post => Val (B) = Val (GWc) + Limb_Val (Kc) * Val (GPr);
+
    --  Val of a non-negatively-bounded Big_Nat is non-negative.
    procedure Lemma_Val_From_Nonneg (X : Big_Nat; I : Limb_Index)
    with
