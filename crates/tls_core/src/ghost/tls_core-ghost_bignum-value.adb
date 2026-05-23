@@ -126,4 +126,32 @@ is
       Lemma_Val_From_Smul (S, A, 0);
    end Lemma_Val_Smul;
 
+   procedure Lemma_Val_From_Add (A, B : Big_Nat; I : Limb_Index) is
+   begin
+      Lemma_Limb_Val_Add (A (I), B (I));
+      --  "+" Post gives (A + B) (I) = A (I) + B (I) for free.
+      if I /= Max_Limbs - 1 then
+         Lemma_Val_From_Add (A, B, I + 1);        --  IH.
+         pragma Assert
+           (Val_From (A + B, I)
+            = (Limb_Val (A (I)) + Limb_Val (B (I)))
+              + Base * (Val_From (A, I + 1) + Val_From (B, I + 1)));
+      end if;
+   end Lemma_Val_From_Add;
+
+   procedure Lemma_Val_Add (A, B : Big_Nat) is
+   begin
+      Lemma_Val_From_Add (A, B, 0);
+   end Lemma_Val_Add;
+
+   procedure Lemma_Col_Val (A, B : Big_Nat; K, T : Limb_Index) is
+   begin
+      Lemma_Limb_Val_Mul (A (T), B (K - T));
+      if T /= 0 then
+         Lemma_Col_Val (A, B, K, T - 1);          --  IH.
+         Lemma_Limb_Val_Add
+           (Mul_Col (A, B, K, T - 1), A (T) * B (K - T));
+      end if;
+   end Lemma_Col_Val;
+
 end Tls_Core.Ghost_Bignum.Value;

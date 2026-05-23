@@ -144,4 +144,38 @@ is
      Pre  => S in 0 .. Smul_Cap and then In_Bounds (A, In_Cap),
      Post => Val (Smul (S, A)) = Limb_Val (S) * Val (A);
 
+   --  Additive homomorphism: Val (A + B) = Val (A) + Val (B).
+   procedure Lemma_Val_From_Add (A, B : Big_Nat; I : Limb_Index)
+   with
+     Pre                => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap),
+     Post               =>
+       Val_From (A + B, I) = Val_From (A, I) + Val_From (B, I),
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   procedure Lemma_Val_Add (A, B : Big_Nat)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap),
+     Post => Val (A + B) = Val (A) + Val (B);
+
+   ------------------------------------------------------------------
+   --  Column-value: the Limb_Val of an impl convolution column is the sum of
+   --  the limb-value products (additivity + multiplicativity, per term).
+   ------------------------------------------------------------------
+
+   function Col_Val (A, B : Big_Nat; K, T : Limb_Index) return BI.Big_Integer
+   is (if T = 0 then Limb_Val (A (0)) * Limb_Val (B (K))
+       else Col_Val (A, B, K, T - 1)
+            + Limb_Val (A (T)) * Limb_Val (B (K - T)))
+   with
+     Pre                => In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+                           and then T <= K,
+     Subprogram_Variant => (Decreases => T);
+
+   procedure Lemma_Col_Val (A, B : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                => In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
+                           and then T <= K,
+     Post               => Limb_Val (Mul_Col (A, B, K, T)) = Col_Val (A, B, K, T),
+     Subprogram_Variant => (Decreases => T);
+
 end Tls_Core.Ghost_Bignum.Value;
