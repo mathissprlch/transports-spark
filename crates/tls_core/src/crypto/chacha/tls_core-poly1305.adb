@@ -553,18 +553,26 @@ is
    procedure Add (Acc : in out Limbs; N : Limbs)
    with
      Pre  =>
-       (for all I in Limb_Index => Acc (I) < 2**27 and then N (I) < 2**27),
+       (for all I in Limb_Index => Acc (I) < 2**27 and then N (I) < 2**26),
      Post =>
        (for all I in Limb_Index => Acc (I) < 2**27)
        and then GB."="
                   (To_Big_Nat (Acc),
                    GB.Carry_Model
-                     (GB."+" (To_Big_Nat (Acc'Old), To_Big_Nat (N))));
+                     (GB."+" (To_Big_Nat (Acc'Old), To_Big_Nat (N))))
+       --  Clean field-add form for the Mac loop invariant: the field element of
+       --  the result is the field sum of the (canonical) accumulator and block.
+       and then GB."="
+                  (GB.Canonical (To_Big_Nat (Acc)),
+                   GB.Field_Add
+                     (GB.Canonical (To_Big_Nat (Acc'Old)), To_Big_Nat (N)));
 
    procedure Add (Acc : in out Limbs; N : Limbs) is
       Acc0 : constant GB.Big_Nat := To_Big_Nat (Acc) with Ghost;
       Nn   : constant GB.Big_Nat := To_Big_Nat (N) with Ghost;
    begin
+      Lemma_To_Big_Nat_Mul_Cap (Acc);   --  Acc0 embeds <= Mul_Cap, zero from 5.
+      Lemma_To_Big_Nat_Reduced (N);     --  Nn embeds <= In_Cap, zero from 5.
       for I in Limb_Index loop
          Acc (I) := Acc (I) + N (I);
          pragma Loop_Invariant
@@ -581,6 +589,15 @@ is
         (GB."=" (To_Big_Nat (Acc), GB."+" (Acc0, Nn)));
       GB.Lemma_Sweep5_Tight_Carry (GB."+" (Acc0, Nn));
       Carry (Acc);
+
+      --  Clean field-add form: Acc now holds Carry_Model (Acc0 + Nn); the Add
+      --  bridge canonicalises it to Field_Add (Canonical (Acc0), Nn).
+      Lemma_To_Big_Nat_Mul_Cap (Acc);   --  new Acc (post-carry) Mul_Cap, zero5.
+      pragma Assert
+        (GB."=" (To_Big_Nat (Acc), GB.Carry_Model (GB."+" (Acc0, Nn))));
+      pragma Assert (GB.In_Bounds (GB."+" (Acc0, Nn), GB.Round1_Out_Cap));
+      GB.Lemma_Sweep5_Chain_Tight (GB."+" (Acc0, Nn));
+      GB.Lemma_Field_Add_Bridge (Acc0, Nn, To_Big_Nat (Acc));
    end Add;
 
    ---------------------------------------------------------------------
