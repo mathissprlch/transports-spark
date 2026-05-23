@@ -376,4 +376,17 @@ is
      Post               => Limb_Val (X) <= Limb_Val (Y),
      Subprogram_Variant => (Decreases => Y - X);
 
+   --  Reduced (limbs <= In_Cap, zero from 5) Big_Nat: each Horner suffix is
+   --  in [0, Base_Pow (5-K) - 1]. At K=0 this bounds Val (X) by Base_Pow (5)-1.
+   procedure Lemma_Val_From_Reduced_Ub (X : Big_Nat; K : Lo_Count)
+   with
+     Pre                =>
+       In_Bounds (X, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then K <= 5,
+     Post               =>
+       Val_From (X, K) >= 0
+       and then Val_From (X, K) <= Base_Pow (5 - K) - 1,
+     Subprogram_Variant => (Decreases => 5 - K);
+
 end Tls_Core.Ghost_Bignum.Value;

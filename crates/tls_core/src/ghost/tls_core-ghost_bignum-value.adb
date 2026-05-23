@@ -366,6 +366,26 @@ is
       end if;
    end Lemma_Limb_Val_Mono;
 
+   procedure Lemma_Val_From_Reduced_Ub (X : Big_Nat; K : Lo_Count) is
+   begin
+      Lemma_Limb_Val_Nonneg (Limb_Base - 1);      --  Base >= 1.
+      pragma Assert (Base >= 1);
+      if K = 5 then
+         Lemma_Val_From_Zero_High (X, 5, 5);      --  Val_From (X, 5) = 0.
+      else
+         Lemma_Val_From_Reduced_Ub (X, K + 1);    --  IH.
+         Lemma_Limb_Val_Nonneg (X (K));           --  Limb_Val (X(K)) >= 0.
+         Lemma_Limb_Val_Mono (X (K), In_Cap);     --  <= Limb_Val (In_Cap).
+         Lemma_Limb_Val_Pred (Limb_Base);         --  Limb_Val (In_Cap) = Base - 1.
+         pragma Assert (Limb_Val (X (K)) <= Base - 1);
+         pragma Assert (Base_Pow (5 - K) = Base * Base_Pow (4 - K));
+         --  Multiply-monotone: 0 <= Val_From(X,K+1) <= Base_Pow(4-K)-1, Base>=1.
+         pragma Assert
+           (Base * Val_From (X, K + 1) <= Base * (Base_Pow (4 - K) - 1));
+         pragma Assert (Base * Val_From (X, K + 1) >= 0);
+      end if;
+   end Lemma_Val_From_Reduced_Ub;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
