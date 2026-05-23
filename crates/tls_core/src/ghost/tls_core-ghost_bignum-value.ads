@@ -93,6 +93,21 @@ is
    function Val (A : Big_Nat) return BI.Big_Integer is (Val_From (A, 0))
    with Pre => In_Bounds (A, Val_Cap);
 
+   --  Congruence: equal Big_Nats have equal Val (forces the substitution that
+   --  eager unfolding of the recursive Val_From otherwise hides from the SMT).
+   procedure Lemma_Val_From_Cong (X, Y : Big_Nat; I : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (X, Val_Cap) and then In_Bounds (Y, Val_Cap) and then X = Y,
+     Post               => Val_From (X, I) = Val_From (Y, I),
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   procedure Lemma_Val_Cong (X, Y : Big_Nat)
+   with
+     Pre  => In_Bounds (X, Val_Cap) and then In_Bounds (Y, Val_Cap)
+             and then X = Y,
+     Post => Val (X) = Val (Y);
+
    ------------------------------------------------------------------
    --  Master lift: a wide signed value-equality (SVal_Wide) is a Val-equality.
    --  Telescopes the column relation; the pillars collapse each column. This
@@ -200,5 +215,26 @@ is
    with
      Pre  => In_Bounds (X, Val_Cap) and then X (Max_Limbs - 1) = 0,
      Post => Val (Shift1g (X)) = Base * Val (X);
+
+   --  Base**N, defined recursively so the recurrence unfolds (no reliance on
+   --  Big_Integers "**" axioms).
+   function Base_Pow (N : Limb_Index) return BI.Big_Integer
+   is (if N = 0 then 1 else Base * Base_Pow (N - 1))
+   with Subprogram_Variant => (Decreases => N);
+
+   --  Shift up by N limb positions: limb K -> (K >= N ? X (K-N) : 0).
+   function Shift_By (B : Big_Nat; N : Limb_Index) return Big_Nat
+   is ([for K in Limb_Index => (if K >= N then B (K - N) else 0)]);
+
+   --  Shift homomorphism: Val (Shift_By (B, N)) = Base_Pow (N) * Val (B).
+   --  Requires B's top N limbs zero (nothing is shifted out of range).
+   procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (B, Val_Cap)
+       and then (for all K in Limb_Index range Max_Limbs - N .. Max_Limbs - 1 =>
+                   B (K) = 0),
+     Post               => Val (Shift_By (B, N)) = Base_Pow (N) * Val (B),
+     Subprogram_Variant => (Decreases => N);
 
 end Tls_Core.Ghost_Bignum.Value;

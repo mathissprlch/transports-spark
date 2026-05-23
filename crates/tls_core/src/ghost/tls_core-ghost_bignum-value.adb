@@ -170,4 +170,40 @@ is
       --                  = Base * Val_From (X, 0) = Base * Val (X).
    end Lemma_Val_Shift1;
 
+   procedure Lemma_Val_From_Cong (X, Y : Big_Nat; I : Limb_Index) is
+   begin
+      if I /= Max_Limbs - 1 then
+         Lemma_Val_From_Cong (X, Y, I + 1);       --  IH; X (I) = Y (I) from X = Y.
+      end if;
+   end Lemma_Val_From_Cong;
+
+   procedure Lemma_Val_Cong (X, Y : Big_Nat) is
+   begin
+      Lemma_Val_From_Cong (X, Y, 0);
+   end Lemma_Val_Cong;
+
+   procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
+   begin
+      if N = 0 then
+         pragma Assert (for all K in Limb_Index => Shift_By (B, 0) (K) = B (K));
+         pragma Assert (Shift_By (B, 0) = B);     --  Base_Pow (0) = 1.
+         Lemma_Val_Cong (Shift_By (B, 0), B);
+      else
+         Lemma_Val_Shift_By (B, N - 1);           --  IH.
+         declare
+            SN1 : constant Big_Nat := Shift_By (B, N - 1);
+            SN  : constant Big_Nat := Shift_By (B, N);
+         begin
+            pragma Assert (SN1 (Max_Limbs - 1) = 0);   --  = B (Max_Limbs - N).
+            Lemma_Val_Shift1 (SN1);              --  Val (Shift1g SN1) = Base * Val (SN1).
+            pragma Assert
+              (for all K in Limb_Index => SN (K) = Shift1g (SN1) (K));
+            pragma Assert (SN = Shift1g (SN1));
+            Lemma_Val_Cong (SN, Shift1g (SN1));
+            pragma Assert (Val (SN) = Base * Val (SN1));
+            pragma Assert (Base_Pow (N) = Base * Base_Pow (N - 1));
+         end;
+      end if;
+   end Lemma_Val_Shift_By;
+
 end Tls_Core.Ghost_Bignum.Value;
