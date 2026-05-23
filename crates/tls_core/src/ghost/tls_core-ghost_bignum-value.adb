@@ -622,6 +622,181 @@ is
         (Conv, Sweep9_Out (Conv), Sweep9_Chain (Conv));
    end Lemma_Val_Sweep9;
 
+   procedure Lemma_BI_Reassoc (X, Y, Z : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Reassoc;
+
+   procedure Lemma_BI_Assoc (X, Y, Z : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Assoc;
+
+   procedure Lemma_Nested5_To_Flat (A0, A1, A2, A3, A4 : BI.Big_Integer) is
+   begin
+      pragma Assert (Base_Pow (0) = 1);
+      pragma Assert (Base_Pow (1) = Base * Base_Pow (0));
+      pragma Assert (Base_Pow (2) = Base * Base_Pow (1));
+      pragma Assert (Base_Pow (3) = Base * Base_Pow (2));
+      pragma Assert (Base_Pow (4) = Base * Base_Pow (3));
+      --  All per-term shift facts Base*(Aj*Base_Pow(k)) = Aj*Base_Pow(k+1).
+      Lemma_BI_Reassoc (Base, A4, Base_Pow (0));
+      Lemma_BI_Reassoc (Base, A4, Base_Pow (1));
+      Lemma_BI_Reassoc (Base, A4, Base_Pow (2));
+      Lemma_BI_Reassoc (Base, A4, Base_Pow (3));
+      Lemma_BI_Reassoc (Base, A3, Base_Pow (0));
+      Lemma_BI_Reassoc (Base, A3, Base_Pow (1));
+      Lemma_BI_Reassoc (Base, A3, Base_Pow (2));
+      Lemma_BI_Reassoc (Base, A2, Base_Pow (0));
+      Lemma_BI_Reassoc (Base, A2, Base_Pow (1));
+      Lemma_BI_Reassoc (Base, A1, Base_Pow (0));
+      pragma Assert (Base * (A4 * Base_Pow (0)) = A4 * Base_Pow (1));
+      pragma Assert (Base * (A4 * Base_Pow (1)) = A4 * Base_Pow (2));
+      pragma Assert (Base * (A4 * Base_Pow (2)) = A4 * Base_Pow (3));
+      pragma Assert (Base * (A4 * Base_Pow (3)) = A4 * Base_Pow (4));
+      pragma Assert (Base * (A3 * Base_Pow (0)) = A3 * Base_Pow (1));
+      pragma Assert (Base * (A3 * Base_Pow (1)) = A3 * Base_Pow (2));
+      pragma Assert (Base * (A3 * Base_Pow (2)) = A3 * Base_Pow (3));
+      pragma Assert (Base * (A2 * Base_Pow (0)) = A2 * Base_Pow (1));
+      pragma Assert (Base * (A2 * Base_Pow (1)) = A2 * Base_Pow (2));
+      pragma Assert (Base * (A1 * Base_Pow (0)) = A1 * Base_Pow (1));
+      --  Bottom-up nested -> flat, threading the previous level's flat form.
+      pragma Assert (A4 = A4 * Base_Pow (0));
+      pragma Assert
+        (A3 + Base * A4 = A3 * Base_Pow (0) + A4 * Base_Pow (1));
+      pragma Assert
+        (A2 + Base * (A3 * Base_Pow (0) + A4 * Base_Pow (1))
+         = A2 * Base_Pow (0) + A3 * Base_Pow (1) + A4 * Base_Pow (2));
+      pragma Assert
+        (A1
+           + Base * (A2 * Base_Pow (0) + A3 * Base_Pow (1) + A4 * Base_Pow (2))
+         = A1 * Base_Pow (0) + A2 * Base_Pow (1) + A3 * Base_Pow (2)
+           + A4 * Base_Pow (3));
+      pragma Assert
+        (A0
+           + Base * (A1 * Base_Pow (0) + A2 * Base_Pow (1) + A3 * Base_Pow (2)
+                     + A4 * Base_Pow (3))
+         = A0 * Base_Pow (0) + A1 * Base_Pow (1) + A2 * Base_Pow (2)
+           + A3 * Base_Pow (3) + A4 * Base_Pow (4));
+   end Lemma_Nested5_To_Flat;
+
+   procedure Lemma_Val_High5_Flat (B : Big_Nat) is
+      H : constant Big_Nat := High5 (B);
+   begin
+      Lemma_Val_From_Zero_High (H, 5, 5);          --  Val_From(H,5) = 0.
+      --  Val (H) in nested Horner form (Val_From unfolds, limbs are B(5..9)).
+      pragma Assert (Val_From (H, 4) = Limb_Val (B (9)));
+      pragma Assert
+        (Val_From (H, 3) = Limb_Val (B (8)) + Base * Val_From (H, 4));
+      pragma Assert
+        (Val_From (H, 2) = Limb_Val (B (7)) + Base * Val_From (H, 3));
+      pragma Assert
+        (Val_From (H, 1) = Limb_Val (B (6)) + Base * Val_From (H, 2));
+      pragma Assert
+        (Val_From (H, 0) = Limb_Val (B (5)) + Base * Val_From (H, 1));
+      pragma Assert
+        (Val (H)
+         = Limb_Val (B (5))
+           + Base * (Limb_Val (B (6))
+             + Base * (Limb_Val (B (7))
+               + Base * (Limb_Val (B (8)) + Base * Limb_Val (B (9))))));
+      --  Nested -> flat (isolated degree-4 ring identity).
+      Lemma_Nested5_To_Flat
+        (Limb_Val (B (5)), Limb_Val (B (6)), Limb_Val (B (7)),
+         Limb_Val (B (8)), Limb_Val (B (9)));
+   end Lemma_Val_High5_Flat;
+
+   procedure Lemma_Val_PrimeTerm (S : LLI; J : Limb_Index) is
+   begin
+      Lemma_Val_Smul (S, Shift_By (P_Prime, J));   --  Val(Smul) = Limb_Val(S)*Val(Shift_By).
+      Lemma_Val_Shift_By (P_Prime, J);             --  Val(Shift_By) = Base_Pow(J)*Val(P_Prime).
+      Lemma_Val_P_Prime;                           --  Val(P_Prime) = Base_Pow(5)-5.
+      Lemma_BI_Assoc (Limb_Val (S), Base_Pow (J), Base_Pow (5) - 5);
+   end Lemma_Val_PrimeTerm;
+
+   procedure Lemma_PrimePart_Decomp (B : Big_Nat) is
+      T0 : constant Big_Nat := Smul (B (5), Shift_By (P_Prime, 0));
+      T1 : constant Big_Nat := Smul (B (6), Shift_By (P_Prime, 1));
+      T2 : constant Big_Nat := Smul (B (7), Shift_By (P_Prime, 2));
+      T3 : constant Big_Nat := Smul (B (8), Shift_By (P_Prime, 3));
+      T4 : constant Big_Nat := Smul (B (9), Shift_By (P_Prime, 4));
+      --  Tight per-limb product bounds keep every partial sum within Add_Cap.
+      pragma Assert (for all K in Limb_Index => T0 (K) <= In_Cap * In_Cap);
+      pragma Assert (for all K in Limb_Index => T1 (K) <= In_Cap * In_Cap);
+      pragma Assert (for all K in Limb_Index => T2 (K) <= In_Cap * In_Cap);
+      pragma Assert (for all K in Limb_Index => T3 (K) <= In_Cap * In_Cap);
+      pragma Assert
+        (for all K in Limb_Index => T4 (K) <= Fold9_Top_Cap * In_Cap);
+      S1  : constant Big_Nat := T0 + T1;
+      S2  : constant Big_Nat := S1 + T2;
+      S3  : constant Big_Nat := S2 + T3;
+      Sum : constant Big_Nat := S3 + T4;
+   begin
+      pragma Assert
+        (for all K in Limb_Index =>
+           Sum (K) = Fold_High_9_PrimePart (B) (K));
+   end Lemma_PrimePart_Decomp;
+
+   procedure Lemma_Val_PrimePart (B : Big_Nat) is
+      P0  : constant Big_Nat := Shift_By (P_Prime, 0);
+      P1  : constant Big_Nat := Shift_By (P_Prime, 1);
+      P2  : constant Big_Nat := Shift_By (P_Prime, 2);
+      P3  : constant Big_Nat := Shift_By (P_Prime, 3);
+      P4  : constant Big_Nat := Shift_By (P_Prime, 4);
+      T0  : constant Big_Nat := Smul (B (5), P0);
+      T1  : constant Big_Nat := Smul (B (6), P1);
+      T2  : constant Big_Nat := Smul (B (7), P2);
+      T3  : constant Big_Nat := Smul (B (8), P3);
+      T4  : constant Big_Nat := Smul (B (9), P4);
+      pragma Assert (for all K in Limb_Index => T0 (K) <= In_Cap * In_Cap);
+      pragma Assert (for all K in Limb_Index => T1 (K) <= In_Cap * In_Cap);
+      pragma Assert (for all K in Limb_Index => T2 (K) <= In_Cap * In_Cap);
+      pragma Assert (for all K in Limb_Index => T3 (K) <= In_Cap * In_Cap);
+      pragma Assert
+        (for all K in Limb_Index => T4 (K) <= Fold9_Top_Cap * In_Cap);
+      S1  : constant Big_Nat := T0 + T1;
+      S2  : constant Big_Nat := S1 + T2;
+      S3  : constant Big_Nat := S2 + T3;
+      Sum : constant Big_Nat := S3 + T4;
+      P_V : constant BI.Big_Integer := Base_Pow (5) - 5;
+   begin
+      Lemma_PrimePart_Decomp (B);              --  Fold_High_9_PrimePart(B) = Sum.
+
+      --  Val of each term: Limb_Val (B(5+j)) * Base_Pow(j) * p.
+      Lemma_Val_Smul (B (5), P0);  Lemma_Val_Shift_By (P_Prime, 0);
+      Lemma_Val_Smul (B (6), P1);  Lemma_Val_Shift_By (P_Prime, 1);
+      Lemma_Val_Smul (B (7), P2);  Lemma_Val_Shift_By (P_Prime, 2);
+      Lemma_Val_Smul (B (8), P3);  Lemma_Val_Shift_By (P_Prime, 3);
+      Lemma_Val_Smul (B (9), P4);  Lemma_Val_Shift_By (P_Prime, 4);
+      Lemma_Val_P_Prime;
+
+      --  Val of the sum (chain Val_Add over the named partials).
+      Lemma_Val_Add (T0, T1);
+      Lemma_Val_Add (S1, T2);
+      Lemma_Val_Add (S2, T3);
+      Lemma_Val_Add (S3, T4);
+      Lemma_Val_Cong (Fold_High_9_PrimePart (B), Sum);
+
+      --  Each term fully evaluated via the isolated term lemma:
+      --  Val (Tj) = Limb_Val (B(5+j)) * Base_Pow(j) * P_V.
+      Lemma_Val_PrimeTerm (B (5), 0);
+      Lemma_Val_PrimeTerm (B (6), 1);
+      Lemma_Val_PrimeTerm (B (7), 2);
+      Lemma_Val_PrimeTerm (B (8), 3);
+      Lemma_Val_PrimeTerm (B (9), 4);
+
+      --  Val (High5 (B)) flattened (isolated lemma) + factor out P_V.
+      Lemma_Val_High5_Flat (B);
+      pragma Assert
+        (Val (Sum)
+         = Limb_Val (B (5)) * Base_Pow (0) * P_V
+           + Limb_Val (B (6)) * Base_Pow (1) * P_V
+           + Limb_Val (B (7)) * Base_Pow (2) * P_V
+           + Limb_Val (B (8)) * Base_Pow (3) * P_V
+           + Limb_Val (B (9)) * Base_Pow (4) * P_V);
+      pragma Assert (Val (Sum) = P_V * Val (High5 (B)));
+   end Lemma_Val_PrimePart;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then

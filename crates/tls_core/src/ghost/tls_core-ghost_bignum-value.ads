@@ -527,4 +527,75 @@ is
                          Conv (I) = 0),
      Post => Val (Conv) = Val (Sweep9_Out (Conv));
 
+   ------------------------------------------------------------------
+   --  Fold_High_9 prime-multiple part is a multiple of p. Fold_High_9_PrimePart
+   --  (B) is the convolution P_Prime * High5 (B); B (9) can exceed Mul_Cap so
+   --  Val_Mul does not apply, but the Smul row decomposition does (each scalar
+   --  B (5+j) <= Fold9_Top_Cap <= Smul_Cap), giving Val = p * Val (High5 (B)).
+   ------------------------------------------------------------------
+
+   --  The five high limbs B (5 .. 9) as a five-limb value.
+   function High5 (B : Big_Nat) return Big_Nat
+   is ([0 => B (5), 1 => B (6), 2 => B (7), 3 => B (8), 4 => B (9),
+        others => 0]);
+
+   --  Big_Integer ring reassociations (isolated so the SMT solver applies the
+   --  nonlinear comm/assoc in a tiny context).
+   procedure Lemma_BI_Reassoc (X, Y, Z : BI.Big_Integer)
+   with Post => X * (Y * Z) = Y * (X * Z);
+
+   procedure Lemma_BI_Assoc (X, Y, Z : BI.Big_Integer)
+   with Post => X * (Y * Z) = (X * Y) * Z;
+
+   --  Nested Horner (base Base) to Base_Pow-weighted flat, five terms (isolated
+   --  abstract-value context so the SMT solver does the degree-4 ring identity).
+   procedure Lemma_Nested5_To_Flat (A0, A1, A2, A3, A4 : BI.Big_Integer)
+   with
+     Post =>
+       A0 + Base * (A1 + Base * (A2 + Base * (A3 + Base * A4)))
+       = A0 * Base_Pow (0) + A1 * Base_Pow (1) + A2 * Base_Pow (2)
+         + A3 * Base_Pow (3) + A4 * Base_Pow (4);
+
+   --  Val (High5 (B)) in explicit Base_Pow-weighted form (isolated so the SMT
+   --  solver sees the nested-Base -> Base_Pow flatten in a small context).
+   procedure Lemma_Val_High5_Flat (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap,
+     Post =>
+       Val (High5 (B))
+       = Limb_Val (B (5)) * Base_Pow (0) + Limb_Val (B (6)) * Base_Pow (1)
+         + Limb_Val (B (7)) * Base_Pow (2) + Limb_Val (B (8)) * Base_Pow (3)
+         + Limb_Val (B (9)) * Base_Pow (4);
+
+   --  One PrimePart term, fully evaluated (isolated so its nonlinear chain is a
+   --  small VC): Val (Smul (S, Shift_By (P_Prime, J))) = Limb_Val (S)*Base_Pow(J)*p.
+   procedure Lemma_Val_PrimeTerm (S : LLI; J : Limb_Index)
+   with
+     Pre  => S in 0 .. Fold9_Top_Cap and then J <= 4,
+     Post =>
+       Val (Smul (S, Shift_By (P_Prime, J)))
+       = Limb_Val (S) * Base_Pow (J) * (Base_Pow (5) - 5);
+
+   --  PrimePart as the sum of single-limb scalings of shifted P_Prime.
+   procedure Lemma_PrimePart_Decomp (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap,
+     Post =>
+       Fold_High_9_PrimePart (B)
+       = Smul (B (5), Shift_By (P_Prime, 0))
+         + Smul (B (6), Shift_By (P_Prime, 1))
+         + Smul (B (7), Shift_By (P_Prime, 2))
+         + Smul (B (8), Shift_By (P_Prime, 3))
+         + Smul (B (9), Shift_By (P_Prime, 4));
+
+   procedure Lemma_Val_PrimePart (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap,
+     Post =>
+       Val (Fold_High_9_PrimePart (B))
+       = (Base_Pow (5) - 5) * Val (High5 (B));
+
 end Tls_Core.Ghost_Bignum.Value;
