@@ -562,6 +562,73 @@ is
       Lemma_Val_Inj_Reduced (X, Y);
    end Lemma_Val_Canonical_Eq;
 
+   procedure Lemma_Field_Mul_P_Zero (R : Big_Nat) is
+      Conv : constant Big_Nat := P_Prime * R;
+      S    : constant Big_Nat := Sweep9_Out (Conv);
+      R1   : constant Big_Nat := Fold_High_9_Out (S);
+      CM   : constant Big_Nat := Carry_Model (R1);
+      FM   : constant Big_Nat := Field_Mul (P_Prime, R);
+      P    : constant BI.Big_Integer := Base_Pow (5) - 5;
+      K    : LLI;
+      C    : Carry_Array;
+      Kf   : BI.Big_Integer;
+      Ka   : BI.Big_Integer;
+   begin
+      --  Conv = P_Prime*R: tight 9-limb bound + zero from 9 (mirror Field_Mul).
+      Lemma_Mul5_Cols (P_Prime, R, Conv);
+      pragma Assert
+        (for all K in Limb_Index range 9 .. Max_Limbs - 1 => Conv (K) = 0);
+      pragma Assert
+        (for all K in Limb_Index => Conv (K) <= LLI (K + 1) * Two_Pow_54);
+      pragma Assert (In_Bounds (Conv, Conv_Col_Cap));
+      --  Val(Conv) = p*Val(R); Val(S) = Val(Conv).
+      Lemma_Val_P_Mul (R);
+      Lemma_Val_Sweep9 (Conv);
+      Lemma_Sweep9_Conv (Conv);                    --  S(9) <= Conv_Carry_Cap.
+      --  Val(R1) = Val(S) - p*Val(High5(S)).
+      Lemma_Val_FH9_Out (S);
+      pragma Assert (Val (R1) = P * Val (R) - P * Val (High5 (S)));
+      --  Carry_Model lift: Val(R1) = Val(CM) + Limb_Val(K)*p.
+      Lemma_Sweep5_Chain_Tight (R1);               --  Sweep5_Out(R1)(5) <= Conv_Carry_Cap.
+      Lemma_Carry_Mod_P_Wide (R1, K, C);
+      Lemma_SValEq_To_Val (R1, CM + Smul (K, P_Prime), C);
+      pragma Assert (Val (R1) = Val (CM + Smul (K, P_Prime)));
+      Lemma_Val_Add (CM, Smul (K, P_Prime));
+      pragma Assert
+        (Val (CM + Smul (K, P_Prime)) = Val (CM) + Val (Smul (K, P_Prime)));
+      Lemma_Val_Smul (K, P_Prime);
+      Lemma_Val_P_Prime;                           --  Val(P_Prime) = P.
+      Lemma_BI_MulR_Cong (Limb_Val (K), Val (P_Prime), P);
+      pragma Assert (Val (Smul (K, P_Prime)) = Limb_Val (K) * P);
+      pragma Assert (Val (R1) = Val (CM) + Limb_Val (K) * P);
+      pragma Assert (Val (CM) = Val (R1) - Limb_Val (K) * P);
+      --  Canonical lift: Val(CM) = Val(Canonical(CM)) + Kf*p; Field_Mul = Canonical(CM).
+      Lemma_Canonical_Val_Cong (CM, Kf);
+      pragma Assert (FM = Canonical (CM));         --  strengthened Field_Mul Post.
+      Lemma_Val_Cong (FM, Canonical (CM));         --  Val(FM) = Val(Canonical(CM)).
+      --  Combine the chain one substitution at a time.
+      pragma Assert (Val (Canonical (CM)) = Val (CM) - Kf * P);
+      pragma Assert (Val (FM) = Val (CM) - Kf * P);
+      pragma Assert (Val (FM) = Val (R1) - Limb_Val (K) * P - Kf * P);
+      pragma Assert
+        (Val (FM)
+         = P * Val (R) - P * Val (High5 (S)) - Limb_Val (K) * P - Kf * P);
+      Lemma_BI_FieldKa (Val (R), Val (High5 (S)), Limb_Val (K), Kf, P);
+      Ka := Val (R) - Val (High5 (S)) - Limb_Val (K) - Kf;
+      pragma Assert (Val (FM) = Ka * P);
+      --  Ka >= 0: Val(FM) >= 0 and p >= 1.
+      Lemma_Base_Ge_6;
+      Lemma_Base_Pow_Ge_1 (4);
+      pragma Assert (Base_Pow (5) = Base * Base_Pow (4));
+      Lemma_BI_Mul_Mono (Base, 1, Base_Pow (4));   --  Base_Pow(5) >= Base >= 6 => P >= 1.
+      Lemma_Val_Lt_P (FM);                         --  0 <= Val(FM).
+      if Ka < 0 then
+         Lemma_BI_Mul_Mono (P, Ka, -1);            --  P*Ka <= -P < 0, contra Val(FM)>=0.
+         pragma Assert (False);
+      end if;
+      Lemma_Val_Canonical_Zero (FM, Ka);
+   end Lemma_Field_Mul_P_Zero;
+
    procedure Lemma_Val_Canonical_Zero (X : Big_Nat; Ka : BI.Big_Integer) is
    begin
       Lemma_Val_From_Zero_High (Zero, 0, 0);       --  Val(Zero) = 0.
@@ -663,6 +730,11 @@ is
    begin
       null;
    end Lemma_BI_MulR_Cong;
+
+   procedure Lemma_BI_FieldKa (VR, VH, LK, Kf, P : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_FieldKa;
 
    procedure Lemma_Nested5_To_Flat (A0, A1, A2, A3, A4 : BI.Big_Integer) is
    begin

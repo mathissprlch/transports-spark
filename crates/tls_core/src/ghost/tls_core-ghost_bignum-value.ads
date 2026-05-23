@@ -482,6 +482,16 @@ is
                 = Val (Y) + Kb * (Base_Pow (5) - 5),
      Post => X = Y;
 
+   --  The §0e Mul-bridge keystone: the field product of the prime by any reduced
+   --  R is Zero (P_Prime == 0 mod p). Discharges the Kc*(P_Prime*R) residual the
+   --  SVal multiply-congruence leaves; mirrors Lemma_Canonical_P_Prime for mul.
+   procedure Lemma_Field_Mul_P_Zero (R : Big_Nat)
+   with
+     Pre  => In_Bounds (R, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => Field_Mul (P_Prime, R) = Zero;
+
    --  Corollary: a canonical Big_Nat whose value is a multiple of p is Zero.
    procedure Lemma_Val_Canonical_Zero (X : Big_Nat; Ka : BI.Big_Integer)
    with
@@ -579,6 +589,11 @@ is
    --  Right-operand congruence: X = Y => P*X = P*Y.
    procedure Lemma_BI_MulR_Cong (P, X, Y : BI.Big_Integer)
    with Pre => X = Y, Post => P * X = P * Y;
+
+   --  Field-value factoring: P*VR - P*VH - LK*P - Kf*P = (VR-VH-LK-Kf)*P.
+   procedure Lemma_BI_FieldKa (VR, VH, LK, Kf, P : BI.Big_Integer)
+   with Post => P * VR - P * VH - LK * P - Kf * P
+                = (VR - VH - LK - Kf) * P;
 
    --  Nested Horner (base Base) to Base_Pow-weighted flat, five terms (isolated
    --  abstract-value context so the SMT solver does the degree-4 ring identity).
