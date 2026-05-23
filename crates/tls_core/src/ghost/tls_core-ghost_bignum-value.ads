@@ -482,6 +482,29 @@ is
                 = Val (Y) + Kb * (Base_Pow (5) - 5),
      Post => X = Y;
 
+   --  Val of a non-negatively-bounded Big_Nat is non-negative.
+   procedure Lemma_Val_From_Nonneg (X : Big_Nat; I : Limb_Index)
+   with
+     Pre                => In_Bounds (X, Val_Cap),
+     Post               => Val_From (X, I) >= 0,
+     Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
+
+   --  Field_Mul preserves value mod p: Val (Field_Mul (A, R)) + Kg*p = Val (A*R),
+   --  Kg >= 0. The reduction chain (Sweep9 exact, Fold_High_9 / Carry_Model /
+   --  Canonical each subtract a p-multiple) carried to the value layer, for an
+   --  accumulator-sized A (limbs < Mul_Cap) and reduced R.
+   procedure Lemma_Field_Mul_Reduce_Cong
+     (A, R : Big_Nat; Kg : out BI.Big_Integer)
+   with
+     Pre  => In_Bounds (A, Mul_Cap) and then In_Bounds (R, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         A (I) = 0)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => Kg >= 0
+             and then Val (Field_Mul (A, R)) + Kg * (Base_Pow (5) - 5)
+                      = Val (A * R);
+
    --  The §0e Mul-bridge keystone: the field product of the prime by any reduced
    --  R is Zero (P_Prime == 0 mod p). Discharges the Kc*(P_Prime*R) residual the
    --  SVal multiply-congruence leaves; mirrors Lemma_Canonical_P_Prime for mul.
@@ -594,6 +617,14 @@ is
    procedure Lemma_BI_FieldKa (VR, VH, LK, Kf, P : BI.Big_Integer)
    with Post => P * VR - P * VH - LK * P - Kf * P
                 = (VR - VH - LK - Kf) * P;
+
+   --  Three-term factoring: P*VH + LK*P + Kf*P = (VH+LK+Kf)*P.
+   procedure Lemma_BI_Factor3 (VH, LK, Kf, P : BI.Big_Integer)
+   with Post => P * VH + LK * P + Kf * P = (VH + LK + Kf) * P;
+
+   --  Two-term factoring: P*VR - Kg*P = (VR-Kg)*P.
+   procedure Lemma_BI_Factor2 (VR, Kg, P : BI.Big_Integer)
+   with Post => P * VR - Kg * P = (VR - Kg) * P;
 
    --  Nested Horner (base Base) to Base_Pow-weighted flat, five terms (isolated
    --  abstract-value context so the SMT solver does the degree-4 ring identity).
