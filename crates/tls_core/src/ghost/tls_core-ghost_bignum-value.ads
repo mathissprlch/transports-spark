@@ -335,4 +335,14 @@ is
    procedure Lemma_Val_P_Prime
    with Post => Val (P_Prime) = Base_Pow (5) - 5;
 
+   --  P_Prime * R has value p * Val (R): convolution faithfulness applied to
+   --  the prime. The value of the product is a multiple of the prime p, the
+   --  fact the field-multiply fold (2**130 == 5 mod p) ultimately discharges.
+   procedure Lemma_Val_P_Mul (R : Big_Nat)
+   with
+     Pre  => In_Bounds (R, In_Cap)
+             and then (for all K in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (K) = 0),
+     Post => Val (P_Prime * R) = (Base_Pow (5) - 5) * Val (R);
+
 end Tls_Core.Ghost_Bignum.Value;

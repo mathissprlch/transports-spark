@@ -338,6 +338,12 @@ is
       pragma Assert (Base_Pow (5) = Base * (Base * (Base * (Base * Base))));
    end Lemma_Val_P_Prime;
 
+   procedure Lemma_Val_P_Mul (R : Big_Nat) is
+   begin
+      Lemma_Val_Mul (P_Prime, R, 5, 5);   --  Val(P_Prime*R) = Val(P_Prime)*Val(R).
+      Lemma_Val_P_Prime;                   --  Val(P_Prime)   = Base_Pow(5)-5.
+   end Lemma_Val_P_Mul;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
