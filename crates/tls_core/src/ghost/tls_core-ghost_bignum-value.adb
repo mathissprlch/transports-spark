@@ -614,6 +614,14 @@ is
       pragma Assert (Val (B) = Val (RC) + Kf * P_V);
    end Lemma_Canonical_Val_Cong;
 
+   procedure Lemma_Val_Sweep9 (Conv : Big_Nat) is
+   begin
+      Lemma_Bounds_Mono (Conv, Conv_Col_Cap, Prod_Cap);  --  Conv_Col_Cap <= Prod_Cap.
+      Lemma_Sweep9 (Conv);                               --  Val_Eq(Conv, Sweep9_Out, chain).
+      Lemma_ValEq_To_Val
+        (Conv, Sweep9_Out (Conv), Sweep9_Chain (Conv));
+   end Lemma_Val_Sweep9;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then

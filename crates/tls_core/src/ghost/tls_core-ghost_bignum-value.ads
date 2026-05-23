@@ -518,4 +518,13 @@ is
      Post => Kf >= 0
              and then Val (B) = Val (Canonical (B)) + Kf * (Base_Pow (5) - 5);
 
+   --  The Sweep9 carry sweep is value-exact (lift of Lemma_Sweep9). First
+   --  reduction step of Field_Mul (Conv = A*R) in the value layer.
+   procedure Lemma_Val_Sweep9 (Conv : Big_Nat)
+   with
+     Pre  => In_Bounds (Conv, Conv_Col_Cap)
+             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         Conv (I) = 0),
+     Post => Val (Conv) = Val (Sweep9_Out (Conv));
+
 end Tls_Core.Ghost_Bignum.Value;
