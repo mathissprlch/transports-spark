@@ -1488,7 +1488,13 @@ is
      Post => In_Bounds (Field_Mul'Result, In_Cap)
              and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
                          Field_Mul'Result (I) = 0)
-             and then not Sub_Cond (Field_Mul'Result);
+             and then not Sub_Cond (Field_Mul'Result)
+             --  Definitional: exposes the reduction chain so the per-op Mul
+             --  bridge can lift it into the value layer (mirrors Field_Add).
+             and then Field_Mul'Result
+                      = Canonical
+                          (Carry_Model
+                             (Fold_High_9_Out (Sweep9_Out (A * R))));
 
    --  Zero is its own canonical form.
    procedure Lemma_Canonical_Zero
