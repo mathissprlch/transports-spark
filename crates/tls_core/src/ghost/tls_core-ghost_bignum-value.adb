@@ -569,6 +569,51 @@ is
       Lemma_Val_Canonical_Eq (X, Zero, 0, Ka);     --  Val(X)+0*p = Val(Zero)+Ka*p.
    end Lemma_Val_Canonical_Zero;
 
+   procedure Lemma_SValEq_To_Val (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      Lemma_SVal_To_Wide (A, B, C);                --  SVal_Wide (A, B, C).
+      Lemma_SVal_To_Val (A, B, C);                 --  Val (A) = Val (B).
+   end Lemma_SValEq_To_Val;
+
+   procedure Lemma_Canonical_Val_Cong (B : Big_Nat; Kf : out BI.Big_Integer) is
+      N   : constant Norm_Result := Normalize (B);
+      NV  : constant Big_Nat := N.Val;
+      PM  : constant Big_Nat := N.PMult;
+      RC  : constant Big_Nat := Reduce_Canonical (NV);
+      SS  : constant Big_Nat := Sub_Sel_P (Sweep5_Out (NV));
+      P_V : constant BI.Big_Integer := Base_Pow (5) - 5;
+   begin
+      Lemma_Limb_Val_Nonneg (N.KMult);             --  Limb_Val(KMult) >= 0.
+
+      --  Step 1: Val(B) = Val(NV) + Limb_Val(KMult) * p.
+      Lemma_SValEq_To_Val (B, NV + PM, N.Cn);      --  Val(B) = Val(NV + PM).
+      Lemma_Val_Add (NV, PM);                      --  = Val(NV) + Val(PM).
+      Lemma_Val_Cong (PM, Smul (N.KMult, P_Prime));
+      Lemma_Val_Smul (N.KMult, P_Prime);           --  Val(PM) = Limb_Val(KMult)*Val(P_Prime).
+      Lemma_Val_P_Prime;                           --  Val(P_Prime) = P_V.
+      pragma Assert (Val (B) = Val (NV) + Limb_Val (N.KMult) * P_V);
+
+      --  Step 2: Val(NV) = Val(Canonical(B)) + (Sub_Cond? p : 0).
+      Lemma_Reduce_Canonical (NV);
+      pragma Assert (SC_Bounded (Sweep5_Chain (NV)));   --  Carry_Bounded => SC_Bounded.
+      Lemma_SValEq_To_Val (NV, RC + SS, Sweep5_Chain (NV));
+      Lemma_Val_Add (RC, SS);                      --  Val(NV) = Val(RC) + Val(SS).
+      pragma Assert (Canonical (B) = RC);          --  definitional.
+
+      if Sub_Cond (Sweep5_Out (NV)) then
+         Lemma_Val_Cong (SS, P_Prime);
+         Lemma_Val_P_Prime;
+         pragma Assert (Val (SS) = P_V);
+         Kf := Limb_Val (N.KMult) + 1;
+      else
+         Lemma_Val_Cong (SS, Zero);
+         Lemma_Val_From_Zero_High (Zero, 0, 0);
+         pragma Assert (Val (SS) = 0);
+         Kf := Limb_Val (N.KMult);
+      end if;
+      pragma Assert (Val (B) = Val (RC) + Kf * P_V);
+   end Lemma_Canonical_Val_Cong;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then

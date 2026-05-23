@@ -493,4 +493,29 @@ is
        and then Val (X) = Ka * (Base_Pow (5) - 5),
      Post => X = Zero;
 
+   ------------------------------------------------------------------
+   --  Canonical preserves value mod p (the reduction-chain lift). Field_Mul,
+   --  Field_Add, and the impl-op outputs all end in Canonical (...); this turns
+   --  their value congruences into the "+ Kf*p" form Lemma_Val_Canonical_Eq
+   --  consumes. Built by lifting the SVal_Eq witnesses that Normalize and
+   --  Lemma_Reduce_Canonical already expose.
+   ------------------------------------------------------------------
+
+   --  Signed-chain value equality is a Val equality (the SVal_Eq analogue of
+   --  Lemma_ValEq_To_Val).
+   procedure Lemma_SValEq_To_Val (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then SC_Bounded (C) and then SVal_Eq (A, B, C),
+     Post => Val (A) = Val (B);
+
+   --  Val (B) = Val (Canonical (B)) + Kf * p, Kf >= 0.
+   procedure Lemma_Canonical_Val_Cong (B : Big_Nat; Kf : out BI.Big_Integer)
+   with
+     Pre  => In_Bounds (B, Mul_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post => Kf >= 0
+             and then Val (B) = Val (Canonical (B)) + Kf * (Base_Pow (5) - 5);
+
 end Tls_Core.Ghost_Bignum.Value;
