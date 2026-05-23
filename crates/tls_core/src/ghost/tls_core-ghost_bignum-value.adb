@@ -472,6 +472,60 @@ is
       end if;
    end Lemma_Val_Lt_P;
 
+   procedure Lemma_Limb_Val_Inj (X, Y : Val_Int) is
+   begin
+      if X < Y then
+         Lemma_Limb_Val_Succ (X);              --  Limb_Val(X+1) = Limb_Val(X)+1.
+         Lemma_Limb_Val_Mono (X + 1, Y);       --  <= Limb_Val(Y): strict, contra.
+         pragma Assert (Limb_Val (X) < Limb_Val (Y));
+      elsif Y < X then
+         Lemma_Limb_Val_Succ (Y);
+         Lemma_Limb_Val_Mono (Y + 1, X);
+         pragma Assert (Limb_Val (Y) < Limb_Val (X));
+      end if;
+   end Lemma_Limb_Val_Inj;
+
+   procedure Lemma_Val_From_Inj (X, Y : Big_Nat; K : Lo_Count) is
+   begin
+      if K /= 5 then
+         Lemma_Limb_Val_Nonneg (Limb_Base - 1);     --  Base >= 1.
+         Lemma_Limb_Val_Nonneg (X (K));
+         Lemma_Limb_Val_Nonneg (Y (K));
+         Lemma_Limb_Val_Mono (X (K), In_Cap);
+         Lemma_Limb_Val_Mono (Y (K), In_Cap);
+         Lemma_Limb_Val_Pred (Limb_Base);           --  Limb_Val(In_Cap) = Base-1.
+         Lemma_Val_From_Reduced_Ub (X, K + 1);      --  suffixes >= 0.
+         Lemma_Val_From_Reduced_Ub (Y, K + 1);
+         declare
+            B1 : constant BI.Big_Integer := Val_From (X, K + 1);
+            B2 : constant BI.Big_Integer := Val_From (Y, K + 1);
+         begin
+            --  Limb_Val(X(K)) + Base*B1 = Limb_Val(Y(K)) + Base*B2, low parts
+            --  in [0,Base) -> the Base-multiples must match (no small multiple).
+            if B1 < B2 then
+               Lemma_BI_Mul_Mono (Base, 1, B2 - B1);
+               pragma Assert (Base * (B2 - B1) >= Base);
+               pragma Assert (False);
+            elsif B2 < B1 then
+               Lemma_BI_Mul_Mono (Base, 1, B1 - B2);
+               pragma Assert (Base * (B1 - B2) >= Base);
+               pragma Assert (False);
+            end if;
+            pragma Assert (B1 = B2);
+            pragma Assert (Limb_Val (X (K)) = Limb_Val (Y (K)));
+         end;
+         Lemma_Limb_Val_Inj (X (K), Y (K));         --  X(K) = Y(K).
+         Lemma_Val_From_Inj (X, Y, K + 1);          --  IH on the suffix.
+      end if;
+   end Lemma_Val_From_Inj;
+
+   procedure Lemma_Val_Inj_Reduced (X, Y : Big_Nat) is
+   begin
+      Lemma_Val_From_Inj (X, Y, 0);
+      pragma Assert (for all J in Limb_Index => X (J) = Y (J));
+      pragma Assert (X = Y);
+   end Lemma_Val_Inj_Reduced;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then

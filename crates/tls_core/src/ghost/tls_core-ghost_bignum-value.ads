@@ -423,4 +423,36 @@ is
        and then not Sub_Cond (X),
      Post => Val (X) >= 0 and then Val (X) < Base_Pow (5) - 5;
 
+   ------------------------------------------------------------------
+   --  Val-injectivity on reduced Big_Nats (uniqueness of the base-Base
+   --  representation). The other half of mod-p uniqueness in the value layer.
+   ------------------------------------------------------------------
+
+   --  Limb_Val is injective on the non-negative domain.
+   procedure Lemma_Limb_Val_Inj (X, Y : Val_Int)
+   with
+     Pre  => X >= 0 and then Y >= 0 and then Limb_Val (X) = Limb_Val (Y),
+     Post => X = Y;
+
+   procedure Lemma_Val_From_Inj (X, Y : Big_Nat; K : Lo_Count)
+   with
+     Pre                =>
+       In_Bounds (X, In_Cap) and then In_Bounds (Y, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0)
+       and then K <= 5
+       and then Val_From (X, K) = Val_From (Y, K),
+     Post               =>
+       (for all J in Limb_Index range K .. 4 => X (J) = Y (J)),
+     Subprogram_Variant => (Decreases => 5 - K);
+
+   procedure Lemma_Val_Inj_Reduced (X, Y : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (X, In_Cap) and then In_Bounds (Y, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0)
+       and then Val (X) = Val (Y),
+     Post => X = Y;
+
 end Tls_Core.Ghost_Bignum.Value;
