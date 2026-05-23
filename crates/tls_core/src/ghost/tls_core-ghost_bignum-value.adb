@@ -182,6 +182,29 @@ is
       Lemma_Val_From_Cong (X, Y, 0);
    end Lemma_Val_Cong;
 
+   procedure Lemma_Mul_Unit_Col (A : Big_Nat; V : LLI; M, K, T : Limb_Index) is
+   begin
+      pragma Assert
+        (Unit_Limb (V, M) (K - T) = (if K - T = M then V else 0));
+      if T /= 0 then
+         Lemma_Mul_Unit_Col (A, V, M, K, T - 1);   --  IH.
+      end if;
+   end Lemma_Mul_Unit_Col;
+
+   procedure Lemma_Mul_Unit (A : Big_Nat; V : LLI; M : Limb_Index) is
+      U  : constant Big_Nat := Unit_Limb (V, M);
+      P  : constant Big_Nat := A * U;
+      SS : constant Big_Nat := Smul (V, Shift_By (A, M));
+   begin
+      for K in Limb_Index loop
+         Lemma_Mul_Unit_Col (A, V, M, K, K);
+         pragma Assert (P (K) = SS (K));
+         pragma Loop_Invariant
+           (for all KK in Limb_Index range 0 .. K => P (KK) = SS (KK));
+      end loop;
+      pragma Assert (P = SS);
+   end Lemma_Mul_Unit;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then

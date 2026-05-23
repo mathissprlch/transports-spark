@@ -237,4 +237,29 @@ is
      Post               => Val (Shift_By (B, N)) = Base_Pow (N) * Val (B),
      Subprogram_Variant => (Decreases => N);
 
+   ------------------------------------------------------------------
+   --  Single-limb multiply: A * Unit_Limb (v, m) = Smul (v, Shift_By (A, m)).
+   --  Each convolution column collapses to a SINGLE term (Unit_Limb has one
+   --  nonzero limb), which is the device that turns the 2D Cauchy product into
+   --  a single row-induction.
+   ------------------------------------------------------------------
+
+   function Unit_Limb (V : LLI; M : Limb_Index) return Big_Nat
+   is ([for K in Limb_Index => (if K = M then V else 0)]);
+
+   --  The convolution column against a unit limb keeps only the i = K - M term.
+   procedure Lemma_Mul_Unit_Col (A : Big_Nat; V : LLI; M, K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then V in 0 .. Mul_Cap and then T <= K,
+     Post               =>
+       Mul_Col (A, Unit_Limb (V, M), K, T)
+       = (if M <= K and then K - M <= T then A (K - M) * V else 0),
+     Subprogram_Variant => (Decreases => T);
+
+   procedure Lemma_Mul_Unit (A : Big_Nat; V : LLI; M : Limb_Index)
+   with
+     Pre  => In_Bounds (A, In_Cap) and then V in 0 .. Mul_Cap,
+     Post => A * Unit_Limb (V, M) = Smul (V, Shift_By (A, M));
+
 end Tls_Core.Ghost_Bignum.Value;
