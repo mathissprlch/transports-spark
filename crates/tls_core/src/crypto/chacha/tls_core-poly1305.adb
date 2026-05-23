@@ -1,3 +1,5 @@
+with Tls_Core.Ghost_Bignum.Value;
+
 package body Tls_Core.Poly1305
   with SPARK_Mode
 is
@@ -5,6 +7,7 @@ is
    use Interfaces;
 
    package GB renames Tls_Core.Ghost_Bignum;
+   package GBV renames Tls_Core.Ghost_Bignum.Value;
 
    --  Limb_Index / Limbs are now declared in the spec so functional
    --  Posts on the private helpers can reference As_Nat5 / Feval5.
@@ -838,6 +841,40 @@ is
 
    procedure Lemma_Carry_Model_Cong (X, Y : GB.Big_Nat) is null;
 
+   --  Equal accumulator-sized inputs canonicalise to equal results. Isolated
+   --  (opaque Big_Nat params) so the Canonical expression-function congruence
+   --  proves in a tiny context rather than inside the Multiply Post chain.
+   procedure Lemma_Canon_Cong (X, Y : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (X, Y)
+       and then GB.In_Bounds (X, GB.Mul_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   X (I) = 0)
+       and then GB.In_Bounds (Y, GB.Mul_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   Y (I) = 0),
+     Post   => GB."=" (GB.Canonical (X), GB.Canonical (Y));
+
+   procedure Lemma_Canon_Cong (X, Y : GB.Big_Nat) is
+      Kf_X : GBV.BI.Big_Integer;
+      Kf_Y : GBV.BI.Big_Integer;
+   begin
+      --  Route the canonical congruence through the value layer (avoids the
+      --  Normalize record / Reduce_Canonical expression-function congruence,
+      --  which the SMT does not discharge directly). X = Y => Val (X) = Val (Y);
+      --  each canonical residue is the unique < p representative of that value,
+      --  so the two canonicals coincide (Lemma_Val_Canonical_Eq).
+      GB.Lemma_Bounds_Mono (X, GB.Mul_Cap, GBV.Val_Cap);
+      GB.Lemma_Bounds_Mono (Y, GB.Mul_Cap, GBV.Val_Cap);
+      GBV.Lemma_Val_Cong (X, Y);
+      GBV.Lemma_Canonical_Val_Cong (X, Kf_X);
+      GBV.Lemma_Canonical_Val_Cong (Y, Kf_Y);
+      GBV.Lemma_Val_Canonical_Eq (GB.Canonical (X), GB.Canonical (Y), Kf_X, Kf_Y);
+   end Lemma_Canon_Cong;
+
    --  Multiply correspondence (conv-then-reduce, the §0e-provable form). The
    --  full nine-limb convolution Acc*R is reduced sweep-before-fold: Sweep9,
    --  Fold_High_9 (limbs 5..9 fold into 0..4 x5), then the proven Carry
@@ -856,7 +893,13 @@ is
                    GB.Carry_Model
                      (GB.Fold_High_9_Out
                         (GB.Sweep9_Out
-                           (GB."*" (To_Big_Nat (Acc'Old), To_Big_Nat (R))))));
+                           (GB."*" (To_Big_Nat (Acc'Old), To_Big_Nat (R))))))
+       --  Clean field-multiply form for the Mac loop invariant: the field
+       --  element of the result is the field product of the (canonical) inputs.
+       and then GB."="
+                  (GB.Canonical (To_Big_Nat (Acc)),
+                   GB.Field_Mul
+                     (GB.Canonical (To_Big_Nat (Acc'Old)), To_Big_Nat (R)));
 
    procedure Multiply (Acc : in out Limbs; R : Limbs) is
       --  Range-constrained limbs so gnatprove bounds every product
@@ -933,24 +976,6 @@ is
           = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
             + GB.LLI (X2) * GB.LLI (Y2) + GB.LLI (X3) * GB.LLI (Y3)
             + GB.LLI (X4) * GB.LLI (Y4);
-
-      --  Sweep add (column + carry-in): Post carries the U64->LLI
-      --  distribution so the sweep bridge needn't re-derive it.
-      function Sweep_Add (X, Cy : U64) return U64
-      is (X + Cy)
-      with
-        Pre  => X < 2**58 and then Cy < 2**33,
-        Post => Sweep_Add'Result < 2**59
-                and then GB.LLI (Sweep_Add'Result) = GB.LLI (X) + GB.LLI (Cy);
-
-      --  Fold add (low limb + 5 * high limb): the Fold_High_9 step. Post
-      --  carries the U64->LLI distribution.
-      function Fold_Add (X, Y : U64) return U64
-      is (X + 5 * Y)
-      with
-        Pre  => X < 2**33 and then Y < 2**33,
-        Post => Fold_Add'Result < 2**37
-                and then GB.LLI (Fold_Add'Result) = GB.LLI (X) + 5 * GB.LLI (Y);
 
       --  Nine-limb convolution columns (no fold): C (k) = sum A_i*R_j, i+j=k.
       C0 : constant U64 := Mul1 (A0, R0);
@@ -1060,6 +1085,53 @@ is
       Acc := R1L;
       --  To_Big_Nat (Acc) = Carry_Model (Fold_High_9_Out (Sweep9_Out (Prod)))
       --  and Prod = Acc'Old * R, which is the Multiply Post.
+      pragma Assert
+        (GB."="
+           (To_Big_Nat (Acc),
+            GB.Carry_Model (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)))));
+      Lemma_To_Big_Nat_Mul_Cap (Acc);   --  new Acc (= R1L) embeds <= Mul_Cap.
+
+      --  Clean field-multiply form for the Mac loop invariant. Field_Mul's
+      --  definitional Post is over Sweep9/Fold of A_Bn*R_Bn; route that through
+      --  the reduction-congruence lemmas to Prod (= A_Bn*R_Bn, the body's
+      --  reduced value), then apply the Mul bridge to canonicalise the operand.
+      Lemma_To_Big_Nat_Reduced (R);   --  R_Bn limbs <= In_Cap.
+      pragma Assert (GB.In_Bounds (A_Bn, GB.Mul_Cap));
+      pragma Assert (GB.In_Bounds (R_Bn, GB.Mul_Cap));
+      pragma Assert (GB.In_Bounds (R_Bn, GB.In_Cap));
+      pragma Assert
+        (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+           A_Bn (I) = 0);
+      pragma Assert
+        (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+           R_Bn (I) = 0);
+      Lemma_Reduce_Cong (GB."*" (A_Bn, R_Bn), Prod);
+      Lemma_Carry_Model_Cong
+        (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn))),
+         GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
+      pragma Assert
+        (GB."="
+           (GB.Carry_Model
+              (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))),
+            To_Big_Nat (Acc)));
+      pragma Assert
+        (GB."="
+           (GB.Field_Mul (A_Bn, R_Bn),
+            GB.Canonical
+              (GB.Carry_Model
+                 (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))))));
+      Lemma_Canon_Cong
+        (GB.Carry_Model
+           (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))),
+         To_Big_Nat (Acc));
+      pragma Assert
+        (GB."="
+           (GB.Field_Mul (A_Bn, R_Bn), GB.Canonical (To_Big_Nat (Acc))));
+      GBV.Lemma_Field_Mul_Bridge (A_Bn, R_Bn);
+      pragma Assert
+        (GB."="
+           (GB.Canonical (To_Big_Nat (Acc)),
+            GB.Field_Mul (GB.Canonical (A_Bn), R_Bn)));
    end Multiply;
 
    ---------------------------------------------------------------------

@@ -298,7 +298,8 @@ is
               (for all K in Limb_Index range Max_Limbs - (M - 1) .. Max_Limbs - 1
                => A (K) = 0);
             Lemma_Val_Shift_By (A, M - 1);            --  Val(SH) = Base_Pow(M-1)*Val(A).
-            Lemma_Val_Lo_Step (B, M - 1);             --  Val(LoM) = Val(Lo1)+Limb_Val(B(M-1))*Base_Pow(M-1).
+            Lemma_Val_Lo_Step (B, M - 1);
+            --  Val(LoM) = Val(Lo1) + Limb_Val(B(M-1))*Base_Pow(M-1).
             pragma Assert
               (Val (A * LoM)
                = Val (A) * Val (Lo1)

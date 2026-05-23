@@ -443,6 +443,7 @@ is
    procedure Lemma_SVal_Sym (A, B : Big_Nat; C : Carry_Array) is null;
 
    procedure Lemma_SVal_Trans (A, B, D : Big_Nat; C1, C2 : Carry_Array) is
+      pragma Unreferenced (B);   --  intermediate value lives only in the Pre.
    begin
       pragma Assert
         (for all I in Limb_Index =>
@@ -733,6 +734,7 @@ is
    end Lemma_Smul_Add;
 
    procedure Lemma_SVal_Cancel_Const (X, Y, M : Big_Nat; C : Carry_Array) is
+      pragma Unreferenced (M);   --  cancelled constant lives only in the Pre.
    begin
       pragma Assert (C (0) = 0);
       pragma Assert (C (Max_Limbs) = 0);
