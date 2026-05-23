@@ -154,4 +154,20 @@ is
       end if;
    end Lemma_Col_Val;
 
+   procedure Lemma_Shift1_Suffix (X : Big_Nat; I : Limb_Index) is
+   begin
+      if I = Max_Limbs - 2 then
+         pragma Assert (X (Max_Limbs - 1) = 0);   --  Limb_Val (0) = 0.
+      else
+         Lemma_Shift1_Suffix (X, I + 1);          --  IH.
+      end if;
+   end Lemma_Shift1_Suffix;
+
+   procedure Lemma_Val_Shift1 (X : Big_Nat) is
+   begin
+      Lemma_Shift1_Suffix (X, 0);
+      --  Val (Shift1g X) = Limb_Val (0) + Base * Val_From (Shift1g X, 1)
+      --                  = Base * Val_From (X, 0) = Base * Val (X).
+   end Lemma_Val_Shift1;
+
 end Tls_Core.Ghost_Bignum.Value;

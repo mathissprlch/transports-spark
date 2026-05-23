@@ -178,4 +178,27 @@ is
      Post               => Limb_Val (Mul_Col (A, B, K, T)) = Col_Val (A, B, K, T),
      Subprogram_Variant => (Decreases => T);
 
+   ------------------------------------------------------------------
+   --  Shift homomorphism: Val (X shifted up by N limbs) = Base**N * Val (X).
+   ------------------------------------------------------------------
+
+   --  Shift up by one limb: limb 0 -> 0, limb K -> X (K-1).
+   function Shift1g (X : Big_Nat) return Big_Nat
+   is ([for K in Limb_Index => (if K = 0 then 0 else X (K - 1))]);
+
+   --  Suffix identity: the shifted array's Horner from I+1 equals X's from I
+   --  (X's top limb, shifted out of range, must be zero).
+   procedure Lemma_Shift1_Suffix (X : Big_Nat; I : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (X, Val_Cap) and then X (Max_Limbs - 1) = 0
+       and then I <= Max_Limbs - 2,
+     Post               => Val_From (Shift1g (X), I + 1) = Val_From (X, I),
+     Subprogram_Variant => (Decreases => Max_Limbs - 2 - I);
+
+   procedure Lemma_Val_Shift1 (X : Big_Nat)
+   with
+     Pre  => In_Bounds (X, Val_Cap) and then X (Max_Limbs - 1) = 0,
+     Post => Val (Shift1g (X)) = Base * Val (X);
+
 end Tls_Core.Ghost_Bignum.Value;
