@@ -345,4 +345,17 @@ is
                          R (K) = 0),
      Post => Val (P_Prime * R) = (Base_Pow (5) - 5) * Val (R);
 
+   ------------------------------------------------------------------
+   --  Reduction-step lifts (toward the Field_Mul bridge, Route A): turn the
+   --  exact carry-chain value equalities the reduce steps already prove into
+   --  Val equalities. Composed with Lemma_Val_To_SVal / Lemma_SVal_To_Wide.
+   ------------------------------------------------------------------
+
+   --  A non-negative carry-chain value equality is a Val equality.
+   procedure Lemma_ValEq_To_Val (A, B : Big_Nat; C : Carry_Array)
+   with
+     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
+             and then Carry_Bounded (C) and then Val_Eq (A, B, C),
+     Post => Val (A) = Val (B);
+
 end Tls_Core.Ghost_Bignum.Value;

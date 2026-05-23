@@ -344,6 +344,14 @@ is
       Lemma_Val_P_Prime;                   --  Val(P_Prime)   = Base_Pow(5)-5.
    end Lemma_Val_P_Mul;
 
+   procedure Lemma_ValEq_To_Val (A, B : Big_Nat; C : Carry_Array) is
+   begin
+      pragma Assert (SC_Bounded (C));         --  Carry_Bounded => non-negative bound.
+      Lemma_Val_To_SVal (A, B, C);            --  SVal_Eq (A, B, C).
+      Lemma_SVal_To_Wide (A, B, C);           --  SVal_Wide (A, B, C).
+      Lemma_SVal_To_Val (A, B, C);            --  Val (A) = Val (B).
+   end Lemma_ValEq_To_Val;
+
    procedure Lemma_Val_Shift_By (B : Big_Nat; N : Limb_Index) is
    begin
       if N = 0 then
