@@ -527,6 +527,30 @@ is
                          Conv (I) = 0),
      Post => Val (Conv) = Val (Sweep9_Out (Conv));
 
+   --  The 9-fold "plus prime" form splits into the folded output plus the
+   --  prime-multiple part (limbwise Big_Nat identity).
+   procedure Lemma_FH9_Split (B : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+             and then B (9) in 0 .. Fold9_Top_Cap
+             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                         B (I) = 0),
+     Post =>
+       Fold_High_9_Plus_P (B)
+       = Fold_High_9_Out (B) + Fold_High_9_PrimePart (B);
+
+   --  The 9-fold step (the 2**130==5 prime fold) is value-preserving mod p:
+   --  Val (Fold_High_9_Out (S)) + p * Val (High5 (S)) = Val (S).
+   procedure Lemma_Val_FH9_Out (S : Big_Nat)
+   with
+     Pre  => (for all I in Limb_Index range 0 .. 8 => S (I) in 0 .. In_Cap)
+             and then S (9) in 0 .. Fold9_Top_Cap
+             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                         S (I) = 0),
+     Post =>
+       Val (Fold_High_9_Out (S)) + (Base_Pow (5) - 5) * Val (High5 (S))
+       = Val (S);
+
    ------------------------------------------------------------------
    --  Fold_High_9 prime-multiple part is a multiple of p. Fold_High_9_PrimePart
    --  (B) is the convolution P_Prime * High5 (B); B (9) can exceed Mul_Cap so
@@ -546,6 +570,15 @@ is
 
    procedure Lemma_BI_Assoc (X, Y, Z : BI.Big_Integer)
    with Post => X * (Y * Z) = (X * Y) * Z;
+
+   --  Factor a common multiplier out of a five-term sum.
+   procedure Lemma_BI_Factor5 (A, B, C, D, E, P : BI.Big_Integer)
+   with Post => A * P + B * P + C * P + D * P + E * P
+                = P * (A + B + C + D + E);
+
+   --  Right-operand congruence: X = Y => P*X = P*Y.
+   procedure Lemma_BI_MulR_Cong (P, X, Y : BI.Big_Integer)
+   with Pre => X = Y, Post => P * X = P * Y;
 
    --  Nested Horner (base Base) to Base_Pow-weighted flat, five terms (isolated
    --  abstract-value context so the SMT solver does the degree-4 ring identity).

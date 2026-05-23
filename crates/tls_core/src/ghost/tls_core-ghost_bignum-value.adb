@@ -622,6 +622,28 @@ is
         (Conv, Sweep9_Out (Conv), Sweep9_Chain (Conv));
    end Lemma_Val_Sweep9;
 
+   procedure Lemma_FH9_Split (B : Big_Nat) is
+      O  : constant Big_Nat := Fold_High_9_Out (B);
+      PP : constant Big_Nat := Fold_High_9_PrimePart (B);
+      Sm : constant Big_Nat := O + PP;
+   begin
+      pragma Assert
+        (for all K in Limb_Index => Fold_High_9_Plus_P (B) (K) = Sm (K));
+   end Lemma_FH9_Split;
+
+   procedure Lemma_Val_FH9_Out (S : Big_Nat) is
+      O  : constant Big_Nat := Fold_High_9_Out (S);
+      PP : constant Big_Nat := Fold_High_9_PrimePart (S);
+   begin
+      Lemma_FH9_Split (S);                          --  Plus_P(S) = O + PP.
+      Lemma_Fold_High_9 (S);                        --  Val_Eq(Plus_P(S), S, chain).
+      Lemma_ValEq_To_Val
+        (Fold_High_9_Plus_P (S), S, Fold_High_9_Chain (S));
+      Lemma_Val_Cong (Fold_High_9_Plus_P (S), O + PP);
+      Lemma_Val_Add (O, PP);                        --  Val(O+PP) = Val(O)+Val(PP).
+      Lemma_Val_PrimePart (S);                      --  Val(PP) = p*Val(High5(S)).
+   end Lemma_Val_FH9_Out;
+
    procedure Lemma_BI_Reassoc (X, Y, Z : BI.Big_Integer) is
    begin
       null;
@@ -631,6 +653,16 @@ is
    begin
       null;
    end Lemma_BI_Assoc;
+
+   procedure Lemma_BI_Factor5 (A, B, C, D, E, P : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Factor5;
+
+   procedure Lemma_BI_MulR_Cong (P, X, Y : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_MulR_Cong;
 
    procedure Lemma_Nested5_To_Flat (A0, A1, A2, A3, A4 : BI.Big_Integer) is
    begin
@@ -794,6 +826,22 @@ is
            + Limb_Val (B (7)) * Base_Pow (2) * P_V
            + Limb_Val (B (8)) * Base_Pow (3) * P_V
            + Limb_Val (B (9)) * Base_Pow (4) * P_V);
+      Lemma_BI_Factor5
+        (Limb_Val (B (5)) * Base_Pow (0), Limb_Val (B (6)) * Base_Pow (1),
+         Limb_Val (B (7)) * Base_Pow (2), Limb_Val (B (8)) * Base_Pow (3),
+         Limb_Val (B (9)) * Base_Pow (4), P_V);
+      pragma Assert
+        (Val (Sum)
+         = P_V
+           * (Limb_Val (B (5)) * Base_Pow (0) + Limb_Val (B (6)) * Base_Pow (1)
+              + Limb_Val (B (7)) * Base_Pow (2) + Limb_Val (B (8)) * Base_Pow (3)
+              + Limb_Val (B (9)) * Base_Pow (4)));
+      Lemma_BI_MulR_Cong
+        (P_V,
+         Limb_Val (B (5)) * Base_Pow (0) + Limb_Val (B (6)) * Base_Pow (1)
+         + Limb_Val (B (7)) * Base_Pow (2) + Limb_Val (B (8)) * Base_Pow (3)
+         + Limb_Val (B (9)) * Base_Pow (4),
+         Val (High5 (B)));
       pragma Assert (Val (Sum) = P_V * Val (High5 (B)));
    end Lemma_Val_PrimePart;
 
