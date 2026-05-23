@@ -686,6 +686,73 @@ is
       Lemma_Val_Canonical_Zero (FM, Ka);
    end Lemma_Field_Mul_P_Zero;
 
+   procedure Lemma_Mul_Conv_Bound (A, B, AB : Big_Nat) is
+   begin
+      Lemma_Bounds_Mono (A, In_Cap, Mul_Cap);
+      Lemma_Bounds_Mono (B, In_Cap, Mul_Cap);
+      Lemma_Mul5_Cols (A, B, AB);
+      pragma Assert
+        (for all KK in Limb_Index range 9 .. Max_Limbs - 1 => AB (KK) = 0);
+      pragma Assert
+        (for all KK in Limb_Index => AB (KK) <= LLI (KK + 1) * Two_Pow_54);
+   end Lemma_Mul_Conv_Bound;
+
+   procedure Lemma_Field_Mul_Bridge (Acc, R : Big_Nat) is
+      CA  : constant Big_Nat := Canonical (Acc);
+      GWc : constant Big_Nat := CA * R;
+      GPr : constant Big_Nat := P_Prime * R;
+      FMa : constant Big_Nat := Field_Mul (Acc, R);
+      FMc : constant Big_Nat := Field_Mul (CA, R);
+      P   : constant BI.Big_Integer := Base_Pow (5) - 5;
+      Kc  : LLI;
+      Cc  : Carry_Array;
+      Bm  : Big_Nat;
+      Kg1 : BI.Big_Integer;
+      Kg2 : BI.Big_Integer;
+      Kb  : BI.Big_Integer;
+   begin
+      --  CA = Canonical (Acc): In_Cap, zero from 5 (Canonical Post).
+      Lemma_Bounds_Mono (CA, In_Cap, Mul_Cap);
+
+      --  Congruence Acc == CA + Kc*P_Prime, with a chain that is zero from 5.
+      Lemma_Canonical_Cong (Acc, Kc, Cc);
+      Lemma_SVal_Chain_Zero_High (Acc, CA + Smul (Kc, P_Prime), Cc);
+
+      --  Convolution operands and their tight column bounds (mirror Reduce_Cong).
+      Bm := [for I in Limb_Index => GWc (I) + Kc * GPr (I)];
+      Lemma_Mul_Conv_Bound (CA, R, GWc);
+      Lemma_Mul_Conv_Bound (P_Prime, R, GPr);
+      pragma Assert (In_Bounds (Bm, Add_Cap));
+
+      --  Lift the congruence through the convolution: SVal_Wide (Acc*R, Bm, ..).
+      Lemma_Mul_Cong_Prime (Acc, CA, P_Prime, R, GWc, GPr, Bm, Kc, Cc);
+      Lemma_SVal_To_Val (Acc * R, Bm, Carry_Conv (Cc, R));
+      --  Val (Acc*R) = Val (Bm) = Val (GWc) + Limb_Val (Kc) * Val (GPr).
+      Lemma_Val_B_Combine (GWc, GPr, Bm, Kc);
+      Lemma_Val_P_Mul (R);                          --  Val (GPr) = P * Val (R).
+      Lemma_BI_MulR_Cong (Limb_Val (Kc), Val (GPr), P * Val (R));
+      pragma Assert
+        (Val (Acc * R) = Val (GWc) + Limb_Val (Kc) * (P * Val (R)));
+
+      --  Reduce both products to their field residues.
+      Lemma_Field_Mul_Reduce_Cong (Acc, R, Kg1);    --  Val(FMa)+Kg1*p = Val(Acc*R).
+      Lemma_Field_Mul_Reduce_Cong (CA, R, Kg2);     --  Val(FMc)+Kg2*p = Val(GWc).
+      pragma Assert (Val (FMc) + Kg2 * P = Val (GWc));
+      pragma Assert (Val (FMa) + Kg1 * P = Val (Acc * R));
+
+      --  Compose: Val(FMa)+Kg1*p = Val(FMc) + (Kg2 + Limb_Val(Kc)*Val(R))*p.
+      Lemma_BI_FactorMul (Limb_Val (Kc), Val (R), Kg2, P);
+      Kb := Kg2 + Limb_Val (Kc) * Val (R);
+      pragma Assert (Val (FMa) + Kg1 * P = Val (FMc) + Kb * P);
+
+      --  Kb >= 0: Kg2 >= 0, Limb_Val(Kc) >= 0, Val(R) >= 0.
+      Lemma_Limb_Val_Nonneg (Kc);
+      Lemma_Val_From_Nonneg (R, 0);
+      Lemma_BI_Mul_Mono (Limb_Val (Kc), 0, Val (R));
+
+      Lemma_Val_Canonical_Eq (FMa, FMc, Kg1, Kb);
+   end Lemma_Field_Mul_Bridge;
+
    procedure Lemma_Val_Canonical_Zero (X : Big_Nat; Ka : BI.Big_Integer) is
    begin
       Lemma_Val_From_Zero_High (Zero, 0, 0);       --  Val(Zero) = 0.
@@ -802,6 +869,11 @@ is
    begin
       null;
    end Lemma_BI_Factor2;
+
+   procedure Lemma_BI_FactorMul (Kc_v, Vr, Kg2, P : BI.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_FactorMul;
 
    procedure Lemma_Nested5_To_Flat (A0, A1, A2, A3, A4 : BI.Big_Integer) is
    begin

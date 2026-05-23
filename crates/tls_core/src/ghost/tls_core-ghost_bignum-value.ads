@@ -538,6 +538,40 @@ is
                          R (I) = 0),
      Post => Field_Mul (P_Prime, R) = Zero;
 
+   --  Column bound for a reduced-by-reduced product: A, B In_Cap and zero from
+   --  5 give A*B columns under Conv_Col_Cap (each of <=5 terms is < Two_Pow_54).
+   --  Isolated so the nonlinear column bound proves in a small context.
+   procedure Lemma_Mul_Conv_Bound (A, B, AB : Big_Nat)
+   with
+     Pre  => In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         A (I) = 0)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         B (I) = 0)
+             and then AB = A * B,
+     Post => In_Bounds (AB, Conv_Col_Cap)
+             and then (for all K in Limb_Index range 9 .. Max_Limbs - 1 =>
+                         AB (K) = 0);
+
+   --  The #166 Mul bridge: the field product is invariant under canonicalising
+   --  its accumulator-sized left operand -- Field_Mul (Acc, R) reduces the same
+   --  residue as Field_Mul (Canonical (Acc), R). Proof: the congruence
+   --  Acc == Canonical (Acc) + Kc*P_Prime (Lemma_Canonical_Cong) is lifted
+   --  through the convolution (Lemma_Mul_Cong_Prime) and the value layer
+   --  (Lemma_Val_B_Combine + Lemma_Val_P_Mul) so the two products differ by a
+   --  multiple of p; two reductions (Lemma_Field_Mul_Reduce_Cong) plus
+   --  field-element uniqueness (Lemma_Val_Canonical_Eq) collapse them.
+   --  This is the per-op bridge the Poly1305 Mac accumulator needs (its limbs
+   --  are Mul_Cap-bounded by the impl Carry Post, not yet canonical).
+   procedure Lemma_Field_Mul_Bridge (Acc, R : Big_Nat)
+   with
+     Pre  => In_Bounds (Acc, Mul_Cap) and then In_Bounds (R, In_Cap)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         Acc (I) = 0)
+             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                         R (I) = 0),
+     Post => Field_Mul (Acc, R) = Field_Mul (Canonical (Acc), R);
+
    --  Corollary: a canonical Big_Nat whose value is a multiple of p is Zero.
    procedure Lemma_Val_Canonical_Zero (X : Big_Nat; Ka : BI.Big_Integer)
    with
@@ -648,6 +682,11 @@ is
    --  Two-term factoring: P*VR - Kg*P = (VR-Kg)*P.
    procedure Lemma_BI_Factor2 (VR, Kg, P : BI.Big_Integer)
    with Post => P * VR - Kg * P = (VR - Kg) * P;
+
+   --  Fold the carry multiple into one p-coefficient:
+   --  Kg2*P + Kc_v*(P*Vr) = (Kg2 + Kc_v*Vr)*P.
+   procedure Lemma_BI_FactorMul (Kc_v, Vr, Kg2, P : BI.Big_Integer)
+   with Post => Kg2 * P + Kc_v * (P * Vr) = (Kg2 + Kc_v * Vr) * P;
 
    --  Nested Horner (base Base) to Base_Pow-weighted flat, five terms (isolated
    --  abstract-value context so the SMT solver does the degree-4 ring identity).
