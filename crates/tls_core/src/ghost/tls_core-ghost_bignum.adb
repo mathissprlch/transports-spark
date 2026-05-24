@@ -1768,6 +1768,32 @@ is
       pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
    end Lemma_Carry_Mod_P_Wide;
 
+   procedure Lemma_Carry_Canonical (B : Big_Nat) is
+      K1 : LLI;
+      C1 : Carry_Array;
+   begin
+      --  B == Carry_Model (B) + K1*p, K1 in 0 .. 2 (Carry folds the high bits).
+      Lemma_Carry_Mod_P (B, K1, C1);
+      declare
+         CM  : constant Big_Nat := Carry_Model (B);
+         SK1 : constant Big_Nat := Smul (K1, P_Prime);
+      begin
+         --  CM is reduced (limbs < 2**27) and zero above limb 4.
+         pragma Assert (In_Bounds (CM, Mul_Cap));
+         pragma
+           Assert
+             (for all I in Limb_Index range 5 .. Max_Limbs - 1 => CM (I) = 0);
+         --  CM + K1*p stays Add_Cap-bounded (K1 <= 2, p limbs <= In_Cap).
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SK1 (I) = K1 * P_Prime (I));
+         pragma Assert (In_Bounds (CM + SK1, Add_Cap));
+         --  Carry_Mod_P is exactly the one-sided uniqueness premise.
+         pragma Assert (SVal_Eq (B, CM + SK1, C1));
+         Lemma_Canonical_Unique (B, CM, K1, C1);
+         pragma Assert (Canonical (B) = Canonical (CM));
+      end;
+   end Lemma_Carry_Canonical;
+
    procedure Lemma_Field_Add_Bridge (Ab, Nb, Xr : Big_Nat) is
       Sum : constant Big_Nat := Ab + Nb;
       K1  : LLI;

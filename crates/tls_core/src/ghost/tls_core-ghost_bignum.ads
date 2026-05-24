@@ -2277,6 +2277,21 @@ is
                    C (J) in -Cong_Cap .. Cong_Cap)
        and then SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C);
 
+   --  Carry preserves the field element: Carry_Model only reduces mod p, so it
+   --  leaves the canonical residue unchanged. This is the bridge for the
+   --  Poly1305 finish step, where the impl folds the accumulator (Carry; Carry)
+   --  before the conditional subtract: each Carry leaves Feval_BN unchanged.
+   --  Composes Lemma_Carry_Mod_P (B == Carry_Model (B) + K*p) with
+   --  Lemma_Canonical_Unique (congruent values share their canonical residue).
+   procedure Lemma_Carry_Canonical (B : Big_Nat)
+   with
+     Ghost,
+     Pre  =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then Sweep5_Out (B) (5) <= Fold_C_Cap,
+     Post => Canonical (Carry_Model (B)) = Canonical (B);
+
    ------------------------------------------------------------------
    --  Per-op Feval bridges. These turn the impl Add / Multiply Posts (which
    --  give To_Big_Nat (op result) = Carry_Model (...) definitionally) into
