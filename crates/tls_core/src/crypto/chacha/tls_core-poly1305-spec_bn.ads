@@ -29,7 +29,8 @@ is
               (Spec_Fold (Message, N - 1, R),
                Enc.Encode_BN
                  (Message
-                    (Message'First + 16 * (N - 1)
+                    (Message'First
+                     + 16 * (N - 1)
                      .. Message'First + 16 * N - 1),
                   16,
                   False)),

@@ -352,10 +352,11 @@ is
        Block_Bytes in 1 .. 16
        and then Block_Bytes <= B'Length
        and then B'Last < Integer'Last - 16,
-     Post => (for all I in Limb_Index => Out_Limbs (I) < 2**26)
-             and then GB."="
-                        (To_Big_Nat (Out_Limbs),
-                         Enc.Encode_BN (B, Block_Bytes, Final));
+     Post =>
+       (for all I in Limb_Index => Out_Limbs (I) < 2**26)
+       and then GB."="
+                  (To_Big_Nat (Out_Limbs),
+                   Enc.Encode_BN (B, Block_Bytes, Final));
 
    procedure Load_Block
      (B           : Octet_Array;
@@ -369,10 +370,10 @@ is
       for I in 1 .. Block_Bytes loop
          Padded (I) := B (B'First + I - 1);
          pragma Loop_Invariant (I <= 16);
-         pragma Loop_Invariant
-           (for all J in 1 .. I => Padded (J) = B (B'First + J - 1));
-         pragma Loop_Invariant
-           (for all J in I + 1 .. 17 => Padded (J) = 0);
+         pragma
+           Loop_Invariant
+             (for all J in 1 .. I => Padded (J) = B (B'First + J - 1));
+         pragma Loop_Invariant (for all J in I + 1 .. 17 => Padded (J) = 0);
       end loop;
       --  Append the implicit "1" bit at byte position Block_Bytes.
       --  For full 16-byte blocks this is byte 17 (i.e. bit 128).
@@ -412,27 +413,30 @@ is
       --  Functional correspondence: the imperative packing equals the pure
       --  Encode_BN model (Padded matches Padded_Byte byte-for-byte, so each
       --  limb expression coincides).
-      pragma Assert
-        (for all I in 1 .. 17 =>
-           Padded (I) = Enc.Padded_Byte (B, Block_Bytes, Final, I));
+      pragma
+        Assert
+          (for all I in 1 .. 17 =>
+             Padded (I) = Enc.Padded_Byte (B, Block_Bytes, Final, I));
       pragma Assert (Out_Limbs (0) = Enc.Enc_Limb0 (B, Block_Bytes, Final));
       pragma Assert (Out_Limbs (1) = Enc.Enc_Limb1 (B, Block_Bytes, Final));
       pragma Assert (Out_Limbs (2) = Enc.Enc_Limb2 (B, Block_Bytes, Final));
       pragma Assert (Out_Limbs (3) = Enc.Enc_Limb3 (B, Block_Bytes, Final));
       pragma Assert (Out_Limbs (4) = Enc.Enc_Limb4 (B, Block_Bytes, Final));
       declare
-         TB : constant GB.Big_Nat := To_Big_Nat (Out_Limbs) with Ghost;
-         EB : constant GB.Big_Nat :=
-           Enc.Encode_BN (B, Block_Bytes, Final) with Ghost;
+         TB : constant GB.Big_Nat := To_Big_Nat (Out_Limbs)
+         with Ghost;
+         EB : constant GB.Big_Nat := Enc.Encode_BN (B, Block_Bytes, Final)
+         with Ghost;
       begin
          pragma Assert (TB (0) = EB (0));
          pragma Assert (TB (1) = EB (1));
          pragma Assert (TB (2) = EB (2));
          pragma Assert (TB (3) = EB (3));
          pragma Assert (TB (4) = EB (4));
-         pragma Assert
-           (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-              TB (I) = 0 and then EB (I) = 0);
+         pragma
+           Assert
+             (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                TB (I) = 0 and then EB (I) = 0);
          pragma Assert (GB."=" (TB, EB));
       end;
    end Load_Block;
@@ -445,8 +449,9 @@ is
    procedure Load_R (Clamped : Octet_Array; R : out Limbs)
    with
      Pre  => Clamped'Length = 16 and then Clamped'Last < Integer'Last - 16,
-     Post => (for all I in Limb_Index => R (I) < 2**26)
-             and then GB."=" (To_Big_Nat (R), Enc.R_BN (Clamped));
+     Post =>
+       (for all I in Limb_Index => R (I) < 2**26)
+       and then GB."=" (To_Big_Nat (R), Enc.R_BN (Clamped));
 
    procedure Load_R (Clamped : Octet_Array; R : out Limbs) is
       Padded : Octet_Array (1 .. 17) := [others => 0];
@@ -454,10 +459,11 @@ is
       R := [others => 0];
       for I in 1 .. 16 loop
          Padded (I) := Clamped (Clamped'First + I - 1);
-         pragma Loop_Invariant
-           (for all J in 1 .. I => Padded (J) = Clamped (Clamped'First + J - 1));
-         pragma Loop_Invariant
-           (for all J in I + 1 .. 17 => Padded (J) = 0);
+         pragma
+           Loop_Invariant
+             (for all J in 1 .. I =>
+                Padded (J) = Clamped (Clamped'First + J - 1));
+         pragma Loop_Invariant (for all J in I + 1 .. 17 => Padded (J) = 0);
       end loop;
       R (0) :=
         U64 (Padded (1))
@@ -484,26 +490,30 @@ is
         or Shift_Left (U64 (Padded (15)), 8)
         or Shift_Left (U64 (Padded (16)), 16);
 
-      pragma Assert
-        (for all I in 1 .. 16 =>
-           Padded (I) = Enc.Padded_Byte (Clamped, 16, False, I));
+      pragma
+        Assert
+          (for all I in 1 .. 16 =>
+             Padded (I) = Enc.Padded_Byte (Clamped, 16, False, I));
       pragma Assert (R (0) = Enc.Enc_Limb0 (Clamped, 16, False));
       pragma Assert (R (1) = Enc.Enc_Limb1 (Clamped, 16, False));
       pragma Assert (R (2) = Enc.Enc_Limb2 (Clamped, 16, False));
       pragma Assert (R (3) = Enc.Enc_Limb3 (Clamped, 16, False));
       pragma Assert (R (4) = Enc.R_Limb4 (Clamped));
       declare
-         TB : constant GB.Big_Nat := To_Big_Nat (R) with Ghost;
-         EB : constant GB.Big_Nat := Enc.R_BN (Clamped) with Ghost;
+         TB : constant GB.Big_Nat := To_Big_Nat (R)
+         with Ghost;
+         EB : constant GB.Big_Nat := Enc.R_BN (Clamped)
+         with Ghost;
       begin
          pragma Assert (TB (0) = EB (0));
          pragma Assert (TB (1) = EB (1));
          pragma Assert (TB (2) = EB (2));
          pragma Assert (TB (3) = EB (3));
          pragma Assert (TB (4) = EB (4));
-         pragma Assert
-           (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-              TB (I) = 0 and then EB (I) = 0);
+         pragma
+           Assert
+             (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                TB (I) = 0 and then EB (I) = 0);
          pragma Assert (GB."=" (TB, EB));
       end;
    end Load_R;
@@ -527,7 +537,8 @@ is
 
    procedure Carry (L : in out Limbs) is
       C  : U64;
-      B0 : constant GB.Big_Nat := To_Big_Nat (L) with Ghost;
+      B0 : constant GB.Big_Nat := To_Big_Nat (L)
+      with Ghost;
    begin
       pragma Assert (GB.In_Bounds (B0, GB.Carry_In_Cap));
       GB.Lemma_Bounds_Mono (B0, GB.Carry_In_Cap, GB.Prod_Cap);
@@ -565,7 +576,8 @@ is
       L (3) := L (3) + C;
       pragma Assert (GB.LLI (C) = GB.Sw_C2 (B0));
       pragma Assert (GB.LLI (L (2)) = GB.Lo26 (B0 (2) + GB.Sw_C1 (B0)));
-      pragma Assert (GB.Sweep5_Out (B0) (2) = GB.Lo26 (B0 (2) + GB.Sw_C1 (B0)));
+      pragma
+        Assert (GB.Sweep5_Out (B0) (2) = GB.Lo26 (B0 (2) + GB.Sw_C1 (B0)));
       pragma Assert (GB.LLI (L (2)) = GB.Sweep5_Out (B0) (2));
       pragma Assert (GB.LLI (L (3)) = B0 (3) + GB.Sw_C2 (B0));
       pragma Assert (L (3) < 2**59);
@@ -584,7 +596,8 @@ is
       L (4) := L (4) + C;
       pragma Assert (GB.LLI (C) = GB.Sw_C3 (B0));
       pragma Assert (GB.LLI (L (3)) = GB.Lo26 (B0 (3) + GB.Sw_C2 (B0)));
-      pragma Assert (GB.Sweep5_Out (B0) (3) = GB.Lo26 (B0 (3) + GB.Sw_C2 (B0)));
+      pragma
+        Assert (GB.Sweep5_Out (B0) (3) = GB.Lo26 (B0 (3) + GB.Sw_C2 (B0)));
       pragma Assert (GB.LLI (L (3)) = GB.Sweep5_Out (B0) (3));
       pragma Assert (GB.LLI (L (4)) = B0 (4) + GB.Sw_C3 (B0));
       pragma Assert (L (4) < 2**59);
@@ -600,20 +613,22 @@ is
       pragma Assert (GB.LLI (C) = GB.Sw_C4 (B0));
       pragma Assert (GB.LLI (C) = GB.Sweep5_Out (B0) (5));
       pragma Assert (GB.LLI (L (4)) = GB.Lo26 (B0 (4) + GB.Sw_C3 (B0)));
-      pragma Assert (GB.Sweep5_Out (B0) (4) = GB.Lo26 (B0 (4) + GB.Sw_C3 (B0)));
+      pragma
+        Assert (GB.Sweep5_Out (B0) (4) = GB.Lo26 (B0 (4) + GB.Sw_C3 (B0)));
       pragma Assert (GB.LLI (L (4)) = GB.Sweep5_Out (B0) (4));
       --  L (0) still holds Sweep5_Out (B0) (0) (untouched since step 1)
       pragma Assert (GB.LLI (L (0)) = GB.Sweep5_Out (B0) (0));
       pragma Assert (L (0) < 2**26);
       L (0) := L (0) + 5 * C;
-      pragma Assert
-        (GB.LLI (L (0))
-           = GB.Sweep5_Out (B0) (0) + 5 * GB.Sweep5_Out (B0) (5));
-      pragma Assert
-        (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)
-           = GB.Sweep5_Out (B0) (0) + 5 * GB.Sweep5_Out (B0) (5));
-      pragma Assert
-        (GB.LLI (L (0)) = GB.Fold_Out (GB.Sweep5_Out (B0)) (0));
+      pragma
+        Assert
+          (GB.LLI (L (0))
+             = GB.Sweep5_Out (B0) (0) + 5 * GB.Sweep5_Out (B0) (5));
+      pragma
+        Assert
+          (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)
+             = GB.Sweep5_Out (B0) (0) + 5 * GB.Sweep5_Out (B0) (5));
+      pragma Assert (GB.LLI (L (0)) = GB.Fold_Out (GB.Sweep5_Out (B0)) (0));
       pragma Assert (L (0) < 2**38);
       --  Reduced limbs 1..4 (= Sweep5_Out (B0) (1..4)) survive untouched here.
       pragma Assert (GB.LLI (L (1)) = GB.Sweep5_Out (B0) (1));
@@ -630,13 +645,15 @@ is
       L (1) := L (1) + C;
       --  Carry_Model = Step_Out (Fold_Out (Sweep5_Out (B0)), 0): limb 0 is
       --  Lo26 of the folded limb 0; limb 1 gains its Hi26; 2..4 unchanged.
-      pragma Assert
-        (GB.Carry_Model (B0) (0)
-           = GB.Lo26 (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)));
-      pragma Assert
-        (GB.Carry_Model (B0) (1)
-           = GB.Sweep5_Out (B0) (1)
-             + GB.Hi26 (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)));
+      pragma
+        Assert
+          (GB.Carry_Model (B0) (0)
+             = GB.Lo26 (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)));
+      pragma
+        Assert
+          (GB.Carry_Model (B0) (1)
+             = GB.Sweep5_Out (B0) (1)
+               + GB.Hi26 (GB.Fold_Out (GB.Sweep5_Out (B0)) (0)));
       pragma Assert (GB.Carry_Model (B0) (2) = GB.Sweep5_Out (B0) (2));
       pragma Assert (GB.Carry_Model (B0) (3) = GB.Sweep5_Out (B0) (3));
       pragma Assert (GB.Carry_Model (B0) (4) = GB.Sweep5_Out (B0) (4));
@@ -646,9 +663,10 @@ is
       pragma Assert (GB.LLI (L (3)) = GB.Carry_Model (B0) (3));
       pragma Assert (GB.LLI (L (4)) = GB.Carry_Model (B0) (4));
 
-      pragma Assert
-        (for all I in Limb_Index =>
-           GB.LLI (L (I)) = GB.Carry_Model (B0) (I));
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             GB.LLI (L (I)) = GB.Carry_Model (B0) (I));
       pragma Assert (GB."=" (To_Big_Nat (L), GB.Carry_Model (B0)));
    end Carry;
 
@@ -677,33 +695,38 @@ is
                      (GB.Canonical (To_Big_Nat (Acc'Old)), To_Big_Nat (N)));
 
    procedure Add (Acc : in out Limbs; N : Limbs) is
-      Acc0 : constant GB.Big_Nat := To_Big_Nat (Acc) with Ghost;
-      Nn   : constant GB.Big_Nat := To_Big_Nat (N) with Ghost;
+      Acc0 : constant GB.Big_Nat := To_Big_Nat (Acc)
+      with Ghost;
+      Nn   : constant GB.Big_Nat := To_Big_Nat (N)
+      with Ghost;
    begin
-      Lemma_To_Big_Nat_Mul_Cap (Acc);   --  Acc0 embeds <= Mul_Cap, zero from 5.
+      Lemma_To_Big_Nat_Mul_Cap
+        (Acc);   --  Acc0 embeds <= Mul_Cap, zero from 5.
       Lemma_To_Big_Nat_Reduced (N);     --  Nn embeds <= In_Cap, zero from 5.
       for I in Limb_Index loop
          Acc (I) := Acc (I) + N (I);
-         pragma Loop_Invariant
-           (for all J in Limb_Index =>
-              (if J <= I then Acc (J) = Acc'Loop_Entry (J) + N (J)
-               else Acc (J) = Acc'Loop_Entry (J)));
+         pragma
+           Loop_Invariant
+             (for all J in Limb_Index =>
+                (if J <= I
+                 then Acc (J) = Acc'Loop_Entry (J) + N (J)
+                 else Acc (J) = Acc'Loop_Entry (J)));
          pragma Loop_Invariant (for all J in Limb_Index => Acc (J) < 2**28);
       end loop;
       --  Acc now holds the limbwise sum; its embedding is Acc0 + Nn.
-      pragma Assert
-        (for all I in Limb_Index =>
-           GB.LLI (Acc (I)) = Acc0 (I) + Nn (I));
-      pragma Assert
-        (GB."=" (To_Big_Nat (Acc), GB."+" (Acc0, Nn)));
+      pragma
+        Assert
+          (for all I in Limb_Index => GB.LLI (Acc (I)) = Acc0 (I) + Nn (I));
+      pragma Assert (GB."=" (To_Big_Nat (Acc), GB."+" (Acc0, Nn)));
       GB.Lemma_Sweep5_Tight_Carry (GB."+" (Acc0, Nn));
       Carry (Acc);
 
       --  Clean field-add form: Acc now holds Carry_Model (Acc0 + Nn); the Add
       --  bridge canonicalises it to Field_Add (Canonical (Acc0), Nn).
-      Lemma_To_Big_Nat_Mul_Cap (Acc);   --  new Acc (post-carry) Mul_Cap, zero5.
-      pragma Assert
-        (GB."=" (To_Big_Nat (Acc), GB.Carry_Model (GB."+" (Acc0, Nn))));
+      Lemma_To_Big_Nat_Mul_Cap
+        (Acc);   --  new Acc (post-carry) Mul_Cap, zero5.
+      pragma
+        Assert (GB."=" (To_Big_Nat (Acc), GB.Carry_Model (GB."+" (Acc0, Nn))));
       pragma Assert (GB.In_Bounds (GB."+" (Acc0, Nn), GB.Round1_Out_Cap));
       GB.Lemma_Sweep5_Chain_Tight (GB."+" (Acc0, Nn));
       GB.Lemma_Field_Add_Bridge (Acc0, Nn, To_Big_Nat (Acc));
@@ -735,9 +758,15 @@ is
    with
      Ghost,
      Pre =>
-       C0 < 2**63 and then C1 < 2**63 and then C2 < 2**63
-       and then C3 < 2**63 and then C4 < 2**63 and then C5 < 2**63
-       and then C6 < 2**63 and then C7 < 2**63 and then C8 < 2**63;
+       C0 < 2**63
+       and then C1 < 2**63
+       and then C2 < 2**63
+       and then C3 < 2**63
+       and then C4 < 2**63
+       and then C5 < 2**63
+       and then C6 < 2**63
+       and then C7 < 2**63
+       and then C8 < 2**63;
 
    --  Reduce_Conv9 — the §0e-provable mod-p reduce of a nine-limb
    --  convolution. Sweeps carries across columns 0..8 (Sweep9) then folds
@@ -750,13 +779,19 @@ is
      (C0, C1, C2, C3, C4, C5, C6, C7, C8 : U64; R1L : out Limbs)
    with
      Pre  =>
-       C0 < 2**58 and then C1 < 2**58 and then C2 < 2**58
-       and then C3 < 2**58 and then C4 < 2**58 and then C5 < 2**58
-       and then C6 < 2**58 and then C7 < 2**58 and then C8 < 2**58
+       C0 < 2**58
+       and then C1 < 2**58
+       and then C2 < 2**58
+       and then C3 < 2**58
+       and then C4 < 2**58
+       and then C5 < 2**58
+       and then C6 < 2**58
+       and then C7 < 2**58
+       and then C8 < 2**58
        and then GB.In_Bounds
                   (Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8), GB.Prod_Cap)
-       and then GB.Sweep9_Out
-                  (Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8)) (9)
+       and then GB.Sweep9_Out (Conv_Of (C0, C1, C2, C3, C4, C5, C6, C7, C8))
+                  (9)
                 in 0 .. GB.Fold9_Top_Cap,
      Post =>
        (for all I in Limb_Index => R1L (I) < 2**58)
@@ -779,8 +814,9 @@ is
       is (X + Cy)
       with
         Pre  => X < 2**58 and then Cy < 2**33,
-        Post => Sweep_Add'Result < 2**59
-                and then GB.LLI (Sweep_Add'Result) = GB.LLI (X) + GB.LLI (Cy);
+        Post =>
+          Sweep_Add'Result < 2**59
+          and then GB.LLI (Sweep_Add'Result) = GB.LLI (X) + GB.LLI (Cy);
 
       --  Fold add (low limb + 5 * high limb): the Fold_High_9 step. Post
       --  carries the U64->LLI distribution.
@@ -788,8 +824,9 @@ is
       is (X + 5 * Y)
       with
         Pre  => X < 2**33 and then Y < 2**33,
-        Post => Fold_Add'Result < 2**37
-                and then GB.LLI (Fold_Add'Result) = GB.LLI (X) + 5 * GB.LLI (Y);
+        Post =>
+          Fold_Add'Result < 2**37
+          and then GB.LLI (Fold_Add'Result) = GB.LLI (X) + 5 * GB.LLI (Y);
 
       S0, S1, S2, S3, S4, S5, S6, S7, S8 : U64;
       F0, F1, F2, F3, F4                 : U64;
@@ -899,31 +936,39 @@ is
       F2 := Fold_Add (S2, S7);
       F3 := Fold_Add (S3, S8);
       F4 := Fold_Add (S4, Cf);
-      pragma Assert
-        (GB.LLI (F0) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (0));
-      pragma Assert
-        (GB.LLI (F1) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (1));
-      pragma Assert
-        (GB.LLI (F2) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (2));
-      pragma Assert
-        (GB.LLI (F3) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (3));
-      pragma Assert
-        (GB.LLI (F4) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (4));
-      pragma Assert
-        (F0 < 2**37 and then F1 < 2**37 and then F2 < 2**37
-         and then F3 < 2**37 and then F4 < 2**37);
+      pragma
+        Assert (GB.LLI (F0) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (0));
+      pragma
+        Assert (GB.LLI (F1) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (1));
+      pragma
+        Assert (GB.LLI (F2) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (2));
+      pragma
+        Assert (GB.LLI (F3) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (3));
+      pragma
+        Assert (GB.LLI (F4) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (4));
+      pragma
+        Assert
+          (F0 < 2**37
+             and then F1 < 2**37
+             and then F2 < 2**37
+             and then F3 < 2**37
+             and then F4 < 2**37);
       R1L := [0 => F0, 1 => F1, 2 => F2, 3 => F3, 4 => F4];
-      pragma Assert
-        (for all I in Limb_Index =>
-           GB.LLI (R1L (I))
-           = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (I));
-      pragma Assert
-        (R1L (0) < 2**58 and then R1L (1) < 2**58 and then R1L (2) < 2**58
-         and then R1L (3) < 2**58 and then R1L (4) < 2**58);
-      pragma Assert
-        (GB."="
-           (To_Big_Nat (R1L),
-            GB.Fold_High_9_Out (GB.Sweep9_Out (Conv))));
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             GB.LLI (R1L (I)) = GB.Fold_High_9_Out (GB.Sweep9_Out (Conv)) (I));
+      pragma
+        Assert
+          (R1L (0) < 2**58
+             and then R1L (1) < 2**58
+             and then R1L (2) < 2**58
+             and then R1L (3) < 2**58
+             and then R1L (4) < 2**58);
+      pragma
+        Assert
+          (GB."="
+             (To_Big_Nat (R1L), GB.Fold_High_9_Out (GB.Sweep9_Out (Conv))));
    end Reduce_Conv9;
 
    --  Equal nine-limb convolutions reduce identically. Isolated so the
@@ -998,7 +1043,8 @@ is
       GBV.Lemma_Val_Cong (X, Y);
       GBV.Lemma_Canonical_Val_Cong (X, Kf_X);
       GBV.Lemma_Canonical_Val_Cong (Y, Kf_Y);
-      GBV.Lemma_Val_Canonical_Eq (GB.Canonical (X), GB.Canonical (Y), Kf_X, Kf_Y);
+      GBV.Lemma_Val_Canonical_Eq
+        (GB.Canonical (X), GB.Canonical (Y), Kf_X, Kf_Y);
    end Lemma_Canon_Cong;
 
    --  Feval_BN (L) and Canonical (To_Big_Nat (L)) are the same expression
@@ -1024,13 +1070,17 @@ is
      Ghost,
      Global => null,
      Pre    =>
-       GB."=" (A, A2) and then GB."=" (B, B2)
-       and then GB.In_Bounds (A, GB.Mul_Cap) and then GB.In_Bounds (B, GB.In_Cap)
+       GB."=" (A, A2)
+       and then GB."=" (B, B2)
+       and then GB.In_Bounds (A, GB.Mul_Cap)
+       and then GB.In_Bounds (B, GB.In_Cap)
        and then GB.In_Bounds (A2, GB.Mul_Cap)
        and then GB.In_Bounds (B2, GB.In_Cap)
        and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-                   A (I) = 0 and then B (I) = 0
-                   and then A2 (I) = 0 and then B2 (I) = 0),
+                   A (I) = 0
+                   and then B (I) = 0
+                   and then A2 (I) = 0
+                   and then B2 (I) = 0),
      Post   => GB."=" (GB.Field_Mul (A, B), GB.Field_Mul (A2, B2));
 
    procedure Lemma_FMul_Cong (A, A2, B, B2 : GB.Big_Nat) is
@@ -1054,27 +1104,33 @@ is
      Ghost,
      Global => null,
      Pre    =>
-       GB."=" (A, A2) and then GB."=" (B, B2)
-       and then GB.In_Bounds (A, GB.In_Cap) and then GB.In_Bounds (B, GB.In_Cap)
+       GB."=" (A, A2)
+       and then GB."=" (B, B2)
+       and then GB.In_Bounds (A, GB.In_Cap)
+       and then GB.In_Bounds (B, GB.In_Cap)
        and then GB.In_Bounds (A2, GB.In_Cap)
        and then GB.In_Bounds (B2, GB.In_Cap)
        and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-                   A (I) = 0 and then B (I) = 0
-                   and then A2 (I) = 0 and then B2 (I) = 0),
+                   A (I) = 0
+                   and then B (I) = 0
+                   and then A2 (I) = 0
+                   and then B2 (I) = 0),
      Post   => GB."=" (GB.Field_Add (A, B), GB.Field_Add (A2, B2));
 
    procedure Lemma_FAdd_Cong (A, A2, B, B2 : GB.Big_Nat) is
    begin
       --  Field_Add (X, Y) = Canonical (X + Y); A+B = A2+B2 (per limb), so the
       --  two canonical reduces coincide (Lemma_Canon_Cong).
-      pragma Assert
-        (for all I in GB.Limb_Index =>
-           GB."+" (A, B) (I) = GB."+" (A2, B2) (I));
+      pragma
+        Assert
+          (for all I in GB.Limb_Index =>
+             GB."+" (A, B) (I) = GB."+" (A2, B2) (I));
       pragma Assert (GB."=" (GB."+" (A, B), GB."+" (A2, B2)));
       pragma Assert (GB.In_Bounds (GB."+" (A, B), GB.Mul_Cap));
-      pragma Assert
-        (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-           GB."+" (A, B) (I) = 0);
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+             GB."+" (A, B) (I) = 0);
       Lemma_Canon_Cong (GB."+" (A, B), GB."+" (A2, B2));
    end Lemma_FAdd_Cong;
 
@@ -1120,9 +1176,12 @@ is
       R3 : constant R_Limb := R (3);
       R4 : constant R_Limb := R (4);
 
-      A_Bn : constant GB.Big_Nat := To_Big_Nat (Acc) with Ghost;
-      R_Bn : constant GB.Big_Nat := To_Big_Nat (R) with Ghost;
-      Prod : constant GB.Big_Nat := GB."*" (A_Bn, R_Bn) with Ghost;
+      A_Bn : constant GB.Big_Nat := To_Big_Nat (Acc)
+      with Ghost;
+      R_Bn : constant GB.Big_Nat := To_Big_Nat (R)
+      with Ghost;
+      Prod : constant GB.Big_Nat := GB."*" (A_Bn, R_Bn)
+      with Ghost;
 
       --  Dot-product helpers (1..5 terms) whose Post carries the U64->LLI
       --  distribution: each product is < 2**54 and the sum < 2**57, so LLI is
@@ -1137,7 +1196,9 @@ is
       is (X0 * Y0 + X1 * Y1)
       with
         Pre  =>
-          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
+          X0 < 2**27
+          and then Y0 < 2**27
+          and then X1 < 2**27
           and then Y1 < 2**27,
         Post =>
           GB.LLI (Mul2'Result)
@@ -1147,37 +1208,60 @@ is
       is (X0 * Y0 + X1 * Y1 + X2 * Y2)
       with
         Pre  =>
-          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
-          and then Y1 < 2**27 and then X2 < 2**27 and then Y2 < 2**27,
+          X0 < 2**27
+          and then Y0 < 2**27
+          and then X1 < 2**27
+          and then Y1 < 2**27
+          and then X2 < 2**27
+          and then Y2 < 2**27,
         Post =>
           GB.LLI (Mul3'Result)
-          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
+          = GB.LLI (X0)
+            * GB.LLI (Y0)
+            + GB.LLI (X1) * GB.LLI (Y1)
             + GB.LLI (X2) * GB.LLI (Y2);
 
       function Mul4 (X0, Y0, X1, Y1, X2, Y2, X3, Y3 : U64) return U64
       is (X0 * Y0 + X1 * Y1 + X2 * Y2 + X3 * Y3)
       with
         Pre  =>
-          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
-          and then Y1 < 2**27 and then X2 < 2**27 and then Y2 < 2**27
-          and then X3 < 2**27 and then Y3 < 2**27,
+          X0 < 2**27
+          and then Y0 < 2**27
+          and then X1 < 2**27
+          and then Y1 < 2**27
+          and then X2 < 2**27
+          and then Y2 < 2**27
+          and then X3 < 2**27
+          and then Y3 < 2**27,
         Post =>
           GB.LLI (Mul4'Result)
-          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
-            + GB.LLI (X2) * GB.LLI (Y2) + GB.LLI (X3) * GB.LLI (Y3);
+          = GB.LLI (X0)
+            * GB.LLI (Y0)
+            + GB.LLI (X1) * GB.LLI (Y1)
+            + GB.LLI (X2) * GB.LLI (Y2)
+            + GB.LLI (X3) * GB.LLI (Y3);
 
       function Mul5 (X0, Y0, X1, Y1, X2, Y2, X3, Y3, X4, Y4 : U64) return U64
       is (X0 * Y0 + X1 * Y1 + X2 * Y2 + X3 * Y3 + X4 * Y4)
       with
         Pre  =>
-          X0 < 2**27 and then Y0 < 2**27 and then X1 < 2**27
-          and then Y1 < 2**27 and then X2 < 2**27 and then Y2 < 2**27
-          and then X3 < 2**27 and then Y3 < 2**27 and then X4 < 2**27
+          X0 < 2**27
+          and then Y0 < 2**27
+          and then X1 < 2**27
+          and then Y1 < 2**27
+          and then X2 < 2**27
+          and then Y2 < 2**27
+          and then X3 < 2**27
+          and then Y3 < 2**27
+          and then X4 < 2**27
           and then Y4 < 2**27,
         Post =>
           GB.LLI (Mul5'Result)
-          = GB.LLI (X0) * GB.LLI (Y0) + GB.LLI (X1) * GB.LLI (Y1)
-            + GB.LLI (X2) * GB.LLI (Y2) + GB.LLI (X3) * GB.LLI (Y3)
+          = GB.LLI (X0)
+            * GB.LLI (Y0)
+            + GB.LLI (X1) * GB.LLI (Y1)
+            + GB.LLI (X2) * GB.LLI (Y2)
+            + GB.LLI (X3) * GB.LLI (Y3)
             + GB.LLI (X4) * GB.LLI (Y4);
 
       --  Nine-limb convolution columns (no fold): C (k) = sum A_i*R_j, i+j=k.
@@ -1226,21 +1310,24 @@ is
       pragma Assert (GB.LLI (C8) = Prod (8));
       pragma Assert (GB."=" (Conv, Prod));
       pragma Assert (GB.In_Bounds (Conv, GB.Conv_Col_Cap));
-      pragma Assert
-        (for all I in GB.Limb_Index range 9 .. GB.Max_Limbs - 1 =>
-           Conv (I) = 0);
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 9 .. GB.Max_Limbs - 1 =>
+             Conv (I) = 0);
       --  Conv = Prod, so the Post's Prod-side bounds hold too.
       pragma Assert (GB.In_Bounds (Prod, GB.Conv_Col_Cap));
       GB.Lemma_Bounds_Mono (Conv, GB.Conv_Col_Cap, GB.Prod_Cap);
       GB.Lemma_Bounds_Mono (Prod, GB.Conv_Col_Cap, GB.Prod_Cap);
-      pragma Assert
-        (for all I in GB.Limb_Index range 9 .. GB.Max_Limbs - 1 =>
-           Prod (I) = 0);
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 9 .. GB.Max_Limbs - 1 =>
+             Prod (I) = 0);
       GB.Lemma_Sweep9_Conv (Conv);
       GB.Lemma_Sweep9_Conv (Prod);
-      pragma Assert
-        (for all I in GB.Limb_Index range 0 .. 8 =>
-           GB.Sweep9_Out (Prod) (I) in 0 .. GB.In_Cap);
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 0 .. 8 =>
+             GB.Sweep9_Out (Prod) (I) in 0 .. GB.In_Cap);
       pragma Assert (GB.Sweep9_Out (Prod) (9) in 0 .. GB.Fold9_Top_Cap);
       pragma Assert (GB.Sweep9_Out (Conv) (9) in 0 .. GB.Fold9_Top_Cap);
       --  Each conv column is < 2**58 (<= Conv_Col_Cap), feeding Reduce_Conv9.
@@ -1260,18 +1347,20 @@ is
       --  bounded; widen to Carry_In_Cap then take the tight Sweep5 top carry.
       GB.Lemma_Bounds_Mono
         (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)),
-         GB.Round1_Out_Cap, GB.Carry_In_Cap);
-      GB.Lemma_Sweep5_Tight_Carry
-        (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
+         GB.Round1_Out_Cap,
+         GB.Carry_In_Cap);
+      GB.Lemma_Sweep5_Tight_Carry (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
 
       --  Final normalising carry (the proven Sweep5 + Fold + step). Capture
       --  the pre-carry value as a flat ghost so Carry's Post chains by a
       --  shallow congruence; R1L_Pre = Fold_High_9_Out (Sweep9_Out (Prod)).
       declare
-         R1L_Pre : constant GB.Big_Nat := To_Big_Nat (R1L) with Ghost;
+         R1L_Pre : constant GB.Big_Nat := To_Big_Nat (R1L)
+         with Ghost;
       begin
-         pragma Assert
-           (GB."=" (R1L_Pre, GB.Fold_High_9_Out (GB.Sweep9_Out (Prod))));
+         pragma
+           Assert
+             (GB."=" (R1L_Pre, GB.Fold_High_9_Out (GB.Sweep9_Out (Prod))));
          GB.Lemma_Sweep5_Tight_Carry (R1L_Pre);
          Carry (R1L);
          --  Carry Post: To_Big_Nat (R1L) = Carry_Model (R1L_Pre). The flat
@@ -1280,18 +1369,20 @@ is
          pragma Assert (GB."=" (To_Big_Nat (R1L), GB.Carry_Model (R1L_Pre)));
          Lemma_Carry_Model_Cong
            (R1L_Pre, GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
-         pragma Assert
-           (GB."="
-              (To_Big_Nat (R1L),
-               GB.Carry_Model (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)))));
+         pragma
+           Assert
+             (GB."="
+                (To_Big_Nat (R1L),
+                 GB.Carry_Model (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)))));
       end;
       Acc := R1L;
       --  To_Big_Nat (Acc) = Carry_Model (Fold_High_9_Out (Sweep9_Out (Prod)))
       --  and Prod = Acc'Old * R, which is the Multiply Post.
-      pragma Assert
-        (GB."="
-           (To_Big_Nat (Acc),
-            GB.Carry_Model (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)))));
+      pragma
+        Assert
+          (GB."="
+             (To_Big_Nat (Acc),
+              GB.Carry_Model (GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)))));
       Lemma_To_Big_Nat_Mul_Cap (Acc);   --  new Acc (= R1L) embeds <= Mul_Cap.
 
       --  Clean field-multiply form for the Mac loop invariant. Field_Mul's
@@ -1302,39 +1393,46 @@ is
       pragma Assert (GB.In_Bounds (A_Bn, GB.Mul_Cap));
       pragma Assert (GB.In_Bounds (R_Bn, GB.Mul_Cap));
       pragma Assert (GB.In_Bounds (R_Bn, GB.In_Cap));
-      pragma Assert
-        (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-           A_Bn (I) = 0);
-      pragma Assert
-        (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-           R_Bn (I) = 0);
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+             A_Bn (I) = 0);
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+             R_Bn (I) = 0);
       Lemma_Reduce_Cong (GB."*" (A_Bn, R_Bn), Prod);
       Lemma_Carry_Model_Cong
         (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn))),
          GB.Fold_High_9_Out (GB.Sweep9_Out (Prod)));
-      pragma Assert
-        (GB."="
-           (GB.Carry_Model
-              (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))),
-            To_Big_Nat (Acc)));
-      pragma Assert
-        (GB."="
-           (GB.Field_Mul (A_Bn, R_Bn),
-            GB.Canonical
-              (GB.Carry_Model
-                 (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))))));
+      pragma
+        Assert
+          (GB."="
+             (GB.Carry_Model
+                (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))),
+              To_Big_Nat (Acc)));
+      pragma
+        Assert
+          (GB."="
+             (GB.Field_Mul (A_Bn, R_Bn),
+              GB.Canonical
+                (GB.Carry_Model
+                   (GB.Fold_High_9_Out
+                      (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))))));
       Lemma_Canon_Cong
         (GB.Carry_Model
            (GB.Fold_High_9_Out (GB.Sweep9_Out (GB."*" (A_Bn, R_Bn)))),
          To_Big_Nat (Acc));
-      pragma Assert
-        (GB."="
-           (GB.Field_Mul (A_Bn, R_Bn), GB.Canonical (To_Big_Nat (Acc))));
+      pragma
+        Assert
+          (GB."="
+             (GB.Field_Mul (A_Bn, R_Bn), GB.Canonical (To_Big_Nat (Acc))));
       GBV.Lemma_Field_Mul_Bridge (A_Bn, R_Bn);
-      pragma Assert
-        (GB."="
-           (GB.Canonical (To_Big_Nat (Acc)),
-            GB.Field_Mul (GB.Canonical (A_Bn), R_Bn)));
+      pragma
+        Assert
+          (GB."="
+             (GB.Canonical (To_Big_Nat (Acc)),
+              GB.Field_Mul (GB.Canonical (A_Bn), R_Bn)));
    end Multiply;
 
    ---------------------------------------------------------------------
@@ -1427,7 +1525,8 @@ is
       --  "1" appears at bit 128, the 17th byte). The loop folds the field
       --  recurrence; the invariant tracks Feval_BN (Acc) against Spec_Fold.
       declare
-         RB : constant GB.Big_Nat := To_Big_Nat (R) with Ghost;
+         RB : constant GB.Big_Nat := To_Big_Nat (R)
+         with Ghost;
       begin
          Lemma_To_Big_Nat_Reduced (R);          --  RB: In_Cap, zero from 5.
          Lemma_To_Big_Nat_Mul_Cap (Acc);        --  To_Big_Nat (Acc=0).
@@ -1436,8 +1535,8 @@ is
          Lemma_Canon_Cong (To_Big_Nat (Acc), GB.Zero);
          pragma Assert (GB."=" (Feval_BN (Acc), GB.Zero));
          pragma Assert (GB."=" (SB.Spec_Fold (Message, 0, RB), GB.Zero));
-         pragma Assert
-           (GB."=" (Feval_BN (Acc), SB.Spec_Fold (Message, 0, RB)));
+         pragma
+           Assert (GB."=" (Feval_BN (Acc), SB.Spec_Fold (Message, 0, RB)));
 
          while Cursor + 16 <= Message'Length loop
             pragma Loop_Invariant (Cursor mod 16 = 0);
@@ -1445,17 +1544,21 @@ is
             pragma Loop_Invariant (for all I in Limb_Index => Acc (I) < 2**27);
             pragma Loop_Invariant (for all I in Limb_Index => R (I) < 2**26);
             pragma Loop_Invariant (GB."=" (To_Big_Nat (R), RB));
-            pragma Loop_Invariant
-              (GB."="
-                 (Feval_BN (Acc), SB.Spec_Fold (Message, Cursor / 16, RB)));
+            pragma
+              Loop_Invariant
+                (GB."="
+                   (Feval_BN (Acc), SB.Spec_Fold (Message, Cursor / 16, RB)));
             pragma Loop_Variant (Decreases => Message'Length - Cursor);
             declare
-               F0 : constant GB.Big_Nat := Feval_BN (Acc) with Ghost;
-               K  : constant Natural := Cursor / 16 with Ghost;
+               F0 : constant GB.Big_Nat := Feval_BN (Acc)
+               with Ghost;
+               K  : constant Natural := Cursor / 16
+               with Ghost;
             begin
                pragma Assert (16 * K = Cursor);
                pragma Assert (GB."=" (F0, SB.Spec_Fold (Message, K, RB)));
-               pragma Assert (GB.In_Bounds (F0, GB.In_Cap));  --  Spec_Fold Post.
+               pragma
+                 Assert (GB.In_Bounds (F0, GB.In_Cap));  --  Spec_Fold Post.
                --  F0 in Canonical form (the shape the op clean Posts produce).
                Lemma_To_Big_Nat_Mul_Cap (Acc);
                Lemma_Feval_Eq_Canon (Acc);
@@ -1466,33 +1569,39 @@ is
                   16,
                   Final     => False,
                   Out_Limbs => Block);
-               Lemma_To_Big_Nat_Reduced (Block);  --  To_Big_Nat (Block) In_Cap.
+               Lemma_To_Big_Nat_Reduced
+                 (Block);  --  To_Big_Nat (Block) In_Cap.
                --  Block = the K-th Spec_Fold block (16 * K = Cursor).
-               pragma Assert
-                 (GB."="
-                    (To_Big_Nat (Block),
-                     Enc.Encode_BN
-                       (Message
-                          (Message'First + 16 * K
-                           .. Message'First + 16 * (K + 1) - 1),
-                        16,
-                        False)));
+               pragma
+                 Assert
+                   (GB."="
+                      (To_Big_Nat (Block),
+                       Enc.Encode_BN
+                         (Message
+                            (Message'First
+                             + 16 * K
+                             .. Message'First + 16 * (K + 1) - 1),
+                          16,
+                          False)));
                Add (Acc, Block);
                Lemma_To_Big_Nat_Mul_Cap (Acc);   --  after-Add Acc: Mul_Cap.
                declare
-                  FA : constant GB.Big_Nat :=
-                    GB.Field_Add (F0, To_Big_Nat (Block)) with Ghost;
+                  FA   : constant GB.Big_Nat :=
+                    GB.Field_Add (F0, To_Big_Nat (Block))
+                  with Ghost;
                   BlkK : constant GB.Big_Nat :=
                     Enc.Encode_BN
                       (Message
-                         (Message'First + 16 * K
+                         (Message'First
+                          + 16 * K
                           .. Message'First + 16 * (K + 1) - 1),
-                       16, False)
-                    with Ghost;
+                       16,
+                       False)
+                  with Ghost;
                   --  Capture the after-Add field value in a stable constant so
                   --  it survives the Multiply call as Canonical (..Acc'Old..).
-                  C1 : constant GB.Big_Nat :=
-                    GB.Canonical (To_Big_Nat (Acc)) with Ghost;
+                  C1   : constant GB.Big_Nat := GB.Canonical (To_Big_Nat (Acc))
+                  with Ghost;
                begin
                   --  Add clean Post (Canonical form): Acc folds to FA = C1.
                   pragma Assert (GB."=" (C1, FA));
@@ -1506,47 +1615,59 @@ is
                   Lemma_To_Big_Nat_Reduced (R);
                   GB.Lemma_Bounds_Mono (To_Big_Nat (R), GB.In_Cap, GB.Mul_Cap);
                   --  Multiply clean Post: Acc folds to C1 * r = FA * r.
-                  pragma Assert
-                    (GB."="
-                       (GB.Canonical (To_Big_Nat (Acc)),
-                        GB.Field_Mul (C1, To_Big_Nat (R))));
+                  pragma
+                    Assert
+                      (GB."="
+                         (GB.Canonical (To_Big_Nat (Acc)),
+                          GB.Field_Mul (C1, To_Big_Nat (R))));
                   Lemma_Feval_Eq_Canon (Acc);
-                  pragma Assert
-                    (GB."="
-                       (Feval_BN (Acc), GB.Field_Mul (C1, To_Big_Nat (R))));
+                  pragma
+                    Assert
+                      (GB."="
+                         (Feval_BN (Acc), GB.Field_Mul (C1, To_Big_Nat (R))));
                   --  C1 = FA and To_Big_Nat (R) = RB: rewrite to Field_Mul (FA, RB).
                   GB.Lemma_Bounds_Mono (FA, GB.In_Cap, GB.Mul_Cap);
                   GB.Lemma_Bounds_Mono (RB, GB.In_Cap, GB.Mul_Cap);
                   GB.Lemma_Bounds_Mono (C1, GB.In_Cap, GB.Mul_Cap);
                   GB.Lemma_Bounds_Mono (To_Big_Nat (R), GB.In_Cap, GB.Mul_Cap);
                   Lemma_FMul_Cong (C1, FA, To_Big_Nat (R), RB);
-                  pragma Assert
-                    (GB."=" (Feval_BN (Acc), GB.Field_Mul (FA, RB)));
+                  pragma
+                    Assert (GB."=" (Feval_BN (Acc), GB.Field_Mul (FA, RB)));
                   --  FA = Field_Add (Spec_Fold (K), block K); so FA * r is the
                   --  Spec_Fold (K+1) unfolding.
                   pragma Assert (GB."=" (To_Big_Nat (Block), BlkK));
                   pragma Assert (GB."=" (F0, SB.Spec_Fold (Message, K, RB)));
                   Lemma_FAdd_Cong
-                    (F0, SB.Spec_Fold (Message, K, RB), To_Big_Nat (Block), BlkK);
-                  pragma Assert
-                    (GB."="
-                       (FA, GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK)));
+                    (F0,
+                     SB.Spec_Fold (Message, K, RB),
+                     To_Big_Nat (Block),
+                     BlkK);
+                  pragma
+                    Assert
+                      (GB."="
+                         (FA,
+                          GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK)));
                   --  Spec_Fold (K+1) unfolds to Field_Mul (Field_Add (Spec_Fold
                   --  (K), block K), RB); swap Field_Add (..) = FA via FMul_Cong.
                   GB.Lemma_Bounds_Mono
                     (GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK),
-                     GB.In_Cap, GB.Mul_Cap);
+                     GB.In_Cap,
+                     GB.Mul_Cap);
                   GB.Lemma_Bounds_Mono (FA, GB.In_Cap, GB.Mul_Cap);
                   Lemma_FMul_Cong
-                    (GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK), FA,
-                     RB, RB);
-                  pragma Assert
-                    (GB."="
-                       (SB.Spec_Fold (Message, K + 1, RB),
-                        GB.Field_Mul (FA, RB)));
-                  pragma Assert
-                    (GB."="
-                       (Feval_BN (Acc), SB.Spec_Fold (Message, K + 1, RB)));
+                    (GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK),
+                     FA,
+                     RB,
+                     RB);
+                  pragma
+                    Assert
+                      (GB."="
+                         (SB.Spec_Fold (Message, K + 1, RB),
+                          GB.Field_Mul (FA, RB)));
+                  pragma
+                    Assert
+                      (GB."="
+                         (Feval_BN (Acc), SB.Spec_Fold (Message, K + 1, RB)));
                end;
                Cursor := Cursor + 16;
                pragma Assert (Cursor / 16 = K + 1);
@@ -1593,9 +1714,10 @@ is
             Tmp := Acc (I) + C;
             Acc (I) := Tmp and Mask_26;
             C := Shift_Right (Tmp, 26);
-            pragma Loop_Invariant
-              (for all J in Limb_Index =>
-                 (if J <= I then Acc (J) < 2**26 else Acc (J) < 2**27));
+            pragma
+              Loop_Invariant
+                (for all J in Limb_Index =>
+                   (if J <= I then Acc (J) < 2**26 else Acc (J) < 2**27));
             pragma Loop_Invariant (C <= 2);
          end loop;
 
