@@ -7,8 +7,9 @@ is
    begin
       for I in Limb_Index loop
          R (I) := A (I) + B (I);
-         pragma Loop_Invariant
-           (for all J in Limb_Index'First .. I => R (J) = A (J) + B (J));
+         pragma
+           Loop_Invariant
+             (for all J in Limb_Index'First .. I => R (J) = A (J) + B (J));
       end loop;
       return R;
    end "+";
@@ -21,17 +22,20 @@ is
 
    procedure Lemma_Bounds_Mono (A : Big_Nat; Lo, Hi : LLI) is null;
 
-   procedure Lemma_Mul_Col_Distrib (A, B, C, BC : Big_Nat; K, T : Limb_Index) is
+   procedure Lemma_Mul_Col_Distrib (A, B, C, BC : Big_Nat; K, T : Limb_Index)
+   is
    begin
       if T /= 0 then
          Lemma_Mul_Col_Distrib (A, B, C, BC, K, T - 1);
       end if;
       --  Per-term distributivity at column position K-T; the rest follows
       --  from the inductive hypothesis and the Mul_Col recurrence.
-      pragma Assert
-        (Mul_Limb (A (T)) * Mul_Limb (BC (K - T))
-         = Mul_Limb (A (T)) * Mul_Limb (B (K - T))
-           + Mul_Limb (A (T)) * Mul_Limb (C (K - T)));
+      pragma
+        Assert
+          (Mul_Limb (A (T)) * Mul_Limb (BC (K - T))
+             = Mul_Limb (A (T))
+               * Mul_Limb (B (K - T))
+               + Mul_Limb (A (T)) * Mul_Limb (C (K - T)));
    end Lemma_Mul_Col_Distrib;
 
    procedure Lemma_Diff_Col_Eq (A, B, R : Big_Nat; K, T : Limb_Index) is
@@ -42,10 +46,12 @@ is
       --  Per-term: the difference of the T-th column products is the signed
       --  product (A (T) - B (T)) * R (K - T); the rest is the inductive
       --  hypothesis plus the Mul_Col recurrence.
-      pragma Assert
-        (Mul_Limb (A (T)) * Mul_Limb (R (K - T))
-         - Mul_Limb (B (T)) * Mul_Limb (R (K - T))
-         = (A (T) - B (T)) * R (K - T));
+      pragma
+        Assert
+          (Mul_Limb (A (T))
+             * Mul_Limb (R (K - T))
+             - Mul_Limb (B (T)) * Mul_Limb (R (K - T))
+             = (A (T) - B (T)) * R (K - T));
    end Lemma_Diff_Col_Eq;
 
    procedure Lemma_Diff3_Col_Eq
@@ -54,11 +60,13 @@ is
       if T /= 0 then
          Lemma_Diff3_Col_Eq (W, Wc, P, R, Kc, K, T - 1);
       end if;
-      pragma Assert
-        (Mul_Limb (W (T)) * Mul_Limb (R (K - T))
-         - Mul_Limb (Wc (T)) * Mul_Limb (R (K - T))
-         - Kc * (Mul_Limb (P (T)) * Mul_Limb (R (K - T)))
-         = (W (T) - Wc (T) - Kc * P (T)) * R (K - T));
+      pragma
+        Assert
+          (Mul_Limb (W (T))
+             * Mul_Limb (R (K - T))
+             - Mul_Limb (Wc (T)) * Mul_Limb (R (K - T))
+             - Kc * (Mul_Limb (P (T)) * Mul_Limb (R (K - T)))
+             = (W (T) - Wc (T) - Kc * P (T)) * R (K - T));
    end Lemma_Diff3_Col_Eq;
 
    procedure Lemma_Diff_Chain_Step
@@ -68,22 +76,26 @@ is
       --  A (T) - B (T) = Limb_Base * C (T+1) - C (T); multiplying by R (K-T)
       --  matches the T-th terms of Limb_Base*Shift_Chain_Col - Conv_Chain_Col.
       pragma Assert (A (T) - B (T) = Limb_Base * C (T + 1) - C (T));
-      pragma Assert
-        ((A (T) - B (T)) * R (K - T)
-         = Limb_Base * (C (T + 1) * R (K - T)) - C (T) * R (K - T));
+      pragma
+        Assert
+          ((A (T) - B (T)) * R (K - T)
+             = Limb_Base * (C (T + 1) * R (K - T)) - C (T) * R (K - T));
       if T /= 0 then
          Lemma_Diff_Chain_Step (A, B, R, C, K, T - 1);
          --  Make the three expression-function recurrences explicit so the
          --  inductive hypothesis composes with the term-T identity.
-         pragma Assert
-           (Diff_Col (A, B, R, K, T)
-            = Diff_Col (A, B, R, K, T - 1) + (A (T) - B (T)) * R (K - T));
-         pragma Assert
-           (Shift_Chain_Col (C, R, K, T)
-            = Shift_Chain_Col (C, R, K, T - 1) + C (T + 1) * R (K - T));
-         pragma Assert
-           (Conv_Chain_Col (C, R, K, T)
-            = Conv_Chain_Col (C, R, K, T - 1) + C (T) * R (K - T));
+         pragma
+           Assert
+             (Diff_Col (A, B, R, K, T)
+                = Diff_Col (A, B, R, K, T - 1) + (A (T) - B (T)) * R (K - T));
+         pragma
+           Assert
+             (Shift_Chain_Col (C, R, K, T)
+                = Shift_Chain_Col (C, R, K, T - 1) + C (T + 1) * R (K - T));
+         pragma
+           Assert
+             (Conv_Chain_Col (C, R, K, T)
+                = Conv_Chain_Col (C, R, K, T - 1) + C (T) * R (K - T));
       end if;
    end Lemma_Diff_Chain_Step;
 
@@ -105,48 +117,58 @@ is
       Lemma_Diff_Chain_Step (A, B, R, C, K, K);
       --  Diff_Col (K,K) = Limb_Base * Shift_Chain_Col (K,K) - Conv_Chain_Col (K,K).
       Lemma_Chain_Reindex (C, R, K, K);
-      --  Conv_Chain_Col (K+1,K+1) = C (0)*R(K+1) + Shift_Chain_Col (K,K)
-      --                           = Shift_Chain_Col (K,K)   (C (0) = 0).
+   --  Conv_Chain_Col (K+1,K+1) = C (0)*R(K+1) + Shift_Chain_Col (K,K)
+   --                           = Shift_Chain_Col (K,K)   (C (0) = 0).
    end Lemma_Diff_Col_Chain;
 
    procedure Lemma_Diff3_Chain_Step
      (W, Wc, P, R : Big_Nat; Kc : LLI; Cc : Carry_Array; K, T : Limb_Index) is
    begin
       --  Staged: substitute the column relation, then distribute over R (K-T).
-      pragma Assert
-        (W (T) - Wc (T) - Kc * P (T) = Limb_Base * Cc (T + 1) - Cc (T));
-      pragma Assert
-        ((W (T) - Wc (T) - Kc * P (T)) * R (K - T)
-         = (Limb_Base * Cc (T + 1) - Cc (T)) * R (K - T));
-      pragma Assert
-        ((Limb_Base * Cc (T + 1) - Cc (T)) * R (K - T)
-         = Limb_Base * (Cc (T + 1) * R (K - T)) - Cc (T) * R (K - T));
+      pragma
+        Assert (W (T) - Wc (T) - Kc * P (T) = Limb_Base * Cc (T + 1) - Cc (T));
+      pragma
+        Assert
+          ((W (T) - Wc (T) - Kc * P (T)) * R (K - T)
+             = (Limb_Base * Cc (T + 1) - Cc (T)) * R (K - T));
+      pragma
+        Assert
+          ((Limb_Base * Cc (T + 1) - Cc (T)) * R (K - T)
+             = Limb_Base * (Cc (T + 1) * R (K - T)) - Cc (T) * R (K - T));
       if T = 0 then
-         pragma Assert
-           (Diff3_Col (W, Wc, P, R, Kc, K, 0)
-            = (W (0) - Wc (0) - Kc * P (0)) * R (K - 0));
+         pragma
+           Assert
+             (Diff3_Col (W, Wc, P, R, Kc, K, 0)
+                = (W (0) - Wc (0) - Kc * P (0)) * R (K - 0));
          pragma Assert (Shift_Chain_Col (Cc, R, K, 0) = Cc (1) * R (K - 0));
          pragma Assert (Conv_Chain_Col (Cc, R, K, 0) = Cc (0) * R (K - 0));
-         pragma Assert
-           (Diff3_Col (W, Wc, P, R, Kc, K, T)
-            = Limb_Base * Shift_Chain_Col (Cc, R, K, T)
-              - Conv_Chain_Col (Cc, R, K, T));
+         pragma
+           Assert
+             (Diff3_Col (W, Wc, P, R, Kc, K, T)
+                = Limb_Base
+                  * Shift_Chain_Col (Cc, R, K, T)
+                  - Conv_Chain_Col (Cc, R, K, T));
       else
          Lemma_Diff3_Chain_Step (W, Wc, P, R, Kc, Cc, K, T - 1);
-         pragma Assert
-           (Diff3_Col (W, Wc, P, R, Kc, K, T)
-            = Diff3_Col (W, Wc, P, R, Kc, K, T - 1)
-              + (W (T) - Wc (T) - Kc * P (T)) * R (K - T));
-         pragma Assert
-           (Shift_Chain_Col (Cc, R, K, T)
-            = Shift_Chain_Col (Cc, R, K, T - 1) + Cc (T + 1) * R (K - T));
-         pragma Assert
-           (Conv_Chain_Col (Cc, R, K, T)
-            = Conv_Chain_Col (Cc, R, K, T - 1) + Cc (T) * R (K - T));
-         pragma Assert
-           (Diff3_Col (W, Wc, P, R, Kc, K, T)
-            = Limb_Base * Shift_Chain_Col (Cc, R, K, T)
-              - Conv_Chain_Col (Cc, R, K, T));
+         pragma
+           Assert
+             (Diff3_Col (W, Wc, P, R, Kc, K, T)
+                = Diff3_Col (W, Wc, P, R, Kc, K, T - 1)
+                  + (W (T) - Wc (T) - Kc * P (T)) * R (K - T));
+         pragma
+           Assert
+             (Shift_Chain_Col (Cc, R, K, T)
+                = Shift_Chain_Col (Cc, R, K, T - 1) + Cc (T + 1) * R (K - T));
+         pragma
+           Assert
+             (Conv_Chain_Col (Cc, R, K, T)
+                = Conv_Chain_Col (Cc, R, K, T - 1) + Cc (T) * R (K - T));
+         pragma
+           Assert
+             (Diff3_Col (W, Wc, P, R, Kc, K, T)
+                = Limb_Base
+                  * Shift_Chain_Col (Cc, R, K, T)
+                  - Conv_Chain_Col (Cc, R, K, T));
       end if;
    end Lemma_Diff3_Chain_Step;
 
@@ -176,16 +198,19 @@ is
       for K in Limb_Index loop
          pragma Assert (A (K) + C (K) = B (K) + Limb_Base * C (K + 1));
          pragma Assert (Limb_Base * C (K + 1) = A (K) + C (K) - B (K));
-         pragma Assert
-           (Limb_Base * C (K + 1) in -(3 * Rechain_Cap) .. 3 * Rechain_Cap);
+         pragma
+           Assert
+             (Limb_Base * C (K + 1) in -(3 * Rechain_Cap) .. 3 * Rechain_Cap);
          pragma Assert (C (K + 1) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
-         pragma Loop_Invariant
-           (for all J in 0 .. K + 1 =>
-              C (J) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
+         pragma
+           Loop_Invariant
+             (for all J in 0 .. K + 1 =>
+                C (J) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
       end loop;
-      pragma Assert
-        (for all J in Carry_Array'Range =>
-           C (J) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range =>
+             C (J) in -(2 * Rechain_Cap) .. 2 * Rechain_Cap);
       pragma Assert (SC_Bounded (C));
    end Lemma_Rechain_Narrow;
 
@@ -201,8 +226,8 @@ is
    end Lemma_Conv_Chain_Zero;
 
    procedure Lemma_Mul_SVal_Cong (A, B, R : Big_Nat; C : Carry_Array) is
-      GA : constant Big_Nat     := A * R;
-      GB : constant Big_Nat     := B * R;
+      GA : constant Big_Nat := A * R;
+      GB : constant Big_Nat := B * R;
       G  : constant Carry_Array := Carry_Conv (C, R);
    begin
       Lemma_SVal_Chain_Zero_High (A, B, C);   --  C zero from limb 5
@@ -212,17 +237,20 @@ is
          if I < 9 then
             Lemma_Diff_Col_Eq (A, B, R, I, I);
             Lemma_Diff_Col_Chain (A, B, R, C, I);
-            --  GA (I) - GB (I) = Diff_Col = Limb_Base*G (I+1) - G (I).
+         --  GA (I) - GB (I) = Diff_Col = Limb_Base*G (I+1) - G (I).
+
          else
             Lemma_Conv_Chain_Zero (C, R, I, I);                --  G (I) = 0
             if I < Max_Limbs - 1 then
                Lemma_Conv_Chain_Zero (C, R, I + 1, I + 1);     --  G (I+1) = 0
+
             end if;
             --  GA (I) = GB (I) = 0; relation is 0 = 0.
          end if;
-         pragma Loop_Invariant
-           (for all J in 0 .. I =>
-              GA (J) + G (J) = GB (J) + Limb_Base * G (J + 1));
+         pragma
+           Loop_Invariant
+             (for all J in 0 .. I =>
+                GA (J) + G (J) = GB (J) + Limb_Base * G (J + 1));
       end loop;
       pragma Assert (G (0) = 0);
       pragma Assert (G (Max_Limbs) = 0);
@@ -230,8 +258,9 @@ is
    end Lemma_Mul_SVal_Cong;
 
    procedure Lemma_Mul_Cong_Prime
-     (W, Wc, P, R, GWc, GPr, B : Big_Nat; Kc : LLI; Cc : Carry_Array) is
-      GW : constant Big_Nat     := W * R;
+     (W, Wc, P, R, GWc, GPr, B : Big_Nat; Kc : LLI; Cc : Carry_Array)
+   is
+      GW : constant Big_Nat := W * R;
       G  : constant Carry_Array := Carry_Conv (Cc, R);
    begin
       Lemma_Mul5_Cols (W, R, GW);     --  GW zero from limb 9
@@ -246,11 +275,11 @@ is
             pragma Assert (GPr (I) = Mul_Col (P, R, I, I));
             pragma Assert (G (I) = Conv_Chain_Col (Cc, R, I, I));
             pragma Assert (G (I + 1) = Conv_Chain_Col (Cc, R, I + 1, I + 1));
-            pragma Assert
-              (GW (I) - GWc (I) - Kc * GPr (I)
-               = Limb_Base * G (I + 1) - G (I));
-            pragma Assert
-              (GW (I) + G (I) = B (I) + Limb_Base * G (I + 1));
+            pragma
+              Assert
+                (GW (I) - GWc (I) - Kc * GPr (I)
+                   = Limb_Base * G (I + 1) - G (I));
+            pragma Assert (GW (I) + G (I) = B (I) + Limb_Base * G (I + 1));
          else
             Lemma_Conv_Chain_Zero (Cc, R, I, I);
             pragma Assert (GW (I) = 0);
@@ -263,12 +292,12 @@ is
             else
                pragma Assert (G (I + 1) = 0);
             end if;
-            pragma Assert
-              (GW (I) + G (I) = B (I) + Limb_Base * G (I + 1));
+            pragma Assert (GW (I) + G (I) = B (I) + Limb_Base * G (I + 1));
          end if;
-         pragma Loop_Invariant
-           (for all J in 0 .. I =>
-              GW (J) + G (J) = B (J) + Limb_Base * G (J + 1));
+         pragma
+           Loop_Invariant
+             (for all J in 0 .. I =>
+                GW (J) + G (J) = B (J) + Limb_Base * G (J + 1));
       end loop;
       pragma Assert (G (0) = 0);
       pragma Assert (G (Max_Limbs) = 0);
@@ -282,13 +311,12 @@ is
    begin
       for K in Limb_Index loop
          Lemma_Mul_Col_Distrib (A, B, C, BC, K, K);
-         pragma Loop_Invariant
-           (for all J in 0 .. K => L (J) = R1 (J) + R2 (J));
+         pragma
+           Loop_Invariant (for all J in 0 .. K => L (J) = R1 (J) + R2 (J));
       end loop;
    end Lemma_Mul_Distrib;
 
-   procedure Lemma_Mul_Col_Zero
-     (A, B : Big_Nat; K, T, Na, Nb : Limb_Index) is
+   procedure Lemma_Mul_Col_Zero (A, B : Big_Nat; K, T, Na, Nb : Limb_Index) is
    begin
       if T = 0 then
          --  Mul_Col = A(0)*B(K); K >= Na+Nb-1 >= Nb (Na>=1), so B(K) = 0.
@@ -306,9 +334,9 @@ is
          if K >= Na + Nb - 1 then
             Lemma_Mul_Col_Zero (A, B, K, K, Na, Nb);
          end if;
-         pragma Loop_Invariant
-           (for all J in 0 .. K =>
-              (if J >= Na + Nb - 1 then AB (J) = 0));
+         pragma
+           Loop_Invariant
+             (for all J in 0 .. K => (if J >= Na + Nb - 1 then AB (J) = 0));
       end loop;
    end Lemma_Mul_Zero_High;
 
@@ -319,83 +347,153 @@ is
       --  unfold the Mul_Col recurrence one column at a time so it flattens to
       --  the explicit convolution sum. Mul_Limb keeps every product bounded.
 
-      pragma Assert (Mul_Col (A, B, 1, 1)
-        = Mul_Col (A, B, 1, 0) + Mul_Limb (A (1)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 1, 1)
+             = Mul_Col (A, B, 1, 0) + Mul_Limb (A (1)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 2, 1)
-        = Mul_Col (A, B, 2, 0) + Mul_Limb (A (1)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 2, 2)
-        = Mul_Col (A, B, 2, 1) + Mul_Limb (A (2)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 2, 1)
+             = Mul_Col (A, B, 2, 0) + Mul_Limb (A (1)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 2, 2)
+             = Mul_Col (A, B, 2, 1) + Mul_Limb (A (2)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 3, 1)
-        = Mul_Col (A, B, 3, 0) + Mul_Limb (A (1)) * Mul_Limb (B (2)));
-      pragma Assert (Mul_Col (A, B, 3, 2)
-        = Mul_Col (A, B, 3, 1) + Mul_Limb (A (2)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 3, 3)
-        = Mul_Col (A, B, 3, 2) + Mul_Limb (A (3)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 3, 1)
+             = Mul_Col (A, B, 3, 0) + Mul_Limb (A (1)) * Mul_Limb (B (2)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 3, 2)
+             = Mul_Col (A, B, 3, 1) + Mul_Limb (A (2)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 3, 3)
+             = Mul_Col (A, B, 3, 2) + Mul_Limb (A (3)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 4, 1)
-        = Mul_Col (A, B, 4, 0) + Mul_Limb (A (1)) * Mul_Limb (B (3)));
-      pragma Assert (Mul_Col (A, B, 4, 2)
-        = Mul_Col (A, B, 4, 1) + Mul_Limb (A (2)) * Mul_Limb (B (2)));
-      pragma Assert (Mul_Col (A, B, 4, 3)
-        = Mul_Col (A, B, 4, 2) + Mul_Limb (A (3)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 4, 4)
-        = Mul_Col (A, B, 4, 3) + Mul_Limb (A (4)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 4, 1)
+             = Mul_Col (A, B, 4, 0) + Mul_Limb (A (1)) * Mul_Limb (B (3)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 4, 2)
+             = Mul_Col (A, B, 4, 1) + Mul_Limb (A (2)) * Mul_Limb (B (2)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 4, 3)
+             = Mul_Col (A, B, 4, 2) + Mul_Limb (A (3)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 4, 4)
+             = Mul_Col (A, B, 4, 3) + Mul_Limb (A (4)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 5, 1)
-        = Mul_Col (A, B, 5, 0) + Mul_Limb (A (1)) * Mul_Limb (B (4)));
-      pragma Assert (Mul_Col (A, B, 5, 2)
-        = Mul_Col (A, B, 5, 1) + Mul_Limb (A (2)) * Mul_Limb (B (3)));
-      pragma Assert (Mul_Col (A, B, 5, 3)
-        = Mul_Col (A, B, 5, 2) + Mul_Limb (A (3)) * Mul_Limb (B (2)));
-      pragma Assert (Mul_Col (A, B, 5, 4)
-        = Mul_Col (A, B, 5, 3) + Mul_Limb (A (4)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 5, 5)
-        = Mul_Col (A, B, 5, 4) + Mul_Limb (A (5)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 5, 1)
+             = Mul_Col (A, B, 5, 0) + Mul_Limb (A (1)) * Mul_Limb (B (4)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 5, 2)
+             = Mul_Col (A, B, 5, 1) + Mul_Limb (A (2)) * Mul_Limb (B (3)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 5, 3)
+             = Mul_Col (A, B, 5, 2) + Mul_Limb (A (3)) * Mul_Limb (B (2)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 5, 4)
+             = Mul_Col (A, B, 5, 3) + Mul_Limb (A (4)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 5, 5)
+             = Mul_Col (A, B, 5, 4) + Mul_Limb (A (5)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 6, 2)
-        = Mul_Col (A, B, 6, 1) + Mul_Limb (A (2)) * Mul_Limb (B (4)));
-      pragma Assert (Mul_Col (A, B, 6, 3)
-        = Mul_Col (A, B, 6, 2) + Mul_Limb (A (3)) * Mul_Limb (B (3)));
-      pragma Assert (Mul_Col (A, B, 6, 4)
-        = Mul_Col (A, B, 6, 3) + Mul_Limb (A (4)) * Mul_Limb (B (2)));
-      pragma Assert (Mul_Col (A, B, 6, 5)
-        = Mul_Col (A, B, 6, 4) + Mul_Limb (A (5)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 6, 6)
-        = Mul_Col (A, B, 6, 5) + Mul_Limb (A (6)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 6, 2)
+             = Mul_Col (A, B, 6, 1) + Mul_Limb (A (2)) * Mul_Limb (B (4)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 6, 3)
+             = Mul_Col (A, B, 6, 2) + Mul_Limb (A (3)) * Mul_Limb (B (3)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 6, 4)
+             = Mul_Col (A, B, 6, 3) + Mul_Limb (A (4)) * Mul_Limb (B (2)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 6, 5)
+             = Mul_Col (A, B, 6, 4) + Mul_Limb (A (5)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 6, 6)
+             = Mul_Col (A, B, 6, 5) + Mul_Limb (A (6)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 7, 1)
-        = Mul_Col (A, B, 7, 0) + Mul_Limb (A (1)) * Mul_Limb (B (6)));
-      pragma Assert (Mul_Col (A, B, 7, 2)
-        = Mul_Col (A, B, 7, 1) + Mul_Limb (A (2)) * Mul_Limb (B (5)));
-      pragma Assert (Mul_Col (A, B, 7, 3)
-        = Mul_Col (A, B, 7, 2) + Mul_Limb (A (3)) * Mul_Limb (B (4)));
-      pragma Assert (Mul_Col (A, B, 7, 4)
-        = Mul_Col (A, B, 7, 3) + Mul_Limb (A (4)) * Mul_Limb (B (3)));
-      pragma Assert (Mul_Col (A, B, 7, 5)
-        = Mul_Col (A, B, 7, 4) + Mul_Limb (A (5)) * Mul_Limb (B (2)));
-      pragma Assert (Mul_Col (A, B, 7, 6)
-        = Mul_Col (A, B, 7, 5) + Mul_Limb (A (6)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 7, 7)
-        = Mul_Col (A, B, 7, 6) + Mul_Limb (A (7)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 1)
+             = Mul_Col (A, B, 7, 0) + Mul_Limb (A (1)) * Mul_Limb (B (6)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 2)
+             = Mul_Col (A, B, 7, 1) + Mul_Limb (A (2)) * Mul_Limb (B (5)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 3)
+             = Mul_Col (A, B, 7, 2) + Mul_Limb (A (3)) * Mul_Limb (B (4)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 4)
+             = Mul_Col (A, B, 7, 3) + Mul_Limb (A (4)) * Mul_Limb (B (3)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 5)
+             = Mul_Col (A, B, 7, 4) + Mul_Limb (A (5)) * Mul_Limb (B (2)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 6)
+             = Mul_Col (A, B, 7, 5) + Mul_Limb (A (6)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 7, 7)
+             = Mul_Col (A, B, 7, 6) + Mul_Limb (A (7)) * Mul_Limb (B (0)));
 
-      pragma Assert (Mul_Col (A, B, 8, 1)
-        = Mul_Col (A, B, 8, 0) + Mul_Limb (A (1)) * Mul_Limb (B (7)));
-      pragma Assert (Mul_Col (A, B, 8, 2)
-        = Mul_Col (A, B, 8, 1) + Mul_Limb (A (2)) * Mul_Limb (B (6)));
-      pragma Assert (Mul_Col (A, B, 8, 3)
-        = Mul_Col (A, B, 8, 2) + Mul_Limb (A (3)) * Mul_Limb (B (5)));
-      pragma Assert (Mul_Col (A, B, 8, 4)
-        = Mul_Col (A, B, 8, 3) + Mul_Limb (A (4)) * Mul_Limb (B (4)));
-      pragma Assert (Mul_Col (A, B, 8, 5)
-        = Mul_Col (A, B, 8, 4) + Mul_Limb (A (5)) * Mul_Limb (B (3)));
-      pragma Assert (Mul_Col (A, B, 8, 6)
-        = Mul_Col (A, B, 8, 5) + Mul_Limb (A (6)) * Mul_Limb (B (2)));
-      pragma Assert (Mul_Col (A, B, 8, 7)
-        = Mul_Col (A, B, 8, 6) + Mul_Limb (A (7)) * Mul_Limb (B (1)));
-      pragma Assert (Mul_Col (A, B, 8, 8)
-        = Mul_Col (A, B, 8, 7) + Mul_Limb (A (8)) * Mul_Limb (B (0)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 1)
+             = Mul_Col (A, B, 8, 0) + Mul_Limb (A (1)) * Mul_Limb (B (7)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 2)
+             = Mul_Col (A, B, 8, 1) + Mul_Limb (A (2)) * Mul_Limb (B (6)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 3)
+             = Mul_Col (A, B, 8, 2) + Mul_Limb (A (3)) * Mul_Limb (B (5)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 4)
+             = Mul_Col (A, B, 8, 3) + Mul_Limb (A (4)) * Mul_Limb (B (4)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 5)
+             = Mul_Col (A, B, 8, 4) + Mul_Limb (A (5)) * Mul_Limb (B (3)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 6)
+             = Mul_Col (A, B, 8, 5) + Mul_Limb (A (6)) * Mul_Limb (B (2)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 7)
+             = Mul_Col (A, B, 8, 6) + Mul_Limb (A (7)) * Mul_Limb (B (1)));
+      pragma
+        Assert
+          (Mul_Col (A, B, 8, 8)
+             = Mul_Col (A, B, 8, 7) + Mul_Limb (A (8)) * Mul_Limb (B (0)));
    end Lemma_Mul5_Cols;
 
    procedure Lemma_Carry26 (X : LLI) is null;
@@ -445,18 +543,20 @@ is
    procedure Lemma_SVal_Trans (A, B, D : Big_Nat; C1, C2 : Carry_Array) is
       pragma Unreferenced (B);   --  intermediate value lives only in the Pre.
    begin
-      pragma Assert
-        (for all I in Limb_Index =>
-           A (I) + (C1 (I) + C2 (I))
-           = D (I) + Limb_Base * (C1 (I + 1) + C2 (I + 1)));
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             A (I) + (C1 (I) + C2 (I))
+             = D (I) + Limb_Base * (C1 (I + 1) + C2 (I + 1)));
    end Lemma_SVal_Trans;
 
    procedure Lemma_SVal_Add_Const (X, Y, M : Big_Nat; C : Carry_Array) is
    begin
-      pragma Assert
-        (for all I in Limb_Index =>
-           (X (I) + M (I)) + C (I)
-           = (Y (I) + M (I)) + Limb_Base * C (I + 1));
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             (X (I) + M (I)) + C (I)
+             = (Y (I) + M (I)) + Limb_Base * C (I + 1));
    end Lemma_SVal_Add_Const;
 
    procedure Lemma_Carry_Step (A : Big_Nat; I : Limb_Index) is
@@ -546,13 +646,15 @@ is
    begin
       --  Smul (B (5), P_Prime) is exactly Fold_Plus_P's inline prime terms.
       pragma Assert (M (0) = B (5) * (In_Cap - 4));
-      pragma Assert
-        (for all I in Limb_Index range 1 .. 4 => M (I) = B (5) * In_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => M (I) = 0);
-      pragma Assert
-        (for all I in Limb_Index =>
-           Fold_Out (B) (I) + M (I) = Fold_Plus_P (B) (I));
+      pragma
+        Assert
+          (for all I in Limb_Index range 1 .. 4 => M (I) = B (5) * In_Cap);
+      pragma
+        Assert (for all I in Limb_Index range 5 .. Max_Limbs - 1 => M (I) = 0);
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             Fold_Out (B) (I) + M (I) = Fold_Plus_P (B) (I));
    end Lemma_Fold_Plus_P_Eq;
 
    procedure Lemma_Subtract_P5 (B : Big_Nat) is null;
@@ -567,8 +669,7 @@ is
       pragma Assert (Sw_C2 (X) = 0);
       pragma Assert (Sw_C3 (X) = 0);
       pragma Assert (Sw_C4 (X) = 0);
-      pragma Assert
-        (for all I in Limb_Index => Sweep5_Out (X) (I) = X (I));
+      pragma Assert (for all I in Limb_Index => Sweep5_Out (X) (I) = X (I));
    end Lemma_Reduced_No_Carry;
 
    procedure Lemma_Sweep5_Ripple (X : Big_Nat) is
@@ -584,18 +685,22 @@ is
       --  A surviving carry forces the limb to In_Cap and the prior carry to 1
       --  (X(i) + Sw_C{i-1} = 2**26 is the only way Hi26 = 1 when both are
       --  bounded), so the swept limb is Lo26 (In_Cap + 1) = Lo26 (2**26) = 0.
-      pragma Assert
-        (if Sw_C1 (X) = 1 then X (1) = In_Cap and then Sw_C0 (X) = 1);
-      pragma Assert
-        (if Sw_C2 (X) = 1 then X (2) = In_Cap and then Sw_C1 (X) = 1);
-      pragma Assert
-        (if Sw_C3 (X) = 1 then X (3) = In_Cap and then Sw_C2 (X) = 1);
-      pragma Assert
-        (if Sw_C4 (X) = 1 then X (4) = In_Cap and then Sw_C3 (X) = 1);
-      pragma Assert
-        (if Sw_C4 (X) = 1
-         then Sweep5_Out (X) (4) = 0 and then Sweep5_Out (X) (3) = 0
-              and then Sweep5_Out (X) (2) = 0 and then Sweep5_Out (X) (1) = 0);
+      pragma
+        Assert (if Sw_C1 (X) = 1 then X (1) = In_Cap and then Sw_C0 (X) = 1);
+      pragma
+        Assert (if Sw_C2 (X) = 1 then X (2) = In_Cap and then Sw_C1 (X) = 1);
+      pragma
+        Assert (if Sw_C3 (X) = 1 then X (3) = In_Cap and then Sw_C2 (X) = 1);
+      pragma
+        Assert (if Sw_C4 (X) = 1 then X (4) = In_Cap and then Sw_C3 (X) = 1);
+      pragma
+        Assert
+          (if Sw_C4 (X) = 1
+             then
+               Sweep5_Out (X) (4) = 0
+               and then Sweep5_Out (X) (3) = 0
+               and then Sweep5_Out (X) (2) = 0
+               and then Sweep5_Out (X) (1) = 0);
    end Lemma_Sweep5_Ripple;
 
    procedure Lemma_Sweep5_Low_Only (X : Big_Nat) is
@@ -625,8 +730,10 @@ is
       Lemma_Val_To_SVal (Sum, S, Zero_Carry);
       Lemma_SVal_Sym (Sum, S, Zero_Carry);
       Lemma_SVal_Trans (B, S, Sum, Sweep5_Chain (B), Neg_Carry (Zero_Carry));
-      pragma Assert
-        (Add_Carry (Sweep5_Chain (B), Neg_Carry (Zero_Carry)) = Sweep5_Chain (B));
+      pragma
+        Assert
+          (Add_Carry (Sweep5_Chain (B), Neg_Carry (Zero_Carry))
+             = Sweep5_Chain (B));
    end Lemma_Reduce_Canonical;
 
    procedure Lemma_Pos_Mult_Forces_Sub_Cond
@@ -638,12 +745,18 @@ is
       --  encoding of p; limbs 0..4 are (In_Cap-4, In_Cap, In_Cap, In_Cap,
       --  In_Cap), limbs 5.. are zero.
       pragma Assert (P_Prime (0) = In_Cap - 4);
-      pragma Assert
-        (P_Prime (1) = In_Cap and then P_Prime (2) = In_Cap
-         and then P_Prime (3) = In_Cap and then P_Prime (4) = In_Cap);
-      pragma Assert
-        (for all J in Limb_Index range 5 .. Max_Limbs - 1 => P_Prime (J) = 0);
-      pragma Assert (for all I in Limb_Index => M (I) = B (I) + K * P_Prime (I));
+      pragma
+        Assert
+          (P_Prime (1) = In_Cap
+             and then P_Prime (2) = In_Cap
+             and then P_Prime (3) = In_Cap
+             and then P_Prime (4) = In_Cap);
+      pragma
+        Assert
+          (for all J in Limb_Index range 5 .. Max_Limbs - 1 =>
+             P_Prime (J) = 0);
+      pragma
+        Assert (for all I in Limb_Index => M (I) = B (I) + K * P_Prime (I));
 
       --  Upper region: A and M are zero for limbs 5.., so the carry chain is
       --  forced to all zero there (from C (Max_Limbs)=0 downward).
@@ -662,8 +775,8 @@ is
       pragma Assert (A (3) + C (3) = B (3) + K * In_Cap + Limb_Base * C (4));
       pragma Assert (A (2) + C (2) = B (2) + K * In_Cap + Limb_Base * C (3));
       pragma Assert (A (1) + C (1) = B (1) + K * In_Cap + Limb_Base * C (2));
-      pragma Assert
-        (A (0) + C (0) = B (0) + K * (In_Cap - 4) + Limb_Base * C (1));
+      pragma
+        Assert (A (0) + C (0) = B (0) + K * (In_Cap - 4) + Limb_Base * C (1));
 
       --  Each "intrinsic" column term E_i = K*P_Prime(i) - (A(i)-B(i)) is
       --  non-negative for K >= 1 (K*In_Cap >= In_Cap >= A(i)), hence so is each
@@ -709,8 +822,7 @@ is
       if K = 0 then
          --  Smul (0, P_Prime) = Zero, so the operand is B and exact uniqueness
          --  applies.
-         pragma Assert
-           (for all I in Limb_Index => Smul (K, P_Prime) (I) = 0);
+         pragma Assert (for all I in Limb_Index => Smul (K, P_Prime) (I) = 0);
          pragma Assert (Smul (K, P_Prime) = Zero);
          Lemma_Add_Zero_R (B);
          pragma Assert (B + Smul (K, P_Prime) = B);
@@ -738,32 +850,33 @@ is
    begin
       pragma Assert (C (0) = 0);
       pragma Assert (C (Max_Limbs) = 0);
-      pragma Assert
-        (for all I in Limb_Index =>
-           X (I) + C (I) = Y (I) + Limb_Base * C (I + 1));
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             X (I) + C (I) = Y (I) + Limb_Base * C (I + 1));
    end Lemma_SVal_Cancel_Const;
 
    procedure Lemma_Mod_P_Unique_Gen
-     (A, B : Big_Nat; Ka, Kb : LLI; C : Carry_Array)
-   is
+     (A, B : Big_Nat; Ka, Kb : LLI; C : Carry_Array) is
    begin
       if Kb >= Ka then
          --  B + Kb*p = (B + (Kb-Ka)*p) + Ka*p; cancel the common Ka*p.
          Lemma_Smul_Add (Kb - Ka, Ka, P_Prime);
          Lemma_Bounds_Mono (B, In_Cap, Assoc_Cap);
-         pragma Assert
-           (In_Bounds (Smul (Kb - Ka, P_Prime), Assoc_Cap));
+         pragma Assert (In_Bounds (Smul (Kb - Ka, P_Prime), Assoc_Cap));
          pragma Assert (In_Bounds (Smul (Ka, P_Prime), Assoc_Cap));
          Lemma_Add_Assoc (B, Smul (Kb - Ka, P_Prime), Smul (Ka, P_Prime));
-         pragma Assert
-           (B + Smul (Kb, P_Prime)
-            = (B + Smul (Kb - Ka, P_Prime)) + Smul (Ka, P_Prime));
+         pragma
+           Assert
+             (B + Smul (Kb, P_Prime)
+                = (B + Smul (Kb - Ka, P_Prime)) + Smul (Ka, P_Prime));
          pragma Assert (In_Bounds (B + Smul (Kb - Ka, P_Prime), Add_Cap));
-         pragma Assert
-           (SVal_Eq
-              (A + Smul (Ka, P_Prime),
-               (B + Smul (Kb - Ka, P_Prime)) + Smul (Ka, P_Prime),
-               C));
+         pragma
+           Assert
+             (SVal_Eq
+                (A + Smul (Ka, P_Prime),
+                 (B + Smul (Kb - Ka, P_Prime)) + Smul (Ka, P_Prime),
+                 C));
          Lemma_SVal_Cancel_Const
            (A, B + Smul (Kb - Ka, P_Prime), Smul (Ka, P_Prime), C);
          Lemma_Mod_P_Unique (A, B, Kb - Ka, C);
@@ -776,26 +889,25 @@ is
          pragma Assert (In_Bounds (Smul (Kb, P_Prime), Assoc_Cap));
          pragma Assert (In_Bounds (A + Smul (Ka, P_Prime), Add_Cap));
          pragma Assert (In_Bounds (B + Smul (Kb, P_Prime), Add_Cap));
-         Lemma_SVal_Sym
-           (A + Smul (Ka, P_Prime), B + Smul (Kb, P_Prime), C);
+         Lemma_SVal_Sym (A + Smul (Ka, P_Prime), B + Smul (Kb, P_Prime), C);
          Lemma_Smul_Add (Ka - Kb, Kb, P_Prime);
          Lemma_Bounds_Mono (A, In_Cap, Assoc_Cap);
-         pragma Assert
-           (In_Bounds (Smul (Ka - Kb, P_Prime), Assoc_Cap));
+         pragma Assert (In_Bounds (Smul (Ka - Kb, P_Prime), Assoc_Cap));
          pragma Assert (In_Bounds (Smul (Kb, P_Prime), Assoc_Cap));
          Lemma_Add_Assoc (A, Smul (Ka - Kb, P_Prime), Smul (Kb, P_Prime));
-         pragma Assert
-           (A + Smul (Ka, P_Prime)
-            = (A + Smul (Ka - Kb, P_Prime)) + Smul (Kb, P_Prime));
+         pragma
+           Assert
+             (A + Smul (Ka, P_Prime)
+                = (A + Smul (Ka - Kb, P_Prime)) + Smul (Kb, P_Prime));
          pragma Assert (In_Bounds (A + Smul (Ka - Kb, P_Prime), Add_Cap));
-         pragma Assert
-           (SVal_Eq
-              (B + Smul (Kb, P_Prime),
-               (A + Smul (Ka - Kb, P_Prime)) + Smul (Kb, P_Prime),
-               Neg_Carry (C)));
+         pragma
+           Assert
+             (SVal_Eq
+                (B + Smul (Kb, P_Prime),
+                 (A + Smul (Ka - Kb, P_Prime)) + Smul (Kb, P_Prime),
+                 Neg_Carry (C)));
          Lemma_SVal_Cancel_Const
-           (B, A + Smul (Ka - Kb, P_Prime), Smul (Kb, P_Prime),
-            Neg_Carry (C));
+           (B, A + Smul (Ka - Kb, P_Prime), Smul (Kb, P_Prime), Neg_Carry (C));
          Lemma_Mod_P_Unique (B, A, Ka - Kb, Neg_Carry (C));
       end if;
    end Lemma_Mod_P_Unique_Gen;
@@ -812,10 +924,11 @@ is
       --  S1(5) <= 2), limbs 1..4 <= In_Cap, zero from 5. So R1 is Mul_Cap-
       --  bounded and feeds the second round.
       pragma Assert (R1 (0) <= In_Cap + 10);
-      pragma Assert
-        (for all I in Limb_Index range 1 .. 4 => R1 (I) in 0 .. In_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0);
+      pragma
+        Assert (for all I in Limb_Index range 1 .. 4 => R1 (I) in 0 .. In_Cap);
+      pragma
+        Assert
+          (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0);
       pragma Assert (In_Bounds (R1, Mul_Cap));
 
       Lemma_Sweep5_Acc_Carry (R1);         --  Sweep5_Out (R1) (5) <= 2
@@ -829,15 +942,18 @@ is
          Lemma_Sweep5_Ripple (R1);
          pragma Assert (for all I in Limb_Index range 1 .. 4 => S2 (I) = 0);
          pragma Assert (R2 (0) <= In_Cap + 10);
-         pragma Assert
-           (for all I in Limb_Index range 1 .. Max_Limbs - 1 => R2 (I) = 0);
+         pragma
+           Assert
+             (for all I in Limb_Index range 1 .. Max_Limbs - 1 => R2 (I) = 0);
          Lemma_Sweep5_Low_Only (R2);
       else
          --  No carry: R2 = S2 is already reduced (limbs <= In_Cap).
-         pragma Assert
-           (for all I in Limb_Index range 0 .. 4 => R2 (I) in 0 .. In_Cap);
-         pragma Assert
-           (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R2 (I) = 0);
+         pragma
+           Assert
+             (for all I in Limb_Index range 0 .. 4 => R2 (I) in 0 .. In_Cap);
+         pragma
+           Assert
+             (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R2 (I) = 0);
          pragma Assert (In_Bounds (R2, In_Cap));
          Lemma_Reduced_No_Carry (R2);
       end if;
@@ -846,10 +962,11 @@ is
       --  fully reduced five-limb value (< 2**130).
       pragma Assert (Sweep5_Out (R2) (5) = 0);
       S3 := Sweep5_Out (R2);
-      pragma Assert
-        (for all I in Limb_Index range 0 .. 4 => S3 (I) in 0 .. In_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S3 (I) = 0);
+      pragma
+        Assert (for all I in Limb_Index range 0 .. 4 => S3 (I) in 0 .. In_Cap);
+      pragma
+        Assert
+          (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S3 (I) = 0);
       pragma Assert (In_Bounds (S3, In_Cap));
       Lemma_Reduced_No_Carry (S3);         --  Sweep5_Out (S3) (5) = 0
 
@@ -863,8 +980,7 @@ is
            Add_Carry
              (Add_Carry (Sweep5_Chain (B), Neg_Carry (Fold_Chain (S1 (5)))),
               Add_Carry (Sweep5_Chain (R1), Neg_Carry (Fold_Chain (S2 (5)))));
-         Chain : constant Carry_Array :=
-           Add_Carry (Ch12, Sweep5_Chain (R2));
+         Chain : constant Carry_Array := Add_Carry (Ch12, Sweep5_Chain (R2));
       begin
          Lemma_Two_Round_Cong
            (B, S1, R1, S2, Sweep5_Chain (B), Sweep5_Chain (R1));
@@ -873,12 +989,14 @@ is
          --  PM = Smul (S2 (5), P) + Smul (S1 (5), P): each Smul limb is
          --  S (5) * P_Prime (i) <= 2 In_Cap, so PM <= 4 In_Cap (well within
          --  Add_Cap; needed because "+" does not carry In_Bounds).
-         pragma Assert
-           (for all I in Limb_Index =>
-              Smul (S2 (5), P_Prime) (I) <= 2 * In_Cap);
-         pragma Assert
-           (for all I in Limb_Index =>
-              Smul (S1 (5), P_Prime) (I) <= 2 * In_Cap);
+         pragma
+           Assert
+             (for all I in Limb_Index =>
+                Smul (S2 (5), P_Prime) (I) <= 2 * In_Cap);
+         pragma
+           Assert
+             (for all I in Limb_Index =>
+                Smul (S1 (5), P_Prime) (I) <= 2 * In_Cap);
          pragma Assert (for all I in Limb_Index => PM (I) <= 4 * In_Cap);
          pragma Assert (In_Bounds (PM, Add_Cap));
          Lemma_Bounds_Mono (B, Prod_Cap, Add_Cap);
@@ -887,14 +1005,14 @@ is
          --  associativity), so the round result is B =val R2 + PM.
          Lemma_Fold_Plus_P_Eq (S2);
          Lemma_Add_Assoc (R2, Smul (S2 (5), P_Prime), Smul (S1 (5), P_Prime));
-         pragma Assert
-           (Fold_Plus_P (S2) + Smul (S1 (5), P_Prime) = R2 + PM);
+         pragma Assert (Fold_Plus_P (S2) + Smul (S1 (5), P_Prime) = R2 + PM);
          pragma Assert (SVal_Eq (B, R2 + PM, Ch12));
 
          --  Final sweep R2 =val S3; add PM to both sides and compose.
          Lemma_Sweep5 (R2);
          Lemma_Val_To_SVal (R2, S3, Sweep5_Chain (R2));
-         pragma Assert (for all I in Limb_Index => S3 (I) + PM (I) <= 5 * In_Cap);
+         pragma
+           Assert (for all I in Limb_Index => S3 (I) + PM (I) <= 5 * In_Cap);
          pragma Assert (In_Bounds (S3 + PM, Add_Cap));
          Lemma_SVal_Add_Const (R2, S3, PM, Sweep5_Chain (R2));
          --  SVal_Eq (R2 + PM, S3 + PM, Sweep5_Chain (R2))
@@ -905,9 +1023,10 @@ is
          Lemma_Sweep5_Chain_Tight (B);
          Lemma_Sweep5_Chain_Tight (R1);
          Lemma_Sweep5_Chain_Tight (R2);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Sweep5_Chain (R2) (J) in 0 .. Conv_Carry_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Sweep5_Chain (R2) (J) in 0 .. Conv_Carry_Cap);
          pragma Assert (SC_Bounded (Add_Carry (Ch12, Sweep5_Chain (R2))));
          Lemma_SVal_Trans (B, R2 + PM, S3 + PM, Ch12, Sweep5_Chain (R2));
          --  SVal_Eq (B, S3 + PM, Chain)
@@ -925,23 +1044,30 @@ is
          --  minus two fold chains (each entry <= 2), so |Ch12| <= 2**33;
          --  Chain adds one more sweep chain, so |Chain| <= 3*Conv_Carry_Cap
          --  < Cong_Cap = 2**34.
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Sweep5_Chain (B) (J) in 0 .. Conv_Carry_Cap);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Sweep5_Chain (R1) (J) in 0 .. Conv_Carry_Cap);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Fold_Chain (S1 (5)) (J) in 0 .. 2);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Fold_Chain (S2 (5)) (J) in 0 .. 2);
-         pragma Assert
-           (for all J in Carry_Array'Range => Ch12 (J) in -Cong_Cap .. Cong_Cap);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Chain (J) in -Cong_Cap .. Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Sweep5_Chain (B) (J) in 0 .. Conv_Carry_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Sweep5_Chain (R1) (J) in 0 .. Conv_Carry_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Fold_Chain (S1 (5)) (J) in 0 .. 2);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Fold_Chain (S2 (5)) (J) in 0 .. 2);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Ch12 (J) in -Cong_Cap .. Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Chain (J) in -Cong_Cap .. Cong_Cap);
          return (Val => S3, PMult => PM, KMult => KM, Cn => Chain);
       end;
    end Normalize;
@@ -1007,9 +1133,12 @@ is
          --  (KcX, KcY <= 5; Kin <= 4), mirroring Normalize's pattern.
          Lemma_Bounds_Mono (X, Mul_Cap, Add_Cap);
          pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
-         pragma Assert (for all I in Limb_Index => SKX (I) = KcX * P_Prime (I));
-         pragma Assert (for all I in Limb_Index => SKY (I) = KcY * P_Prime (I));
-         pragma Assert (for all I in Limb_Index => SKI (I) = Kin * P_Prime (I));
+         pragma
+           Assert (for all I in Limb_Index => SKX (I) = KcX * P_Prime (I));
+         pragma
+           Assert (for all I in Limb_Index => SKY (I) = KcY * P_Prime (I));
+         pragma
+           Assert (for all I in Limb_Index => SKI (I) = Kin * P_Prime (I));
          pragma Assert (for all I in Limb_Index => SKX (I) <= 5 * In_Cap);
          pragma Assert (for all I in Limb_Index => SKY (I) <= 5 * In_Cap);
          pragma Assert (for all I in Limb_Index => SKI (I) <= 4 * In_Cap);
@@ -1021,20 +1150,27 @@ is
          --  CX + Smul (KcX, p) == X (Sym of Canonical_Cong on X), then
          --  == Y + Smul (Kin, p) (input), then == CY + Smul (KcY, p) + Kin*p.
          Lemma_SVal_Sym (X, SX, CcX);
-         pragma Assert
-           (for all J in Carry_Array'Range => NCX (J) in -Cong_Cap .. Cong_Cap);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Ch2 (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                NCX (J) in -Cong_Cap .. Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Ch2 (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
          pragma Assert (SC_Bounded (Ch2));
-         Lemma_SVal_Trans (SX, X, YK, NCX, C);          --  SVal_Eq (SX, YK, Ch2)
+         Lemma_SVal_Trans
+           (SX, X, YK, NCX, C);          --  SVal_Eq (SX, YK, Ch2)
 
-         Lemma_SVal_Add_Const (Y, SY, SKI, CcY);        --  SVal_Eq (YK, SYK, CcY)
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Net (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
+         Lemma_SVal_Add_Const
+           (Y, SY, SKI, CcY);        --  SVal_Eq (YK, SYK, CcY)
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Net (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
          pragma Assert (SC_Bounded (Net));
-         Lemma_SVal_Trans (SX, YK, SYK, Ch2, CcY);      --  SVal_Eq (SX, SYK, Net)
+         Lemma_SVal_Trans
+           (SX, YK, SYK, Ch2, CcY);      --  SVal_Eq (SX, SYK, Net)
 
          --  SYK = (CY + Smul (KcY, p)) + Smul (Kin, p) = CY + Smul (KcY+Kin, p).
          Lemma_Bounds_Mono (CY, In_Cap, Assoc_Cap);
@@ -1043,8 +1179,7 @@ is
          Lemma_Add_Assoc (CY, SKY, SKI);
          Lemma_Smul_Add (KcY, Kin, P_Prime);
          pragma Assert (SYK = CY + Smul (KcY + Kin, P_Prime));
-         pragma Assert
-           (SVal_Eq (SX, CY + Smul (KcY + Kin, P_Prime), Net));
+         pragma Assert (SVal_Eq (SX, CY + Smul (KcY + Kin, P_Prime), Net));
 
          --  Both CX, CY are canonical (< p); the residual multiples cancel.
          Lemma_Mod_P_Unique_Gen (CX, CY, KcX, KcY + Kin, Net);
@@ -1080,8 +1215,10 @@ is
          --  In-bounds nudges (reduced bases + small multiples).
          Lemma_Bounds_Mono (X, Mul_Cap, Add_Cap);
          pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
-         pragma Assert (for all I in Limb_Index => SKcX (I) = KcX * P_Prime (I));
-         pragma Assert (for all I in Limb_Index => SKcY (I) = KcY * P_Prime (I));
+         pragma
+           Assert (for all I in Limb_Index => SKcX (I) = KcX * P_Prime (I));
+         pragma
+           Assert (for all I in Limb_Index => SKcY (I) = KcY * P_Prime (I));
          pragma Assert (for all I in Limb_Index => SKx (I) = Kx * P_Prime (I));
          pragma Assert (for all I in Limb_Index => SKy (I) = Ky * P_Prime (I));
          pragma Assert (In_Bounds (SKcX, Add_Cap));
@@ -1095,21 +1232,29 @@ is
 
          --  CX + (KcX)*p == X (sym), + Kx*p both sides; then input; then Y side.
          Lemma_SVal_Sym (X, SX, CcX);                  --  SVal_Eq (SX, X, NCX)
-         pragma Assert
-           (for all J in Carry_Array'Range => NCX (J) in -Cong_Cap .. Cong_Cap);
-         Lemma_SVal_Add_Const (SX, X, SKx, NCX);       --  SVal_Eq (SXx, XKx, NCX)
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Ch2 (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                NCX (J) in -Cong_Cap .. Cong_Cap);
+         Lemma_SVal_Add_Const
+           (SX, X, SKx, NCX);       --  SVal_Eq (SXx, XKx, NCX)
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Ch2 (J) in -(3 * Cong_Cap) .. 3 * Cong_Cap);
          pragma Assert (SC_Bounded (Ch2));
-         Lemma_SVal_Trans (SXx, XKx, YKy, NCX, C);     --  SVal_Eq (SXx, YKy, Ch2)
+         Lemma_SVal_Trans
+           (SXx, XKx, YKy, NCX, C);     --  SVal_Eq (SXx, YKy, Ch2)
 
-         Lemma_SVal_Add_Const (Y, SYc, SKy, CcY);      --  SVal_Eq (YKy, SYy, CcY)
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Net (J) in -(4 * Cong_Cap) .. 4 * Cong_Cap);
+         Lemma_SVal_Add_Const
+           (Y, SYc, SKy, CcY);      --  SVal_Eq (YKy, SYy, CcY)
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Net (J) in -(4 * Cong_Cap) .. 4 * Cong_Cap);
          pragma Assert (SC_Bounded (Net));
-         Lemma_SVal_Trans (SXx, YKy, SYy, Ch2, CcY);   --  SVal_Eq (SXx, SYy, Net)
+         Lemma_SVal_Trans
+           (SXx, YKy, SYy, Ch2, CcY);   --  SVal_Eq (SXx, SYy, Net)
 
          --  SXx = CX + Smul (KcX+Kx, p); SYy = CY + Smul (KcY+Ky, p).
          Lemma_Bounds_Mono (CX, In_Cap, Assoc_Cap);
@@ -1124,10 +1269,12 @@ is
          Lemma_Add_Assoc (CY, SKcY, SKy);
          Lemma_Smul_Add (KcY, Ky, P_Prime);
          pragma Assert (SYy = CY + Smul (KcY + Ky, P_Prime));
-         pragma Assert
-           (SVal_Eq
-              (CX + Smul (KcX + Kx, P_Prime),
-               CY + Smul (KcY + Ky, P_Prime), Net));
+         pragma
+           Assert
+             (SVal_Eq
+                (CX + Smul (KcX + Kx, P_Prime),
+                 CY + Smul (KcY + Ky, P_Prime),
+                 Net));
 
          Lemma_Mod_P_Unique_Gen (CX, CY, KcX + Kx, KcY + Ky, Net);
          pragma Assert (Canonical (X) = Canonical (Y));
@@ -1169,8 +1316,8 @@ is
       --  5; Canonical reduces it directly.
       pragma Assert (for all I in Limb_Index => S (I) <= 2 * In_Cap);
       pragma Assert (In_Bounds (S, Mul_Cap));
-      pragma Assert
-        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S (I) = 0);
+      pragma
+        Assert (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S (I) = 0);
       return Canonical (S);
    end Field_Add;
 
@@ -1183,11 +1330,12 @@ is
       --  limb 9.  "*" Post gives Conv (K) = Mul_Col (..) <= (K+1)*Two_Pow_54;
       --  Lemma_Mul5_Cols gives the zero-from-9.
       Lemma_Mul5_Cols (A, R, Conv);
-      pragma Assert
-        (for all K in Limb_Index range 9 .. Max_Limbs - 1 => Conv (K) = 0);
-      pragma Assert
-        (for all K in Limb_Index =>
-           Conv (K) <= LLI (K + 1) * Two_Pow_54);
+      pragma
+        Assert
+          (for all K in Limb_Index range 9 .. Max_Limbs - 1 => Conv (K) = 0);
+      pragma
+        Assert
+          (for all K in Limb_Index => Conv (K) <= LLI (K + 1) * Two_Pow_54);
       pragma Assert (In_Bounds (Conv, Prod_Cap));
       pragma Assert (In_Bounds (Conv, Conv_Col_Cap));
 
@@ -1195,14 +1343,16 @@ is
       --  Fold9_Top_Cap (Sweep9_Conv); R1 = Fold_High_9_Out (S) is
       --  Round1_Out_Cap-bounded and zero from 5.
       Lemma_Sweep9_Conv (Conv);
-      pragma Assert
-        (for all I in Limb_Index range 0 .. 8 => S (I) in 0 .. In_Cap);
+      pragma
+        Assert (for all I in Limb_Index range 0 .. 8 => S (I) in 0 .. In_Cap);
       pragma Assert (S (9) in 0 .. Fold9_Top_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 10 .. Max_Limbs - 1 => S (I) = 0);
+      pragma
+        Assert
+          (for all I in Limb_Index range 10 .. Max_Limbs - 1 => S (I) = 0);
       pragma Assert (In_Bounds (R1, Round1_Out_Cap));
-      pragma Assert
-        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0);
+      pragma
+        Assert
+          (for all I in Limb_Index range 5 .. Max_Limbs - 1 => R1 (I) = 0);
 
       --  Carry_Model (R1): establish its Pre (Carry_In_Cap, Sweep5 top carry),
       --  then reduce to canonical.
@@ -1248,18 +1398,29 @@ is
       --  In_Cap) and H = (B5, B6, B7, B8).
       pragma Assert (M (0) = (In_Cap - 4) * B (5));
       pragma Assert (M (1) = (In_Cap - 4) * B (6) + In_Cap * B (5));
-      pragma Assert
-        (M (2) = (In_Cap - 4) * B (7) + In_Cap * B (6) + In_Cap * B (5));
-      pragma Assert
-        (M (3) =
-           (In_Cap - 4) * B (8) + In_Cap * B (7) + In_Cap * B (6)
-           + In_Cap * B (5));
-      pragma Assert
-        (M (4) =
-           In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6) + In_Cap * B (5));
-      pragma Assert
-        (Mul_Col (P_Prime, H, 5, 4)
-         = In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6));
+      pragma
+        Assert
+          (M (2) = (In_Cap - 4) * B (7) + In_Cap * B (6) + In_Cap * B (5));
+      pragma
+        Assert
+          (M (3)
+             = (In_Cap - 4)
+               * B (8)
+               + In_Cap * B (7)
+               + In_Cap * B (6)
+               + In_Cap * B (5));
+      pragma
+        Assert
+          (M (4)
+             = In_Cap
+               * B (8)
+               + In_Cap * B (7)
+               + In_Cap * B (6)
+               + In_Cap * B (5));
+      pragma
+        Assert
+          (Mul_Col (P_Prime, H, 5, 4)
+             = In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6));
       pragma Assert (M (5) = In_Cap * B (8) + In_Cap * B (7) + In_Cap * B (6));
       pragma Assert (M (6) = In_Cap * B (8) + In_Cap * B (7));
       pragma Assert (M (7) = In_Cap * B (8));
@@ -1271,13 +1432,16 @@ is
       C2 : constant Carry_Array := Fold_High_9_Chain (S);
    begin
       Lemma_Sweep9 (Conv);                                --  Val_Eq(Conv,S,C1)
-      Lemma_Val_To_SVal (Conv, S, C1);                    --  SVal_Eq(Conv,S,C1)
-      Lemma_Fold_High_9 (S);                              --  Val_Eq(P9(S),S,C2)
-      Lemma_Val_To_SVal (Fold_High_9_Plus_P (S), S, C2);  --  SVal_Eq(P9(S),S,C2)
-      Lemma_SVal_Sym (Fold_High_9_Plus_P (S), S, C2);     --  SVal_Eq(S,P9(S),-C2)
+      Lemma_Val_To_SVal
+        (Conv, S, C1);                    --  SVal_Eq(Conv,S,C1)
+      Lemma_Fold_High_9
+        (S);                              --  Val_Eq(P9(S),S,C2)
+      Lemma_Val_To_SVal
+        (Fold_High_9_Plus_P (S), S, C2);  --  SVal_Eq(P9(S),S,C2)
+      Lemma_SVal_Sym
+        (Fold_High_9_Plus_P (S), S, C2);     --  SVal_Eq(S,P9(S),-C2)
       pragma Assert (SC_Bounded (Add_Carry (C1, Neg_Carry (C2))));
-      Lemma_SVal_Trans
-        (Conv, S, Fold_High_9_Plus_P (S), C1, Neg_Carry (C2));
+      Lemma_SVal_Trans (Conv, S, Fold_High_9_Plus_P (S), C1, Neg_Carry (C2));
    end Lemma_Reduce_Conv_Round1;
 
    procedure Lemma_Reduce_Round2 (R1, T : Big_Nat; D1 : Carry_Array) is
@@ -1285,15 +1449,17 @@ is
    begin
       Lemma_Sweep5 (R1);                          --  Val_Eq(R1, T, D1)
       Lemma_Val_To_SVal (R1, T, D1);              --  SVal_Eq(R1, T, D1)
-      Lemma_Fold (T);                             --  Val_Eq(Fold_Plus_P(T),T,D2)
-      Lemma_Val_To_SVal (Fold_Plus_P (T), T, D2); --  SVal_Eq(Fold_Plus_P(T),T,D2)
-      Lemma_SVal_Sym (Fold_Plus_P (T), T, D2);    --  SVal_Eq(T,Fold_Plus_P(T),-D2)
+      Lemma_Fold
+        (T);                             --  Val_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_Val_To_SVal
+        (Fold_Plus_P (T), T, D2); --  SVal_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_SVal_Sym
+        (Fold_Plus_P (T), T, D2);    --  SVal_Eq(T,Fold_Plus_P(T),-D2)
       pragma Assert (SC_Bounded (Add_Carry (D1, Neg_Carry (D2))));
       Lemma_SVal_Trans (R1, T, Fold_Plus_P (T), D1, Neg_Carry (D2));
    end Lemma_Reduce_Round2;
 
-   procedure Lemma_Mul_Reduce
-     (Conv, S, R1, T : Big_Nat; C1, D1 : Carry_Array)
+   procedure Lemma_Mul_Reduce (Conv, S, R1, T : Big_Nat; C1, D1 : Carry_Array)
    is
       C2  : constant Carry_Array := Fold_High_9_Chain (S);
       D2  : constant Carry_Array := Fold_Chain (T (5));
@@ -1314,19 +1480,22 @@ is
       --  SVal_Eq (Fold_High_9_Plus_P (S), Fold_Plus_P (T) + M1, Ch2)
       --  Component bounds so the combined chain stays within Hi_Cap:
       --  C1, D1 conv-tight; C2 <= 4*In_Cap+Fold9_Top_Cap; D2 <= Fold_C_Cap.
-      pragma Assert
-        (for all J in Carry_Array'Range => C1 (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range =>
-           C2 (J) in 0 .. 4 * In_Cap + Fold9_Top_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => D2 (J) in 0 .. Fold_C_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => Ch1 (J) = C1 (J) - C2 (J));
-      pragma Assert
-        (for all J in Carry_Array'Range => Ch2 (J) = D1 (J) - D2 (J));
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => C1 (J) in 0 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range =>
+             C2 (J) in 0 .. 4 * In_Cap + Fold9_Top_Cap);
+      pragma
+        Assert (for all J in Carry_Array'Range => D2 (J) in 0 .. Fold_C_Cap);
+      pragma
+        Assert (for all J in Carry_Array'Range => Ch1 (J) = C1 (J) - C2 (J));
+      pragma
+        Assert (for all J in Carry_Array'Range => Ch2 (J) = D1 (J) - D2 (J));
       pragma Assert (SC_Bounded (Add_Carry (Ch1, Ch2)));
       Lemma_SVal_Trans
         (Conv, Fold_High_9_Plus_P (S), Fold_Plus_P (T) + M1, Ch1, Ch2);
@@ -1343,8 +1512,10 @@ is
    begin
       Lemma_Sweep5_Chain_Tight (B);    --  CA entries <= Conv_Carry_Cap
       Lemma_Sweep5_Chain_Tight (R1);   --  CB entries <= Conv_Carry_Cap
-      Lemma_Reduce_Round2 (B, S1, CA);   --  SVal_Eq (B,  Fold_Plus_P (S1), ChA)
-      Lemma_Reduce_Round2 (R1, S2, CB);  --  SVal_Eq (R1, Fold_Plus_P (S2), ChB)
+      Lemma_Reduce_Round2
+        (B, S1, CA);   --  SVal_Eq (B,  Fold_Plus_P (S1), ChA)
+      Lemma_Reduce_Round2
+        (R1, S2, CB);  --  SVal_Eq (R1, Fold_Plus_P (S2), ChB)
 
       --  Fold_Plus_P (S1) = Fold_Out (S1) + M_A = R1 + M_A, so adding M_A to
       --  both sides of round B aligns its left side with round A's right side.
@@ -1355,30 +1526,39 @@ is
 
       --  Combined chain stays within Hi_Cap: CA, CB <= Conv_Carry_Cap; the
       --  Fold_Chains <= S(5) <= 2.
-      pragma Assert
-        (for all J in Carry_Array'Range => CA (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => CB (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => Fold_Chain (S1 (5)) (J) in 0 .. 2);
-      pragma Assert
-        (for all J in Carry_Array'Range => Fold_Chain (S2 (5)) (J) in 0 .. 2);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => CA (J) in 0 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => CB (J) in 0 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range =>
+             Fold_Chain (S1 (5)) (J) in 0 .. 2);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range =>
+             Fold_Chain (S2 (5)) (J) in 0 .. 2);
       pragma Assert (SC_Bounded (Add_Carry (ChA, ChB)));
       Lemma_SVal_Trans (B, Fold_Plus_P (S1), Fold_Plus_P (S2) + M_A, ChA, ChB);
-      --  SVal_Eq (B, Fold_Plus_P (S2) + M_A, ChA + ChB) = Post
+   --  SVal_Eq (B, Fold_Plus_P (S2) + M_A, ChA + ChB) = Post
    end Lemma_Two_Round_Cong;
 
    procedure Lemma_Carry_Fold (B : Big_Nat) is
-      T  : constant Big_Nat     := Sweep5_Out (B);
+      T  : constant Big_Nat := Sweep5_Out (B);
       D1 : constant Carry_Array := Sweep5_Chain (B);
       D2 : constant Carry_Array := Fold_Chain (T (5));
    begin
       Lemma_Sweep5_Tight_Carry (B);               --  T (5) <= Fold_C_Cap
       Lemma_Sweep5 (B);                           --  Val_Eq(B, T, D1)
       Lemma_Val_To_SVal (B, T, D1);               --  SVal_Eq(B, T, D1)
-      Lemma_Fold (T);                             --  Val_Eq(Fold_Plus_P(T),T,D2)
-      Lemma_Val_To_SVal (Fold_Plus_P (T), T, D2); --  SVal_Eq(Fold_Plus_P(T),T,D2)
-      Lemma_SVal_Sym (Fold_Plus_P (T), T, D2);    --  SVal_Eq(T,Fold_Plus_P(T),-D2)
+      Lemma_Fold
+        (T);                             --  Val_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_Val_To_SVal
+        (Fold_Plus_P (T), T, D2); --  SVal_Eq(Fold_Plus_P(T),T,D2)
+      Lemma_SVal_Sym
+        (Fold_Plus_P (T), T, D2);    --  SVal_Eq(T,Fold_Plus_P(T),-D2)
       pragma Assert (SC_Bounded (Add_Carry (D1, Neg_Carry (D2))));
       Lemma_SVal_Trans (B, T, Fold_Plus_P (T), D1, Neg_Carry (D2));
    end Lemma_Carry_Fold;
@@ -1388,19 +1568,21 @@ is
    begin
       for K in Limb_Index loop
          R (K) := Mul_Col (A, B, K, K);
-         pragma Loop_Invariant
-           (for all J in 0 .. K => R (J) = Mul_Col (A, B, J, J));
+         pragma
+           Loop_Invariant
+             (for all J in 0 .. K => R (J) = Mul_Col (A, B, J, J));
          pragma Loop_Invariant (In_Bounds (R, Add_Cap));
       end loop;
       return R;
    end "*";
 
-   procedure Lemma_Carry_Mod_P (B : Big_Nat; K : out LLI; C : out Carry_Array) is
-      T    : constant Big_Nat     := Sweep5_Out (B);
-      FO   : constant Big_Nat     := Fold_Out (T);
-      CM   : constant Big_Nat     := Carry_Model (B);
+   procedure Lemma_Carry_Mod_P (B : Big_Nat; K : out LLI; C : out Carry_Array)
+   is
+      T    : constant Big_Nat := Sweep5_Out (B);
+      FO   : constant Big_Nat := Fold_Out (T);
+      CM   : constant Big_Nat := Carry_Model (B);
       D1   : constant Carry_Array := Sweep5_Chain (B);
-      SK   : constant Big_Nat     := Smul (T (5), P_Prime);
+      SK   : constant Big_Nat := Smul (T (5), P_Prime);
       SCFO : constant Carry_Array := Step_Carry (FO, 0);
       Ch1  : constant Carry_Array :=
         Add_Carry (D1, Neg_Carry (Fold_Chain (T (5))));
@@ -1412,11 +1594,11 @@ is
       K := T (5);
 
       --  Sweep5 output is reduced; Fold_Out limb 0 stays small (T (5) <= 2).
-      pragma Assert
-        (for all I in Limb_Index range 0 .. 4 => T (I) in 0 .. In_Cap);
+      pragma
+        Assert (for all I in Limb_Index range 0 .. 4 => T (I) in 0 .. In_Cap);
       pragma Assert (T (5) in 0 .. 2);
-      pragma Assert
-        (for all I in Limb_Index range 6 .. Max_Limbs - 1 => T (I) = 0);
+      pragma
+        Assert (for all I in Limb_Index range 6 .. Max_Limbs - 1 => T (I) = 0);
       pragma Assert (FO (0) <= In_Cap + 10);
       pragma Assert (In_Bounds (FO, Prod_Cap));
 
@@ -1444,17 +1626,21 @@ is
       --  Chain bounds: D1 <= Conv_Carry_Cap, Fold_Chain (K) <= 2,
       --  Step_Carry (FO,0)(1) = Hi26 (FO(0)) <= 1, so C is tight.
       Lemma_Sweep5_Chain_Tight (B);
-      pragma Assert
-        (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => Fold_Chain (T (5)) (J) in 0 .. 2);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => Fold_Chain (T (5)) (J) in 0 .. 2);
       pragma Assert (Hi26 (FO (0)) <= 1);
       pragma Assert (for all J in Carry_Array'Range => SCFO (J) in 0 .. 1);
-      pragma Assert
-        (for all J in Carry_Array'Range => Ch1 (J) in -2 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => Ch1 (J) in -2 .. Conv_Carry_Cap);
       C := Add_Carry (Ch1, SCFO);
-      pragma Assert
-        (for all J in Carry_Array'Range => C (J) in -Cong_Cap .. Cong_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => C (J) in -Cong_Cap .. Cong_Cap);
       Lemma_Bounds_Mono (B, Mul_Cap, Add_Cap);
       Lemma_SVal_Trans (B, FOSK, CMSK, Ch1, SCFO);
       pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
@@ -1466,15 +1652,15 @@ is
       CM : constant Big_Nat := Carry_Model (B);
    begin
       --  S reduced (limbs 0..4 <= In_Cap), S (5) <= Fold_C_Cap (Pre).
-      pragma Assert
-        (for all I in Limb_Index range 0 .. 4 => S (I) in 0 .. In_Cap);
+      pragma
+        Assert (for all I in Limb_Index range 0 .. 4 => S (I) in 0 .. In_Cap);
       pragma Assert (S (5) <= Fold_C_Cap);
 
       --  FO = Fold_Out (S): limb0 = S(0)+5*S(5) <= In_Cap + 5*Fold_C_Cap,
       --  limbs 1..4 reduced.
       pragma Assert (FO (0) <= In_Cap + 5 * Fold_C_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 1 .. 4 => FO (I) in 0 .. In_Cap);
+      pragma
+        Assert (for all I in Limb_Index range 1 .. 4 => FO (I) in 0 .. In_Cap);
 
       --  CM = Step_Out (FO, 0): limb0 < 2**26, limb1 = FO(1)+Hi26(FO(0)), the
       --  carry Hi26(FO(0)) < 2**12 so limb1 < 2**27; limbs 2..4 reduced.
@@ -1483,10 +1669,11 @@ is
       pragma Assert (Hi26 (FO (0)) < 2**12);
       pragma Assert (CM (1) = FO (1) + Hi26 (FO (0)));
       pragma Assert (CM (1) < 2**27);
-      pragma Assert
-        (for all I in Limb_Index range 2 .. 4 => CM (I) in 0 .. In_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 5 .. Max_Limbs - 1 => CM (I) = 0);
+      pragma
+        Assert (for all I in Limb_Index range 2 .. 4 => CM (I) in 0 .. In_Cap);
+      pragma
+        Assert
+          (for all I in Limb_Index range 5 .. Max_Limbs - 1 => CM (I) = 0);
       pragma Assert (In_Bounds (CM, Prod_Cap));
 
       --  Sweep5 of CM: c0 = 0 (CM(0) < 2**26); each later carry <= 1 because
@@ -1502,11 +1689,11 @@ is
    procedure Lemma_Carry_Mod_P_Wide
      (B : Big_Nat; K : out LLI; C : out Carry_Array)
    is
-      T    : constant Big_Nat     := Sweep5_Out (B);
-      FO   : constant Big_Nat     := Fold_Out (T);
-      CM   : constant Big_Nat     := Carry_Model (B);
+      T    : constant Big_Nat := Sweep5_Out (B);
+      FO   : constant Big_Nat := Fold_Out (T);
+      CM   : constant Big_Nat := Carry_Model (B);
       D1   : constant Carry_Array := Sweep5_Chain (B);
-      SK   : constant Big_Nat     := Smul (T (5), P_Prime);
+      SK   : constant Big_Nat := Smul (T (5), P_Prime);
       SCFO : constant Carry_Array := Step_Carry (FO, 0);
       Ch1  : constant Carry_Array :=
         Add_Carry (D1, Neg_Carry (Fold_Chain (T (5))));
@@ -1518,11 +1705,11 @@ is
 
       --  T = Sweep5_Out (B): limbs 0..4 reduced, T (5) = K <= Conv_Carry_Cap
       --  (Pre). Fold_Out limb 0 = T(0)+5*K stays well below Prod_Cap.
-      pragma Assert
-        (for all I in Limb_Index range 0 .. 4 => T (I) in 0 .. In_Cap);
+      pragma
+        Assert (for all I in Limb_Index range 0 .. 4 => T (I) in 0 .. In_Cap);
       pragma Assert (T (5) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all I in Limb_Index range 6 .. Max_Limbs - 1 => T (I) = 0);
+      pragma
+        Assert (for all I in Limb_Index range 6 .. Max_Limbs - 1 => T (I) = 0);
       pragma Assert (FO (0) <= In_Cap + 5 * Conv_Carry_Cap);
       pragma Assert (In_Bounds (FO, Prod_Cap));
 
@@ -1534,9 +1721,10 @@ is
       --  FOSK = Fold_Plus_P (T) is In_Bounds (Add_Cap) by Fold_Plus_P's Post --
       --  no need to bound the (large-K) Smul term directly.
       pragma Assert (In_Bounds (FOSK, Add_Cap));
-      pragma Assert
-        (for all I in Limb_Index =>
-           FOSK (I) <= In_Cap + 5 * Fold_C_Cap + Fold_C_Cap * In_Cap);
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             FOSK (I) <= In_Cap + 5 * Fold_C_Cap + Fold_C_Cap * In_Cap);
 
       --  Step 2: FO == Carry_Model (B) exactly (the normalising Step_Out).
       pragma Assert (CM = Step_Out (FO, 0));
@@ -1549,8 +1737,9 @@ is
       --  large-K Smul bound is needed; In_Bounds (CMSK) follows.
       pragma Assert (In_Bounds (SK, Add_Cap));
       pragma Assert (Hi26 (FO (0)) <= 2**9);
-      pragma Assert
-        (for all I in Limb_Index => CMSK (I) <= FOSK (I) + Hi26 (FO (0)));
+      pragma
+        Assert
+          (for all I in Limb_Index => CMSK (I) <= FOSK (I) + Hi26 (FO (0)));
       pragma Assert (In_Bounds (CMSK, Add_Cap));
       Lemma_SVal_Add_Const (FO, CM, SK, SCFO);
 
@@ -1558,19 +1747,22 @@ is
       --  <= Conv_Carry_Cap, Step_Carry (FO,0)(1) = Hi26 (FO(0)) <= 2**9. So C
       --  stays within Cong_Cap.
       Lemma_Sweep5_Chain_Tight (B);
-      pragma Assert
-        (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range =>
-           Fold_Chain (T (5)) (J) in 0 .. Conv_Carry_Cap);
-      pragma Assert
-        (for all J in Carry_Array'Range => SCFO (J) in 0 .. 2**9);
-      pragma Assert
-        (for all J in Carry_Array'Range =>
-           Ch1 (J) in -Conv_Carry_Cap .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => D1 (J) in 0 .. Conv_Carry_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range =>
+             Fold_Chain (T (5)) (J) in 0 .. Conv_Carry_Cap);
+      pragma Assert (for all J in Carry_Array'Range => SCFO (J) in 0 .. 2**9);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range =>
+             Ch1 (J) in -Conv_Carry_Cap .. Conv_Carry_Cap);
       C := Add_Carry (Ch1, SCFO);
-      pragma Assert
-        (for all J in Carry_Array'Range => C (J) in -Cong_Cap .. Cong_Cap);
+      pragma
+        Assert
+          (for all J in Carry_Array'Range => C (J) in -Cong_Cap .. Cong_Cap);
       Lemma_Bounds_Mono (B, Round1_Out_Cap, Add_Cap);
       Lemma_SVal_Trans (B, FOSK, CMSK, Ch1, SCFO);
       pragma Assert (SVal_Eq (B, Carry_Model (B) + Smul (K, P_Prime), C));
@@ -1592,20 +1784,21 @@ is
       Lemma_Canonical_Cong (Ab, Kc, Cc);
 
       declare
-         CanAb : constant Big_Nat     := Canonical (Ab);
-         SK1   : constant Big_Nat     := Smul (K1, P_Prime);
-         SKc   : constant Big_Nat     := Smul (Kc, P_Prime);
-         Y     : constant Big_Nat     := CanAb + Nb;
-         RhsY  : constant Big_Nat     := CanAb + SKc;
-         XK1   : constant Big_Nat     := Xr + SK1;
-         YKc   : constant Big_Nat     := Y + SKc;
+         CanAb : constant Big_Nat := Canonical (Ab);
+         SK1   : constant Big_Nat := Smul (K1, P_Prime);
+         SKc   : constant Big_Nat := Smul (Kc, P_Prime);
+         Y     : constant Big_Nat := CanAb + Nb;
+         RhsY  : constant Big_Nat := CanAb + SKc;
+         XK1   : constant Big_Nat := Xr + SK1;
+         YKc   : constant Big_Nat := Y + SKc;
          NC1   : constant Carry_Array := Neg_Carry (C1);
          Cbr   : constant Carry_Array := Add_Carry (NC1, Cc);
       begin
          --  Shapes of X, Y for Canonical_Unique_Gen.
          pragma Assert (In_Bounds (Y, Mul_Cap));
-         pragma Assert
-           (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0);
+         pragma
+           Assert
+             (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0);
 
          --  Smul-post links + in-bounds (small Kc, K1 <= Conv_Carry_Cap).
          pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
@@ -1620,18 +1813,22 @@ is
          --  Y side congruence: add Nb to both sides of Canonical_Cong, then
          --  realign (CanAb + SKc) + Nb == (CanAb + Nb) + SKc.
          pragma Assert (SVal_Eq (Ab, RhsY, Cc));
-         Lemma_SVal_Add_Const (Ab, RhsY, Nb, Cc);   --  SVal_Eq (Sum, RhsY+Nb, Cc)
+         Lemma_SVal_Add_Const
+           (Ab, RhsY, Nb, Cc);   --  SVal_Eq (Sum, RhsY+Nb, Cc)
          pragma Assert (RhsY + Nb = YKc);
          pragma Assert (SVal_Eq (Sum, YKc, Cc));
 
          --  X side: SVal_Eq (Sum, XK1, C1); flip then compose.
          pragma Assert (SVal_Eq (Sum, XK1, C1));
          Lemma_SVal_Sym (Sum, XK1, C1);             --  SVal_Eq (XK1, Sum, NC1)
-         pragma Assert
-           (for all J in Carry_Array'Range => NC1 (J) in -Cong_Cap .. Cong_Cap);
-         pragma Assert
-           (for all J in Carry_Array'Range =>
-              Cbr (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                NC1 (J) in -Cong_Cap .. Cong_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Cbr (J) in -(2 * Cong_Cap) .. 2 * Cong_Cap);
          pragma Assert (SC_Bounded (Cbr));
          Lemma_SVal_Trans (XK1, Sum, YKc, NC1, Cc); --  SVal_Eq (XK1, YKc, Cbr)
 
