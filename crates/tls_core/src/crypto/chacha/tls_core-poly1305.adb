@@ -1,4 +1,5 @@
 with Tls_Core.Ghost_Bignum.Value;
+with Tls_Core.Poly1305.Encode;
 
 package body Tls_Core.Poly1305
   with SPARK_Mode
@@ -8,6 +9,7 @@ is
 
    package GB renames Tls_Core.Ghost_Bignum;
    package GBV renames Tls_Core.Ghost_Bignum.Value;
+   package Enc renames Tls_Core.Poly1305.Encode;
 
    --  Limb_Index / Limbs are now declared in the spec so functional
    --  Posts on the private helpers can reference As_Nat5 / Feval5.
@@ -348,7 +350,10 @@ is
        Block_Bytes in 1 .. 16
        and then Block_Bytes <= B'Length
        and then B'Last < Integer'Last - 16,
-     Post => (for all I in Limb_Index => Out_Limbs (I) < 2**26);
+     Post => (for all I in Limb_Index => Out_Limbs (I) < 2**26)
+             and then GB."="
+                        (To_Big_Nat (Out_Limbs),
+                         Enc.Encode_BN (B, Block_Bytes, Final));
 
    procedure Load_Block
      (B           : Octet_Array;
@@ -360,8 +365,12 @@ is
    begin
       Out_Limbs := [others => 0];
       for I in 1 .. Block_Bytes loop
-         pragma Loop_Invariant (I <= 16);
          Padded (I) := B (B'First + I - 1);
+         pragma Loop_Invariant (I <= 16);
+         pragma Loop_Invariant
+           (for all J in 1 .. I => Padded (J) = B (B'First + J - 1));
+         pragma Loop_Invariant
+           (for all J in I + 1 .. 17 => Padded (J) = 0);
       end loop;
       --  Append the implicit "1" bit at byte position Block_Bytes.
       --  For full 16-byte blocks this is byte 17 (i.e. bit 128).
@@ -397,6 +406,33 @@ is
         or Shift_Left (U64 (Padded (15)), 8)
         or Shift_Left (U64 (Padded (16)), 16)
         or Shift_Left (U64 (Padded (17)), 24);
+
+      --  Functional correspondence: the imperative packing equals the pure
+      --  Encode_BN model (Padded matches Padded_Byte byte-for-byte, so each
+      --  limb expression coincides).
+      pragma Assert
+        (for all I in 1 .. 17 =>
+           Padded (I) = Enc.Padded_Byte (B, Block_Bytes, Final, I));
+      pragma Assert (Out_Limbs (0) = Enc.Enc_Limb0 (B, Block_Bytes, Final));
+      pragma Assert (Out_Limbs (1) = Enc.Enc_Limb1 (B, Block_Bytes, Final));
+      pragma Assert (Out_Limbs (2) = Enc.Enc_Limb2 (B, Block_Bytes, Final));
+      pragma Assert (Out_Limbs (3) = Enc.Enc_Limb3 (B, Block_Bytes, Final));
+      pragma Assert (Out_Limbs (4) = Enc.Enc_Limb4 (B, Block_Bytes, Final));
+      declare
+         TB : constant GB.Big_Nat := To_Big_Nat (Out_Limbs) with Ghost;
+         EB : constant GB.Big_Nat :=
+           Enc.Encode_BN (B, Block_Bytes, Final) with Ghost;
+      begin
+         pragma Assert (TB (0) = EB (0));
+         pragma Assert (TB (1) = EB (1));
+         pragma Assert (TB (2) = EB (2));
+         pragma Assert (TB (3) = EB (3));
+         pragma Assert (TB (4) = EB (4));
+         pragma Assert
+           (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+              TB (I) = 0 and then EB (I) = 0);
+         pragma Assert (GB."=" (TB, EB));
+      end;
    end Load_Block;
 
    ---------------------------------------------------------------------
