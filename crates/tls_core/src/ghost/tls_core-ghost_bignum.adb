@@ -1794,6 +1794,71 @@ is
       end;
    end Lemma_Carry_Canonical;
 
+   procedure Lemma_Reduce_Is_Canonical (B : Big_Nat) is
+      Kc : LLI;
+      Cc : Carry_Array;
+   begin
+      --  B == Reduce_Canonical (B) + Sub_Sel_P (Sweep5_Out (B)).
+      Lemma_Reduce_Canonical (B);
+      --  B == Canonical (B) + Kc*p.
+      Lemma_Canonical_Cong (B, Kc, Cc);
+      Lemma_Sweep5_Chain_Tight (B);   --  Sweep5_Chain (B) <= Conv_Carry_Cap.
+      declare
+         RC  : constant Big_Nat := Reduce_Canonical (B);
+         CN  : constant Big_Nat := Canonical (B);
+         SW  : constant Big_Nat := Sweep5_Out (B);
+         K1  : constant LLI := (if Sub_Cond (SW) then 1 else 0);
+         SP  : constant Big_Nat := Sub_Sel_P (SW);
+         SR  : constant Big_Nat := Smul (K1, P_Prime);
+         SKc : constant Big_Nat := Smul (Kc, P_Prime);
+         ChR : constant Carry_Array := Sweep5_Chain (B);
+         NCR : constant Carry_Array := Neg_Carry (ChR);
+         Cbr : constant Carry_Array := Add_Carry (NCR, Cc);
+      begin
+         --  Sub_Sel_P (SW) = Smul (K1, P_Prime): P_Prime when K1 = 1, else Zero.
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SR (I) = K1 * P_Prime (I));
+         pragma Assert (for all I in Big_Nat'Range => SP (I) = SR (I));
+         pragma Assert (SP = SR);
+
+         --  Bounds for the SVal compositions (K1 <= 1, Kc <= 5, p <= In_Cap).
+         pragma Assert (for all I in Limb_Index => SKc (I) = Kc * P_Prime (I));
+         pragma Assert (In_Bounds (SR, Add_Cap));
+         pragma Assert (In_Bounds (SKc, Add_Cap));
+         pragma Assert (In_Bounds (RC + SR, Add_Cap));
+         pragma Assert (In_Bounds (CN + SKc, Add_Cap));
+
+         --  Chain bounds: ChR conv-tight, Cc <= Cong_Cap; Cbr stays SC_Bounded.
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                ChR (J) in 0 .. Conv_Carry_Cap);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                NCR (J) in -Conv_Carry_Cap .. 0);
+         pragma
+           Assert
+             (for all J in Carry_Array'Range =>
+                Cc (J) in -Cong_Cap .. Cong_Cap);
+         pragma Assert (SC_Bounded (Cbr));
+
+         --  X side: SVal_Eq (B, RC + SR, ChR); flip to (RC + SR, B, NCR).
+         pragma Assert (SVal_Eq (B, RC + SR, ChR));
+         Lemma_SVal_Sym (B, RC + SR, ChR);
+         --  Y side: SVal_Eq (B, CN + SKc, Cc). Compose.
+         pragma Assert (SVal_Eq (B, CN + SKc, Cc));
+         Lemma_SVal_Trans (RC + SR, B, CN + SKc, NCR, Cc);
+         pragma Assert (SVal_Eq (RC + SR, CN + SKc, Cbr));
+
+         --  Two-sided uniqueness: both canonical, congruent mod p => equal.
+         pragma Assert (K1 in 0 .. Mult_Cap);
+         pragma Assert (Kc in 0 .. Mult_Cap);
+         Lemma_Mod_P_Unique_Gen (RC, CN, K1, Kc, Cbr);
+         pragma Assert (RC = CN);
+      end;
+   end Lemma_Reduce_Is_Canonical;
+
    procedure Lemma_Field_Add_Bridge (Ab, Nb, Xr : Big_Nat) is
       Sum : constant Big_Nat := Ab + Nb;
       K1  : LLI;

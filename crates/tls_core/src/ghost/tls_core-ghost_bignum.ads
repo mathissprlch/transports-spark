@@ -2292,6 +2292,21 @@ is
        and then Sweep5_Out (B) (5) <= Fold_C_Cap,
      Post => Canonical (Carry_Model (B)) = Canonical (B);
 
+   --  The impl freeze (sweep then conditional subtract p) computes
+   --  Reduce_Canonical through To_Big_Nat; this lemma says Reduce_Canonical
+   --  agrees with the field element Canonical. Both results are canonical
+   --  (reduced, < p) and congruent to B mod p, so two-sided uniqueness
+   --  (Lemma_Mod_P_Unique_Gen) collapses them. Pre matches Reduce_Canonical's
+   --  (a swept-to-< 2^130 value: Sweep5_Out (B)(5) = 0) plus Canonical's.
+   procedure Lemma_Reduce_Is_Canonical (B : Big_Nat)
+   with
+     Ghost,
+     Pre  =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then Sweep5_Out (B) (5) = 0,
+     Post => Reduce_Canonical (B) = Canonical (B);
+
    ------------------------------------------------------------------
    --  Per-op Feval bridges. These turn the impl Add / Multiply Posts (which
    --  give To_Big_Nat (op result) = Carry_Model (...) definitionally) into
