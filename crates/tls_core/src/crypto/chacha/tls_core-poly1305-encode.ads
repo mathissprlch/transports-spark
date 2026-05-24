@@ -30,10 +30,11 @@ is
        elsif not Final and then I = 17 then 1
        else 0)
    with
-     Pre => Block_Bytes in 1 .. 16
-            and then Block_Bytes <= B'Length
-            and then B'Last < Integer'Last - 16
-            and then I <= 17;
+     Pre  => Block_Bytes in 1 .. 16
+             and then Block_Bytes <= B'Length
+             and then B'Last < Integer'Last - 16
+             and then I <= 17,
+     Post => (if I > Block_Bytes then Padded_Byte'Result <= 1);
 
    --  The five 26-bit limbs, packed exactly as Load_Block packs Out_Limbs.
    function Enc_Limb0
@@ -110,7 +111,11 @@ is
         3      => GB.LLI (Enc_Limb3 (B, 16, False)),
         4      => GB.LLI (R_Limb4 (B)),
         others => 0])
-   with Pre => B'Length >= 16 and then B'Last < Integer'Last - 16;
+   with
+     Pre  => B'Length >= 16 and then B'Last < Integer'Last - 16,
+     Post => GB.In_Bounds (R_BN'Result, GB.In_Cap)
+             and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                         R_BN'Result (I) = 0);
 
    --  The encoded block as a Big_Nat (limbs 0 .. 4, zero above).
    function Encode_BN
@@ -122,7 +127,11 @@ is
         3      => GB.LLI (Enc_Limb3 (B, Block_Bytes, Final)),
         4      => GB.LLI (Enc_Limb4 (B, Block_Bytes, Final)),
         others => 0])
-   with Pre => Block_Bytes in 1 .. 16 and then Block_Bytes <= B'Length
-               and then B'Last < Integer'Last - 16;
+   with
+     Pre  => Block_Bytes in 1 .. 16 and then Block_Bytes <= B'Length
+             and then B'Last < Integer'Last - 16,
+     Post => GB.In_Bounds (Encode_BN'Result, GB.In_Cap)
+             and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                         Encode_BN'Result (I) = 0);
 
 end Tls_Core.Poly1305.Encode;
