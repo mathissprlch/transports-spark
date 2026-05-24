@@ -11,6 +11,7 @@ with Ada.Numerics.Big_Numbers.Big_Integers;
 --  Tls_Core.Ghost_Bignum itself stays Big_Numbers-free, so Big_Integer never
 --  reaches the runtime / bare-metal build domain (it ghost-eliminates; the
 --  bare build excludes this child).
+
 package Tls_Core.Ghost_Bignum.Value
   with SPARK_Mode, Ghost
 is
@@ -28,22 +29,20 @@ is
    --  Non-opaque limb -> Big_Integer ingress: builds the value by unit
    --  recursion (base 0, step +/-1), NEVER via the opaque To_Big_Integer.
    function Limb_Val (X : Val_Int) return BI.Big_Integer
-   is (if X = 0 then 0
-       elsif X > 0 then Limb_Val (X - 1) + 1
+   is (if X = 0
+       then 0
+       elsif X > 0
+       then Limb_Val (X - 1) + 1
        else Limb_Val (X + 1) - 1)
    with Subprogram_Variant => (Decreases => abs X);
 
    --  One-step shifts: unconditional (hold for all signs by a single unfold).
    --  These dissolve the crossing-zero case explosion in additivity.
    procedure Lemma_Limb_Val_Succ (X : Val_Int)
-   with
-     Pre  => X < Val_Cap,
-     Post => Limb_Val (X + 1) = Limb_Val (X) + 1;
+   with Pre => X < Val_Cap, Post => Limb_Val (X + 1) = Limb_Val (X) + 1;
 
    procedure Lemma_Limb_Val_Pred (X : Val_Int)
-   with
-     Pre  => X > -Val_Cap,
-     Post => Limb_Val (X - 1) = Limb_Val (X) - 1;
+   with Pre => X > -Val_Cap, Post => Limb_Val (X - 1) = Limb_Val (X) - 1;
 
    --  PILLAR 1 -- additivity: Limb_Val (X + Y) = Limb_Val (X) + Limb_Val (Y).
    procedure Lemma_Limb_Val_Add (X, Y : Val_Int)
@@ -84,13 +83,15 @@ is
    Base : constant BI.Big_Integer := Limb_Val (Limb_Base);
 
    function Val_From (A : Big_Nat; I : Limb_Index) return BI.Big_Integer
-   is (if I = Max_Limbs - 1 then Limb_Val (A (I))
+   is (if I = Max_Limbs - 1
+       then Limb_Val (A (I))
        else Limb_Val (A (I)) + Base * Val_From (A, I + 1))
    with
      Pre                => In_Bounds (A, Val_Cap),
      Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
 
-   function Val (A : Big_Nat) return BI.Big_Integer is (Val_From (A, 0))
+   function Val (A : Big_Nat) return BI.Big_Integer
+   is (Val_From (A, 0))
    with Pre => In_Bounds (A, Val_Cap);
 
    --  Congruence: equal Big_Nats have equal Val (forces the substitution that
@@ -104,8 +105,8 @@ is
 
    procedure Lemma_Val_Cong (X, Y : Big_Nat)
    with
-     Pre  => In_Bounds (X, Val_Cap) and then In_Bounds (Y, Val_Cap)
-             and then X = Y,
+     Pre  =>
+       In_Bounds (X, Val_Cap) and then In_Bounds (Y, Val_Cap) and then X = Y,
      Post => Val (X) = Val (Y);
 
    ------------------------------------------------------------------
@@ -119,8 +120,10 @@ is
    procedure Lemma_Val_Tele (A, B : Big_Nat; C : Carry_Array; I : Limb_Index)
    with
      Pre                =>
-       In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
-       and then SC_Wide (C) and then SVal_Wide (A, B, C),
+       In_Bounds (A, Add_Cap)
+       and then In_Bounds (B, Add_Cap)
+       and then SC_Wide (C)
+       and then SVal_Wide (A, B, C),
      Post               =>
        Val_From (A, I) + Limb_Val (C (I)) = Val_From (B, I),
      Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
@@ -128,8 +131,10 @@ is
    procedure Lemma_SVal_To_Val (A, B : Big_Nat; C : Carry_Array)
    with
      Pre  =>
-       In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
-       and then SC_Wide (C) and then SVal_Wide (A, B, C),
+       In_Bounds (A, Add_Cap)
+       and then In_Bounds (B, Add_Cap)
+       and then SC_Wide (C)
+       and then SVal_Wide (A, B, C),
      Post => Val (A) = Val (B);
 
    ------------------------------------------------------------------
@@ -162,7 +167,8 @@ is
    --  Additive homomorphism: Val (A + B) = Val (A) + Val (B).
    procedure Lemma_Val_From_Add (A, B : Big_Nat; I : Limb_Index)
    with
-     Pre                => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap),
+     Pre                =>
+       In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap),
      Post               =>
        Val_From (A + B, I) = Val_From (A, I) + Val_From (B, I),
      Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
@@ -178,19 +184,20 @@ is
    ------------------------------------------------------------------
 
    function Col_Val (A, B : Big_Nat; K, T : Limb_Index) return BI.Big_Integer
-   is (if T = 0 then Limb_Val (A (0)) * Limb_Val (B (K))
-       else Col_Val (A, B, K, T - 1)
-            + Limb_Val (A (T)) * Limb_Val (B (K - T)))
+   is (if T = 0
+       then Limb_Val (A (0)) * Limb_Val (B (K))
+       else Col_Val (A, B, K, T - 1) + Limb_Val (A (T)) * Limb_Val (B (K - T)))
    with
-     Pre                => In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
-                           and then T <= K,
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap) and then T <= K,
      Subprogram_Variant => (Decreases => T);
 
    procedure Lemma_Col_Val (A, B : Big_Nat; K, T : Limb_Index)
    with
-     Pre                => In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap)
-                           and then T <= K,
-     Post               => Limb_Val (Mul_Col (A, B, K, T)) = Col_Val (A, B, K, T),
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (B, Mul_Cap) and then T <= K,
+     Post               =>
+       Limb_Val (Mul_Col (A, B, K, T)) = Col_Val (A, B, K, T),
      Subprogram_Variant => (Decreases => T);
 
    ------------------------------------------------------------------
@@ -206,7 +213,8 @@ is
    procedure Lemma_Shift1_Suffix (X : Big_Nat; I : Limb_Index)
    with
      Pre                =>
-       In_Bounds (X, Val_Cap) and then X (Max_Limbs - 1) = 0
+       In_Bounds (X, Val_Cap)
+       and then X (Max_Limbs - 1) = 0
        and then I <= Max_Limbs - 2,
      Post               => Val_From (Shift1g (X), I + 1) = Val_From (X, I),
      Subprogram_Variant => (Decreases => Max_Limbs - 2 - I);
@@ -232,7 +240,8 @@ is
    with
      Pre                =>
        In_Bounds (B, Val_Cap)
-       and then (for all K in Limb_Index range Max_Limbs - N .. Max_Limbs - 1 =>
+       and then (for all K in
+                   Limb_Index range Max_Limbs - N .. Max_Limbs - 1 =>
                    B (K) = 0),
      Post               => Val (Shift_By (B, N)) = Base_Pow (N) * Val (B),
      Subprogram_Variant => (Decreases => N);
@@ -277,23 +286,32 @@ is
    procedure Lemma_Mul_Col_Cong (A, X, Y : Big_Nat; K, T : Limb_Index)
    with
      Pre                =>
-       In_Bounds (A, Mul_Cap) and then In_Bounds (X, Mul_Cap)
-       and then In_Bounds (Y, Mul_Cap) and then X = Y and then T <= K,
+       In_Bounds (A, Mul_Cap)
+       and then In_Bounds (X, Mul_Cap)
+       and then In_Bounds (Y, Mul_Cap)
+       and then X = Y
+       and then T <= K,
      Post               => Mul_Col (A, X, K, T) = Mul_Col (A, Y, K, T),
      Subprogram_Variant => (Decreases => T);
 
    procedure Lemma_Mul_Cong_R (A, X, Y : Big_Nat)
    with
-     Pre  => In_Bounds (A, Mul_Cap) and then In_Bounds (X, Mul_Cap)
-             and then In_Bounds (Y, Mul_Cap) and then X = Y,
+     Pre  =>
+       In_Bounds (A, Mul_Cap)
+       and then In_Bounds (X, Mul_Cap)
+       and then In_Bounds (Y, Mul_Cap)
+       and then X = Y,
      Post => A * X = A * Y;
 
    --  Congruence of "*" in the FIRST operand (column level, then full).
    procedure Lemma_Mul_Col_Cong_L (A, A2, B : Big_Nat; K, T : Limb_Index)
    with
      Pre                =>
-       In_Bounds (A, Mul_Cap) and then In_Bounds (A2, Mul_Cap)
-       and then In_Bounds (B, Mul_Cap) and then A = A2 and then T <= K,
+       In_Bounds (A, Mul_Cap)
+       and then In_Bounds (A2, Mul_Cap)
+       and then In_Bounds (B, Mul_Cap)
+       and then A = A2
+       and then T <= K,
      Post               => Mul_Col (A, B, K, T) = Mul_Col (A2, B, K, T),
      Subprogram_Variant => (Decreases => T);
 
@@ -301,9 +319,12 @@ is
    procedure Lemma_Mul_Cong_LR (A, A2, B, B2 : Big_Nat)
    with
      Pre  =>
-       In_Bounds (A, Mul_Cap) and then In_Bounds (A2, Mul_Cap)
-       and then In_Bounds (B, Mul_Cap) and then In_Bounds (B2, Mul_Cap)
-       and then A = A2 and then B = B2,
+       In_Bounds (A, Mul_Cap)
+       and then In_Bounds (A2, Mul_Cap)
+       and then In_Bounds (B, Mul_Cap)
+       and then In_Bounds (B2, Mul_Cap)
+       and then A = A2
+       and then B = B2,
      Post => A * B = A2 * B2;
 
    procedure Lemma_Mul_Zero_Col (A : Big_Nat; K, T : Limb_Index)
@@ -325,26 +346,33 @@ is
    procedure Lemma_Val_Lo_Step (B : Big_Nat; M : Limb_Index)
    with
      Pre  => In_Bounds (B, In_Cap),
-     Post => Val (B_Lo (B, M + 1))
-             = Val (B_Lo (B, M)) + Limb_Val (B (M)) * Base_Pow (M);
+     Post =>
+       Val (B_Lo (B, M + 1))
+       = Val (B_Lo (B, M)) + Limb_Val (B (M)) * Base_Pow (M);
 
    procedure Lemma_Val_Mul_Acc (A, B : Big_Nat; Na, Nb, M : Lo_Count)
    with
      Pre                =>
-       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
-       and then (for all K in Limb_Index range Na .. Max_Limbs - 1 => A (K) = 0)
-       and then (for all K in Limb_Index range Nb .. Max_Limbs - 1 => B (K) = 0)
-       and then Na + Nb <= Max_Limbs and then M <= Nb,
-     Post               =>
-       Val (A * B_Lo (B, M)) = Val (A) * Val (B_Lo (B, M)),
+       In_Bounds (A, In_Cap)
+       and then In_Bounds (B, In_Cap)
+       and then (for all K in Limb_Index range Na .. Max_Limbs - 1 =>
+                   A (K) = 0)
+       and then (for all K in Limb_Index range Nb .. Max_Limbs - 1 =>
+                   B (K) = 0)
+       and then Na + Nb <= Max_Limbs
+       and then M <= Nb,
+     Post               => Val (A * B_Lo (B, M)) = Val (A) * Val (B_Lo (B, M)),
      Subprogram_Variant => (Decreases => M);
 
    procedure Lemma_Val_Mul (A, B : Big_Nat; Na, Nb : Lo_Count)
    with
      Pre  =>
-       In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
-       and then (for all K in Limb_Index range Na .. Max_Limbs - 1 => A (K) = 0)
-       and then (for all K in Limb_Index range Nb .. Max_Limbs - 1 => B (K) = 0)
+       In_Bounds (A, In_Cap)
+       and then In_Bounds (B, In_Cap)
+       and then (for all K in Limb_Index range Na .. Max_Limbs - 1 =>
+                   A (K) = 0)
+       and then (for all K in Limb_Index range Nb .. Max_Limbs - 1 =>
+                   B (K) = 0)
        and then Na + Nb <= Max_Limbs,
      Post => Val (A * B) = Val (A) * Val (B);
 
@@ -358,9 +386,10 @@ is
    --  fact the field-multiply fold (2**130 == 5 mod p) ultimately discharges.
    procedure Lemma_Val_P_Mul (R : Big_Nat)
    with
-     Pre  => In_Bounds (R, In_Cap)
-             and then (for all K in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         R (K) = 0),
+     Pre  =>
+       In_Bounds (R, In_Cap)
+       and then (for all K in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   R (K) = 0),
      Post => Val (P_Prime * R) = (Base_Pow (5) - 5) * Val (R);
 
    ------------------------------------------------------------------
@@ -372,8 +401,11 @@ is
    --  A non-negative carry-chain value equality is a Val equality.
    procedure Lemma_ValEq_To_Val (A, B : Big_Nat; C : Carry_Array)
    with
-     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
-             and then Carry_Bounded (C) and then Val_Eq (A, B, C),
+     Pre  =>
+       In_Bounds (A, Add_Cap)
+       and then In_Bounds (B, Add_Cap)
+       and then Carry_Bounded (C)
+       and then Val_Eq (A, B, C),
      Post => Val (A) = Val (B);
 
    ------------------------------------------------------------------
@@ -403,16 +435,13 @@ is
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
        and then K <= 5,
      Post               =>
-       Val_From (X, K) >= 0
-       and then Val_From (X, K) <= Base_Pow (5 - K) - 1,
+       Val_From (X, K) >= 0 and then Val_From (X, K) <= Base_Pow (5 - K) - 1,
      Subprogram_Variant => (Decreases => 5 - K);
 
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)
-   with
-     Pre  => C >= 0 and then A <= B,
-     Post => C * A <= C * B;
+   with Pre => C >= 0 and then A <= B, Post => C * A <= C * B;
 
    --  Converse of the upper bound: a Horner suffix at its maximum forces every
    --  limb in the suffix to be In_Cap (uniqueness of the max representation).
@@ -455,7 +484,8 @@ is
    procedure Lemma_Val_From_Inj (X, Y : Big_Nat; K : Lo_Count)
    with
      Pre                =>
-       In_Bounds (X, In_Cap) and then In_Bounds (Y, In_Cap)
+       In_Bounds (X, In_Cap)
+       and then In_Bounds (Y, In_Cap)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0)
        and then K <= 5
@@ -467,7 +497,8 @@ is
    procedure Lemma_Val_Inj_Reduced (X, Y : Big_Nat)
    with
      Pre  =>
-       In_Bounds (X, In_Cap) and then In_Bounds (Y, In_Cap)
+       In_Bounds (X, In_Cap)
+       and then In_Bounds (Y, In_Cap)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0)
        and then Val (X) = Val (Y),
@@ -481,21 +512,21 @@ is
 
    --  Base_Pow (N) >= 1 (so p = Base_Pow (5) - 5 > 0).
    procedure Lemma_Base_Pow_Ge_1 (N : Limb_Index)
-   with
-     Post               => Base_Pow (N) >= 1,
-     Subprogram_Variant => (Decreases => N);
+   with Post => Base_Pow (N) >= 1, Subprogram_Variant => (Decreases => N);
 
    --  Two canonical Big_Nats whose values differ by a multiple of p (the
    --  concrete "+ Ka*p / + Kb*p" form the reduction folds produce) are equal.
-   procedure Lemma_Val_Canonical_Eq
-     (X, Y : Big_Nat; Ka, Kb : BI.Big_Integer)
+   procedure Lemma_Val_Canonical_Eq (X, Y : Big_Nat; Ka, Kb : BI.Big_Integer)
    with
      Pre  =>
-       In_Bounds (X, In_Cap) and then In_Bounds (Y, In_Cap)
+       In_Bounds (X, In_Cap)
+       and then In_Bounds (Y, In_Cap)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
        and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => Y (I) = 0)
-       and then not Sub_Cond (X) and then not Sub_Cond (Y)
-       and then Ka >= 0 and then Kb >= 0
+       and then not Sub_Cond (X)
+       and then not Sub_Cond (Y)
+       and then Ka >= 0
+       and then Kb >= 0
        and then Val (X) + Ka * (Base_Pow (5) - 5)
                 = Val (Y) + Kb * (Base_Pow (5) - 5),
      Post => X = Y;
@@ -503,23 +534,25 @@ is
    --  Value of a per-limb combine B(I) = GWc(I) + Kc*GPr(I):
    --  Val (B) = Val (GWc) + Limb_Val (Kc) * Val (GPr). (The Lemma_Mul_Cong_Prime
    --  combined operand, lifted to the value layer.)
-   procedure Lemma_Val_B_From
-     (GWc, GPr, B : Big_Nat; Kc : LLI; I : Limb_Index)
+   procedure Lemma_Val_B_From (GWc, GPr, B : Big_Nat; Kc : LLI; I : Limb_Index)
    with
      Pre                =>
-       In_Bounds (GWc, Conv_Col_Cap) and then In_Bounds (GPr, Conv_Col_Cap)
-       and then In_Bounds (B, Add_Cap) and then Kc in 0 .. 5
+       In_Bounds (GWc, Conv_Col_Cap)
+       and then In_Bounds (GPr, Conv_Col_Cap)
+       and then In_Bounds (B, Add_Cap)
+       and then Kc in 0 .. 5
        and then (for all J in Limb_Index => B (J) = GWc (J) + Kc * GPr (J)),
      Post               =>
-       Val_From (B, I)
-       = Val_From (GWc, I) + Limb_Val (Kc) * Val_From (GPr, I),
+       Val_From (B, I) = Val_From (GWc, I) + Limb_Val (Kc) * Val_From (GPr, I),
      Subprogram_Variant => (Decreases => Max_Limbs - 1 - I);
 
    procedure Lemma_Val_B_Combine (GWc, GPr, B : Big_Nat; Kc : LLI)
    with
      Pre  =>
-       In_Bounds (GWc, Conv_Col_Cap) and then In_Bounds (GPr, Conv_Col_Cap)
-       and then In_Bounds (B, Add_Cap) and then Kc in 0 .. 5
+       In_Bounds (GWc, Conv_Col_Cap)
+       and then In_Bounds (GPr, Conv_Col_Cap)
+       and then In_Bounds (B, Add_Cap)
+       and then Kc in 0 .. 5
        and then (for all J in Limb_Index => B (J) = GWc (J) + Kc * GPr (J)),
      Post => Val (B) = Val (GWc) + Limb_Val (Kc) * Val (GPr);
 
@@ -537,23 +570,25 @@ is
    procedure Lemma_Field_Mul_Reduce_Cong
      (A, R : Big_Nat; Kg : out BI.Big_Integer)
    with
-     Pre  => In_Bounds (A, Mul_Cap) and then In_Bounds (R, In_Cap)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         A (I) = 0)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         R (I) = 0),
-     Post => Kg >= 0
-             and then Val (Field_Mul (A, R)) + Kg * (Base_Pow (5) - 5)
-                      = Val (A * R);
+     Pre  =>
+       In_Bounds (A, Mul_Cap)
+       and then In_Bounds (R, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   R (I) = 0),
+     Post =>
+       Kg >= 0
+       and then Val (Field_Mul (A, R)) + Kg * (Base_Pow (5) - 5) = Val (A * R);
 
    --  The §0e Mul-bridge keystone: the field product of the prime by any reduced
    --  R is Zero (P_Prime == 0 mod p). Discharges the Kc*(P_Prime*R) residual the
    --  SVal multiply-congruence leaves; mirrors Lemma_Canonical_P_Prime for mul.
    procedure Lemma_Field_Mul_P_Zero (R : Big_Nat)
    with
-     Pre  => In_Bounds (R, In_Cap)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         R (I) = 0),
+     Pre  =>
+       In_Bounds (R, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   R (I) = 0),
      Post => Field_Mul (P_Prime, R) = Zero;
 
    --  Column bound for a reduced-by-reduced product: A, B In_Cap and zero from
@@ -561,15 +596,16 @@ is
    --  Isolated so the nonlinear column bound proves in a small context.
    procedure Lemma_Mul_Conv_Bound (A, B, AB : Big_Nat)
    with
-     Pre  => In_Bounds (A, In_Cap) and then In_Bounds (B, In_Cap)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         A (I) = 0)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         B (I) = 0)
-             and then AB = A * B,
-     Post => In_Bounds (AB, Conv_Col_Cap)
-             and then (for all K in Limb_Index range 9 .. Max_Limbs - 1 =>
-                         AB (K) = 0);
+     Pre  =>
+       In_Bounds (A, In_Cap)
+       and then In_Bounds (B, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => A (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then AB = A * B,
+     Post =>
+       In_Bounds (AB, Conv_Col_Cap)
+       and then (for all K in Limb_Index range 9 .. Max_Limbs - 1 =>
+                   AB (K) = 0);
 
    --  The #166 Mul bridge: the field product is invariant under canonicalising
    --  its accumulator-sized left operand -- Field_Mul (Acc, R) reduces the same
@@ -583,11 +619,13 @@ is
    --  are Mul_Cap-bounded by the impl Carry Post, not yet canonical).
    procedure Lemma_Field_Mul_Bridge (Acc, R : Big_Nat)
    with
-     Pre  => In_Bounds (Acc, Mul_Cap) and then In_Bounds (R, In_Cap)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         Acc (I) = 0)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         R (I) = 0),
+     Pre  =>
+       In_Bounds (Acc, Mul_Cap)
+       and then In_Bounds (R, In_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   Acc (I) = 0)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   R (I) = 0),
      Post => Field_Mul (Acc, R) = Field_Mul (Canonical (Acc), R);
 
    --  Corollary: a canonical Big_Nat whose value is a multiple of p is Zero.
@@ -613,36 +651,43 @@ is
    --  Lemma_ValEq_To_Val).
    procedure Lemma_SValEq_To_Val (A, B : Big_Nat; C : Carry_Array)
    with
-     Pre  => In_Bounds (A, Add_Cap) and then In_Bounds (B, Add_Cap)
-             and then SC_Bounded (C) and then SVal_Eq (A, B, C),
+     Pre  =>
+       In_Bounds (A, Add_Cap)
+       and then In_Bounds (B, Add_Cap)
+       and then SC_Bounded (C)
+       and then SVal_Eq (A, B, C),
      Post => Val (A) = Val (B);
 
    --  Val (B) = Val (Canonical (B)) + Kf * p, Kf >= 0.
    procedure Lemma_Canonical_Val_Cong (B : Big_Nat; Kf : out BI.Big_Integer)
    with
-     Pre  => In_Bounds (B, Mul_Cap)
-             and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
-                         B (I) = 0),
-     Post => Kf >= 0
-             and then Val (B) = Val (Canonical (B)) + Kf * (Base_Pow (5) - 5);
+     Pre  =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   B (I) = 0),
+     Post =>
+       Kf >= 0
+       and then Val (B) = Val (Canonical (B)) + Kf * (Base_Pow (5) - 5);
 
    --  The Sweep9 carry sweep is value-exact (lift of Lemma_Sweep9). First
    --  reduction step of Field_Mul (Conv = A*R) in the value layer.
    procedure Lemma_Val_Sweep9 (Conv : Big_Nat)
    with
-     Pre  => In_Bounds (Conv, Conv_Col_Cap)
-             and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
-                         Conv (I) = 0),
+     Pre  =>
+       In_Bounds (Conv, Conv_Col_Cap)
+       and then (for all I in Limb_Index range 9 .. Max_Limbs - 1 =>
+                   Conv (I) = 0),
      Post => Val (Conv) = Val (Sweep9_Out (Conv));
 
    --  The 9-fold "plus prime" form splits into the folded output plus the
    --  prime-multiple part (limbwise Big_Nat identity).
    procedure Lemma_FH9_Split (B : Big_Nat)
    with
-     Pre  => (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
-             and then B (9) in 0 .. Fold9_Top_Cap
-             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
-                         B (I) = 0),
+     Pre  =>
+       (for all I in Limb_Index range 0 .. 8 => B (I) in 0 .. In_Cap)
+       and then B (9) in 0 .. Fold9_Top_Cap
+       and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                   B (I) = 0),
      Post =>
        Fold_High_9_Plus_P (B)
        = Fold_High_9_Out (B) + Fold_High_9_PrimePart (B);
@@ -651,10 +696,11 @@ is
    --  Val (Fold_High_9_Out (S)) + p * Val (High5 (S)) = Val (S).
    procedure Lemma_Val_FH9_Out (S : Big_Nat)
    with
-     Pre  => (for all I in Limb_Index range 0 .. 8 => S (I) in 0 .. In_Cap)
-             and then S (9) in 0 .. Fold9_Top_Cap
-             and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
-                         S (I) = 0),
+     Pre  =>
+       (for all I in Limb_Index range 0 .. 8 => S (I) in 0 .. In_Cap)
+       and then S (9) in 0 .. Fold9_Top_Cap
+       and then (for all I in Limb_Index range 10 .. Max_Limbs - 1 =>
+                   S (I) = 0),
      Post =>
        Val (Fold_High_9_Out (S)) + (Base_Pow (5) - 5) * Val (High5 (S))
        = Val (S);
@@ -668,7 +714,11 @@ is
 
    --  The five high limbs B (5 .. 9) as a five-limb value.
    function High5 (B : Big_Nat) return Big_Nat
-   is ([0 => B (5), 1 => B (6), 2 => B (7), 3 => B (8), 4 => B (9),
+   is ([0      => B (5),
+        1      => B (6),
+        2      => B (7),
+        3      => B (8),
+        4      => B (9),
         others => 0]);
 
    --  Big_Integer ring reassociations (isolated so the SMT solver applies the
@@ -681,8 +731,8 @@ is
 
    --  Factor a common multiplier out of a five-term sum.
    procedure Lemma_BI_Factor5 (A, B, C, D, E, P : BI.Big_Integer)
-   with Post => A * P + B * P + C * P + D * P + E * P
-                = P * (A + B + C + D + E);
+   with
+     Post => A * P + B * P + C * P + D * P + E * P = P * (A + B + C + D + E);
 
    --  Right-operand congruence: X = Y => P*X = P*Y.
    procedure Lemma_BI_MulR_Cong (P, X, Y : BI.Big_Integer)
@@ -690,8 +740,7 @@ is
 
    --  Field-value factoring: P*VR - P*VH - LK*P - Kf*P = (VR-VH-LK-Kf)*P.
    procedure Lemma_BI_FieldKa (VR, VH, LK, Kf, P : BI.Big_Integer)
-   with Post => P * VR - P * VH - LK * P - Kf * P
-                = (VR - VH - LK - Kf) * P;
+   with Post => P * VR - P * VH - LK * P - Kf * P = (VR - VH - LK - Kf) * P;
 
    --  Three-term factoring: P*VH + LK*P + Kf*P = (VH+LK+Kf)*P.
    procedure Lemma_BI_Factor3 (VH, LK, Kf, P : BI.Big_Integer)
@@ -712,19 +761,27 @@ is
    with
      Post =>
        A0 + Base * (A1 + Base * (A2 + Base * (A3 + Base * A4)))
-       = A0 * Base_Pow (0) + A1 * Base_Pow (1) + A2 * Base_Pow (2)
-         + A3 * Base_Pow (3) + A4 * Base_Pow (4);
+       = A0
+         * Base_Pow (0)
+         + A1 * Base_Pow (1)
+         + A2 * Base_Pow (2)
+         + A3 * Base_Pow (3)
+         + A4 * Base_Pow (4);
 
    --  Val (High5 (B)) in explicit Base_Pow-weighted form (isolated so the SMT
    --  solver sees the nested-Base -> Base_Pow flatten in a small context).
    procedure Lemma_Val_High5_Flat (B : Big_Nat)
    with
-     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
-             and then B (9) in 0 .. Fold9_Top_Cap,
+     Pre  =>
+       (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+       and then B (9) in 0 .. Fold9_Top_Cap,
      Post =>
        Val (High5 (B))
-       = Limb_Val (B (5)) * Base_Pow (0) + Limb_Val (B (6)) * Base_Pow (1)
-         + Limb_Val (B (7)) * Base_Pow (2) + Limb_Val (B (8)) * Base_Pow (3)
+       = Limb_Val (B (5))
+         * Base_Pow (0)
+         + Limb_Val (B (6)) * Base_Pow (1)
+         + Limb_Val (B (7)) * Base_Pow (2)
+         + Limb_Val (B (8)) * Base_Pow (3)
          + Limb_Val (B (9)) * Base_Pow (4);
 
    --  One PrimePart term, fully evaluated (isolated so its nonlinear chain is a
@@ -739,8 +796,9 @@ is
    --  PrimePart as the sum of single-limb scalings of shifted P_Prime.
    procedure Lemma_PrimePart_Decomp (B : Big_Nat)
    with
-     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
-             and then B (9) in 0 .. Fold9_Top_Cap,
+     Pre  =>
+       (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+       and then B (9) in 0 .. Fold9_Top_Cap,
      Post =>
        Fold_High_9_PrimePart (B)
        = Smul (B (5), Shift_By (P_Prime, 0))
@@ -751,10 +809,10 @@ is
 
    procedure Lemma_Val_PrimePart (B : Big_Nat)
    with
-     Pre  => (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
-             and then B (9) in 0 .. Fold9_Top_Cap,
+     Pre  =>
+       (for all I in Limb_Index range 5 .. 8 => B (I) in 0 .. In_Cap)
+       and then B (9) in 0 .. Fold9_Top_Cap,
      Post =>
-       Val (Fold_High_9_PrimePart (B))
-       = (Base_Pow (5) - 5) * Val (High5 (B));
+       Val (Fold_High_9_PrimePart (B)) = (Base_Pow (5) - 5) * Val (High5 (B));
 
 end Tls_Core.Ghost_Bignum.Value;
