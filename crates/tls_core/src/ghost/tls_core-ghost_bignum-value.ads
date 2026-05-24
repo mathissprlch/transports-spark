@@ -438,6 +438,20 @@ is
        Val_From (X, K) >= 0 and then Val_From (X, K) <= Base_Pow (5 - K) - 1,
      Subprogram_Variant => (Decreases => 5 - K);
 
+   --  Value bound certificate (Val-domain): a value below Base_Pow (5) sweeps
+   --  with no carry out of limb 4. Lemma_Sweep5 makes the swept low limbs
+   --  (0 .. 4, value < Base_Pow (5)) plus the carry limb 5 encode Val (X); if
+   --  Val (X) < Base_Pow (5) the carry term must vanish. The Val-domain analogue
+   --  of Lemma_Reduced_No_Carry for non-reduced inputs -- the gating fact the
+   --  Mac freeze needs after Carry; Carry (value < 2**130).
+   procedure Lemma_Val_Lt_No_Carry (X : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (X, Prod_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then Val (X) < Base_Pow (5),
+     Post => Sweep5_Out (X) (5) = 0;
+
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)

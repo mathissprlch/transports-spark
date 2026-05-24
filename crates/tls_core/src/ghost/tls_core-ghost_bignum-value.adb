@@ -466,6 +466,75 @@ is
       end if;
    end Lemma_Val_From_Reduced_Ub;
 
+   procedure Lemma_Val_Lt_No_Carry (X : Big_Nat) is
+      S   : constant Big_Nat := Sweep5_Out (X);
+      S0  : constant Big_Nat :=
+        [for I in Big_Nat'Range => (if I <= 4 then S (I) else 0)];
+      Hi  : constant Big_Nat :=
+        [for I in Big_Nat'Range => (if I = 5 then S (I) else 0)];
+      Sum : constant Big_Nat := S0 + Hi;
+   begin
+      --  Val (X) = Val (S): the sweep preserves value.
+      Lemma_Sweep5 (X);
+      Lemma_Bounds_Mono (S, Add_Cap, Val_Cap);
+      Lemma_ValEq_To_Val (X, S, Sweep5_Chain (X));
+
+      --  S = S0 + Hi: the reduced low-5 view plus the carry limb (only limb 5).
+      pragma Assert (In_Bounds (S0, In_Cap));
+      pragma
+        Assert
+          (for all I in Limb_Index range 5 .. Max_Limbs - 1 => S0 (I) = 0);
+      pragma Assert (In_Bounds (Hi, Add_Cap));
+      pragma Assert (for all I in Big_Nat'Range => Sum (I) = S (I));
+      pragma Assert (Sum = S);
+      Lemma_Val_From_Reduced_Ub (S0, 0);            --  Val (S0) >= 0.
+      Lemma_Val_From_Add
+        (S0, Hi, 0);               --  Val (Sum)=Val(S0)+Val(Hi)
+      Lemma_Val_From_Cong (Sum, S, 0);              --  Val (Sum) = Val (S)
+      --  Hence Val (S) = Val (S0) + Val (Hi), with Val (S0) >= 0.
+
+      --  A non-zero carry forces Val (Hi) >= Base_Pow (5), contradicting
+      --  Val (S) = Val (X) < Base_Pow (5). Lower-bound ladder (each step a
+      --  single 2-factor multiply, Base * Base_Pow): Val_From (Hi, K) >=
+      --  Base_Pow (5 - K).
+      if S (5) >= 1 then
+         Lemma_Val_From_Zero_High (Hi, 6, 6);       --  Val_From (Hi, 6) = 0.
+         Lemma_Base_Ge_6;                           --  Base >= 6 > 0.
+         Lemma_Limb_Val_Mono (1, S (5));
+         pragma Assert (Limb_Val (0) = 0);
+         pragma Assert (Limb_Val (1) = 1);
+         pragma Assert (Base_Pow (0) = 1);
+         pragma Assert (Val_From (Hi, 5) >= Base_Pow (0));
+
+         pragma Assert (Val_From (Hi, 4) = Base * Val_From (Hi, 5));
+         pragma Assert (Base_Pow (1) = Base * Base_Pow (0));
+         Lemma_BI_Mul_Mono (Base, Base_Pow (0), Val_From (Hi, 5));
+         pragma Assert (Val_From (Hi, 4) >= Base_Pow (1));
+
+         pragma Assert (Val_From (Hi, 3) = Base * Val_From (Hi, 4));
+         pragma Assert (Base_Pow (2) = Base * Base_Pow (1));
+         Lemma_BI_Mul_Mono (Base, Base_Pow (1), Val_From (Hi, 4));
+         pragma Assert (Val_From (Hi, 3) >= Base_Pow (2));
+
+         pragma Assert (Val_From (Hi, 2) = Base * Val_From (Hi, 3));
+         pragma Assert (Base_Pow (3) = Base * Base_Pow (2));
+         Lemma_BI_Mul_Mono (Base, Base_Pow (2), Val_From (Hi, 3));
+         pragma Assert (Val_From (Hi, 2) >= Base_Pow (3));
+
+         pragma Assert (Val_From (Hi, 1) = Base * Val_From (Hi, 2));
+         pragma Assert (Base_Pow (4) = Base * Base_Pow (3));
+         Lemma_BI_Mul_Mono (Base, Base_Pow (3), Val_From (Hi, 2));
+         pragma Assert (Val_From (Hi, 1) >= Base_Pow (4));
+
+         pragma Assert (Val_From (Hi, 0) = Base * Val_From (Hi, 1));
+         pragma Assert (Base_Pow (5) = Base * Base_Pow (4));
+         Lemma_BI_Mul_Mono (Base, Base_Pow (4), Val_From (Hi, 1));
+         pragma Assert (Val_From (Hi, 0) >= Base_Pow (5));
+         pragma Assert (Val (S) >= Base_Pow (5));
+      end if;
+      pragma Assert (Sweep5_Out (X) (5) = 0);
+   end Lemma_Val_Lt_No_Carry;
+
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer) is
    begin
       null;
