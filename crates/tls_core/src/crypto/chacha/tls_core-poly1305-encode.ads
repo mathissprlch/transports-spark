@@ -93,6 +93,25 @@ is
    with Pre => Block_Bytes in 1 .. 16 and then Block_Bytes <= B'Length
                and then B'Last < Integer'Last - 16;
 
+   --  Top limb of the clamped r (16 bytes, NO implicit-1 bit, so no 2**24
+   --  contribution from a 17th byte). Limbs 0 .. 3 of r coincide with the
+   --  block encoding's (they touch only message bytes 1 .. 13).
+   function R_Limb4 (B : Octet_Array) return U64
+   is (U64 (Padded_Byte (B, 16, False, 14))
+       or Interfaces.Shift_Left (U64 (Padded_Byte (B, 16, False, 15)), 8)
+       or Interfaces.Shift_Left (U64 (Padded_Byte (B, 16, False, 16)), 16))
+   with Pre => B'Length >= 16 and then B'Last < Integer'Last - 16;
+
+   --  The clamped r as a Big_Nat (16 bytes, no implicit-1).
+   function R_BN (B : Octet_Array) return GB.Big_Nat
+   is ([0      => GB.LLI (Enc_Limb0 (B, 16, False)),
+        1      => GB.LLI (Enc_Limb1 (B, 16, False)),
+        2      => GB.LLI (Enc_Limb2 (B, 16, False)),
+        3      => GB.LLI (Enc_Limb3 (B, 16, False)),
+        4      => GB.LLI (R_Limb4 (B)),
+        others => 0])
+   with Pre => B'Length >= 16 and then B'Last < Integer'Last - 16;
+
    --  The encoded block as a Big_Nat (limbs 0 .. 4, zero above).
    function Encode_BN
      (B : Octet_Array; Block_Bytes : Natural; Final : Boolean)

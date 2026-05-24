@@ -436,6 +436,77 @@ is
    end Load_Block;
 
    ---------------------------------------------------------------------
+   --  Load the clamped r (16 bytes, no implicit-1) into 5x26-bit limbs.
+   --  Same packing as Load_Block minus the implicit-1 byte; its Big_Nat
+   --  embedding is the pure Encode.R_BN model.
+   ---------------------------------------------------------------------
+   procedure Load_R (Clamped : Octet_Array; R : out Limbs)
+   with
+     Pre  => Clamped'Length = 16 and then Clamped'Last < Integer'Last - 16,
+     Post => (for all I in Limb_Index => R (I) < 2**26)
+             and then GB."=" (To_Big_Nat (R), Enc.R_BN (Clamped));
+
+   procedure Load_R (Clamped : Octet_Array; R : out Limbs) is
+      Padded : Octet_Array (1 .. 17) := [others => 0];
+   begin
+      R := [others => 0];
+      for I in 1 .. 16 loop
+         Padded (I) := Clamped (Clamped'First + I - 1);
+         pragma Loop_Invariant
+           (for all J in 1 .. I => Padded (J) = Clamped (Clamped'First + J - 1));
+         pragma Loop_Invariant
+           (for all J in I + 1 .. 17 => Padded (J) = 0);
+      end loop;
+      R (0) :=
+        U64 (Padded (1))
+        or Shift_Left (U64 (Padded (2)), 8)
+        or Shift_Left (U64 (Padded (3)), 16)
+        or Shift_Left (U64 (Padded (4) and 16#03#), 24);
+      R (1) :=
+        Shift_Right (U64 (Padded (4)), 2)
+        or Shift_Left (U64 (Padded (5)), 6)
+        or Shift_Left (U64 (Padded (6)), 14)
+        or Shift_Left (U64 (Padded (7) and 16#0F#), 22);
+      R (2) :=
+        Shift_Right (U64 (Padded (7)), 4)
+        or Shift_Left (U64 (Padded (8)), 4)
+        or Shift_Left (U64 (Padded (9)), 12)
+        or Shift_Left (U64 (Padded (10) and 16#3F#), 20);
+      R (3) :=
+        Shift_Right (U64 (Padded (10)), 6)
+        or Shift_Left (U64 (Padded (11)), 2)
+        or Shift_Left (U64 (Padded (12)), 10)
+        or Shift_Left (U64 (Padded (13)), 18);
+      R (4) :=
+        U64 (Padded (14))
+        or Shift_Left (U64 (Padded (15)), 8)
+        or Shift_Left (U64 (Padded (16)), 16);
+
+      pragma Assert
+        (for all I in 1 .. 16 =>
+           Padded (I) = Enc.Padded_Byte (Clamped, 16, False, I));
+      pragma Assert (R (0) = Enc.Enc_Limb0 (Clamped, 16, False));
+      pragma Assert (R (1) = Enc.Enc_Limb1 (Clamped, 16, False));
+      pragma Assert (R (2) = Enc.Enc_Limb2 (Clamped, 16, False));
+      pragma Assert (R (3) = Enc.Enc_Limb3 (Clamped, 16, False));
+      pragma Assert (R (4) = Enc.R_Limb4 (Clamped));
+      declare
+         TB : constant GB.Big_Nat := To_Big_Nat (R) with Ghost;
+         EB : constant GB.Big_Nat := Enc.R_BN (Clamped) with Ghost;
+      begin
+         pragma Assert (TB (0) = EB (0));
+         pragma Assert (TB (1) = EB (1));
+         pragma Assert (TB (2) = EB (2));
+         pragma Assert (TB (3) = EB (3));
+         pragma Assert (TB (4) = EB (4));
+         pragma Assert
+           (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+              TB (I) = 0 and then EB (I) = 0);
+         pragma Assert (GB."=" (TB, EB));
+      end;
+   end Load_R;
+
+   ---------------------------------------------------------------------
    --  Reduce a 5-limb accumulator mod 2^130 - 5 by carry-propagation
    --  + a partial fold of the high bits via × 5.
    ---------------------------------------------------------------------
@@ -1263,39 +1334,9 @@ is
          Clamped (5) := Clamped (5) and 16#FC#;
          Clamped (9) := Clamped (9) and 16#FC#;
          Clamped (13) := Clamped (13) and 16#FC#;
-         --  Load r from clamped key (16 bytes), WITHOUT the
-         --  Poly1305 implicit-1 bit. r itself is just an integer.
-         declare
-            Padded : Octet_Array (1 .. 17) := [others => 0];
-         begin
-            for I in 1 .. 16 loop
-               Padded (I) := Clamped (I);
-            end loop;
-            R (0) :=
-              U64 (Padded (1))
-              or Shift_Left (U64 (Padded (2)), 8)
-              or Shift_Left (U64 (Padded (3)), 16)
-              or Shift_Left (U64 (Padded (4) and 16#03#), 24);
-            R (1) :=
-              Shift_Right (U64 (Padded (4)), 2)
-              or Shift_Left (U64 (Padded (5)), 6)
-              or Shift_Left (U64 (Padded (6)), 14)
-              or Shift_Left (U64 (Padded (7) and 16#0F#), 22);
-            R (2) :=
-              Shift_Right (U64 (Padded (7)), 4)
-              or Shift_Left (U64 (Padded (8)), 4)
-              or Shift_Left (U64 (Padded (9)), 12)
-              or Shift_Left (U64 (Padded (10) and 16#3F#), 20);
-            R (3) :=
-              Shift_Right (U64 (Padded (10)), 6)
-              or Shift_Left (U64 (Padded (11)), 2)
-              or Shift_Left (U64 (Padded (12)), 10)
-              or Shift_Left (U64 (Padded (13)), 18);
-            R (4) :=
-              U64 (Padded (14))
-              or Shift_Left (U64 (Padded (15)), 8)
-              or Shift_Left (U64 (Padded (16)), 16);
-         end;
+         --  Load r from clamped key (16 bytes), WITHOUT the Poly1305
+         --  implicit-1 bit. r itself is just an integer.
+         Load_R (Clamped, R);
       end;
 
       --  r is a 26-bit-limb integer (no implicit-1 bit): every limb < 2**26,
