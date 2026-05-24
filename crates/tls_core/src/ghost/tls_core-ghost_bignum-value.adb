@@ -225,6 +225,27 @@ is
       pragma Assert (PX = PY);
    end Lemma_Mul_Cong_R;
 
+   procedure Lemma_Mul_Col_Cong_L (A, A2, B : Big_Nat; K, T : Limb_Index) is
+   begin
+      if T /= 0 then
+         Lemma_Mul_Col_Cong_L (A, A2, B, K, T - 1);   --  IH; A (T) = A2 (T).
+      end if;
+   end Lemma_Mul_Col_Cong_L;
+
+   procedure Lemma_Mul_Cong_LR (A, A2, B, B2 : Big_Nat) is
+      PX : constant Big_Nat := A * B;
+      PY : constant Big_Nat := A2 * B2;
+   begin
+      for K in Limb_Index loop
+         Lemma_Mul_Col_Cong (A, B, B2, K, K);     --  Mul_Col(A,B)=Mul_Col(A,B2).
+         Lemma_Mul_Col_Cong_L (A, A2, B2, K, K);  --  Mul_Col(A,B2)=Mul_Col(A2,B2).
+         pragma Assert (PX (K) = PY (K));
+         pragma Loop_Invariant
+           (for all KK in Limb_Index range 0 .. K => PX (KK) = PY (KK));
+      end loop;
+      pragma Assert (PX = PY);
+   end Lemma_Mul_Cong_LR;
+
    procedure Lemma_Mul_Zero_Col (A : Big_Nat; K, T : Limb_Index) is
    begin
       pragma Assert (Zero (K - T) = 0);

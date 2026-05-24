@@ -288,6 +288,24 @@ is
              and then In_Bounds (Y, Mul_Cap) and then X = Y,
      Post => A * X = A * Y;
 
+   --  Congruence of "*" in the FIRST operand (column level, then full).
+   procedure Lemma_Mul_Col_Cong_L (A, A2, B : Big_Nat; K, T : Limb_Index)
+   with
+     Pre                =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (A2, Mul_Cap)
+       and then In_Bounds (B, Mul_Cap) and then A = A2 and then T <= K,
+     Post               => Mul_Col (A, B, K, T) = Mul_Col (A2, B, K, T),
+     Subprogram_Variant => (Decreases => T);
+
+   --  Full congruence of "*" in both operands.
+   procedure Lemma_Mul_Cong_LR (A, A2, B, B2 : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (A, Mul_Cap) and then In_Bounds (A2, Mul_Cap)
+       and then In_Bounds (B, Mul_Cap) and then In_Bounds (B2, Mul_Cap)
+       and then A = A2 and then B = B2,
+     Post => A * B = A2 * B2;
+
    procedure Lemma_Mul_Zero_Col (A : Big_Nat; K, T : Limb_Index)
    with
      Pre                => In_Bounds (A, Mul_Cap) and then T <= K,

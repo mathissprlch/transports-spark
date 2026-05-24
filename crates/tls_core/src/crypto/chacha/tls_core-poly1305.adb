@@ -1,5 +1,6 @@
 with Tls_Core.Ghost_Bignum.Value;
 with Tls_Core.Poly1305.Encode;
+with Tls_Core.Poly1305.Spec_BN;
 
 package body Tls_Core.Poly1305
   with SPARK_Mode
@@ -10,6 +11,7 @@ is
    package GB renames Tls_Core.Ghost_Bignum;
    package GBV renames Tls_Core.Ghost_Bignum.Value;
    package Enc renames Tls_Core.Poly1305.Encode;
+   package SB renames Tls_Core.Poly1305.Spec_BN;
 
    --  Limb_Index / Limbs are now declared in the spec so functional
    --  Posts on the private helpers can reference As_Nat5 / Feval5.
@@ -999,6 +1001,83 @@ is
       GBV.Lemma_Val_Canonical_Eq (GB.Canonical (X), GB.Canonical (Y), Kf_X, Kf_Y);
    end Lemma_Canon_Cong;
 
+   --  Feval_BN (L) and Canonical (To_Big_Nat (L)) are the same expression
+   --  (Reduce_Canonical (Normalize (To_Big_Nat (L)).Val)); expose the equality
+   --  so the Mac loop can switch between the two forms.
+   procedure Lemma_Feval_Eq_Canon (L : Limbs)
+   with
+     Ghost,
+     Global => null,
+     Pre    => (for all I in Limb_Index => L (I) < 2**27),
+     Post   => GB."=" (Feval_BN (L), GB.Canonical (To_Big_Nat (L)));
+
+   procedure Lemma_Feval_Eq_Canon (L : Limbs) is
+   begin
+      Lemma_To_Big_Nat_Mul_Cap (L);
+   end Lemma_Feval_Eq_Canon;
+
+   --  Congruence helpers for the field ops (isolated, value-routed because SMT
+   --  will not do congruence on the ghost field functions directly).
+   --  A is the accumulator (Mul_Cap), B the key element (In_Cap).
+   procedure Lemma_FMul_Cong (A, A2, B, B2 : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (A, A2) and then GB."=" (B, B2)
+       and then GB.In_Bounds (A, GB.Mul_Cap) and then GB.In_Bounds (B, GB.In_Cap)
+       and then GB.In_Bounds (A2, GB.Mul_Cap)
+       and then GB.In_Bounds (B2, GB.In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   A (I) = 0 and then B (I) = 0
+                   and then A2 (I) = 0 and then B2 (I) = 0),
+     Post   => GB."=" (GB.Field_Mul (A, B), GB.Field_Mul (A2, B2));
+
+   procedure Lemma_FMul_Cong (A, A2, B, B2 : GB.Big_Nat) is
+      Kg1 : GBV.BI.Big_Integer;
+      Kg2 : GBV.BI.Big_Integer;
+   begin
+      --  A*B = A2*B2 (per limb), so Field_Mul (A,B) and Field_Mul (A2,B2) are
+      --  canonical residues of the same value; close via value-injectivity.
+      GB.Lemma_Bounds_Mono (B, GB.In_Cap, GB.Mul_Cap);
+      GB.Lemma_Bounds_Mono (B2, GB.In_Cap, GB.Mul_Cap);
+      GBV.Lemma_Mul_Cong_LR (A, A2, B, B2);   --  A*B = A2*B2.
+      GBV.Lemma_Field_Mul_Reduce_Cong (A, B, Kg1);
+      GBV.Lemma_Field_Mul_Reduce_Cong (A2, B2, Kg2);
+      GBV.Lemma_Val_Cong (GB."*" (A, B), GB."*" (A2, B2));
+      GBV.Lemma_Val_Canonical_Eq
+        (GB.Field_Mul (A, B), GB.Field_Mul (A2, B2), Kg1, Kg2);
+   end Lemma_FMul_Cong;
+
+   procedure Lemma_FAdd_Cong (A, A2, B, B2 : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (A, A2) and then GB."=" (B, B2)
+       and then GB.In_Bounds (A, GB.In_Cap) and then GB.In_Bounds (B, GB.In_Cap)
+       and then GB.In_Bounds (A2, GB.In_Cap)
+       and then GB.In_Bounds (B2, GB.In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   A (I) = 0 and then B (I) = 0
+                   and then A2 (I) = 0 and then B2 (I) = 0),
+     Post   => GB."=" (GB.Field_Add (A, B), GB.Field_Add (A2, B2));
+
+   procedure Lemma_FAdd_Cong (A, A2, B, B2 : GB.Big_Nat) is
+   begin
+      --  Field_Add (X, Y) = Canonical (X + Y); A+B = A2+B2 (per limb), so the
+      --  two canonical reduces coincide (Lemma_Canon_Cong).
+      pragma Assert
+        (for all I in GB.Limb_Index =>
+           GB."+" (A, B) (I) = GB."+" (A2, B2) (I));
+      pragma Assert (GB."=" (GB."+" (A, B), GB."+" (A2, B2)));
+      pragma Assert (GB.In_Bounds (GB."+" (A, B), GB.Mul_Cap));
+      pragma Assert
+        (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+           GB."+" (A, B) (I) = 0);
+      Lemma_Canon_Cong (GB."+" (A, B), GB."+" (A2, B2));
+   end Lemma_FAdd_Cong;
+
    --  Multiply correspondence (conv-then-reduce, the §0e-provable form). The
    --  full nine-limb convolution Acc*R is reduced sweep-before-fold: Sweep9,
    --  Fold_High_9 (limbs 5..9 fold into 0..4 x5), then the proven Carry
@@ -1345,20 +1424,135 @@ is
       pragma Assert (for all I in Limb_Index => R (I) < 2**26);
 
       --  Process all complete 16-byte blocks (Final=False ⇒ implicit
-      --  "1" appears at bit 128, the 17th byte).
-      while Cursor + 16 <= Message'Length loop
-         pragma Loop_Variant (Decreases => Message'Length - Cursor);
-         pragma Loop_Invariant (for all I in Limb_Index => Acc (I) < 2**27);
-         pragma Loop_Invariant (for all I in Limb_Index => R (I) < 2**26);
-         Load_Block
-           (Message (Message'First + Cursor .. Message'First + Cursor + 15),
-            16,
-            Final     => False,
-            Out_Limbs => Block);
-         Add (Acc, Block);
-         Multiply (Acc, R);
-         Cursor := Cursor + 16;
-      end loop;
+      --  "1" appears at bit 128, the 17th byte). The loop folds the field
+      --  recurrence; the invariant tracks Feval_BN (Acc) against Spec_Fold.
+      declare
+         RB : constant GB.Big_Nat := To_Big_Nat (R) with Ghost;
+      begin
+         Lemma_To_Big_Nat_Reduced (R);          --  RB: In_Cap, zero from 5.
+         Lemma_To_Big_Nat_Mul_Cap (Acc);        --  To_Big_Nat (Acc=0).
+         pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Zero));
+         GB.Lemma_Canonical_Zero;               --  Canonical (Zero) = Zero.
+         Lemma_Canon_Cong (To_Big_Nat (Acc), GB.Zero);
+         pragma Assert (GB."=" (Feval_BN (Acc), GB.Zero));
+         pragma Assert (GB."=" (SB.Spec_Fold (Message, 0, RB), GB.Zero));
+         pragma Assert
+           (GB."=" (Feval_BN (Acc), SB.Spec_Fold (Message, 0, RB)));
+
+         while Cursor + 16 <= Message'Length loop
+            pragma Loop_Invariant (Cursor mod 16 = 0);
+            pragma Loop_Invariant (Cursor <= Message'Length);
+            pragma Loop_Invariant (for all I in Limb_Index => Acc (I) < 2**27);
+            pragma Loop_Invariant (for all I in Limb_Index => R (I) < 2**26);
+            pragma Loop_Invariant (GB."=" (To_Big_Nat (R), RB));
+            pragma Loop_Invariant
+              (GB."="
+                 (Feval_BN (Acc), SB.Spec_Fold (Message, Cursor / 16, RB)));
+            pragma Loop_Variant (Decreases => Message'Length - Cursor);
+            declare
+               F0 : constant GB.Big_Nat := Feval_BN (Acc) with Ghost;
+               K  : constant Natural := Cursor / 16 with Ghost;
+            begin
+               pragma Assert (16 * K = Cursor);
+               pragma Assert (GB."=" (F0, SB.Spec_Fold (Message, K, RB)));
+               pragma Assert (GB.In_Bounds (F0, GB.In_Cap));  --  Spec_Fold Post.
+               --  F0 in Canonical form (the shape the op clean Posts produce).
+               Lemma_To_Big_Nat_Mul_Cap (Acc);
+               Lemma_Feval_Eq_Canon (Acc);
+               pragma Assert (GB."=" (GB.Canonical (To_Big_Nat (Acc)), F0));
+               Load_Block
+                 (Message
+                    (Message'First + Cursor .. Message'First + Cursor + 15),
+                  16,
+                  Final     => False,
+                  Out_Limbs => Block);
+               Lemma_To_Big_Nat_Reduced (Block);  --  To_Big_Nat (Block) In_Cap.
+               --  Block = the K-th Spec_Fold block (16 * K = Cursor).
+               pragma Assert
+                 (GB."="
+                    (To_Big_Nat (Block),
+                     Enc.Encode_BN
+                       (Message
+                          (Message'First + 16 * K
+                           .. Message'First + 16 * (K + 1) - 1),
+                        16,
+                        False)));
+               Add (Acc, Block);
+               Lemma_To_Big_Nat_Mul_Cap (Acc);   --  after-Add Acc: Mul_Cap.
+               declare
+                  FA : constant GB.Big_Nat :=
+                    GB.Field_Add (F0, To_Big_Nat (Block)) with Ghost;
+                  BlkK : constant GB.Big_Nat :=
+                    Enc.Encode_BN
+                      (Message
+                         (Message'First + 16 * K
+                          .. Message'First + 16 * (K + 1) - 1),
+                       16, False)
+                    with Ghost;
+                  --  Capture the after-Add field value in a stable constant so
+                  --  it survives the Multiply call as Canonical (..Acc'Old..).
+                  C1 : constant GB.Big_Nat :=
+                    GB.Canonical (To_Big_Nat (Acc)) with Ghost;
+               begin
+                  --  Add clean Post (Canonical form): Acc folds to FA = C1.
+                  pragma Assert (GB."=" (C1, FA));
+                  GB.Lemma_Bounds_Mono (C1, GB.In_Cap, GB.Mul_Cap);
+                  Lemma_To_Big_Nat_Reduced (R);
+                  GB.Lemma_Bounds_Mono (To_Big_Nat (R), GB.In_Cap, GB.Mul_Cap);
+                  Multiply (Acc, R);
+                  --  Re-establish operand bounds after the call for Field_Mul.
+                  Lemma_To_Big_Nat_Mul_Cap (Acc);
+                  GB.Lemma_Bounds_Mono (C1, GB.In_Cap, GB.Mul_Cap);
+                  Lemma_To_Big_Nat_Reduced (R);
+                  GB.Lemma_Bounds_Mono (To_Big_Nat (R), GB.In_Cap, GB.Mul_Cap);
+                  --  Multiply clean Post: Acc folds to C1 * r = FA * r.
+                  pragma Assert
+                    (GB."="
+                       (GB.Canonical (To_Big_Nat (Acc)),
+                        GB.Field_Mul (C1, To_Big_Nat (R))));
+                  Lemma_Feval_Eq_Canon (Acc);
+                  pragma Assert
+                    (GB."="
+                       (Feval_BN (Acc), GB.Field_Mul (C1, To_Big_Nat (R))));
+                  --  C1 = FA and To_Big_Nat (R) = RB: rewrite to Field_Mul (FA, RB).
+                  GB.Lemma_Bounds_Mono (FA, GB.In_Cap, GB.Mul_Cap);
+                  GB.Lemma_Bounds_Mono (RB, GB.In_Cap, GB.Mul_Cap);
+                  GB.Lemma_Bounds_Mono (C1, GB.In_Cap, GB.Mul_Cap);
+                  GB.Lemma_Bounds_Mono (To_Big_Nat (R), GB.In_Cap, GB.Mul_Cap);
+                  Lemma_FMul_Cong (C1, FA, To_Big_Nat (R), RB);
+                  pragma Assert
+                    (GB."=" (Feval_BN (Acc), GB.Field_Mul (FA, RB)));
+                  --  FA = Field_Add (Spec_Fold (K), block K); so FA * r is the
+                  --  Spec_Fold (K+1) unfolding.
+                  pragma Assert (GB."=" (To_Big_Nat (Block), BlkK));
+                  pragma Assert (GB."=" (F0, SB.Spec_Fold (Message, K, RB)));
+                  Lemma_FAdd_Cong
+                    (F0, SB.Spec_Fold (Message, K, RB), To_Big_Nat (Block), BlkK);
+                  pragma Assert
+                    (GB."="
+                       (FA, GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK)));
+                  --  Spec_Fold (K+1) unfolds to Field_Mul (Field_Add (Spec_Fold
+                  --  (K), block K), RB); swap Field_Add (..) = FA via FMul_Cong.
+                  GB.Lemma_Bounds_Mono
+                    (GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK),
+                     GB.In_Cap, GB.Mul_Cap);
+                  GB.Lemma_Bounds_Mono (FA, GB.In_Cap, GB.Mul_Cap);
+                  Lemma_FMul_Cong
+                    (GB.Field_Add (SB.Spec_Fold (Message, K, RB), BlkK), FA,
+                     RB, RB);
+                  pragma Assert
+                    (GB."="
+                       (SB.Spec_Fold (Message, K + 1, RB),
+                        GB.Field_Mul (FA, RB)));
+                  pragma Assert
+                    (GB."="
+                       (Feval_BN (Acc), SB.Spec_Fold (Message, K + 1, RB)));
+               end;
+               Cursor := Cursor + 16;
+               pragma Assert (Cursor / 16 = K + 1);
+            end;
+         end loop;
+      end;
 
       --  Possibly one short trailing block.
       if Cursor < Message'Length then
