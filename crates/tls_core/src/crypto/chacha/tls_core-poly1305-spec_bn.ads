@@ -48,4 +48,35 @@ is
                    Spec_Fold'Result (I) = 0),
      Subprogram_Variant => (Decreases => N);
 
+   --  Field accumulator after the whole message: every full 16-byte block,
+   --  then (if the length is not a multiple of 16) the final partial block
+   --  encoded with its implicit-1 at the message length. This is the post-loop
+   --  accumulator value the imperative Mac computes before finish.
+   function Spec_Mac_Acc
+     (Message : Octet_Array; R : GB.Big_Nat) return GB.Big_Nat
+   is (if Message'Length mod 16 = 0
+       then Spec_Fold (Message, Message'Length / 16, R)
+       else
+         GB.Field_Mul
+           (GB.Field_Add
+              (Spec_Fold (Message, Message'Length / 16, R),
+               Enc.Encode_BN
+                 (Message
+                    (Message'First
+                     + 16 * (Message'Length / 16)
+                     .. Message'Last),
+                  Message'Length mod 16,
+                  True)),
+            R))
+   with
+     Pre  =>
+       GB.In_Bounds (R, GB.In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   R (I) = 0)
+       and then Message'Last < Integer'Last - 16,
+     Post =>
+       GB.In_Bounds (Spec_Mac_Acc'Result, GB.In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   Spec_Mac_Acc'Result (I) = 0);
+
 end Tls_Core.Poly1305.Spec_BN;
