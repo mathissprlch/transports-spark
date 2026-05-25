@@ -474,6 +474,21 @@ is
        and then Sweep5_Out (X) (5) <= 2,
      Post => Val (X) < 3 * Base_Pow (5);
 
+   --  Tight Carry_Model magnitude: one carry-fold lands the value at most 5 per
+   --  swept-out unit above Base_Pow (5). Val (Carry_Model (B)) = swept-low5
+   --  (< Base_Pow (5)) + 5 * K0, so <= Base_Pow (5) - 1 + 5 * K0. This is the
+   --  bound that makes the Mac's two Carry folds reach < Base_Pow (5) (the loose
+   --  Val < 2 * Base_Pow (5) is not enough -- the Sub_Cond fixed-point window).
+   procedure Lemma_Carry_Model_Val_Tight (B : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then Sweep5_Out (B) (5) <= 2,
+     Post =>
+       Val (Carry_Model (B))
+       <= Base_Pow (5) - 1 + 5 * Limb_Val (Sweep5_Out (B) (5));
+
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)

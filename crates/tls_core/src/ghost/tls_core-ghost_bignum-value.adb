@@ -659,6 +659,68 @@ is
       pragma Assert (Val (X) < 3 * Base_Pow (5));
    end Lemma_Val_Carry_Bound_2;
 
+   procedure Lemma_Carry_Model_Val_Tight (B : Big_Nat) is
+      CM : constant Big_Nat := Carry_Model (B);
+      K  : LLI;
+      C  : Carry_Array;
+   begin
+      --  B == CM + K*p (carry-fold congruence), K = Sweep5_Out (B)(5) in 0 .. 2.
+      Lemma_Carry_Mod_P (B, K, C);
+      declare
+         SK : constant Big_Nat := Smul (K, P_Prime);
+      begin
+         pragma Assert (In_Bounds (CM, Add_Cap));
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SK (I) = K * P_Prime (I));
+         pragma Assert (In_Bounds (SK, Add_Cap));
+         pragma Assert (In_Bounds (CM + SK, Add_Cap));
+         pragma Assert (SVal_Eq (B, CM + SK, C));
+
+         --  Lift the carry congruence to Val: Val (B) = Val (CM) + K * p.
+         Lemma_SValEq_To_Val (B, CM + SK, C);
+         Lemma_Val_Add (CM, SK);
+         Lemma_Val_Smul (K, P_Prime);
+         Lemma_Val_P_Prime;
+         pragma
+           Assert (Val (B) = Val (CM) + Limb_Val (K) * (Base_Pow (5) - 5));
+
+         --  Per-K0 upper bound on Val (B); cancel to Val (CM) <= 2^130-1 + 5*K0.
+         if K = 0 then
+            pragma Assert (Limb_Val (K) = 0);
+            Lemma_Sweep5 (B);
+            Lemma_Bounds_Mono (Sweep5_Out (B), Add_Cap, Val_Cap);
+            Lemma_ValEq_To_Val (B, Sweep5_Out (B), Sweep5_Chain (B));
+            pragma Assert (In_Bounds (Sweep5_Out (B), In_Cap));
+            pragma
+              Assert
+                (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   Sweep5_Out (B) (I) = 0);
+            Lemma_Val_From_Reduced_Ub (Sweep5_Out (B), 0);
+            pragma Assert (Val (B) <= Base_Pow (5) - 1);
+            pragma
+              Assert
+                (Val (CM)
+                   <= Base_Pow (5) - 1 + 5 * Limb_Val (Sweep5_Out (B) (5)));
+         elsif K = 1 then
+            pragma Assert (Limb_Val (K) = 1);
+            Lemma_Val_Carry_Bound (B);
+            pragma Assert (Val (B) <= 2 * Base_Pow (5) - 1);
+            pragma
+              Assert
+                (Val (CM)
+                   <= Base_Pow (5) - 1 + 5 * Limb_Val (Sweep5_Out (B) (5)));
+         else
+            pragma Assert (Limb_Val (K) = 2);
+            Lemma_Val_Carry_Bound_2 (B);
+            pragma Assert (Val (B) <= 3 * Base_Pow (5) - 1);
+            pragma
+              Assert
+                (Val (CM)
+                   <= Base_Pow (5) - 1 + 5 * Limb_Val (Sweep5_Out (B) (5)));
+         end if;
+      end;
+   end Lemma_Carry_Model_Val_Tight;
+
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer) is
    begin
       null;
