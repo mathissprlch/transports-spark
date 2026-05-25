@@ -1761,6 +1761,139 @@ is
    end Fold_Blocks;
 
    ---------------------------------------------------------------------
+   --  Clean_Carry: the freeze's first pass -- a single sweep with no fold.
+   --  Given Acc < 2^130 (Sweep5_Out top carry 0) the sweep settles every limb
+   --  below 2^26 and loses nothing, so To_Big_Nat (Acc) becomes Sweep5_Out of
+   --  the input. Mirrors the sweep portion of Carry (steps 1..5); here the
+   --  inputs are < 2^27, so each carry is 0 or 1 and there is no prime fold.
+   ---------------------------------------------------------------------
+
+   procedure Clean_Carry (Acc : in out Limbs)
+   with
+     Pre  =>
+       (for all I in Limb_Index => Acc (I) < 2**27)
+       and then GB.Sweep5_Out (To_Big_Nat (Acc)) (5) = 0,
+     Post =>
+       GB."=" (To_Big_Nat (Acc), GB.Sweep5_Out (To_Big_Nat (Acc'Old)))
+       and then (for all I in Limb_Index => Acc (I) < 2**26);
+
+   procedure Clean_Carry (Acc : in out Limbs) is
+      C  : U64;
+      B0 : constant GB.Big_Nat := To_Big_Nat (Acc)
+      with Ghost;
+   begin
+      Lemma_To_Big_Nat_Mul_Cap (Acc);           --  B0: Mul_Cap, zero from 5.
+      GB.Lemma_Bounds_Mono (B0, GB.Mul_Cap, GB.Prod_Cap);
+
+      --  step 1: sweep limb 0 -> 1
+      Lemma_Shift_Mask_26 (Acc (0));
+      C := Shift_Right (Acc (0), 26);
+      Acc (0) := Acc (0) and Mask_26;
+      Acc (1) := Acc (1) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C0 (B0));
+      pragma Assert (GB.LLI (Acc (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (GB.LLI (Acc (1)) = B0 (1) + GB.Sw_C0 (B0));
+
+      --  step 2: sweep limb 1 -> 2
+      Lemma_Shift_Mask_26 (Acc (1));
+      C := Shift_Right (Acc (1), 26);
+      Acc (1) := Acc (1) and Mask_26;
+      Acc (2) := Acc (2) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C1 (B0));
+      pragma Assert (GB.LLI (Acc (1)) = GB.Sweep5_Out (B0) (1));
+      pragma Assert (GB.LLI (Acc (2)) = B0 (2) + GB.Sw_C1 (B0));
+      pragma Assert (GB.LLI (Acc (3)) = B0 (3));
+      pragma Assert (GB.LLI (Acc (4)) = B0 (4));
+
+      --  step 3: sweep limb 2 -> 3
+      Lemma_Shift_Mask_26 (Acc (2));
+      C := Shift_Right (Acc (2), 26);
+      Acc (2) := Acc (2) and Mask_26;
+      Acc (3) := Acc (3) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C2 (B0));
+      pragma
+        Assert (GB.Sweep5_Out (B0) (2) = GB.Lo26 (B0 (2) + GB.Sw_C1 (B0)));
+      pragma Assert (GB.LLI (Acc (2)) = GB.Sweep5_Out (B0) (2));
+      pragma Assert (GB.LLI (Acc (3)) = B0 (3) + GB.Sw_C2 (B0));
+      pragma Assert (GB.LLI (Acc (4)) = B0 (4));
+      pragma Assert (GB.LLI (Acc (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (GB.LLI (Acc (1)) = GB.Sweep5_Out (B0) (1));
+
+      --  step 4: sweep limb 3 -> 4
+      Lemma_Shift_Mask_26 (Acc (3));
+      C := Shift_Right (Acc (3), 26);
+      Acc (3) := Acc (3) and Mask_26;
+      Acc (4) := Acc (4) + C;
+      pragma Assert (GB.LLI (C) = GB.Sw_C3 (B0));
+      pragma
+        Assert (GB.Sweep5_Out (B0) (3) = GB.Lo26 (B0 (3) + GB.Sw_C2 (B0)));
+      pragma Assert (GB.LLI (Acc (3)) = GB.Sweep5_Out (B0) (3));
+      pragma Assert (GB.LLI (Acc (4)) = B0 (4) + GB.Sw_C3 (B0));
+      pragma Assert (GB.LLI (Acc (0)) = GB.Sweep5_Out (B0) (0));
+      pragma Assert (GB.LLI (Acc (1)) = GB.Sweep5_Out (B0) (1));
+      pragma Assert (GB.LLI (Acc (2)) = GB.Sweep5_Out (B0) (2));
+
+      --  step 5: settle limb 4. The top carry Sw_C4 = Sweep5_Out (B0)(5) = 0
+      --  (the < 2^130 precondition), so nothing escapes limb 4 and there is no
+      --  prime fold back into limb 0.
+      Lemma_Shift_Mask_26 (Acc (4));
+      C := Shift_Right (Acc (4), 26);
+      Acc (4) := Acc (4) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C4 (B0));
+      pragma Assert (GB.Sw_C4 (B0) = GB.Sweep5_Out (B0) (5));
+      pragma Assert (C = 0);
+      pragma
+        Assert (GB.Sweep5_Out (B0) (4) = GB.Lo26 (B0 (4) + GB.Sw_C3 (B0)));
+      pragma Assert (GB.LLI (Acc (4)) = GB.Sweep5_Out (B0) (4));
+
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             GB.LLI (Acc (I)) = GB.Sweep5_Out (B0) (I));
+      pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Sweep5_Out (B0)));
+   end Clean_Carry;
+
+   ---------------------------------------------------------------------
+   --  Cond_Subtract: the freeze's second pass -- conditionally subtract p.
+   --  Computes g = Acc + 5; the carry out of limb 4 is 1 iff Acc >= p, which
+   --  drives a branchless select of g (= Acc - p) over Acc. Extracted into its
+   --  own (small) context so the bitvector VCs stay snappy. The functional
+   --  correspondence to Subtract_P5_Out is a later brick; for now it carries
+   --  only the limb bound the repack needs.
+   ---------------------------------------------------------------------
+
+   procedure Cond_Subtract (Acc : in out Limbs)
+   with
+     Pre  => (for all I in Limb_Index => Acc (I) < 2**26),
+     Post => (for all I in Limb_Index => Acc (I) < 2**26)
+   is
+      G    : Limbs := [others => 0];
+      C    : U64;
+      Tmp  : U64;
+      Mask : U64;
+   begin
+      --  g = Acc + 5, carry-propagated. The carry out of limb 4 lands at weight
+      --  2^130 and is 1 iff Acc + 5 >= 2^130, i.e. iff Acc >= p.
+      C := 5;
+      for I in Limb_Index loop
+         Tmp := Acc (I) + C;
+         Lemma_Shift_Mask_26 (Tmp);
+         G (I) := Tmp and Mask_26;
+         C := Shift_Right (Tmp, 26);
+         pragma Loop_Invariant (C <= 1);
+         pragma Loop_Invariant (for all J in Limb_Index => G (J) < 2**26);
+      end loop;
+
+      --  Mask = all-ones iff Acc >= p (select g = Acc - p), else 0 (keep Acc).
+      Mask := U64'(0) - (C and 1);
+      pragma Assert (Mask = 0 or else Mask = U64'Last);
+      for I in Limb_Index loop
+         Acc (I) := (Acc (I) and not Mask) or (G (I) and Mask);
+         pragma Loop_Invariant (for all J in Limb_Index => Acc (J) < 2**26);
+      end loop;
+   end Cond_Subtract;
+
+   ---------------------------------------------------------------------
    --  Mac
    ---------------------------------------------------------------------
 
@@ -1930,43 +2063,12 @@ is
       --  Without this step (acc + s) mod 2^128 disagrees with the spec's
       --  (acc mod p + s) mod 2^128 by p mod 2^128 = 2^128 - 5 whenever Acc
       --  falls in that window. Constant-time: no data-dependent branch.
-      declare
-         G    : Limbs := [others => 0];
-         C    : U64;
-         Tmp  : U64;
-         Mask : U64;
-      begin
-         --  Clean carry so each limb < 2**26 (Acc < 2^130 ⇒ no carry out).
-         C := 0;
-         for I in Limb_Index loop
-            Tmp := Acc (I) + C;
-            Acc (I) := Tmp and Mask_26;
-            C := Shift_Right (Tmp, 26);
-            pragma
-              Loop_Invariant
-                (for all J in Limb_Index =>
-                   (if J <= I then Acc (J) < 2**26 else Acc (J) < 2**27));
-            pragma Loop_Invariant (C <= 2);
-         end loop;
+      --  Clean carry: settle each limb < 2**26 (Acc < 2^130 ⇒ no carry out).
+      --  Establishes To_Big_Nat (Acc) = Sweep5_Out (To_Big_Nat (Acc'before)).
+      Clean_Carry (Acc);
 
-         --  g = Acc + 5, carry-propagated. The carry out of limb 4 lands at
-         --  weight 2^130 and is 1 iff Acc + 5 >= 2^130, i.e. iff Acc >= p.
-         C := 5;
-         for I in Limb_Index loop
-            Tmp := Acc (I) + C;
-            G (I) := Tmp and Mask_26;
-            C := Shift_Right (Tmp, 26);
-            pragma Loop_Invariant (C <= 1);
-            pragma Loop_Invariant (for all J in Limb_Index => G (J) < 2**26);
-         end loop;
-
-         --  Mask = all-ones iff Acc >= p (select g = Acc - p), else 0 (keep
-         --  Acc). Branchless select.
-         Mask := U64'(0) - (C and 1);
-         for I in Limb_Index loop
-            Acc (I) := (Acc (I) and not Mask) or (G (I) and Mask);
-         end loop;
-      end;
+      --  Conditional subtract of p (constant-time): Acc -= p iff Acc >= p.
+      Cond_Subtract (Acc);
 
       --  Acc := Acc + s (mod 2^128). Then serialize as little-endian.
       declare
