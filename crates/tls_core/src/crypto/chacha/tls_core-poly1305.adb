@@ -2035,48 +2035,35 @@ is
       function Get_S_Limb (Idx : Limb_Index) return U64
       with Pre => Idx <= 4;
 
-      function Get_S_Limb (Idx : Limb_Index) return U64 is
-         Padded : Octet_Array (1 .. 17) := [others => 0];
-      begin
-         for I in 1 .. 16 loop
-            Padded (I) := Key (16 + I);
-         end loop;
-         case Idx is
+      --  s = Key (17 .. 32) little-endian, packed into 5x26-bit limbs (byte p
+      --  of s is Key (16 + p)). Direct case expression (no Padded buffer) so it
+      --  matches the Encode.Enc_Limb / R_Limb4 packing for the Big_Nat bridge.
+      function Get_S_Limb (Idx : Limb_Index) return U64
+      is (case Idx is
             when 0 =>
-               return
-                 U64 (Padded (1))
-                 or Shift_Left (U64 (Padded (2)), 8)
-                 or Shift_Left (U64 (Padded (3)), 16)
-                 or Shift_Left (U64 (Padded (4) and 16#03#), 24);
-
+              U64 (Key (17))
+              or Shift_Left (U64 (Key (18)), 8)
+              or Shift_Left (U64 (Key (19)), 16)
+              or Shift_Left (U64 (Key (20) and 16#03#), 24),
             when 1 =>
-               return
-                 Shift_Right (U64 (Padded (4)), 2)
-                 or Shift_Left (U64 (Padded (5)), 6)
-                 or Shift_Left (U64 (Padded (6)), 14)
-                 or Shift_Left (U64 (Padded (7) and 16#0F#), 22);
-
+              Shift_Right (U64 (Key (20)), 2)
+              or Shift_Left (U64 (Key (21)), 6)
+              or Shift_Left (U64 (Key (22)), 14)
+              or Shift_Left (U64 (Key (23) and 16#0F#), 22),
             when 2 =>
-               return
-                 Shift_Right (U64 (Padded (7)), 4)
-                 or Shift_Left (U64 (Padded (8)), 4)
-                 or Shift_Left (U64 (Padded (9)), 12)
-                 or Shift_Left (U64 (Padded (10) and 16#3F#), 20);
-
+              Shift_Right (U64 (Key (23)), 4)
+              or Shift_Left (U64 (Key (24)), 4)
+              or Shift_Left (U64 (Key (25)), 12)
+              or Shift_Left (U64 (Key (26) and 16#3F#), 20),
             when 3 =>
-               return
-                 Shift_Right (U64 (Padded (10)), 6)
-                 or Shift_Left (U64 (Padded (11)), 2)
-                 or Shift_Left (U64 (Padded (12)), 10)
-                 or Shift_Left (U64 (Padded (13)), 18);
-
+              Shift_Right (U64 (Key (26)), 6)
+              or Shift_Left (U64 (Key (27)), 2)
+              or Shift_Left (U64 (Key (28)), 10)
+              or Shift_Left (U64 (Key (29)), 18),
             when 4 =>
-               return
-                 U64 (Padded (14))
-                 or Shift_Left (U64 (Padded (15)), 8)
-                 or Shift_Left (U64 (Padded (16)), 16);
-         end case;
-      end Get_S_Limb;
+              U64 (Key (30))
+              or Shift_Left (U64 (Key (31)), 8)
+              or Shift_Left (U64 (Key (32)), 16));
 
       Carry_Acc : U64 := 0;
       T         : array (Limb_Index) of U64 := [others => 0];
