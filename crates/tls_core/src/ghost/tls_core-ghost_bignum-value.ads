@@ -489,6 +489,19 @@ is
        Val (Carry_Model (B))
        <= Base_Pow (5) - 1 + 5 * Limb_Val (Sweep5_Out (B) (5));
 
+   --  Second of the Mac's two Carry folds: a value already within Base_Pow (5)
+   --  + 9 (Val, the post-first-Carry state) with sweep-carry <= 2 lands
+   --  strictly below Base_Pow (5) after another fold, so its sweep has no carry
+   --  out. (K0 = 2 is infeasible -- it would force Val (X) >= 2*Base_Pow(5)-10.)
+   procedure Lemma_Single_Carry_To_Zero (X : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (X, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then Sweep5_Out (X) (5) <= 2
+       and then Val (X) <= Base_Pow (5) + 9,
+     Post => Sweep5_Out (Carry_Model (X)) (5) = 0;
+
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)

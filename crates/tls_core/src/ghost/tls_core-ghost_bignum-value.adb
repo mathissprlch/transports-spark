@@ -721,6 +721,65 @@ is
       end;
    end Lemma_Carry_Model_Val_Tight;
 
+   procedure Lemma_Single_Carry_To_Zero (X : Big_Nat) is
+      CM : constant Big_Nat := Carry_Model (X);
+      K  : LLI;
+      C  : Carry_Array;
+   begin
+      --  Base_Pow (5) >= 36 (Base >= 6, telescoping) -- rules out the K0 = 2
+      --  case and dominates the small K0 = 0/1 residues.
+      Lemma_Base_Ge_6;
+      Lemma_Base_Pow_Ge_1 (3);
+      pragma Assert (Base_Pow (4) = Base * Base_Pow (3));
+      Lemma_BI_Mul_Mono (Base, 1, Base_Pow (3));
+      pragma Assert (Base_Pow (4) >= 6);
+      pragma Assert (Base_Pow (5) = Base * Base_Pow (4));
+      Lemma_BI_Mul_Mono (Base, 6, Base_Pow (4));
+      pragma Assert (Base_Pow (5) >= 36);
+
+      --  Val (X) = Val (CM) + K0 * (Base_Pow (5) - 5), K0 = Sweep5_Out (X)(5).
+      Lemma_Carry_Mod_P (X, K, C);
+      declare
+         SK : constant Big_Nat := Smul (K, P_Prime);
+      begin
+         pragma Assert (In_Bounds (CM, Add_Cap));
+         pragma Assert (for all I in Limb_Index => P_Prime (I) <= In_Cap);
+         pragma Assert (for all I in Limb_Index => SK (I) = K * P_Prime (I));
+         pragma Assert (In_Bounds (SK, Add_Cap));
+         pragma Assert (In_Bounds (CM + SK, Add_Cap));
+         pragma Assert (SVal_Eq (X, CM + SK, C));
+         Lemma_SValEq_To_Val (X, CM + SK, C);
+         Lemma_Val_Add (CM, SK);
+         Lemma_Val_Smul (K, P_Prime);
+         Lemma_Val_P_Prime;
+         pragma
+           Assert (Val (X) = Val (CM) + Limb_Val (K) * (Base_Pow (5) - 5));
+
+         if K = 0 then
+            pragma Assert (Limb_Val (K) = 0);
+            Lemma_Sweep5 (X);
+            Lemma_Bounds_Mono (Sweep5_Out (X), Add_Cap, Val_Cap);
+            Lemma_ValEq_To_Val (X, Sweep5_Out (X), Sweep5_Chain (X));
+            pragma Assert (In_Bounds (Sweep5_Out (X), In_Cap));
+            pragma
+              Assert
+                (for all I in Limb_Index range 5 .. Max_Limbs - 1 =>
+                   Sweep5_Out (X) (I) = 0);
+            Lemma_Val_From_Reduced_Ub (Sweep5_Out (X), 0);
+            pragma Assert (Val (CM) <= Base_Pow (5) - 1);
+         elsif K = 1 then
+            pragma Assert (Limb_Val (K) = 1);
+            pragma Assert (Val (CM) <= 14);
+         else
+            pragma Assert (Limb_Val (K) = 2);
+            --  Val (CM) = Val (X) - 2*(Base_Pow(5)-5) <= 19 - Base_Pow (5) < 0.
+            pragma Assert (Val (CM) <= 19 - Base_Pow (5));
+         end if;
+         pragma Assert (Val (CM) < Base_Pow (5));
+      end;
+      Lemma_Val_Lt_No_Carry (CM);
+   end Lemma_Single_Carry_To_Zero;
+
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer) is
    begin
       null;
