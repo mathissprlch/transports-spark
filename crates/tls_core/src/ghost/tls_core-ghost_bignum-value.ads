@@ -452,6 +452,18 @@ is
        and then Val (X) < Base_Pow (5),
      Post => Sweep5_Out (X) (5) = 0;
 
+   --  Magnitude after one carry-fold: a value whose sweep carries out at most
+   --  once is below 2 * Base_Pow (5) (= low5 + carry * Base_Pow (5), low5 <
+   --  Base_Pow (5), carry <= 1). Bounds the accumulator between the Mac's two
+   --  Carry folds so the second fold lands it below Base_Pow (5).
+   procedure Lemma_Val_Carry_Bound (X : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (X, Prod_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then Sweep5_Out (X) (5) <= 1,
+     Post => Val (X) < 2 * Base_Pow (5);
+
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)
