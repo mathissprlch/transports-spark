@@ -2020,17 +2020,18 @@ is
    end Cond_Subtract;
 
    ---------------------------------------------------------------------
-   --  Mac
+   --  Finish_Tag: serialise (Acc + s) mod 2^128 as the 16-byte LE tag.
+   --  s = Key (17 .. 32) packed into 5x26-bit limbs (Get_S_Limb). The carry
+   --  loop is the (Acc + s) clean sweep; H_Lo / H_Hi are the canonical 128-bit
+   --  positional repack (store_felem). Extracted into its own context for the
+   --  bit-level repack proof; the functional Post (= SB.Store_Le_16) is a
+   --  follow-up brick.
    ---------------------------------------------------------------------
 
-   procedure Mac
-     (Key : Key_Array; Message : Octet_Array; Out_Tag : out Tag_Array)
+   procedure Finish_Tag (Acc : Limbs; Key : Key_Array; Out_Tag : out Tag_Array)
+   with Pre => (for all I in Limb_Index => Acc (I) < 2**26)
    is
-      R   : Limbs;
-      Acc : Limbs;
-
-      --  s as a 17-byte LE integer (upper byte is 0 because s is
-      --  128 bits) for the final addition.
+      --  s as a 17-byte LE integer (upper byte 0, s is 128 bits).
       function Get_S_Limb (Idx : Limb_Index) return U64
       with Pre => Idx <= 4;
 
@@ -2077,6 +2078,45 @@ is
          end case;
       end Get_S_Limb;
 
+      Carry_Acc : U64 := 0;
+      T         : array (Limb_Index) of U64 := [others => 0];
+      H_Lo      : U64;
+      H_Hi      : U64;
+   begin
+      Out_Tag := [others => 0];
+      for I in Limb_Index loop
+         T (I) := Acc (I) + Get_S_Limb (I) + Carry_Acc;
+         Carry_Acc := Shift_Right (T (I), 26);
+         T (I) := T (I) and Mask_26;
+      end loop;
+
+      --  Repack into two 64-bit halves (limb i at bit 26 * i).
+      H_Lo :=
+        T (0)
+        or Shift_Left (T (1), 26)
+        or Shift_Left (T (2) and 16#0000_0FFF#, 52);
+      H_Hi :=
+        Shift_Right (T (2), 12)
+        or Shift_Left (T (3), 14)
+        or Shift_Left (T (4) and 16#00FF_FFFF#, 40);
+
+      for I in 0 .. 7 loop
+         Out_Tag (1 + I) := Octet (Shift_Right (H_Lo, 8 * I) and 16#FF#);
+      end loop;
+      for I in 0 .. 7 loop
+         Out_Tag (9 + I) := Octet (Shift_Right (H_Hi, 8 * I) and 16#FF#);
+      end loop;
+   end Finish_Tag;
+
+   ---------------------------------------------------------------------
+   --  Mac
+   ---------------------------------------------------------------------
+
+   procedure Mac
+     (Key : Key_Array; Message : Octet_Array; Out_Tag : out Tag_Array)
+   is
+      R   : Limbs;
+      Acc : Limbs;
    begin
       Out_Tag := [others => 0];
       --  RFC 8439 §2.5.1 clamp.
@@ -2231,39 +2271,8 @@ is
          end;
       end;
 
-      --  Acc := Acc + s (mod 2^128). Then serialize as little-endian.
-      declare
-         Carry_Acc : U64 := 0;
-         T         : array (Limb_Index) of U64 := [others => 0];
-         H_Lo      : U64;
-         H_Hi      : U64;
-      begin
-         for I in Limb_Index loop
-            T (I) := Acc (I) + Get_S_Limb (I) + Carry_Acc;
-            Carry_Acc := Shift_Right (T (I), 26);
-            T (I) := T (I) and Mask_26;
-         end loop;
-
-         --  Repack into two 64-bit halves of the 130-bit number.
-         --  Limb i sits at bit position 26 * i.
-         --  H_Lo: bits 0..63   ← T(0)|26 + T(1)|26 + low 12 bits of T(2)
-         --  H_Hi: bits 64..127 ← high 14 bits of T(2) + T(3)|26 + low 24 bits of T(4)
-         H_Lo :=
-           T (0)
-           or Shift_Left (T (1), 26)
-           or Shift_Left (T (2) and 16#0000_0FFF#, 52);
-         H_Hi :=
-           Shift_Right (T (2), 12)
-           or Shift_Left (T (3), 14)
-           or Shift_Left (T (4) and 16#00FF_FFFF#, 40);
-
-         for I in 0 .. 7 loop
-            Out_Tag (1 + I) := Octet (Shift_Right (H_Lo, 8 * I) and 16#FF#);
-         end loop;
-         for I in 0 .. 7 loop
-            Out_Tag (9 + I) := Octet (Shift_Right (H_Hi, 8 * I) and 16#FF#);
-         end loop;
-      end;
+      --  Acc := Acc + s (mod 2^128), serialised little-endian as the tag.
+      Finish_Tag (Acc, Key, Out_Tag);
    end Mac;
 
 end Tls_Core.Poly1305;
