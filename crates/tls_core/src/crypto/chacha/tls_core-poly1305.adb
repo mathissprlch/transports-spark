@@ -2160,20 +2160,55 @@ is
       end;
       pragma Assert (GB.Sweep5_Out (To_Big_Nat (Acc)) (5) = 0);
 
-      --  RFC 8439 §2.5.1 final reduction ("freeze"). The carry-fold above
-      --  only guarantees Acc < 2^130, NOT Acc < p (= 2^130 - 5): the five
-      --  values in [2^130 - 5, 2^130) are a fixed point of Carry, so they
-      --  reach this point un-reduced. Conditionally subtract p to land on
-      --  the canonical representative < p (matching HACL* poly1305_finish).
-      --  Without this step (acc + s) mod 2^128 disagrees with the spec's
-      --  (acc mod p + s) mod 2^128 by p mod 2^128 = 2^128 - 5 whenever Acc
-      --  falls in that window. Constant-time: no data-dependent branch.
-      --  Clean carry: settle each limb < 2**26 (Acc < 2^130 ⇒ no carry out).
-      --  Establishes To_Big_Nat (Acc) = Sweep5_Out (To_Big_Nat (Acc'before)).
-      Clean_Carry (Acc);
+      --  RFC 8439 §2.5.1 final reduction ("freeze"). The carry-fold above only
+      --  guarantees Acc < 2^130, NOT Acc < p (= 2^130 - 5): the five values in
+      --  [2^130 - 5, 2^130) are a fixed point of Carry, so they reach here
+      --  un-reduced. Clean_Carry settles every limb (= Sweep5_Out) and
+      --  Cond_Subtract conditionally subtracts p (= Subtract_P5_Out), so the
+      --  pair maps Acc onto Reduce_Canonical of the pre-freeze accumulator --
+      --  the canonical < p representative, matching HACL* poly1305_finish.
+      --  Constant-time: no data-dependent branch.
+      declare
+         B0f : constant GB.Big_Nat := To_Big_Nat (Acc)
+         with Ghost;
+      begin
+         Lemma_To_Big_Nat_Mul_Cap (Acc);   --  B0f: Mul_Cap, zero from 5.
+         GB.Lemma_Bounds_Mono (B0f, GB.Mul_Cap, GB.Prod_Cap);
+         Lemma_Feval_Eq_Canon
+           (Acc);        --  Feval_BN (Acc) = Canonical (B0f).
+         pragma
+           Assert
+             (GB."="
+                (GB.Canonical (B0f),
+                 SB.Spec_Mac_Acc (Message, To_Big_Nat (R))));
 
-      --  Conditional subtract of p (constant-time): Acc -= p iff Acc >= p.
-      Cond_Subtract (Acc);
+         Clean_Carry (Acc);
+         pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Sweep5_Out (B0f)));
+
+         declare
+            A1 : constant GB.Big_Nat := To_Big_Nat (Acc)
+            with Ghost;
+         begin
+            pragma Assert (GB."=" (A1, GB.Sweep5_Out (B0f)));
+            Cond_Subtract (Acc);
+            --  Cond_Subtract Post: To_Big_Nat (Acc) = Subtract_P5_Out (A1);
+            --  A1 = Sweep5_Out (B0f) and Reduce_Canonical (B0f) =
+            --  Subtract_P5_Out (Sweep5_Out (B0f)), so this is Reduce_Canonical.
+            pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Subtract_P5_Out (A1)));
+            pragma
+              Assert
+                (GB."=" (GB.Subtract_P5_Out (A1), GB.Reduce_Canonical (B0f)));
+            pragma
+              Assert (GB."=" (To_Big_Nat (Acc), GB.Reduce_Canonical (B0f)));
+            GB.Lemma_Reduce_Is_Canonical (B0f);
+            pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Canonical (B0f)));
+            pragma
+              Assert
+                (GB."="
+                   (To_Big_Nat (Acc),
+                    SB.Spec_Mac_Acc (Message, To_Big_Nat (R))));
+         end;
+      end;
 
       --  Acc := Acc + s (mod 2^128). Then serialize as little-endian.
       declare
