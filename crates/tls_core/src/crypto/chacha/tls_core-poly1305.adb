@@ -337,6 +337,27 @@ is
       return Spec_Finish (Key, Acc_F);
    end Spec_Poly1305_Mac;
 
+   --  Big_Integer-free MAC tag: store_felem (Spec_Mac_Acc (Message, r) + s),
+   --  r = clamp (Key (1 .. 16)), s = Key (17 .. 32). Mirrors Spec_Poly1305_Mac
+   --  over Big_Nat. Body here so it can reach the Encode / Spec_BN children.
+   function Spec_Poly1305_Mac_BN
+     (Key : Key_Array; Message : Octet_Array) return Tag_Array
+   is
+      Clamped : constant Octet_Array (1 .. 16) :=
+        [for I in 1 .. 16 =>
+           (if I = 4 or else I = 8 or else I = 12 or else I = 16
+            then Key (I) and 16#0F#
+            elsif I = 5 or else I = 9 or else I = 13
+            then Key (I) and 16#FC#
+            else Key (I))];
+   begin
+      return
+        SB.Store_Le_16
+          (GB."+"
+             (SB.Spec_Mac_Acc (Message, Enc.R_BN (Clamped)),
+              Enc.R_BN (Octet_Array (Key (17 .. 32)))));
+   end Spec_Poly1305_Mac_BN;
+
    ---------------------------------------------------------------------
    --  Pack a 16-byte little-endian integer (with the implicit
    --  trailing 1 bit for full blocks) into the 5-limb form.

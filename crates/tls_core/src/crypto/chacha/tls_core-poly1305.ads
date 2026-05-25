@@ -334,10 +334,10 @@ is
      Pre  => All_Limbs_Fit_26 (L),
      Post =>
        Ghost_Bignum.In_Bounds (To_Big_Nat (L), Ghost_Bignum.In_Cap)
-       and then
-         (for all I in
-            Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
-            To_Big_Nat (L) (I) = 0);
+       and then (for all I in
+                   Ghost_Bignum.Limb_Index
+                     range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
+                   To_Big_Nat (L) (I) = 0);
 
    --  A limb vector with limbs < 2**27 embeds within Mul_Cap (the multiply
    --  input acceptance bound), so its embedding can feed Ghost_Bignum."*".
@@ -347,10 +347,10 @@ is
      Pre  => (for all I in Limb_Index => L (I) < 2**27),
      Post =>
        Ghost_Bignum.In_Bounds (To_Big_Nat (L), Ghost_Bignum.Mul_Cap)
-       and then
-         (for all I in
-            Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
-            To_Big_Nat (L) (I) = 0);
+       and then (for all I in
+                   Ghost_Bignum.Limb_Index
+                     range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
+                   To_Big_Nat (L) (I) = 0);
 
    --  Feval_BN: the field element (canonical residue mod p) of an impl limb
    --  vector, over Ghost_Bignum -- the Big_Nat replacement for Feval5. For an
@@ -360,21 +360,20 @@ is
    function Feval_BN (L : Limbs) return Ghost_Bignum.Big_Nat
    is (Ghost_Bignum.Reduce_Canonical
          (Ghost_Bignum.Normalize (To_Big_Nat (L)).Val))
-   with
-     Ghost,
-     Pre => (for all I in Limb_Index => L (I) < 2**27);
+   with Ghost, Pre => (for all I in Limb_Index => L (I) < 2**27);
 
    --  Feval_BN is canonical: limbs <= In_Cap, zero from 5, and < p.
    procedure Lemma_Feval_BN_Lt_P (L : Limbs)
    with
      Ghost,
      Pre  => (for all I in Limb_Index => L (I) < 2**27),
-     Post => Ghost_Bignum.In_Bounds (Feval_BN (L), Ghost_Bignum.In_Cap)
-             and then
-               (for all I in
-                  Ghost_Bignum.Limb_Index range 5 .. Ghost_Bignum.Max_Limbs - 1
-                => Feval_BN (L) (I) = 0)
-             and then not Ghost_Bignum.Sub_Cond (Feval_BN (L));
+     Post =>
+       Ghost_Bignum.In_Bounds (Feval_BN (L), Ghost_Bignum.In_Cap)
+       and then (for all I in
+                   Ghost_Bignum.Limb_Index
+                     range 5 .. Ghost_Bignum.Max_Limbs - 1 =>
+                   Feval_BN (L) (I) = 0)
+       and then not Ghost_Bignum.Sub_Cond (Feval_BN (L));
 
    --  Limbwise sum of two reduced limb vectors (the impl's pre-carry Add).
    function Sum_Limbs (A, B : Limbs) return Limbs
@@ -476,6 +475,15 @@ is
    --  by GNAT runtime ghost lemmas (`s-aridou` `Lemma_Add_Commutation`).
    --  Either is multi-day work. Current state: foundation lemmas
    --  proved (Limb_Split_26, Pow2_Add, Pow2_*_Eq_*x26, Pow2_130_Mod_Prime).
+
+   --  Big_Integer-free functional spec of the MAC tag (the §0e target that
+   --  will replace Spec_Poly1305_Mac in Mac's postcondition). Defined in the
+   --  package body over the Encode / Spec_BN children: HACL* poly1305_mac
+   --  finishes with store_felem (Spec_Mac_Acc (Message, r) + s), where
+   --  r = clamp (Key (1 .. 16)) and s = Key (17 .. 32).
+   function Spec_Poly1305_Mac_BN
+     (Key : Key_Array; Message : Octet_Array) return Tag_Array
+   with Ghost, Pre => Message'Last < Integer'Last - 16;
 
    ------------------------------------------------------------------
    --  Imperative API
