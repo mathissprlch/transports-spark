@@ -6,6 +6,7 @@
 --      Acc := 0;  for each block b:  Acc := (Acc + encode(b)) * r  mod p
 --  This is the §0e-clean target the imperative Mac is proven to compute.
 
+with Interfaces;
 with Tls_Core.Ghost_Bignum;
 with Tls_Core.Poly1305.Encode;
 
@@ -78,5 +79,56 @@ is
        GB.In_Bounds (Spec_Mac_Acc'Result, GB.In_Cap)
        and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
                    Spec_Mac_Acc'Result (I) = 0);
+
+   ------------------------------------------------------------------
+   --  store_felem (HACL* poly1305_finish): the low 128 bits of a 5x26-bit-limb
+   --  Big_Nat, little-endian. The clean sweep (Sweep5_Out) settles the limbs to
+   --  26 bits; the two 64-bit words are the canonical positional repack and
+   --  bits >= 128 are dropped (the mod 2^128 of the finish). Defined over
+   --  Sweep5_Out so the (Acc + s) input need not be pre-normalised.
+   ------------------------------------------------------------------
+
+   --  Low 64 bits (bits 0 .. 63): limb0 | limb1 << 26 | low12 (limb2) << 52.
+   function Fin_Lo (V : GB.Big_Nat) return U64
+   is (U64 (GB.Sweep5_Out (V) (0))
+       or Interfaces.Shift_Left (U64 (GB.Sweep5_Out (V) (1)), 26)
+       or Interfaces.Shift_Left
+            (U64 (GB.Sweep5_Out (V) (2)) and 16#0000_0FFF#, 52))
+   with
+     Pre =>
+       GB.In_Bounds (V, GB.Prod_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   V (I) = 0);
+
+   --  High 64 bits (bits 64 .. 127): hi14 (limb2) | limb3 << 14 |
+   --  low24 (limb4) << 40.  The top two bits of limb4 (value bits 128, 129)
+   --  are masked off -- this is the mod 2^128.
+   function Fin_Hi (V : GB.Big_Nat) return U64
+   is (Interfaces.Shift_Right (U64 (GB.Sweep5_Out (V) (2)), 12)
+       or Interfaces.Shift_Left (U64 (GB.Sweep5_Out (V) (3)), 14)
+       or Interfaces.Shift_Left
+            (U64 (GB.Sweep5_Out (V) (4)) and 16#00FF_FFFF#, 40))
+   with
+     Pre =>
+       GB.In_Bounds (V, GB.Prod_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   V (I) = 0);
+
+   --  The 16-byte little-endian tag bytes: bytes 1 .. 8 from Fin_Lo, bytes
+   --  9 .. 16 from Fin_Hi (byte j = (word >> 8*k) and 16#FF#).
+   function Store_Le_16 (V : GB.Big_Nat) return Tag_Array
+   is ([for J in Tag_Array'Range =>
+          (if J <= 8
+           then
+             Octet
+               (Interfaces.Shift_Right (Fin_Lo (V), 8 * (J - 1)) and 16#FF#)
+           else
+             Octet
+               (Interfaces.Shift_Right (Fin_Hi (V), 8 * (J - 9)) and 16#FF#))])
+   with
+     Pre =>
+       GB.In_Bounds (V, GB.Prod_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   V (I) = 0);
 
 end Tls_Core.Poly1305.Spec_BN;
