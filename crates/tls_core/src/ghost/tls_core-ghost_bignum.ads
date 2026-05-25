@@ -2307,6 +2307,27 @@ is
        and then Sweep5_Out (B) (5) = 0,
      Post => Reduce_Canonical (B) = Canonical (B);
 
+   --  Two Carry folds bring an accumulator into [0, 2**130) (sweep top carry
+   --  0). B is the pre-fold accumulator (Mul_Cap limbs); C = Carry_Model (B) is
+   --  the impl's first-Carry output (structural, from Carry's Post). Then the
+   --  SECOND fold Carry_Model (C) has sweep top carry 0 -- i.e. < 2**130 -- so
+   --  the Mac's freeze step sees a value the conditional-subtract-p can finish
+   --  exactly. The magnitude argument is confined to the ghost Value child
+   --  (Carry_Model_Val_Tight + Single_Carry_To_Zero); this wrapper's signature
+   --  is Big_Integer-free so Poly1305 never imports Ada.Numerics.Big_Numbers.
+   procedure Lemma_Two_Carry_Reduced (B, C : Big_Nat)
+   with
+     Ghost,
+     Pre  =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then Sweep5_Out (B) (5) <= 2
+       and then C = Carry_Model (B)
+       and then In_Bounds (C, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => C (I) = 0)
+       and then Sweep5_Out (C) (5) <= 2,
+     Post => Sweep5_Out (Carry_Model (C)) (5) = 0;
+
    ------------------------------------------------------------------
    --  Per-op Feval bridges. These turn the impl Add / Multiply Posts (which
    --  give To_Big_Nat (op result) = Carry_Model (...) definitionally) into

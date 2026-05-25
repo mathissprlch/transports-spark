@@ -1,3 +1,5 @@
+with Tls_Core.Ghost_Bignum.Value;
+
 package body Tls_Core.Ghost_Bignum
   with SPARK_Mode
 is
@@ -1858,6 +1860,13 @@ is
          pragma Assert (RC = CN);
       end;
    end Lemma_Reduce_Is_Canonical;
+
+   procedure Lemma_Two_Carry_Reduced (B, C : Big_Nat) is
+   begin
+      --  All the Val-magnitude reasoning is in the ghost Value child; this
+      --  parent entry is Big_Integer-free so Poly1305 never imports Big_Numbers.
+      Value.Lemma_Carry_Twice_No_Carry (B, C);
+   end Lemma_Two_Carry_Reduced;
 
    procedure Lemma_Field_Add_Bridge (Ab, Nb, Xr : Big_Nat) is
       Sum : constant Big_Nat := Ab + Nb;

@@ -516,6 +516,24 @@ is
        and then Val (X) <= Base_Pow (5) + 9,
      Post => Val (Carry_Model (X)) < Base_Pow (5);
 
+   --  Big_Integer-free entry for the Mac's two-Carry bound: given B (the
+   --  pre-fold accumulator) and C = Carry_Model (B) (the impl's first-Carry
+   --  output), the SECOND fold Carry_Model (C) has sweep top carry 0. The
+   --  Val-magnitude argument (Carry_Model_Val_Tight bounds Val (C) by
+   --  Base_Pow (5) + 9, then Single_Carry_To_Zero) lives here so Big_Integer
+   --  stays in this child; the parent's Lemma_Two_Carry_Reduced just delegates.
+   procedure Lemma_Carry_Twice_No_Carry (B, C : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (B, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => B (I) = 0)
+       and then Sweep5_Out (B) (5) <= 2
+       and then C = Carry_Model (B)
+       and then In_Bounds (C, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => C (I) = 0)
+       and then Sweep5_Out (C) (5) <= 2,
+     Post => Sweep5_Out (Carry_Model (C)) (5) = 0;
+
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)

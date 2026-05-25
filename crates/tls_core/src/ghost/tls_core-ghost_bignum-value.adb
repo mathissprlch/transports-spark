@@ -785,6 +785,22 @@ is
       end;
    end Lemma_Carry_Model_Val_Lt;
 
+   procedure Lemma_Carry_Twice_No_Carry (B, C : Big_Nat) is
+   begin
+      --  0 <= Sweep5_Out (B)(5): widen to Carry_In_Cap and take the tight sweep
+      --  (Lemma_Limb_Val_Mono needs the lower bound).
+      Lemma_Bounds_Mono (B, Mul_Cap, Carry_In_Cap);
+      Lemma_Sweep5_Tight_Carry (B);
+      --  Val (Carry_Model (B)) <= Base_Pow (5) - 1 + 5 * Limb_Val (k0), k0 <= 2,
+      --  so <= Base_Pow (5) + 9. C = Carry_Model (B) carries the bound to Val (C).
+      Lemma_Carry_Model_Val_Tight (B);
+      Lemma_Limb_Val_Mono (Sweep5_Out (B) (5), 2);
+      pragma Assert (Limb_Val (2) = 2);
+      pragma Assert (Val (C) <= Base_Pow (5) + 9);
+      --  Second fold lands strictly below 2**130: its sweep has no carry out.
+      Lemma_Single_Carry_To_Zero (C);
+   end Lemma_Carry_Twice_No_Carry;
+
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer) is
    begin
       null;
