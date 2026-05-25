@@ -722,6 +722,12 @@ is
    end Lemma_Carry_Model_Val_Tight;
 
    procedure Lemma_Single_Carry_To_Zero (X : Big_Nat) is
+   begin
+      Lemma_Carry_Model_Val_Lt (X);
+      Lemma_Val_Lt_No_Carry (Carry_Model (X));
+   end Lemma_Single_Carry_To_Zero;
+
+   procedure Lemma_Carry_Model_Val_Lt (X : Big_Nat) is
       CM : constant Big_Nat := Carry_Model (X);
       K  : LLI;
       C  : Carry_Array;
@@ -777,8 +783,7 @@ is
          end if;
          pragma Assert (Val (CM) < Base_Pow (5));
       end;
-      Lemma_Val_Lt_No_Carry (CM);
-   end Lemma_Single_Carry_To_Zero;
+   end Lemma_Carry_Model_Val_Lt;
 
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer) is
    begin

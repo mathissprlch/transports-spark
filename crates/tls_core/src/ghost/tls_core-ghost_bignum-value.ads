@@ -502,6 +502,20 @@ is
        and then Val (X) <= Base_Pow (5) + 9,
      Post => Sweep5_Out (Carry_Model (X)) (5) = 0;
 
+   --  The value-level core of Lemma_Single_Carry_To_Zero: the second Carry fold
+   --  of a value within Base_Pow (5) + 9 lands strictly below Base_Pow (5).
+   --  Stated on Val (not Sweep5_Out) so it transfers across the Carry routine's
+   --  value-equality postcondition -- the Mac needs the bound on the *real*
+   --  accumulator limbs, then recovers Sweep5_Out (5) = 0 via Lemma_Val_Lt_No_Carry.
+   procedure Lemma_Carry_Model_Val_Lt (X : Big_Nat)
+   with
+     Pre  =>
+       In_Bounds (X, Mul_Cap)
+       and then (for all I in Limb_Index range 5 .. Max_Limbs - 1 => X (I) = 0)
+       and then Sweep5_Out (X) (5) <= 2
+       and then Val (X) <= Base_Pow (5) + 9,
+     Post => Val (Carry_Model (X)) < Base_Pow (5);
+
    --  Big_Integer multiply-monotonicity (isolated so the SMT solver sees the
    --  nonlinear fact in a tiny context).
    procedure Lemma_BI_Mul_Mono (C, A, B : BI.Big_Integer)
