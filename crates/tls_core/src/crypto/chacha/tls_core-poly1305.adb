@@ -1855,39 +1855,39 @@ is
       declare
          FB : constant GB.Big_Nat := SB.Spec_Mac_Acc (Message, To_Big_Nat (R))
          with Ghost;
+         --  A0 = the pre-fold accumulator; kept in scope across both Carry
+         --  folds so the two-fold < 2^130 bound (Lemma_Two_Carry_Reduced) can
+         --  see A0 alongside the first fold's output A1.
+         A0 : constant GB.Big_Nat := To_Big_Nat (Acc)
+         with Ghost;
       begin
          pragma Assert (GB."=" (Feval_BN (Acc), FB));   --  Fold_Blocks Post.
 
          --  Carry 1: Feval_BN (Acc) preserved.
-         declare
-            A0 : constant GB.Big_Nat := To_Big_Nat (Acc)
-            with Ghost;
-         begin
-            Lemma_To_Big_Nat_Mul_Cap (Acc);     --  A0: Mul_Cap, zero from 5.
-            Lemma_Feval_Eq_Canon (Acc);
-            pragma Assert (GB."=" (GB.Canonical (A0), FB));
-            GB.Lemma_Sweep5_Acc_Carry (A0);     --  Sweep5_Out (A0)(5) <= 2.
-            GB.Lemma_Carry_Canonical
-              (A0);      --  Canon (CM (A0)) = Canon (A0).
-            Carry (Acc);
-            Lemma_To_Big_Nat_Mul_Cap (Acc);
-            --  To_Big_Nat (Acc) == Carry_Model (A0); canonical-route it.
-            pragma Assert (GB.In_Bounds (GB.Carry_Model (A0), GB.Mul_Cap));
-            pragma
-              Assert
-                (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
-                   GB.Carry_Model (A0) (I) = 0);
-            Lemma_Canon_Cong (To_Big_Nat (Acc), GB.Carry_Model (A0));
-            Lemma_Feval_Eq_Canon (Acc);
-            pragma Assert (GB."=" (GB.Canonical (GB.Carry_Model (A0)), FB));
-            pragma Assert (GB."=" (Feval_BN (Acc), FB));
-         end;
+         Lemma_To_Big_Nat_Mul_Cap (Acc);     --  A0: Mul_Cap, zero from 5.
+         Lemma_Feval_Eq_Canon (Acc);
+         pragma Assert (GB."=" (GB.Canonical (A0), FB));
+         GB.Lemma_Sweep5_Acc_Carry (A0);     --  Sweep5_Out (A0)(5) <= 2.
+         GB.Lemma_Carry_Canonical (A0);      --  Canon (CM (A0)) = Canon (A0).
+         Carry (Acc);
+         Lemma_To_Big_Nat_Mul_Cap (Acc);
+         --  To_Big_Nat (Acc) == Carry_Model (A0); canonical-route it.
+         pragma Assert (GB.In_Bounds (GB.Carry_Model (A0), GB.Mul_Cap));
+         pragma
+           Assert
+             (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                GB.Carry_Model (A0) (I) = 0);
+         Lemma_Canon_Cong (To_Big_Nat (Acc), GB.Carry_Model (A0));
+         Lemma_Feval_Eq_Canon (Acc);
+         pragma Assert (GB."=" (GB.Canonical (GB.Carry_Model (A0)), FB));
+         pragma Assert (GB."=" (Feval_BN (Acc), FB));
 
-         --  Carry 2: same recipe.
+         --  Carry 2: same recipe; A1 = Carry_Model (A0) (structural, Carry Post).
          declare
             A1 : constant GB.Big_Nat := To_Big_Nat (Acc)
             with Ghost;
          begin
+            pragma Assert (GB."=" (A1, GB.Carry_Model (A0)));
             Lemma_To_Big_Nat_Mul_Cap (Acc);
             Lemma_Feval_Eq_Canon (Acc);
             pragma Assert (GB."=" (GB.Canonical (A1), FB));
@@ -1904,13 +1904,23 @@ is
             Lemma_Feval_Eq_Canon (Acc);
             pragma Assert (GB."=" (GB.Canonical (GB.Carry_Model (A1)), FB));
             pragma Assert (GB."=" (Feval_BN (Acc), FB));
+
+            --  Partial-reduction bound: the two folds bring Acc into [0, 2^130)
+            --  (sweep top carry 0), so the freeze's clean carry loses nothing
+            --  and the conditional subtract-p is exact. To_Big_Nat (Acc) =
+            --  Carry_Model (A1) (Carry 2 Post) carries the bound onto Acc.
+            GB.Lemma_Two_Carry_Reduced (A0, A1);
+            pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Carry_Model (A1)));
+            pragma Assert (GB.Sweep5_Out (To_Big_Nat (Acc)) (5) = 0);
          end;
 
          pragma
            Assert
              (GB."="
                 (Feval_BN (Acc), SB.Spec_Mac_Acc (Message, To_Big_Nat (R))));
+         pragma Assert (GB.Sweep5_Out (To_Big_Nat (Acc)) (5) = 0);
       end;
+      pragma Assert (GB.Sweep5_Out (To_Big_Nat (Acc)) (5) = 0);
 
       --  RFC 8439 §2.5.1 final reduction ("freeze"). The carry-fold above
       --  only guarantees Acc < 2^130, NOT Acc < p (= 2^130 - 5): the five
