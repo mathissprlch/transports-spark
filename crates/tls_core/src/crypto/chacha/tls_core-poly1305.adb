@@ -1760,6 +1760,25 @@ is
       pragma Assert (GB."=" (Feval_BN (Acc), SB.Spec_Mac_Acc (Message, RB)));
    end Fold_Blocks;
 
+   --  To_Big_Nat respects limbwise equality (function congruence over the
+   --  embedding aggregate, which the SMT solver does not apply on its own).
+   procedure Lemma_To_Big_Nat_Cong (A, B : Limbs)
+   with
+     Ghost,
+     Pre  =>
+       Limbs_Embeddable (A)
+       and then Limbs_Embeddable (B)
+       and then (for all I in Limb_Index => A (I) = B (I)),
+     Post => GB."=" (To_Big_Nat (A), To_Big_Nat (B));
+
+   procedure Lemma_To_Big_Nat_Cong (A, B : Limbs) is
+   begin
+      pragma
+        Assert
+          (for all I in GB.Limb_Index =>
+             To_Big_Nat (A) (I) = To_Big_Nat (B) (I));
+   end Lemma_To_Big_Nat_Cong;
+
    ---------------------------------------------------------------------
    --  Clean_Carry: the freeze's first pass -- a single sweep with no fold.
    --  Given Acc < 2^130 (Sweep5_Out top carry 0) the sweep settles every limb
@@ -1857,40 +1876,126 @@ is
    --  Cond_Subtract: the freeze's second pass -- conditionally subtract p.
    --  Computes g = Acc + 5; the carry out of limb 4 is 1 iff Acc >= p, which
    --  drives a branchless select of g (= Acc - p) over Acc. Extracted into its
-   --  own (small) context so the bitvector VCs stay snappy. The functional
-   --  correspondence to Subtract_P5_Out is a later brick; for now it carries
-   --  only the limb bound the repack needs.
+   --  own (small) context so the bitvector VCs stay snappy. The g add is
+   --  unrolled so the carry chain (each carry 0 or 1) is explicit: C(i+1) = 1
+   --  iff limb i was maxed and the carry came in -- exactly the Sub_Cond ladder
+   --  -- which makes the result equal Subtract_P5_Out of the input.
    ---------------------------------------------------------------------
 
    procedure Cond_Subtract (Acc : in out Limbs)
    with
      Pre  => (for all I in Limb_Index => Acc (I) < 2**26),
-     Post => (for all I in Limb_Index => Acc (I) < 2**26)
+     Post =>
+       GB."=" (To_Big_Nat (Acc), GB.Subtract_P5_Out (To_Big_Nat (Acc'Old)))
+       and then (for all I in Limb_Index => Acc (I) < 2**26)
    is
-      G    : Limbs := [others => 0];
-      C    : U64;
-      Tmp  : U64;
-      Mask : U64;
+      Acc_In             : constant Limbs := Acc
+      with Ghost;
+      B0                 : constant GB.Big_Nat := To_Big_Nat (Acc_In)
+      with Ghost;
+      G                  : Limbs := [others => 0];
+      C1, C2, C3, C4, C5 : U64;
+      Tmp                : U64;
+      Mask               : U64;
    begin
-      --  g = Acc + 5, carry-propagated. The carry out of limb 4 lands at weight
-      --  2^130 and is 1 iff Acc + 5 >= 2^130, i.e. iff Acc >= p.
-      C := 5;
-      for I in Limb_Index loop
-         Tmp := Acc (I) + C;
-         Lemma_Shift_Mask_26 (Tmp);
-         G (I) := Tmp and Mask_26;
-         C := Shift_Right (Tmp, 26);
-         pragma Loop_Invariant (C <= 1);
-         pragma Loop_Invariant (for all J in Limb_Index => G (J) < 2**26);
-      end loop;
+      Lemma_To_Big_Nat_Reduced
+        (Acc);   --  B0: limbs 0..4 <= In_Cap, zero >= 5.
+      pragma Assert (for all I in Limb_Index => B0 (I) = GB.LLI (Acc_In (I)));
 
-      --  Mask = all-ones iff Acc >= p (select g = Acc - p), else 0 (keep Acc).
-      Mask := U64'(0) - (C and 1);
-      pragma Assert (Mask = 0 or else Mask = U64'Last);
-      for I in Limb_Index loop
-         Acc (I) := (Acc (I) and not Mask) or (G (I) and Mask);
-         pragma Loop_Invariant (for all J in Limb_Index => Acc (J) < 2**26);
-      end loop;
+      --  g = B0 + 5, carry-propagated (unrolled).
+      Tmp := Acc (0) + 5;
+      Lemma_Shift_Mask_26 (Tmp);
+      G (0) := Tmp and Mask_26;
+      C1 := Shift_Right (Tmp, 26);
+      pragma Assert (C1 <= 1);
+      pragma Assert ((C1 = 1) = (Acc (0) >= 2**26 - 5));
+      pragma Assert (if C1 = 1 then GB.LLI (G (0)) = B0 (0) - (GB.In_Cap - 4));
+
+      Tmp := Acc (1) + C1;
+      Lemma_Shift_Mask_26 (Tmp);
+      G (1) := Tmp and Mask_26;
+      C2 := Shift_Right (Tmp, 26);
+      pragma Assert (C2 <= 1);
+      pragma Assert ((C2 = 1) = (C1 = 1 and Acc (1) = 2**26 - 1));
+      pragma Assert (if C1 = 1 and Acc (1) = 2**26 - 1 then G (1) = 0);
+
+      Tmp := Acc (2) + C2;
+      Lemma_Shift_Mask_26 (Tmp);
+      G (2) := Tmp and Mask_26;
+      C3 := Shift_Right (Tmp, 26);
+      pragma Assert (C3 <= 1);
+      pragma Assert ((C3 = 1) = (C2 = 1 and Acc (2) = 2**26 - 1));
+      pragma Assert (if C2 = 1 and Acc (2) = 2**26 - 1 then G (2) = 0);
+
+      Tmp := Acc (3) + C3;
+      Lemma_Shift_Mask_26 (Tmp);
+      G (3) := Tmp and Mask_26;
+      C4 := Shift_Right (Tmp, 26);
+      pragma Assert (C4 <= 1);
+      pragma Assert ((C4 = 1) = (C3 = 1 and Acc (3) = 2**26 - 1));
+      pragma Assert (if C3 = 1 and Acc (3) = 2**26 - 1 then G (3) = 0);
+
+      Tmp := Acc (4) + C4;
+      Lemma_Shift_Mask_26 (Tmp);
+      G (4) := Tmp and Mask_26;
+      C5 := Shift_Right (Tmp, 26);
+      pragma Assert (C5 <= 1);
+      pragma Assert ((C5 = 1) = (C4 = 1 and Acc (4) = 2**26 - 1));
+      pragma Assert (if C4 = 1 and Acc (4) = 2**26 - 1 then G (4) = 0);
+
+      --  C5 = 1 iff Acc >= p, i.e. iff Sub_Cond (B0). When it holds the g limbs
+      --  are exactly Subtract_P5_Out (B0): [B0(0) - (In_Cap - 4), 0, 0, 0, 0].
+      pragma Assert ((C5 = 1) = GB.Sub_Cond (B0));
+      pragma
+        Assert
+          (if C5 = 1
+             then
+               GB.LLI (G (0)) = B0 (0) - (GB.In_Cap - 4)
+               and then G (1) = 0
+               and then G (2) = 0
+               and then G (3) = 0
+               and then G (4) = 0);
+
+      --  Branchless select: Mask = all-ones iff C5 = 1 (Acc >= p).
+      Mask := U64'(0) - (C5 and 1);
+      pragma Assert (if C5 = 1 then Mask = U64'Last else Mask = 0);
+      Acc (0) := (Acc (0) and not Mask) or (G (0) and Mask);
+      Acc (1) := (Acc (1) and not Mask) or (G (1) and Mask);
+      Acc (2) := (Acc (2) and not Mask) or (G (2) and Mask);
+      Acc (3) := (Acc (3) and not Mask) or (G (3) and Mask);
+      Acc (4) := (Acc (4) and not Mask) or (G (4) and Mask);
+
+      --  Mask is 0 (keep input) or all-ones (take g); resolve the select.
+      pragma
+        Assert
+          (if Mask = 0 then (for all I in Limb_Index => Acc (I) = Acc_In (I)));
+      pragma
+        Assert
+          (if Mask = U64'Last
+             then (for all I in Limb_Index => Acc (I) = G (I)));
+      pragma Assert (for all I in Limb_Index => Acc (I) < 2**26);
+
+      --  Resolve the select per limb against Subtract_P5_Out (B0). With Sub_Cond
+      --  concrete in each branch the conditional reduce evaluates to a literal.
+      if C5 = 1 then
+         pragma Assert (GB.Sub_Cond (B0));
+         pragma Assert (GB.LLI (Acc (0)) = B0 (0) - (GB.In_Cap - 4));
+         pragma Assert (GB.LLI (Acc (1)) = 0);
+         pragma Assert (GB.LLI (Acc (2)) = 0);
+         pragma Assert (GB.LLI (Acc (3)) = 0);
+         pragma Assert (GB.LLI (Acc (4)) = 0);
+         pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Subtract_P5_Out (B0)));
+      else
+         --  Acc < p: Mask = 0, the select is the identity, so Acc is unchanged
+         --  and Subtract_P5_Out (B0) = B0.
+         pragma Assert (not GB.Sub_Cond (B0));
+         pragma Assert (GB."=" (GB.Subtract_P5_Out (B0), B0));
+         pragma Assert (Mask = 0);
+         pragma Assert (for all I in Limb_Index => Acc (I) = Acc_In (I));
+         Lemma_To_Big_Nat_Cong (Acc, Acc_In);
+         pragma Assert (GB."=" (To_Big_Nat (Acc), B0));
+         pragma Assert (GB."=" (To_Big_Nat (Acc), GB.Subtract_P5_Out (B0)));
+      end if;
    end Cond_Subtract;
 
    ---------------------------------------------------------------------
