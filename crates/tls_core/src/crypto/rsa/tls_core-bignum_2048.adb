@@ -2,9 +2,6 @@ pragma Warnings (Off, "redundant with clause in body");
 with Interfaces;
 pragma Warnings (On, "redundant with clause in body");
 
-with Tls_Core.Ghost_Bignum;
-with Tls_Core.Ghost_Bignum.Value;
-
 package body Tls_Core.Bignum_2048
   with SPARK_Mode
 is
@@ -24,11 +21,10 @@ is
    --  Big_Integer code that gnatprove can step through.
    ---------------------------------------------------------------------
 
-   package Octet_Bigint is new Big.Signed_Conversions (Int => Integer);
-
    function Byte_Big (X : Octet) return Big.Big_Integer is
    begin
-      return Octet_Bigint.To_Big_Integer (Integer (X));
+      GBV.Lemma_Limb_Val_Nonneg (GB.LLI (X));   --  X >= 0 => value >= 0.
+      return GBV.Limb_Val (GB.LLI (X));
    end Byte_Big;
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer is

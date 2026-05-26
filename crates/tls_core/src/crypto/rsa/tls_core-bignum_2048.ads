@@ -41,6 +41,9 @@
 with Ada.Numerics.Big_Numbers.Big_Integers;
 with Interfaces;
 
+with Tls_Core.Ghost_Bignum;
+with Tls_Core.Ghost_Bignum.Value;
+
 package Tls_Core.Bignum_2048
   with SPARK_Mode
 is
@@ -78,14 +81,17 @@ is
 
    use type Big.Big_Integer;
 
-   --  Octet → Big_Integer, used to assemble Bn_V byte-by-byte.
+   --  Octet → Big_Integer, used to assemble Bn_V byte-by-byte. §0e-clean:
+   --  built on Ghost_Bignum.Value.Limb_Val (unit-recursion ingress), NOT the
+   --  SPARK_Mode-Off To_Big_Integer, so Bn_V can be bridged to the limb-array
+   --  valuation LV64 (see the body's byte↔limb bridge).
    function Byte_Big (X : Octet) return Big.Big_Integer
    with
      Ghost,
      Global => null,
      Post   =>
-       Big.In_Range
-         (Byte_Big'Result, Big.To_Big_Integer (0), Big.To_Big_Integer (255));
+       Byte_Big'Result = Ghost_Bignum.Value.Limb_Val (Ghost_Bignum.LLI (X))
+       and then Byte_Big'Result >= Big.To_Big_Integer (0);
 
    --  2 ** (8 * N). Bounded so it stays within reasonable proof depth.
    function Pow_2_8 (N : Natural) return Big.Big_Integer
