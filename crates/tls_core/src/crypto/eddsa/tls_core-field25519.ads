@@ -36,6 +36,9 @@ with Interfaces;
 
 with Ada.Numerics.Big_Numbers.Big_Integers;
 
+with Tls_Core.Ghost_Bignum;
+with Tls_Core.Ghost_Bignum.Value;
+
 package Tls_Core.Field25519
   with SPARK_Mode
 is
@@ -65,11 +68,37 @@ is
    --  Expressed as a recursive prefix-sum so gnatprove can unfold
    --  it at proof time and reason about per-limb decomposition
    --  without a loop invariant.
+   --
+   --  §0e-clean ingress: Limb_Big / Pow_2_16 are built on
+   --  Ghost_Bignum.Value.Limb_Val (the unit-recursion limb→Big_Integer
+   --  ingress whose +/-/* algebra is provable), NOT the SPARK_Mode-Off
+   --  To_Big_Integer. Big_Integer remains the codomain (the only unbounded
+   --  scalar SPARK has) but the limb-array bridge never bounces off the
+   --  opaque ingress, so the linearity Posts below are dischargeable.
    function Limb_Big (X : Interfaces.Integer_64) return Big.Big_Integer
-   with Ghost, Global => null;
+   with
+     Ghost,
+     Global => null,
+     Post   =>
+       Limb_Big'Result = Ghost_Bignum.Value.Limb_Val (Ghost_Bignum.LLI (X));
 
+   --  2 ** (16 * N) = (2^16)^N, built from Limb_Val (65536) by recursion
+   --  (NOT To_Big_Integer (2) ** ..), with the one-step factor exposed in
+   --  the Post so To_Big_Up_To can unfold it.
    function Pow_2_16 (N : Natural) return Big.Big_Integer
-   with Ghost, Global => null, Pre => N <= 16;
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N <= 16,
+     Post               =>
+       Pow_2_16'Result > Big.To_Big_Integer (0)
+       and then (if N = 0
+                 then Pow_2_16'Result = Ghost_Bignum.Value.Limb_Val (1))
+       and then (if N >= 1
+                 then
+                   Pow_2_16'Result
+                   = Pow_2_16 (N - 1) * Ghost_Bignum.Value.Limb_Val (65536)),
+     Subprogram_Variant => (Decreases => N);
 
    function To_Big_Up_To (F : Felt; N : Natural) return Big.Big_Integer
    is (if N = 0

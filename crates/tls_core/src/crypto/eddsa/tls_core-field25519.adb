@@ -6,18 +6,32 @@ is
 
    use Interfaces;
 
+   package GB renames Tls_Core.Ghost_Bignum;
+   package GBV renames Tls_Core.Ghost_Bignum.Value;
+
    ---------------------------------------------------------------------
    --  Ghost spec layer — bodies for Spec functions declared in the
-   --  spec file. Computable, no stub returns.
+   --  spec file. Computable, no stub returns. §0e-clean: the limb /
+   --  power ingress is Ghost_Bignum.Value.Limb_Val (unit recursion),
+   --  never the SPARK_Mode-Off To_Big_Integer, so the limb-array
+   --  valuation never bounces off the opaque ingress.
    ---------------------------------------------------------------------
 
-   package Int64_Big is new Big.Signed_Conversions (Int => Integer_64);
-
    function Limb_Big (X : Integer_64) return Big.Big_Integer
-   is (Int64_Big.To_Big_Integer (X));
+   is (GBV.Limb_Val (GB.LLI (X)));
 
-   function Pow_2_16 (N : Natural) return Big.Big_Integer
-   is (Big.To_Big_Integer (2)**(16 * N));
+   function Pow_2_16 (N : Natural) return Big.Big_Integer is
+   begin
+      if N = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);             --  Limb_Val (1) = 1 > 0.
+         return GBV.Limb_Val (1);
+      else
+         GBV.Lemma_Limb_Val_Succ (0);             --  Limb_Val (1) = 1.
+         GBV.Lemma_Limb_Val_Mono
+           (1, 65536);      --  Limb_Val (65536) >= 1 > 0.
+         return Pow_2_16 (N - 1) * GBV.Limb_Val (65536);
+      end if;
+   end Pow_2_16;
 
    function Prime_P_Spec return Big.Big_Integer
    is (Big.To_Big_Integer (2)**255 - Big.To_Big_Integer (19));
