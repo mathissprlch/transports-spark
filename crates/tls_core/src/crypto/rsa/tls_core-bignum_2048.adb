@@ -1012,6 +1012,32 @@ is
       null;
    end Lemma_LV64_Unfold;
 
+   --  Definitional one-step unfold of LV66 (same role as Lemma_LV64_Unfold).
+   procedure Lemma_LV66_Unfold (T : Limbs66; K : Limb66_Plus_Index)
+   with
+     Ghost,
+     Pre  => K >= 1,
+     Post =>
+       LV66 (T, K)
+       = LV66 (T, K - 1) + GBV.Limb_Val (GB.LLI (T (K - 1))) * P32 (K - 1);
+
+   procedure Lemma_LV66_Unfold (T : Limbs66; K : Limb66_Plus_Index) is
+   begin
+      null;
+   end Lemma_LV66_Unfold;
+
+   --  A U64 value that fits in 32 bits has the same §0e image as its U32 cast.
+   procedure Lemma_LLI_Fits32 (X : Unsigned_64)
+   with
+     Ghost,
+     Pre  => X <= 16#FFFF_FFFF#,
+     Post => GB.LLI (Unsigned_32 (X)) = GB.LLI (X);
+
+   procedure Lemma_LLI_Fits32 (X : Unsigned_64) is
+   begin
+      null;
+   end Lemma_LLI_Fits32;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -1117,10 +1143,134 @@ is
                       = LV66 (T_Entry, J + 1) + LV64 (A, J + 1) * B_Val);
             end;
          end loop;
-         Acc := Unsigned_64 (T (N_Limbs)) + Carry;
-         T (N_Limbs) := Unsigned_32 (Acc and 16#FFFFFFFF#);
-         T (N_Limbs + 1) :=
-           T (N_Limbs + 1) + Unsigned_32 (Shift_Right (Acc, 32));
+
+         --  Carry-finalize: fold the final mul-add carry into limbs 64/65,
+         --  extending the convolution to the whole accumulator:
+         --  LV66 (T, N_Limbs+2) = LV66 (T_Entry, N_Limbs+2) + LV64 (A) * B (I).
+         declare
+            T_Pre : constant Limbs66 := T
+            with Ghost;
+            B_Val : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (B (I)))
+            with Ghost;
+         begin
+            --  Inner-loop exit facts (J = N_Limbs).
+            pragma Assert (T (N_Limbs) = T_Entry (N_Limbs));
+            pragma Assert (T (N_Limbs + 1) = T_Entry (N_Limbs + 1));
+            pragma Assert (T (N_Limbs + 1) = 0);   --  outer invariant.
+            pragma
+              Assert
+                (LV66 (T, N_Limbs)
+                   + GBV.Limb_Val (GB.LLI (Carry)) * P32 (N_Limbs)
+                   = LV66 (T_Entry, N_Limbs) + LV64 (A, N_Limbs) * B_Val);
+
+            Acc := Unsigned_64 (T (N_Limbs)) + Carry;
+            --  2-term carry split (Lemma_MulAdd_Step with Aj = Bi = 0).
+            Lemma_MulAdd_Step (T (N_Limbs), 0, 0, Carry, Acc);
+            T (N_Limbs) := Unsigned_32 (Acc and 16#FFFFFFFF#);
+            T (N_Limbs + 1) :=
+              T (N_Limbs + 1) + Unsigned_32 (Shift_Right (Acc, 32));
+
+            --  Low limbs 0 .. N_Limbs-1 untouched by the finalize.
+            Lemma_LV66_Frame (T, T_Pre, N_Limbs);
+            pragma Assert (T_Entry (N_Limbs + 1) = 0);   --  outer invariant.
+            --  U64-level: the stored words equal Acc's low / high halves
+            --  (T (N_Limbs+1) started at 0, so the add is 0 + carry-out).
+            pragma
+              Assert (Unsigned_64 (T (N_Limbs)) = (Acc and 16#FFFF_FFFF#));
+            pragma
+              Assert (Unsigned_64 (T (N_Limbs + 1)) = Shift_Right (Acc, 32));
+            --  Hence the Limb_Val images match the per-step split exactly.
+            pragma
+              Assert
+                (GBV.Limb_Val (GB.LLI (T (N_Limbs)))
+                   = GBV.Limb_Val
+                       (GB.LLI (Unsigned_32 (Acc and 16#FFFF_FFFF#))));
+            pragma
+              Assert (T (N_Limbs + 1) = Unsigned_32 (Shift_Right (Acc, 32)));
+            Lemma_LLI_Fits32 (Shift_Right (Acc, 32));
+            pragma
+              Assert
+                (GBV.Limb_Val (GB.LLI (T (N_Limbs + 1)))
+                   = GBV.Limb_Val (GB.LLI (Shift_Right (Acc, 32))));
+            --  LV66 unfolds at N_Limbs+1, N_Limbs+2 (both T and T_Entry).
+            Lemma_LV66_Unfold (T, N_Limbs + 1);
+            Lemma_LV66_Unfold (T, N_Limbs + 2);
+            Lemma_LV66_Unfold (T_Entry, N_Limbs + 1);
+            Lemma_LV66_Unfold (T_Entry, N_Limbs + 2);
+            pragma Assert (P32 (N_Limbs + 1) = P32 (N_Limbs) * Base32);
+            --  Ring step (reuse Lemma_Conv_Step with the A-coefficient = 0).
+            Lemma_Conv_Step
+              (Lvtpre => LV66 (T_Pre, N_Limbs),
+               Lvte   => LV66 (T_Entry, N_Limbs),
+               Lva    => LV64 (A, N_Limbs),
+               Tj     => GBV.Limb_Val (GB.LLI (T (N_Limbs))),
+               Cy     => GBV.Limb_Val (GB.LLI (T (N_Limbs + 1))),
+               Av     => GBV.Limb_Val (0),
+               Bv     => B_Val,
+               Tev    => GBV.Limb_Val (GB.LLI (T_Entry (N_Limbs))),
+               Cold   => GBV.Limb_Val (GB.LLI (Carry)),
+               P      => P32 (N_Limbs),
+               BaseV  => Base32);
+            --  Assemble: unfold both sides and drop the (zero) top T_Entry word.
+            pragma Assert (GBV.Limb_Val (GB.LLI (T_Entry (N_Limbs + 1))) = 0);
+            --  LHS unfold, step by step (frame + two LV66 unfolds + P32 step).
+            pragma Assert (LV66 (T, N_Limbs) = LV66 (T_Pre, N_Limbs));
+            pragma
+              Assert
+                (LV66 (T, N_Limbs + 1)
+                   = LV66 (T_Pre, N_Limbs)
+                     + GBV.Limb_Val (GB.LLI (T (N_Limbs))) * P32 (N_Limbs));
+            pragma
+              Assert
+                (LV66 (T, N_Limbs + 2)
+                   = LV66 (T, N_Limbs + 1)
+                     + GBV.Limb_Val (GB.LLI (T (N_Limbs + 1)))
+                       * P32 (N_Limbs + 1));
+            pragma
+              Assert
+                (GBV.Limb_Val (GB.LLI (T (N_Limbs + 1))) * P32 (N_Limbs + 1)
+                   = GBV.Limb_Val (GB.LLI (T (N_Limbs + 1)))
+                     * (P32 (N_Limbs) * Base32));
+            pragma
+              Assert
+                (LV66 (T, N_Limbs + 2)
+                   = LV66 (T_Pre, N_Limbs)
+                     + GBV.Limb_Val (GB.LLI (T (N_Limbs))) * P32 (N_Limbs)
+                     + GBV.Limb_Val (GB.LLI (T (N_Limbs + 1)))
+                       * (P32 (N_Limbs) * Base32));
+            pragma
+              Assert
+                (LV66 (T_Entry, N_Limbs + 2)
+                   = LV66 (T_Entry, N_Limbs)
+                     + GBV.Limb_Val (GB.LLI (T_Entry (N_Limbs)))
+                       * P32 (N_Limbs));
+            --  The A-coefficient term vanishes (Limb_Val (0) = 0).
+            pragma Assert (GBV.Limb_Val (0) = 0);
+            pragma
+              Assert
+                ((LV64 (A, N_Limbs) + GBV.Limb_Val (0) * P32 (N_Limbs)) * B_Val
+                   = LV64 (A, N_Limbs) * B_Val);
+            --  Conv_Step RHS (right side of its Post) equals the goal RHS.
+            pragma
+              Assert
+                ((LV66 (T_Entry, N_Limbs)
+                  + GBV.Limb_Val (GB.LLI (T_Entry (N_Limbs))) * P32 (N_Limbs))
+                   + (LV64 (A, N_Limbs) + GBV.Limb_Val (0) * P32 (N_Limbs))
+                     * B_Val
+                   = LV66 (T_Entry, N_Limbs + 2) + LV64 (A, N_Limbs) * B_Val);
+            --  Conv_Step LHS equals LV66 (T, N_Limbs+2) (unfold + frame).
+            pragma
+              Assert
+                ((LV66 (T_Pre, N_Limbs)
+                  + GBV.Limb_Val (GB.LLI (T (N_Limbs))) * P32 (N_Limbs))
+                   + GBV.Limb_Val (GB.LLI (T (N_Limbs + 1)))
+                     * (P32 (N_Limbs) * Base32)
+                   = LV66 (T, N_Limbs + 2));
+            pragma
+              Assert
+                (LV66 (T, N_Limbs + 2)
+                   = LV66 (T_Entry, N_Limbs + 2) + LV64 (A, N_Limbs) * B_Val);
+         end;
 
          --  m := T (0) * Inv32 mod 2^32. This is the multiplier that
          --  makes T + m*N divisible by 2^32, so T (0) becomes zero
