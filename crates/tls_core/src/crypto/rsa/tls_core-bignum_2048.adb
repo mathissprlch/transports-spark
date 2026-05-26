@@ -3245,6 +3245,38 @@ is
              = Av * LvB_I + Av * Bi * P_I + Q_Old * Nv + Mv * Nv * P_I);
    end Lemma_Mont_Step;
 
+   --  Montgomery quotient bound step: Q_Old < P32 (I) and a 32-bit multiplier
+   --  m keep the accumulated quotient Q_Old + Limb_Val (m) * P32 (I) below
+   --  P32 (I+1). Clean-context (its bound algebra stays out of the CIOS body).
+   procedure Lemma_Q_Bound_Step
+     (M : Unsigned_32; I : Limb_Index; Q_Old : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  => Q_Old >= 0 and then Q_Old < P32 (I),
+     Post =>
+       Q_Old + GBV.Limb_Val (GB.LLI (M)) * P32 (I) >= 0
+       and then Q_Old + GBV.Limb_Val (GB.LLI (M)) * P32 (I) < P32 (I + 1);
+
+   procedure Lemma_Q_Bound_Step
+     (M : Unsigned_32; I : Limb_Index; Q_Old : Big.Big_Integer)
+   is
+      Mv : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (M));
+   begin
+      pragma
+        Assert (Q_Old >= 0 and then Q_Old < P32 (I));   --  Pre (uses Q_Old)
+      GBV.Lemma_Limb_Val_Nonneg (GB.LLI (M));
+      GBV.Lemma_Limb_Val_Mono (GB.LLI (M), 2**32 - 1);
+      GBV.Lemma_Limb_Val_Succ (2**32 - 1);   --  Limb_Val (2^32-1) = Base32 - 1
+      Lemma_P32_Succ (I);                     --  P32 (I+1) = P32 (I) * Base32
+      Lemma_P32_Pos (I);
+      pragma Assert (Mv <= Base32 - 1);
+      GBV.Lemma_BI_Mul_Mono (P32 (I), Mv, Base32 - 1);
+      Lemma_BI_Comm (P32 (I), Mv);            --  Mv * P32 (I) = P32 (I) * Mv
+      Lemma_BI_Distrib
+        (P32 (I), Base32, -1); --  P32 (I)*(Base32-1) = ..-P32 (I)
+      pragma Assert (Mv * P32 (I) <= P32 (I + 1) - P32 (I));
+   end Lemma_Q_Bound_Step;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -3281,6 +3313,10 @@ is
            Loop_Invariant
              (LV66 (T, N_Limbs + 1) * P32 (I)
                 = LV64 (A, N_Limbs) * LV64 (B, I) + Q * LV64 (N, N_Limbs));
+         --  Quotient bound: each step's multiplier m < 2^32, so the accumulated
+         --  Montgomery quotient stays below P32 (I). At exit Q < R = P32 (64) --
+         --  the foundation for value (T) < 2N (and the single conditional sub).
+         pragma Loop_Invariant (Q >= 0 and then Q < P32 (I));
          Q_Old := Q;
          --  T := T + A * B (I).  Inner J-loop convolution invariant (bn_mul1):
          --  the updated low J limbs plus the carry equal the original low J
@@ -3508,6 +3544,10 @@ is
          pragma Assert (T (0) + M * N (0) = 0);
          --  Accumulate the Montgomery quotient (exact running invariant).
          Q := Q_Old + GBV.Limb_Val (GB.LLI (M)) * P32 (I);
+         --  Quotient bound preservation (clean-context lemma so the bound
+         --  algebra does not pollute the surrounding CIOS VCs).
+         Lemma_Q_Bound_Step (M, I, Q_Old);
+         pragma Assert (Q >= 0 and then Q < P32 (I + 1));
 
          --  T := (T + M * N) / 2^32 (the division is the limb shift). T_Red
          --  snapshots the pre-reduce accumulator; the shift loop writes T (J-1)
