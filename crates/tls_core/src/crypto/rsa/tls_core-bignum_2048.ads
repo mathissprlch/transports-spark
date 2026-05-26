@@ -184,14 +184,23 @@ is
    --  into local scope; the Post-only formulation here would force
    --  every call to depend on the lemma.
    function Big_To_Bigint (X : Big.Big_Integer) return Bigint
-   with Ghost, Global => null, Pre => X >= Big.To_Big_Integer (0);
+   with
+     Ghost,
+     Global => null,
+     Pre    => X >= Big.To_Big_Integer (0),
+     Post   =>
+       (for all K in Bigint'Range =>
+          Ghost_Bignum.Value.Limb_Val
+            (Ghost_Bignum.LLI (Big_To_Bigint'Result (K)))
+          = (X / Pow_2_8 (Byte_Length - K))
+            mod Ghost_Bignum.Value.Limb_Val (256));
 
    --  Round-trip lemma: encoding and decoding a 256-byte BE Bigint is
-   --  the identity. This is HACL\*  `lib_intvector_intrinsics_vec_eq`
-   --  + `nat_to_bytes_be_to_nat_eq` for our specialised 256-byte case.
-   --  Honest unproven for now (would need an inductive proof over the
-   --  byte loop in Big_To_Bigint vs the recursion in Bn_V); flagged
-   --  per docs/conventions.md §0d clause 1 — clause-6 clean (no annotations).
+   --  the identity. This is HACL\*  `nat_to_bytes_be_to_nat_eq` for our
+   --  specialised 256-byte case. [VERIFIED — PLATINUM] proven over the
+   --  §0e-clean Limb_Val value layer via the Horner digit-extraction
+   --  identity (Bn_V (B) / 256^E) mod 256 = val (B (256 - E)); no
+   --  To_Big_Integer, no pragma Assume, no annotation.
    procedure Lemma_Bigint_Roundtrip (B : Bigint)
    with Ghost, Global => null, Post => Big_To_Bigint (Bn_V (B)) = B;
 

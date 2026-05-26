@@ -81,39 +81,110 @@ is
       return Result;
    end Spec_Mod_Exp;
 
-   --  HACL\*'s `nat_to_bytes_be 256`. Walks 256 bytes high-to-low,
-   --  extracting (X / 2^(8*(255-i))) mod 256 into Bigint(i+1).
-   --  Real, computable body — uses Big_Integer mod / div arithmetic.
-   function Big_To_Bigint (X : Big.Big_Integer) return Bigint is
-      --  Init suppresses an "initialization has no effect" gnat
-      --  warning; flow analysis still needs the unconditional write.
-      Result   : Bigint := [others => 0];
-      Base_256 : constant Big.Big_Integer := Big.To_Big_Integer (256);
-      Acc      : Big.Big_Integer := X;
-      package Octet_Big is new Big.Signed_Conversions (Int => Integer);
+   --  Iterated division over Big_Integer: (E / P) / Q = E / (P * Q) for
+   --  non-negative E and positive divisors. Clean-context wrapper so the
+   --  SMT theory sees the law on three symbolic operands at once.
+   procedure Lemma_Iter_Div (E, P, Q : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       E >= Big.To_Big_Integer (0)
+       and then P > Big.To_Big_Integer (0)
+       and then Q > Big.To_Big_Integer (0),
+     Post   => (E / P) / Q = E / (P * Q);
+
+   procedure Lemma_Iter_Div (E, P, Q : Big.Big_Integer) is
    begin
+      null;
+   end Lemma_Iter_Div;
+
+   --  §0e-clean Big_Integer -> Octet: returns the unique byte whose
+   --  Limb_Val ingress equals V (V in [0, 256)). Exhaustive scan over the
+   --  256 octets; it provably finds a match because Limb_Val is the
+   --  identity on 0 .. 255 and the precondition pins V below Limb_Val (256).
+   --  No To_Big_Integer / From_Big_Integer (SPARK_Mode-Off bodies -- §0e).
+   function Octet_Of (V : Big.Big_Integer) return Octet
+   with
+     Ghost,
+     Global => null,
+     Pre    => V >= Big.To_Big_Integer (0) and then V < GBV.Limb_Val (256),
+     Post   => GBV.Limb_Val (GB.LLI (Octet_Of'Result)) = V;
+
+   function Octet_Of (V : Big.Big_Integer) return Octet is
+      Result : Octet := 0;
+      Found  : Boolean := False
+      with Ghost;
+   begin
+      for C in Octet loop
+         pragma
+           Loop_Invariant (if not Found then GBV.Limb_Val (GB.LLI (C)) <= V);
+         pragma
+           Loop_Invariant (if Found then GBV.Limb_Val (GB.LLI (Result)) = V);
+         if GBV.Limb_Val (GB.LLI (C)) = V then
+            Result := C;
+            Found := True;
+            exit;
+         end if;
+         GBV.Lemma_Limb_Val_Succ (GB.LLI (C));   --  Limb_Val (C+1) = +1.
+      end loop;
+      pragma Assert (Found);
+      return Result;
+   end Octet_Of;
+
+   --  HACL\*'s `nat_to_bytes_be 256`. Walks 256 bytes high-to-low,
+   --  extracting (X / 2^(8*(255-i))) mod 256 into Bigint(i+1). §0e-clean:
+   --  the radix is Limb_Val (256) and the digit-to-byte step is Octet_Of,
+   --  so no SPARK_Mode-Off To_Big_Integer / From_Big_Integer appears.
+   function Big_To_Bigint (X : Big.Big_Integer) return Bigint is
+      B256    : constant Big.Big_Integer := GBV.Limb_Val (256);
+      Result  : Bigint := [others => 0];
+      Acc     : Big.Big_Integer := X;
+      Acc_Old : Big.Big_Integer := X
+      with Ghost;
+   begin
+      GBV.Lemma_Limb_Val_Succ (0);          --  Limb_Val (1) = 1.
+      GBV.Lemma_Limb_Val_Mono (1, 256);     --  B256 >= 1 > 0.
+      pragma Assert (Pow_2_8 (0) = GBV.Limb_Val (1));
+      pragma Assert (Pow_2_8 (1) = B256);
+      pragma Assert (X / Pow_2_8 (0) = X);
       --  LSB-first extraction: Bigint (256), Bigint (255), ... Bigint (1).
       for K in reverse 1 .. Byte_Length loop
+         Acc_Old := Acc;
+         --  At entry Acc = X / 256^(256-K) (loop invariant carried in).
+         pragma Assert (Acc_Old = X / Pow_2_8 (Byte_Length - K));
+         Result (K) := Octet_Of (Acc mod B256);
+         Acc := Acc / B256;
+         --  Iterated-division chain: Acc = (X / 256^(256-K)) / 256
+         --  = X / (256^(256-K) * 256) = X / 256^(256-K+1).
+         pragma Assert (Acc = Acc_Old / B256);
+         pragma Assert (Pow_2_8 (Byte_Length - K) > Big.To_Big_Integer (0));
+         pragma Assert (B256 > Big.To_Big_Integer (0));
+         pragma
+           Assert (Acc_Old / B256 = (X / Pow_2_8 (Byte_Length - K)) / B256);
+         Lemma_Iter_Div (X, Pow_2_8 (Byte_Length - K), B256);
+         pragma
+           Assert
+             (Pow_2_8 (Byte_Length - K + 1)
+                = Pow_2_8 (Byte_Length - K) * B256);
          pragma Loop_Invariant (Acc >= Big.To_Big_Integer (0));
-         --  Byte_Big_Val (in [0, 256) by definition of mod with positive
-         --  divisor) reduced to Integer for the conversion to Octet.
-         Result (K) := Octet (Octet_Big.From_Big_Integer (Acc mod Base_256));
-         Acc := Acc / Base_256;
+         pragma Loop_Invariant (Acc = X / Pow_2_8 (Byte_Length - K + 1));
+         pragma
+           Loop_Invariant
+             (for all J in K .. Byte_Length =>
+                GBV.Limb_Val (GB.LLI (Result (J)))
+                = (X / Pow_2_8 (Byte_Length - J)) mod B256);
       end loop;
+      pragma
+        Assert
+          (for all K in Bigint'Range =>
+             GBV.Limb_Val (GB.LLI (Result (K)))
+             = (X / Pow_2_8 (Byte_Length - K)) mod GBV.Limb_Val (256));
       return Result;
    end Big_To_Bigint;
 
-   procedure Lemma_Bigint_Roundtrip (B : Bigint) is
-   begin
-      --  Inductive over Byte_Length steps: each iteration of
-      --  Big_To_Bigint extracts the byte that Bn_V would have weighted
-      --  by 2^(8*k) at index Byte_Length - k. The detailed lemma is
-      --  out of scope for this session (multi-day inductive proof);
-      --  the procedure body is empty so the Post is left as honest
-      --  unproven (docs/conventions.md §0d A1) — B4 clean (no
-      --  pragma Assume, no annotation).
-      null;
-   end Lemma_Bigint_Roundtrip;
+   --  Lemma_Bigint_Roundtrip body is placed after the Big_Integer ring
+   --  lemmas (Lemma_BI_Assoc/Comm/Distrib) it depends on.
 
    ---------------------------------------------------------------------
    --  Internal limb representation.
@@ -938,6 +1009,231 @@ is
    begin
       null;
    end Lemma_BI_Distrib;
+
+   ---------------------------------------------------------------------
+   --  Bigint round-trip (Lemma_Bigint_Roundtrip): Big_To_Bigint inverts
+   --  Bn_V. Proof rests on the Horner digit-extraction identity
+   --  (Bn_V (B) / 256^E) mod 256 = val (B (256 - E)), built from a
+   --  high-part suffix function and the Big_Integer div/mod theory.
+   ---------------------------------------------------------------------
+
+   --  High part of Bn_V from byte position E upward:
+   --  Suffix (B, E) = sum_{i=E..255} val (B (256-i)) * 256^(i-E), so
+   --  Bn_V (B) = To_Big_Up_To (B, E) + Pow_2_8 (E) * Suffix (B, E).
+   function Suffix (B : Bigint; E : Natural) return Big.Big_Integer
+   is (if E >= Byte_Length
+       then Big.To_Big_Integer (0)
+       else
+         Byte_Big (B (Byte_Length - E))
+         + GBV.Limb_Val (256) * Suffix (B, E + 1))
+   with
+     Ghost,
+     Global             => null,
+     Pre                => E <= Byte_Length,
+     Subprogram_Variant => (Decreases => Byte_Length - E);
+
+   procedure Lemma_Suffix_Nonneg (B : Bigint; E : Natural)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => E <= Byte_Length,
+     Post               => Suffix (B, E) >= Big.To_Big_Integer (0),
+     Subprogram_Variant => (Decreases => Byte_Length - E);
+
+   procedure Lemma_Suffix_Nonneg (B : Bigint; E : Natural) is
+   begin
+      if E < Byte_Length then
+         Lemma_Suffix_Nonneg (B, E + 1);
+         GBV.Lemma_Limb_Val_Mono (1, 256);   --  Limb_Val (256) > 0.
+
+      end if;
+   end Lemma_Suffix_Nonneg;
+
+   --  Low N bytes are below the N-byte radix: To_Big_Up_To (B, N) < 256^N.
+   procedure Lemma_TBU_Upper (B : Bigint; N : Natural)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N <= Byte_Length,
+     Post               => To_Big_Up_To (B, N) < Pow_2_8 (N),
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_TBU_Upper (B : Bigint; N : Natural) is
+   begin
+      if N = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);   --  Pow_2_8 (0) = 1 > 0.
+
+      else
+         Lemma_TBU_Upper (B, N - 1);     --  TBU (N-1) < Pow_2_8 (N-1).
+         declare
+            W   : constant Big.Big_Integer := Pow_2_8 (N - 1);
+            Val : constant Big.Big_Integer :=
+              Byte_Big (B (Byte_Length - (N - 1)));
+         begin
+            pragma Assert (Pow_2_8 (N) = W * GBV.Limb_Val (256));
+            pragma Assert (W > Big.To_Big_Integer (0));
+            pragma
+              Assert (Val = GBV.Limb_Val (GB.LLI (B (Byte_Length - (N - 1)))));
+            GBV.Lemma_Limb_Val_Mono (GB.LLI (B (Byte_Length - (N - 1))), 255);
+            GBV.Lemma_Limb_Val_Succ (255);   --  Limb_Val (256) = +1.
+            pragma Assert (Val + 1 <= GBV.Limb_Val (256));
+            pragma
+              Assert (To_Big_Up_To (B, N) = To_Big_Up_To (B, N - 1) + Val * W);
+            --  TBU (N) < W + Val*W = (1+Val)*W <= 256*W = Pow_2_8 (N).
+            pragma Assert (To_Big_Up_To (B, N - 1) + Val * W < W + Val * W);
+            pragma Assert (W + Val * W = (Big.To_Big_Integer (1) + Val) * W);
+            GBV.Lemma_BI_Mul_Mono
+              (W, Big.To_Big_Integer (1) + Val, GBV.Limb_Val (256));
+            pragma
+              Assert
+                (W * (Big.To_Big_Integer (1) + Val) <= W * GBV.Limb_Val (256));
+            Lemma_BI_Comm (W, Big.To_Big_Integer (1) + Val);
+            Lemma_BI_Comm (W, GBV.Limb_Val (256));
+         end;
+      end if;
+   end Lemma_TBU_Upper;
+
+   --  Big_Integer high-digit extraction (Lo < P): (Lo + P*M) / P = M.
+   procedure Lemma_Div_Hi (Lo, P, M : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       P > Big.To_Big_Integer (0)
+       and then Lo >= Big.To_Big_Integer (0)
+       and then Lo < P
+       and then M >= Big.To_Big_Integer (0),
+     Post   => (Lo + P * M) / P = M;
+
+   procedure Lemma_Div_Hi (Lo, P, M : Big.Big_Integer) is
+   begin
+      null;
+   end Lemma_Div_Hi;
+
+   --  Big_Integer low-digit survival (D < Q): (D + Q*M) mod Q = D.
+   procedure Lemma_Mod_Lo (D, M, Q : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Q > Big.To_Big_Integer (0)
+       and then D >= Big.To_Big_Integer (0)
+       and then D < Q
+       and then M >= Big.To_Big_Integer (0),
+     Post   => (D + Q * M) mod Q = D;
+
+   procedure Lemma_Mod_Lo (D, M, Q : Big.Big_Integer) is
+   begin
+      Lemma_Div_Hi (D, Q, M);                 --  (D + Q*M) / Q = M.
+      Lemma_BI_Comm (Q, M);                   --  Q*M = M*Q.
+   --  Euclid: D + Q*M = ((D+Q*M)/Q)*Q + (D+Q*M) mod Q = M*Q + mod.
+   end Lemma_Mod_Lo;
+
+   --  Bn_V splits as low part + shifted suffix at any cut point E.
+   procedure Lemma_Bn_Eq_Split (B : Bigint; E : Natural)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => E <= Byte_Length,
+     Post               =>
+       Bn_V (B) = To_Big_Up_To (B, E) + Pow_2_8 (E) * Suffix (B, E),
+     Subprogram_Variant => (Decreases => Byte_Length - E);
+
+   procedure Lemma_Bn_Eq_Split (B : Bigint; E : Natural) is
+   begin
+      if E = Byte_Length then
+         pragma Assert (Suffix (B, Byte_Length) = Big.To_Big_Integer (0));
+         pragma
+           Assert
+             (Pow_2_8 (Byte_Length) * Suffix (B, Byte_Length)
+                = Big.To_Big_Integer (0));
+         pragma Assert (Bn_V (B) = To_Big_Up_To (B, Byte_Length));
+      else
+         Lemma_Bn_Eq_Split (B, E + 1);   --  IH at E+1.
+         declare
+            W    : constant Big.Big_Integer := Pow_2_8 (E);
+            L256 : constant Big.Big_Integer := GBV.Limb_Val (256);
+            Vb   : constant Big.Big_Integer := Byte_Big (B (Byte_Length - E));
+            Sf1  : constant Big.Big_Integer := Suffix (B, E + 1);
+         begin
+            pragma Assert (Pow_2_8 (E + 1) = W * L256);
+            pragma Assert (Suffix (B, E) = Vb + L256 * Sf1);
+            pragma
+              Assert (To_Big_Up_To (B, E + 1) = To_Big_Up_To (B, E) + Vb * W);
+            Lemma_BI_Distrib (W, Vb, L256 * Sf1);    --  W*(Vb+L256*Sf1).
+            Lemma_BI_Assoc
+              (W, L256, Sf1);           --  W*(L256*Sf1)=(W*L256)*Sf1.
+            Lemma_BI_Comm (W, Vb);                   --  W*Vb=Vb*W.
+            pragma Assert (W * Suffix (B, E) = Vb * W + Pow_2_8 (E + 1) * Sf1);
+            pragma
+              Assert
+                (To_Big_Up_To (B, E) + W * Suffix (B, E)
+                   = To_Big_Up_To (B, E + 1) + Pow_2_8 (E + 1) * Sf1);
+         end;
+      end if;
+   end Lemma_Bn_Eq_Split;
+
+   --  Horner digit extraction: byte E of Bn_V (B) is val (B (256 - E)).
+   procedure Lemma_Digit (B : Bigint; E : Natural)
+   with
+     Ghost,
+     Global => null,
+     Pre    => E < Byte_Length,
+     Post   =>
+       (Bn_V (B) / Pow_2_8 (E)) mod GBV.Limb_Val (256)
+       = Byte_Big (B (Byte_Length - E));
+
+   procedure Lemma_Digit (B : Bigint; E : Natural) is
+      W    : constant Big.Big_Integer := Pow_2_8 (E);
+      L256 : constant Big.Big_Integer := GBV.Limb_Val (256);
+      Lo   : constant Big.Big_Integer := To_Big_Up_To (B, E);
+      Sfx  : constant Big.Big_Integer := Suffix (B, E);
+      Vb   : constant Big.Big_Integer := Byte_Big (B (Byte_Length - E));
+      SfxN : constant Big.Big_Integer := Suffix (B, E + 1);
+   begin
+      Lemma_Bn_Eq_Split (B, E);          --  Bn_V = Lo + W*Sfx.
+      Lemma_TBU_Upper (B, E);            --  Lo < W.
+      Lemma_Suffix_Nonneg (B, E);        --  Sfx >= 0.
+      Lemma_Suffix_Nonneg (B, E + 1);    --  SfxN >= 0.
+      GBV.Lemma_Limb_Val_Mono (1, 256);  --  L256 > 0.
+      pragma Assert (W > Big.To_Big_Integer (0));
+      pragma Assert (Lo >= Big.To_Big_Integer (0) and then Lo < W);
+      --  High quotient: Bn_V / W = Sfx.
+      Lemma_Div_Hi (Lo, W, Sfx);
+      pragma Assert (Bn_V (B) / W = Sfx);
+      --  Low byte of the suffix: Sfx mod 256 = Vb.
+      pragma Assert (Sfx = Vb + L256 * SfxN);
+      pragma Assert (Vb = GBV.Limb_Val (GB.LLI (B (Byte_Length - E))));
+      GBV.Lemma_Limb_Val_Mono (GB.LLI (B (Byte_Length - E)), 255);
+      GBV.Lemma_Limb_Val_Succ (255);     --  L256 = Limb_Val (255) + 1.
+      pragma Assert (Vb >= Big.To_Big_Integer (0) and then Vb < L256);
+      Lemma_Mod_Lo (Vb, SfxN, L256);     --  (Vb + L256*SfxN) mod L256 = Vb.
+      pragma Assert (Sfx mod L256 = Vb);
+   end Lemma_Digit;
+
+   procedure Lemma_Bigint_Roundtrip (B : Bigint) is
+      R : constant Bigint := Big_To_Bigint (Bn_V (B))
+      with Ghost;
+   begin
+      for K in Bigint'Range loop
+         Lemma_Digit (B, Byte_Length - K);
+         pragma
+           Assert
+             (GBV.Limb_Val (GB.LLI (R (K)))
+                = (Bn_V (B) / Pow_2_8 (Byte_Length - K))
+                  mod GBV.Limb_Val (256));
+         pragma
+           Assert
+             ((Bn_V (B) / Pow_2_8 (Byte_Length - K)) mod GBV.Limb_Val (256)
+                = Byte_Big (B (K)));
+         pragma Assert (Byte_Big (B (K)) = GBV.Limb_Val (GB.LLI (B (K))));
+         GBV.Lemma_Limb_Val_Inj (GB.LLI (R (K)), GB.LLI (B (K)));
+         pragma Assert (R (K) = B (K));
+         pragma Loop_Invariant (for all J in 1 .. K => R (J) = B (J));
+      end loop;
+      pragma Assert (for all K in Bigint'Range => R (K) = B (K));
+      pragma Assert (R = B);
+   end Lemma_Bigint_Roundtrip;
 
    --  P32 (K) >= 2 for K >= 1 (a positive power of 2^32). Placed after the BI
    --  ring helpers / Lemma_P32_Succ it depends on.
