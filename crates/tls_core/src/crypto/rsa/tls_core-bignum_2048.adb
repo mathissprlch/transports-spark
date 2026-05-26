@@ -667,6 +667,34 @@ is
       null;
    end Lemma_Mul_Distrib;
 
+   --  Commutativity of the modular multiply.
+   procedure Lemma_Mul_Comm (A, B : Unsigned_32)
+   with Ghost, Post => A * B = B * A;
+
+   procedure Lemma_Mul_Comm (A, B : Unsigned_32) is
+   begin
+      null;
+   end Lemma_Mul_Comm;
+
+   --  CIOS "kill the low limb": with m = T0 * Inv32 and N0 * Inv32 = -1 mod
+   --  2^32, the low limb of T0 + m*N0 is zero, so the running accumulator can
+   --  be shifted down by one limb. T0 + m*N0 = T0*(1 + Inv32*N0) = T0*0 = 0.
+   procedure Lemma_Low_Limb_Killed (T0, N0, Inv32 : Unsigned_32)
+   with
+     Ghost,
+     Pre  => N0 * Inv32 = 16#FFFFFFFF#,
+     Post => T0 + (T0 * Inv32) * N0 = 0;
+
+   procedure Lemma_Low_Limb_Killed (T0, N0, Inv32 : Unsigned_32) is
+   begin
+      Lemma_Mul3
+        (T0, Inv32, N0);              --  (T0*Inv32)*N0 = T0*(Inv32*N0).
+      Lemma_Mul_Comm (Inv32, N0);              --  Inv32*N0 = N0*Inv32.
+      pragma Assert ((T0 * Inv32) * N0 = T0 * 16#FFFFFFFF#);
+      Lemma_Mul_Distrib (T0, 1, 16#FFFFFFFF#);
+      pragma Assert (T0 + (T0 * Inv32) * N0 = T0 * (1 + 16#FFFFFFFF#));
+   end Lemma_Low_Limb_Killed;
+
    --  Newton-Raphson (Hensel lifting): x := x*(2 - N0*x) takes N0*x = 1 mod 2^m
    --  to N0*x = 1 mod 2^(2m), since N0*x' = 2(N0x) - (N0x)^2 = 1 - (N0x - 1)^2
    --  and (N0x - 1) = 0 mod 2^m. Five steps from m=1 (N0 odd) reach m=32.
@@ -786,6 +814,7 @@ is
 
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
+   with Pre => N (0) * Inv32 = 16#FFFFFFFF#
    is
       T     : Limbs66 := [others => 0];
       Acc   : Unsigned_64;
@@ -816,6 +845,9 @@ is
          --  makes T + m*N divisible by 2^32, so T (0) becomes zero
          --  and we can shift right by one limb.
          M := T (0) * Inv32;
+         --  CIOS invariant foundation: the low limb of T + M*N vanishes.
+         Lemma_Low_Limb_Killed (T (0), N (0), Inv32);
+         pragma Assert (T (0) + M * N (0) = 0);
 
          --  T := (T + M * N) / 2^32 (the division is the limb shift).
          Carry := 0;
