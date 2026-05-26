@@ -1,5 +1,7 @@
 with Ada.Unchecked_Conversion;
 
+with Tls_Core.Ghost_Bignum.Montgomery;
+
 package body Tls_Core.Field25519
   with SPARK_Mode
 is
@@ -8,6 +10,7 @@ is
 
    package GB renames Tls_Core.Ghost_Bignum;
    package GBV renames Tls_Core.Ghost_Bignum.Value;
+   package MG renames Tls_Core.Ghost_Bignum.Montgomery;
 
    ---------------------------------------------------------------------
    --  Ghost spec layer — bodies for Spec functions declared in the
@@ -38,6 +41,181 @@ is
 
    function Mod_P_Spec (X : Big.Big_Integer) return Big.Big_Integer
    is (X mod Prime_P_Spec);
+
+   ---------------------------------------------------------------------
+   --  §0e mod-p infrastructure (Brick A).
+   --
+   --  Foundation lemmas linking Pow_2_16 (the 16-bit limb radix used
+   --  by To_Big_Spec) to the bit-level MG.Pow2 / Big_Integer ** plus
+   --  the mod-by-multiple-of-p cancellation needed by Carry's top-
+   --  fold and F_Mul's *38 reduction.
+   --
+   --  Pattern ported from bignum_2048 §0e closure (commit 4cec40e):
+   --  null-body clean-context lemmas for SPARK's Big_Integer div/mod
+   --  theory + explicit squaring chain for the radix bridge.
+   ---------------------------------------------------------------------
+
+   --  Limb_Val (65536) = MG.Pow2 (16). Squaring chain via
+   --  Lemma_Limb_Val_Mul32 paired with Lemma_Pow2_Add (direct port
+   --  of bignum_2048.adb's Lemma_Base32_Is_Pow2 pattern).
+   procedure Lemma_Lv_65536_Is_Pow2_16
+   with Ghost, Post => GBV.Limb_Val (65536) = MG.Pow2 (16);
+
+   procedure Lemma_Lv_65536_Is_Pow2_16 is
+   begin
+      GBV.Lemma_Limb_Val_Succ (0);
+      GBV.Lemma_Limb_Val_Succ (1);
+      MG.Lemma_Pow2_Succ (1);
+      pragma Assert (GBV.Limb_Val (2) = MG.Pow2 (1));
+
+      GBV.Lemma_Limb_Val_Mul32 (2, 2);
+      MG.Lemma_Pow2_Add (1, 1);
+      pragma Assert (GBV.Limb_Val (4) = MG.Pow2 (2));
+
+      GBV.Lemma_Limb_Val_Mul32 (4, 4);
+      MG.Lemma_Pow2_Add (2, 2);
+      pragma Assert (GBV.Limb_Val (16) = MG.Pow2 (4));
+
+      GBV.Lemma_Limb_Val_Mul32 (16, 16);
+      MG.Lemma_Pow2_Add (4, 4);
+      pragma Assert (GBV.Limb_Val (256) = MG.Pow2 (8));
+
+      GBV.Lemma_Limb_Val_Mul32 (256, 256);
+      MG.Lemma_Pow2_Add (8, 8);
+      pragma Assert (GBV.Limb_Val (65536) = MG.Pow2 (16));
+   end Lemma_Lv_65536_Is_Pow2_16;
+
+   --  Pow_2_16 (N) = MG.Pow2 (16 * N). Inductive over the expression
+   --  function body of Pow_2_16.
+   procedure Lemma_Pow_2_16_Is_Pow2 (N : Natural)
+   with
+     Ghost,
+     Pre                => N <= 16,
+     Post               => Pow_2_16 (N) = MG.Pow2 (16 * N),
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_Pow_2_16_Is_Pow2 (N : Natural) is
+   begin
+      if N = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);
+      else
+         Lemma_Pow_2_16_Is_Pow2 (N - 1);
+         Lemma_Lv_65536_Is_Pow2_16;
+         MG.Lemma_Pow2_Add (16 * (N - 1), 16);
+      end if;
+   end Lemma_Pow_2_16_Is_Pow2;
+
+   --  MG.Pow (2, N) = 2**N. Bridges the recursive Pow ladder to
+   --  Big_Integer's literal exponent operator. Inductive.
+   procedure Lemma_Pow_Eq_StarStar (N : Natural)
+   with
+     Ghost,
+     Post               =>
+       MG.Pow (Big.To_Big_Integer (2), N) = Big.To_Big_Integer (2)**N,
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_Pow_Eq_StarStar (N : Natural) is
+   begin
+      if N /= 0 then
+         Lemma_Pow_Eq_StarStar (N - 1);
+      end if;
+   end Lemma_Pow_Eq_StarStar;
+
+   --  2^256 = 2 * p + 38. Algebraic crux of the 2^256 ≡ 38 (mod p)
+   --  fold used by Carry's top-limb step and F_Mul's *38 reduction.
+   procedure Lemma_Pow_2_256_Eq_2P_Plus_38
+   with
+     Ghost,
+     Post => Pow_2_16 (16) = 2 * Prime_P_Spec + Big.To_Big_Integer (38);
+
+   procedure Lemma_Pow_2_256_Eq_2P_Plus_38 is
+   begin
+      Lemma_Pow_2_16_Is_Pow2 (16);
+      MG.Lemma_Pow2_Succ (256);
+      MG.Lemma_Pow2_Is_Pow (255);
+      Lemma_Pow_Eq_StarStar (255);
+   end Lemma_Pow_2_256_Eq_2P_Plus_38;
+
+   ---------------------------------------------------------------------
+   --  Big_Integer mod-by-multiple cancellation: Mod_P_Spec(X - K*P) =
+   --  Mod_P_Spec(X) for any integer K. Per memory recipe (note
+   --  2026-05-25 from bignum_2048 §0e closure): "gnatprove L2 knows
+   --  Big_Integer div/mod theory FOR FREE when wrapped as clean-
+   --  context lemma with symbolic divisors". Built as a single
+   --  null-body lemma — Why3's Euclidean mod theory closes it.
+   ---------------------------------------------------------------------
+
+   --  Shift-up invariance: (X + N*P) mod P = X mod P for N >= 0.
+   --  Null body. The N >= 0 restriction matches Big_Integer mod
+   --  semantics (always returns [0, P)).
+   procedure Lemma_Mod_Shift_Up
+     (X : Big.Big_Integer; N : Big.Big_Integer; P : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       P > Big.To_Big_Integer (0) and then N >= Big.To_Big_Integer (0),
+     Post => (X + N * P) mod P = X mod P;
+
+   procedure Lemma_Mod_Shift_Up
+     (X : Big.Big_Integer; N : Big.Big_Integer; P : Big.Big_Integer)
+   is null;
+
+   --  Mod_P_Spec(X - K*P) = Mod_P_Spec(X). Built atop Lemma_Mod_Shift_Up:
+   --  uplift both X and Y = X - K*P by a sufficiently large N*P to make
+   --  both non-negative shifts, apply Lemma_Mod_Shift_Up to each.
+   procedure Lemma_Mod_Sub_KP (X : Big.Big_Integer; K : Big.Big_Integer)
+   with
+     Ghost,
+     Post => Mod_P_Spec (X - K * Prime_P_Spec) = Mod_P_Spec (X);
+
+   procedure Lemma_Mod_Sub_KP (X : Big.Big_Integer; K : Big.Big_Integer)
+   is
+      P  : constant Big.Big_Integer := Prime_P_Spec;
+      Y  : constant Big.Big_Integer := X - K * P;
+      --  Shift up by N*P so both X+N*P and Y+N*P are non-negative.
+      Lo : constant Big.Big_Integer := (if X <= Y then X else Y);
+      N0 : constant Big.Big_Integer :=
+        (if Lo >= Big.To_Big_Integer (0)
+         then Big.To_Big_Integer (0)
+         elsif K >= Big.To_Big_Integer (0)
+         then -Lo / P + Big.To_Big_Integer (1)
+         else -Lo / P + Big.To_Big_Integer (1));
+      Nk : constant Big.Big_Integer := N0 + K;
+   begin
+      pragma Assert (P > 0);
+      pragma Assert (N0 >= 0);
+      pragma Assert (X + N0 * P >= 0);
+      pragma Assert (Y + N0 * P >= 0);
+      --  Y = X - K*P, so Y + (N0+K)*P = X + N0*P (the algebraic
+      --  identity that lets the two mod values bridge).
+      pragma Assert (Y + Nk * P = X + N0 * P);
+      Lemma_Mod_Shift_Up (X, N0, P);
+      --  Need Nk = N0+K >= 0 for the symmetric Lemma_Mod_Shift_Up on Y.
+      --  N0 is large enough to make Y + N0*P >= 0; since Y + Nk*P =
+      --  X + N0*P >= 0 and P > 0, we get Nk >= -Y/P >= some bound but
+      --  this isn't automatic. Split on K's sign:
+      if Nk >= 0 then
+         Lemma_Mod_Shift_Up (Y, Nk, P);
+         pragma Assert ((Y + Nk * P) mod P = Y mod P);
+         pragma Assert ((Y + Nk * P) mod P = (X + N0 * P) mod P);
+      else
+         --  Nk < 0: equivalent to shifting Y down. Pick a larger N1
+         --  for both sides so both shifts are non-negative.
+         declare
+            N1 : constant Big.Big_Integer := N0 + (-K) + Big.To_Big_Integer (1);
+            N2 : constant Big.Big_Integer := N1 + K;
+         begin
+            pragma Assert (N1 >= 0);
+            pragma Assert (N2 >= 0);
+            pragma Assert (N1 >= N0);
+            pragma Assert (Y + N2 * P = X + N1 * P);
+            Lemma_Mod_Shift_Up (X, N1, P);
+            Lemma_Mod_Shift_Up (Y, N2, P);
+            pragma Assert ((X + N1 * P) mod P = X mod P);
+            pragma Assert ((Y + N2 * P) mod P = Y mod P);
+         end;
+      end if;
+   end Lemma_Mod_Sub_KP;
 
    subtype Big_Index is Natural range 0 .. 30;
    type Big_Buf is array (Big_Index) of Integer_64;
@@ -212,6 +390,21 @@ is
    --  limb 2, so the 38× top-fold into limb 0 is < 2**17.
    ---------------------------------------------------------------------
 
+   --  Brick A consumer: a trivial ghost equality that pins
+   --  Lemma_Pow_2_256_Eq_2P_Plus_38 + Lemma_Mod_Sub_KP into Carry's
+   --  proof context without touching any of the existing loop
+   --  invariants. The asserts only reference Big_Integer constants —
+   --  they hold trivially and don't perturb the bound-flow proofs.
+   --  Brick B (per-iteration value-frame lemma) and Brick C (Equiv_Spec
+   --  bridge) will consume them substantively in a future session.
+   procedure Lemma_Brick_A_Anchor with Ghost;
+
+   procedure Lemma_Brick_A_Anchor is
+   begin
+      Lemma_Pow_2_256_Eq_2P_Plus_38;
+      Lemma_Mod_Sub_KP (Big.To_Big_Integer (0), Big.To_Big_Integer (0));
+   end Lemma_Brick_A_Anchor;
+
    procedure Carry (O : in out Felt) is
       C        : Integer_64;
       --  The current limb may carry one inbound carry (< 2**40) on top of its
@@ -302,6 +495,11 @@ is
               O (0) + 38 * C;            --  38 * (top fold) into limb 0.
          end if;
       end loop;
+      --  Anchor for the §0e mod-p infrastructure (Brick A). Pinned at
+      --  end-of-Carry where it cannot perturb the loop-invariant proof
+      --  context. Brick B/C will replace this with the actual
+      --  Equiv_Spec bridge in a future session.
+      Lemma_Brick_A_Anchor;
    end Carry;
 
    ---------------------------------------------------------------------
