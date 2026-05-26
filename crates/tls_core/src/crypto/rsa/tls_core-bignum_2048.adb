@@ -126,6 +126,7 @@ is
    subtype Limb_Index is Natural range 0 .. N_Limbs - 1;
    subtype Limb2_Index is Natural range 0 .. 2 * N_Limbs - 1;
    subtype Limb_Plus_Index is Natural range 0 .. N_Limbs;
+   subtype Limb2_Plus_Index is Natural range 0 .. 2 * N_Limbs;
    subtype Limb66_Index is Natural range 0 .. N_Limbs + 1;
 
    type Limbs64 is array (Limb_Index) of Unsigned_32;
@@ -230,6 +231,61 @@ is
          end;
       end if;
    end Lemma_LV64_Upper;
+
+   --  Value of the low K limbs (little-endian) of a 128-limb array -- the
+   --  product/accumulator width. Same base-2**32 Horner form as LV64.
+   function LV128 (T : Limbs128; K : Limb2_Plus_Index) return Big.Big_Integer
+   is (if K = 0
+       then GBV.Limb_Val (0)
+       else LV128 (T, K - 1) + GBV.Limb_Val (GB.LLI (T (K - 1))) * P32 (K - 1))
+   with Ghost, Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Nonneg (T : Limbs128; K : Limb2_Plus_Index)
+   with
+     Ghost,
+     Post               => LV128 (T, K) >= 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Nonneg (T : Limbs128; K : Limb2_Plus_Index) is
+   begin
+      if K = 0 then
+         null;
+      else
+         Lemma_LV128_Nonneg (T, K - 1);
+         GBV.Lemma_Limb_Val_Nonneg (GB.LLI (T (K - 1)));
+         Lemma_P32_Pos (K - 1);
+      end if;
+   end Lemma_LV128_Nonneg;
+
+   procedure Lemma_LV128_Upper (T : Limbs128; K : Limb2_Plus_Index)
+   with
+     Ghost,
+     Post               => LV128 (T, K) < P32 (K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Upper (T : Limbs128; K : Limb2_Plus_Index) is
+   begin
+      if K = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);
+      else
+         declare
+            W : constant Big.Big_Integer := P32 (K - 1)
+            with Ghost;
+            V : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (T (K - 1)))
+            with Ghost;
+         begin
+            Lemma_LV128_Upper (T, K - 1);
+            Lemma_P32_Pos (K - 1);
+            GBV.Lemma_Limb_Val_Nonneg (GB.LLI (T (K - 1)));
+            GBV.Lemma_Limb_Val_Mono (GB.LLI (T (K - 1)), 2**32 - 1);
+            GBV.Lemma_Limb_Val_Succ (2**32 - 1);
+            pragma Assert (V <= Base32 - 1);
+            pragma Assert (V * W <= (Base32 - 1) * W);
+            pragma Assert (P32 (K) = W * Base32);
+            pragma Assert ((Base32 - 1) * W + W = W * Base32);
+         end;
+      end if;
+   end Lemma_LV128_Upper;
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 256 BE bytes and limbs.
@@ -487,6 +543,10 @@ is
       end if;
 
       Mul128 (A_Red, B_Red, T);
+      --  §0e value-bridge foundation: the 128-limb product valuation is
+      --  bounded in [0, 2^4096) (anchors LV128 for the convolution proof).
+      Lemma_LV128_Nonneg (T, 2 * N_Limbs);
+      Lemma_LV128_Upper (T, 2 * N_Limbs);
       Reduce (T, N, R);
    end Limb_Mod_Mul;
 
