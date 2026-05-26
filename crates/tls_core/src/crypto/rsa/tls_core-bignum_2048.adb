@@ -128,6 +128,7 @@ is
    subtype Limb_Plus_Index is Natural range 0 .. N_Limbs;
    subtype Limb2_Plus_Index is Natural range 0 .. 2 * N_Limbs;
    subtype Limb66_Index is Natural range 0 .. N_Limbs + 1;
+   subtype Limb66_Plus_Index is Natural range 0 .. N_Limbs + 2;
 
    type Limbs64 is array (Limb_Index) of Unsigned_32;
    type Limbs128 is array (Limb2_Index) of Unsigned_32;
@@ -286,6 +287,61 @@ is
          end;
       end if;
    end Lemma_LV128_Upper;
+
+   --  Value of the low K limbs of a 66-limb array -- the CIOS Mont_Mul
+   --  accumulator width (64 + 2 carry words). Same base-2**32 Horner form.
+   function LV66 (T : Limbs66; K : Limb66_Plus_Index) return Big.Big_Integer
+   is (if K = 0
+       then GBV.Limb_Val (0)
+       else LV66 (T, K - 1) + GBV.Limb_Val (GB.LLI (T (K - 1))) * P32 (K - 1))
+   with Ghost, Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV66_Nonneg (T : Limbs66; K : Limb66_Plus_Index)
+   with
+     Ghost,
+     Post               => LV66 (T, K) >= 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV66_Nonneg (T : Limbs66; K : Limb66_Plus_Index) is
+   begin
+      if K = 0 then
+         null;
+      else
+         Lemma_LV66_Nonneg (T, K - 1);
+         GBV.Lemma_Limb_Val_Nonneg (GB.LLI (T (K - 1)));
+         Lemma_P32_Pos (K - 1);
+      end if;
+   end Lemma_LV66_Nonneg;
+
+   procedure Lemma_LV66_Upper (T : Limbs66; K : Limb66_Plus_Index)
+   with
+     Ghost,
+     Post               => LV66 (T, K) < P32 (K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV66_Upper (T : Limbs66; K : Limb66_Plus_Index) is
+   begin
+      if K = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);
+      else
+         declare
+            W : constant Big.Big_Integer := P32 (K - 1)
+            with Ghost;
+            V : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (T (K - 1)))
+            with Ghost;
+         begin
+            Lemma_LV66_Upper (T, K - 1);
+            Lemma_P32_Pos (K - 1);
+            GBV.Lemma_Limb_Val_Nonneg (GB.LLI (T (K - 1)));
+            GBV.Lemma_Limb_Val_Mono (GB.LLI (T (K - 1)), 2**32 - 1);
+            GBV.Lemma_Limb_Val_Succ (2**32 - 1);
+            pragma Assert (V <= Base32 - 1);
+            pragma Assert (V * W <= (Base32 - 1) * W);
+            pragma Assert (P32 (K) = W * Base32);
+            pragma Assert ((Base32 - 1) * W + W = W * Base32);
+         end;
+      end if;
+   end Lemma_LV66_Upper;
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 256 BE bytes and limbs.
@@ -625,6 +681,10 @@ is
       Carry : Unsigned_64;
       M     : Unsigned_32;
    begin
+      --  §0e value-bridge foundation: the 66-limb CIOS accumulator valuation
+      --  is bounded in [0, 2^(32*66)) (anchors LV66 for the Mont_Mul proof).
+      Lemma_LV66_Nonneg (T, N_Limbs + 2);
+      Lemma_LV66_Upper (T, N_Limbs + 2);
       for I in Limb_Index loop
          --  T := T + A * B (I)
          Carry := 0;
