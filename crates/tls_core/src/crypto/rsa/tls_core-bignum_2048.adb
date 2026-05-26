@@ -1048,6 +1048,8 @@ is
       M       : Unsigned_32;
       T_Entry : Limbs66 := [others => 0]
       with Ghost;
+      T_Red   : Limbs66 := [others => 0]
+      with Ghost;
    begin
       --  §0e value-bridge foundation: the 66-limb CIOS accumulator valuation
       --  is bounded in [0, 2^(32*66)) (anchors LV66 for the Mont_Mul proof).
@@ -1280,7 +1282,10 @@ is
          Lemma_Low_Limb_Killed (T (0), N (0), Inv32);
          pragma Assert (T (0) + M * N (0) = 0);
 
-         --  T := (T + M * N) / 2^32 (the division is the limb shift).
+         --  T := (T + M * N) / 2^32 (the division is the limb shift). T_Red
+         --  snapshots the pre-reduce accumulator; the shift loop writes T (J-1)
+         --  and leaves limbs >= J-1 equal to T_Red until they are consumed.
+         T_Red := T;
          Carry := 0;
          --  J = 0: low half of T (0) + M * N (0) + carry. Result's low
          --  half is discarded (it is zero by construction); only the
@@ -1289,6 +1294,11 @@ is
            Unsigned_64 (T (0)) + Unsigned_64 (M) * Unsigned_64 (N (0)) + Carry;
          Carry := Shift_Right (Acc, 32);
          for J in 1 .. N_Limbs - 1 loop
+            pragma Loop_Invariant (Carry <= 16#FFFF_FFFF#);
+            pragma
+              Loop_Invariant
+                (for all K in Limb66_Index =>
+                   (if K >= J - 1 then T (K) = T_Red (K)));
             Acc :=
               Unsigned_64 (T (J))
               + Unsigned_64 (M) * Unsigned_64 (N (J))
