@@ -735,10 +735,14 @@ is
       Acc   : Unsigned_64;
       Carry : Unsigned_64;
    begin
-      for I in Limb2_Index loop
-         T (I) := 0;
-      end loop;
+      T := [others => 0];
       for I in Limb_Index loop
+         --  Outer accumulation frame: limbs at and above I + N_Limbs are still
+         --  zero (outer iteration i writes only limbs i .. i + N_Limbs).
+         pragma
+           Loop_Invariant
+             (for all K in Limb2_Index =>
+                (if K >= I + N_Limbs then T (K) = 0));
          Carry := 0;
          declare
             T_Inner : constant Limbs128 := T
