@@ -291,6 +291,86 @@ is
       end if;
    end Lemma_LV65_Upper;
 
+   --  Definitional one-step unfold of LV65 (gnatprove stalls at symbolic K+1).
+   procedure Lemma_LV65_Unfold (L : Limbs65; K : Limb66_Index)
+   with
+     Ghost,
+     Pre  => K >= 1,
+     Post =>
+       LV65 (L, K)
+       = LV65 (L, K - 1) + GBV.Limb_Val (GB.LLI (L (K - 1))) * P32 (K - 1);
+
+   procedure Lemma_LV65_Unfold (L : Limbs65; K : Limb66_Index) is
+   begin
+      null;
+   end Lemma_LV65_Unfold;
+
+   --  High-part equality: if A and B agree on every limb at or above K, their
+   --  valuations differ only in the low K limbs.
+   procedure Lemma_LV65_Hi_Eq (A, B : Limbs65; K : Limb66_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Plus_Index => (if I >= K then A (I) = B (I))),
+     Post               =>
+       LV65 (A, N_Limbs + 1) - LV65 (A, K)
+       = LV65 (B, N_Limbs + 1) - LV65 (B, K),
+     Subprogram_Variant => (Decreases => N_Limbs + 1 - K);
+
+   procedure Lemma_LV65_Hi_Eq (A, B : Limbs65; K : Limb66_Index) is
+   begin
+      if K <= N_Limbs then
+         Lemma_LV65_Hi_Eq (A, B, K + 1);
+         Lemma_LV65_Unfold (A, K + 1);
+         Lemma_LV65_Unfold (B, K + 1);
+      end if;
+   end Lemma_LV65_Hi_Eq;
+
+   --  Lexicographic dominance: at the most-significant differing limb I (all
+   --  higher limbs equal), the limb-I order decides the value order.
+   procedure Lemma_LV65_Cmp_Limb (A, B : Limbs65; I : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre  => (for all K in Limb_Plus_Index => (if K > I then A (K) = B (K))),
+     Post =>
+       (if A (I) > B (I) then LV65 (A, N_Limbs + 1) > LV65 (B, N_Limbs + 1))
+       and then (if A (I) < B (I)
+                 then LV65 (A, N_Limbs + 1) < LV65 (B, N_Limbs + 1));
+
+   procedure Lemma_LV65_Cmp_Limb (A, B : Limbs65; I : Limb_Plus_Index) is
+      AvI : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (A (I)))
+      with Ghost;
+      BvI : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (B (I)))
+      with Ghost;
+      W   : constant Big.Big_Integer := P32 (I)
+      with Ghost;
+   begin
+      Lemma_LV65_Hi_Eq (A, B, I + 1);
+      Lemma_LV65_Unfold (A, I + 1);
+      Lemma_LV65_Unfold (B, I + 1);
+      Lemma_LV65_Nonneg (A, I);
+      Lemma_LV65_Nonneg (B, I);
+      Lemma_LV65_Upper (A, I);
+      Lemma_LV65_Upper (B, I);
+      Lemma_P32_Pos (I);
+      --  LV65(A,65) - LV65(B,65) = (LV65(A,I) - LV65(B,I)) + (AvI - BvI) * W.
+      pragma
+        Assert
+          (LV65 (A, N_Limbs + 1) - LV65 (B, N_Limbs + 1)
+             = (LV65 (A, I) - LV65 (B, I)) + (AvI - BvI) * W);
+      if A (I) > B (I) then
+         GBV.Lemma_Limb_Val_Mono (GB.LLI (B (I)) + 1, GB.LLI (A (I)));
+         GBV.Lemma_Limb_Val_Succ (GB.LLI (B (I)));
+         pragma Assert (AvI >= BvI + 1);
+         pragma Assert ((AvI - BvI) * W >= W);
+      elsif A (I) < B (I) then
+         GBV.Lemma_Limb_Val_Mono (GB.LLI (A (I)) + 1, GB.LLI (B (I)));
+         GBV.Lemma_Limb_Val_Succ (GB.LLI (A (I)));
+         pragma Assert (BvI >= AvI + 1);
+         pragma Assert ((BvI - AvI) * W >= W);
+      end if;
+   end Lemma_LV65_Cmp_Limb;
+
    --  Value of the low K limbs (little-endian) of a 128-limb array -- the
    --  product/accumulator width. Same base-2**32 Horner form as LV64.
    function LV128 (T : Limbs128; K : Limb2_Plus_Index) return Big.Big_Integer
@@ -704,15 +784,29 @@ is
    --  shifted-modulus comparisons inside Reduce.
    ---------------------------------------------------------------------
 
-   function Compare65 (A, B : Limbs65) return Integer is
+   function Compare65 (A, B : Limbs65) return Integer
+   with
+     Post =>
+       (Compare65'Result >= 0)
+       = (LV65 (A, N_Limbs + 1) >= LV65 (B, N_Limbs + 1))
+       and then (Compare65'Result <= 0)
+                = (LV65 (A, N_Limbs + 1) <= LV65 (B, N_Limbs + 1))
+   is
    begin
       for I in reverse Limb_Plus_Index loop
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Plus_Index => (if K > I then A (K) = B (K)));
          if A (I) > B (I) then
+            Lemma_LV65_Cmp_Limb (A, B, I);
             return 1;
          elsif A (I) < B (I) then
+            Lemma_LV65_Cmp_Limb (A, B, I);
             return -1;
          end if;
       end loop;
+      --  All limbs equal: equal valuations (Hi_Eq from K = 0; LV65 (-, 0) = 0).
+      Lemma_LV65_Hi_Eq (A, B, 0);
       return 0;
    end Compare65;
 
