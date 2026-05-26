@@ -848,6 +848,39 @@ is
       pragma Assert (K = 0);
    end Lemma_Mod_Unique;
 
+   --  Modular-multiply congruence: reducing the factors first does not change
+   --  the product residue. (A*B) mod N = ((A mod N)*(B mod N)) mod N. Lets
+   --  Limb_Mod_Mul's "reduce A/B if >= N" path compose with the final reduce.
+   procedure Lemma_Mod_Mul_Cong (A, B, N : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  => N > 0 and then A >= 0 and then B >= 0,
+     Post => (A * B) mod N = ((A mod N) * (B mod N)) mod N;
+
+   procedure Lemma_Mod_Mul_Cong (A, B, N : Big.Big_Integer) is
+      Qa : constant Big.Big_Integer := A / N;
+      Qb : constant Big.Big_Integer := B / N;
+      Ra : constant Big.Big_Integer := A mod N;
+      Rb : constant Big.Big_Integer := B mod N;
+      M  : constant Big.Big_Integer := Qa * Qb * N + Qa * Rb + Ra * Qb;
+      Qr : constant Big.Big_Integer := (Ra * Rb) / N;
+      Rr : constant Big.Big_Integer := (Ra * Rb) mod N;
+   begin
+      --  Division identities (A, B >= 0, N > 0) and remainder bounds.
+      pragma Assert (A = Qa * N + Ra);
+      pragma Assert (B = Qb * N + Rb);
+      pragma Assert (Ra >= 0 and then Ra < N);
+      pragma Assert (Rb >= 0 and then Rb < N);
+      pragma Assert (Ra * Rb >= 0);
+      pragma Assert (Ra * Rb = Qr * N + Rr);
+      pragma Assert (Rr >= 0 and then Rr < N);
+      --  A*B = (Qa*N+Ra)*(Qb*N+Rb) = M*N + Ra*Rb = (M+Qr)*N + Rr.
+      pragma Assert (A * B = M * N + Ra * Rb);
+      pragma Assert (A * B = (M + Qr) * N + Rr);
+      pragma Assert (A * B >= 0);
+      Lemma_Mod_Unique (A * B, M + Qr, Rr, N);
+   end Lemma_Mod_Mul_Cong;
+
    ---------------------------------------------------------------------
    --  Horner low-split of the 66-limb valuation. The Montgomery reduce step
    --  kills the bottom limb and shifts the array down one place (a divide by
@@ -1737,15 +1770,64 @@ is
    --  Promote a 64-limb value into a 128-limb value.
    ---------------------------------------------------------------------
 
-   procedure Widen (A : Limbs64; T : out Limbs128) is
+   --  Cross-type valuation bridge: a 128-limb array and a 64-limb array that
+   --  agree on limbs 0 .. K-1 have the same value over the first K limbs.
+   procedure Lemma_LV128_Eq_LV64
+     (T : Limbs128; A : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Index => (if I < K then T (I) = A (I))),
+     Post               => LV128 (T, K) = LV64 (A, K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Eq_LV64
+     (T : Limbs128; A : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV128_Eq_LV64 (T, A, K - 1);
+         Lemma_LV128_Unfold (T, K);
+         Lemma_LV64_Unfold (A, K);
+      end if;
+   end Lemma_LV128_Eq_LV64;
+
+   --  Zero high limbs do not change the value: if T (N_Limbs .. J-1) = 0 then
+   --  LV128 (T, J) = LV128 (T, N_Limbs).
+   procedure Lemma_LV128_Suffix_Zero (T : Limbs128; J : Limb2_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       J >= N_Limbs
+       and then (for all I in Limb2_Index =>
+                   (if I >= N_Limbs and then I < J then T (I) = 0)),
+     Post               => LV128 (T, J) = LV128 (T, N_Limbs),
+     Subprogram_Variant => (Decreases => J);
+
+   procedure Lemma_LV128_Suffix_Zero (T : Limbs128; J : Limb2_Plus_Index) is
+   begin
+      if J > N_Limbs then
+         Lemma_LV128_Unfold (T, J);          --  T (J-1) = 0 contributes 0.
+         Lemma_LV128_Suffix_Zero (T, J - 1);
+      end if;
+   end Lemma_LV128_Suffix_Zero;
+
+   procedure Widen (A : Limbs64; T : out Limbs128)
+   with Post => LV128 (T, 2 * N_Limbs) = LV64 (A, N_Limbs)
+   is
    begin
       T := [others => 0];
       for I in Limb_Index loop
          T (I) := A (I);
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K <= I then T (K) = A (K)));
+         pragma
+           Loop_Invariant
+             (for all K in Limb2_Index => (if K >= N_Limbs then T (K) = 0));
       end loop;
-      for I in N_Limbs .. 2 * N_Limbs - 1 loop
-         T (I) := 0;
-      end loop;
+      --  Low 64 limbs equal A, high 64 limbs zero: LV128 (T) = LV64 (A).
+      Lemma_LV128_Eq_LV64 (T, A, N_Limbs);
+      Lemma_LV128_Suffix_Zero (T, 2 * N_Limbs);
    end Widen;
 
    ---------------------------------------------------------------------
@@ -1753,29 +1835,71 @@ is
    ---------------------------------------------------------------------
 
    procedure Limb_Mod_Mul (A, B, N : Limbs64; R : out Limbs64)
-   with Pre => not Is_Zero64 (N)
+   with
+     Pre  => not Is_Zero64 (N),
+     Post =>
+       LV64 (R, N_Limbs) < LV64 (N, N_Limbs)
+       and then LV64 (R, N_Limbs)
+                = (LV64 (A, N_Limbs) * LV64 (B, N_Limbs)) mod LV64 (N, N_Limbs)
    is
       T     : Limbs128;
       A_Red : Limbs64 := A;
       B_Red : Limbs64 := B;
       Tmp   : Limbs128;
    begin
-      --  If A or B is already >= N, reduce first. Cheap special-case.
+      --  If A or B is already >= N, reduce first. In both cases this leaves
+      --  LV64 (A_Red) = LV64 (A) mod N and LV64 (B_Red) = LV64 (B) mod N.
       if Compare64 (A_Red, N) >= 0 then
          Widen (A_Red, Tmp);
+         pragma Assert (LV128 (Tmp, 2 * N_Limbs) = LV64 (A, N_Limbs));
          Reduce (Tmp, N, A_Red);
+         Lemma_LV64_Nonneg (A_Red, N_Limbs);   --  0 <= A_Red < N => N > 0.
+
+      else
+         Lemma_LV64_Nonneg (A, N_Limbs);        --  0 <= A < N => N > 0.
+         Lemma_Mod_Unique
+           (LV64 (A, N_Limbs), 0, LV64 (A, N_Limbs), LV64 (N, N_Limbs));
       end if;
+      pragma
+        Assert
+          (LV64 (A_Red, N_Limbs) = LV64 (A, N_Limbs) mod LV64 (N, N_Limbs));
+      pragma Assert (LV64 (A_Red, N_Limbs) < LV64 (N, N_Limbs));
+
       if Compare64 (B_Red, N) >= 0 then
          Widen (B_Red, Tmp);
+         pragma Assert (LV128 (Tmp, 2 * N_Limbs) = LV64 (B, N_Limbs));
          Reduce (Tmp, N, B_Red);
+         Lemma_LV64_Nonneg (B_Red, N_Limbs);
+      else
+         Lemma_LV64_Nonneg (B, N_Limbs);
+         Lemma_Mod_Unique
+           (LV64 (B, N_Limbs), 0, LV64 (B, N_Limbs), LV64 (N, N_Limbs));
       end if;
+      pragma
+        Assert
+          (LV64 (B_Red, N_Limbs) = LV64 (B, N_Limbs) mod LV64 (N, N_Limbs));
 
       Mul128 (A_Red, B_Red, T);
-      --  §0e value-bridge foundation: the 128-limb product valuation is
-      --  bounded in [0, 2^4096) (anchors LV128 for the convolution proof).
       Lemma_LV128_Nonneg (T, 2 * N_Limbs);
       Lemma_LV128_Upper (T, 2 * N_Limbs);
       Reduce (T, N, R);
+
+      --  R = (A_Red*B_Red) mod N = ((A mod N)*(B mod N)) mod N = (A*B) mod N.
+      Lemma_LV64_Nonneg (A, N_Limbs);
+      Lemma_LV64_Nonneg (B, N_Limbs);
+      pragma
+        Assert
+          (LV64 (R, N_Limbs)
+             = (LV64 (A_Red, N_Limbs) * LV64 (B_Red, N_Limbs))
+               mod LV64 (N, N_Limbs));
+      pragma
+        Assert
+          (LV64 (R, N_Limbs)
+             = ((LV64 (A, N_Limbs) mod LV64 (N, N_Limbs))
+                * (LV64 (B, N_Limbs) mod LV64 (N, N_Limbs)))
+               mod LV64 (N, N_Limbs));
+      Lemma_Mod_Mul_Cong
+        (LV64 (A, N_Limbs), LV64 (B, N_Limbs), LV64 (N, N_Limbs));
    end Limb_Mod_Mul;
 
    ---------------------------------------------------------------------
