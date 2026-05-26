@@ -1181,6 +1181,153 @@ is
       pragma Assert (Cy * P32 (J + 1) = Cy * (P32 (J) * Base32));
    end Lemma_Reduce_Preserve;
 
+   --  Montgomery reduce TWO-LIMB FINALIZE, clean context. Folds the last carry
+   --  (limb N_Limbs) and the top word (limb N_Limbs+1) into the shifted result,
+   --  extending the loop-exit invariant to the full reduced value:
+   --  Base32 * LV66 (T_After, N_Limbs+1) = LV66 (T_Red, N_Limbs+2) + m*LV64 (N).
+   procedure Lemma_Reduce_Finalize
+     (T_Loop, T_After, T_Red       : Limbs66;
+      N                            : Limbs64;
+      M                            : Unsigned_32;
+      Carry_Loop, Acc, Carry_Final : Unsigned_64)
+   with
+     Ghost,
+     Pre  =>
+       Carry_Loop <= 16#FFFF_FFFF#
+       and then Acc = Unsigned_64 (T_Red (N_Limbs)) + Carry_Loop
+       and then Carry_Final = Shift_Right (Acc, 32)
+       and then T_Red (N_Limbs + 1) <= 1
+       and then T_Loop (N_Limbs) = T_Red (N_Limbs)
+       and then T_Loop (N_Limbs + 1) = T_Red (N_Limbs + 1)
+       and then (for all K in Limb66_Index =>
+                   (if K <= N_Limbs - 2 then T_After (K) = T_Loop (K)))
+       and then T_After (N_Limbs - 1) = Unsigned_32 (Acc and 16#FFFF_FFFF#)
+       and then T_After (N_Limbs)
+                = T_Red (N_Limbs + 1) + Unsigned_32 (Carry_Final)
+       and then T_After (N_Limbs + 1) = 0
+       and then LV66 (T_Red, N_Limbs)
+                + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs)
+                = Base32
+                  * LV66 (T_Loop, N_Limbs - 1)
+                  + GBV.Limb_Val (GB.LLI (Carry_Loop)) * P32 (N_Limbs),
+     Post =>
+       Base32 * LV66 (T_After, N_Limbs + 1)
+       = LV66 (T_Red, N_Limbs + 2)
+         + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs);
+
+   procedure Lemma_Reduce_Finalize
+     (T_Loop, T_After, T_Red       : Limbs66;
+      N                            : Limbs64;
+      M                            : Unsigned_32;
+      Carry_Loop, Acc, Carry_Final : Unsigned_64)
+   is
+      Cl   : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Carry_Loop))
+      with Ghost;
+      Cf   : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Carry_Final))
+      with Ghost;
+      Tr64 : constant Big.Big_Integer :=
+        GBV.Limb_Val (GB.LLI (T_Red (N_Limbs)))
+      with Ghost;
+      Tr65 : constant Big.Big_Integer :=
+        GBV.Limb_Val (GB.LLI (T_Red (N_Limbs + 1)))
+      with Ghost;
+      Low  : constant Big.Big_Integer :=
+        GBV.Limb_Val (GB.LLI (T_After (N_Limbs - 1)))
+      with Ghost;
+      T64  : constant Big.Big_Integer :=
+        GBV.Limb_Val (GB.LLI (T_After (N_Limbs)))
+      with Ghost;
+      LvL  : constant Big.Big_Integer := LV66 (T_Loop, N_Limbs - 1)
+      with Ghost;
+   begin
+      --  2-term carry split (Lemma_MulAdd_Step, Aj = Bi = 0).
+      Lemma_MulAdd_Step (T_Red (N_Limbs), 0, 0, Carry_Loop, Acc);
+      pragma Assert (Low + Cf * Base32 = Tr64 + Cl);
+      --  Top word = T_Red(65) + Carry_Final, no wrap (both <= 1).
+      pragma
+        Assert
+          (GB.LLI (T_After (N_Limbs))
+             = GB.LLI (T_Red (N_Limbs + 1)) + GB.LLI (Carry_Final));
+      GBV.Lemma_Limb_Val_Add
+        (GB.LLI (T_Red (N_Limbs + 1)), GB.LLI (Carry_Final));
+      pragma Assert (T64 = Tr65 + Cf);
+      --  Frame + unfolds.
+      Lemma_LV66_Frame (T_After, T_Loop, N_Limbs - 1);
+      Lemma_LV66_Unfold (T_After, N_Limbs);
+      Lemma_LV66_Unfold (T_After, N_Limbs + 1);
+      Lemma_LV66_Unfold (T_Red, N_Limbs + 1);
+      Lemma_LV66_Unfold (T_Red, N_Limbs + 2);
+      pragma Assert (P32 (N_Limbs) = P32 (N_Limbs - 1) * Base32);
+      pragma Assert (P32 (N_Limbs + 1) = P32 (N_Limbs) * Base32);
+      --  LHS: LV66 (T_After, N_Limbs+1) = LvL + Low*P32(N_Limbs-1)
+      --       + T64*P32(N_Limbs).
+      pragma
+        Assert
+          (LV66 (T_After, N_Limbs + 1)
+             = LvL + Low * P32 (N_Limbs - 1) + T64 * P32 (N_Limbs));
+      --  Shift each term up by Base32.
+      Lemma_BI_Mul_Eq (Low, P32 (N_Limbs), P32 (N_Limbs - 1) * Base32);
+      Lemma_BI_Assoc (Low, P32 (N_Limbs - 1), Base32);
+      Lemma_BI_Comm (Low * P32 (N_Limbs - 1), Base32);
+      pragma Assert (Low * P32 (N_Limbs) = Base32 * (Low * P32 (N_Limbs - 1)));
+      Lemma_BI_Mul_Eq (T64, P32 (N_Limbs + 1), P32 (N_Limbs) * Base32);
+      Lemma_BI_Assoc (T64, P32 (N_Limbs), Base32);
+      Lemma_BI_Comm (T64 * P32 (N_Limbs), Base32);
+      pragma Assert (T64 * P32 (N_Limbs + 1) = Base32 * (T64 * P32 (N_Limbs)));
+      Lemma_BI_Distrib (Base32, LvL, Low * P32 (N_Limbs - 1));
+      Lemma_BI_Distrib
+        (Base32, LvL + Low * P32 (N_Limbs - 1), T64 * P32 (N_Limbs));
+      Lemma_BI_Mul_Eq
+        (Base32,
+         LV66 (T_After, N_Limbs + 1),
+         LvL + Low * P32 (N_Limbs - 1) + T64 * P32 (N_Limbs));
+      pragma
+        Assert
+          (Base32 * LV66 (T_After, N_Limbs + 1)
+             = Base32 * LvL + Low * P32 (N_Limbs) + T64 * P32 (N_Limbs + 1));
+      --  Expand T64 = Tr65 + Cf and fold via the per-step identity.
+      Lemma_BI_Mul_Eq (Tr65 + Cf, P32 (N_Limbs + 1), P32 (N_Limbs + 1));
+      Lemma_BI_Comm (Tr65 + Cf, P32 (N_Limbs + 1));
+      Lemma_BI_Distrib (P32 (N_Limbs + 1), Tr65, Cf);
+      Lemma_BI_Comm (P32 (N_Limbs + 1), Tr65);
+      Lemma_BI_Comm (P32 (N_Limbs + 1), Cf);
+      pragma
+        Assert
+          (T64 * P32 (N_Limbs + 1)
+             = Tr65 * P32 (N_Limbs + 1) + Cf * P32 (N_Limbs + 1));
+      Lemma_BI_Mul_Eq (Cf, P32 (N_Limbs + 1), P32 (N_Limbs) * Base32);
+      Lemma_BI_Assoc (Cf, P32 (N_Limbs), Base32);
+      Lemma_BI_Comm (Cf * P32 (N_Limbs), Base32);
+      pragma Assert (Cf * P32 (N_Limbs + 1) = Base32 * Cf * P32 (N_Limbs));
+      --  (Low + Cf*Base32) * P32(N_Limbs) = (Tr64 + Cl) * P32(N_Limbs).
+      Lemma_BI_Mul_Eq (P32 (N_Limbs), Low + Cf * Base32, Tr64 + Cl);
+      Lemma_BI_Comm (P32 (N_Limbs), Low + Cf * Base32);
+      Lemma_BI_Comm (P32 (N_Limbs), Tr64 + Cl);
+      Lemma_BI_Distrib (P32 (N_Limbs), Low, Cf * Base32);
+      Lemma_BI_Distrib (P32 (N_Limbs), Tr64, Cl);
+      Lemma_BI_Comm (P32 (N_Limbs), Low);
+      Lemma_BI_Comm (P32 (N_Limbs), Cf * Base32);
+      Lemma_BI_Comm (P32 (N_Limbs), Tr64);
+      Lemma_BI_Comm (P32 (N_Limbs), Cl);
+      pragma
+        Assert
+          (Low * P32 (N_Limbs) + Cf * Base32 * P32 (N_Limbs)
+             = Tr64 * P32 (N_Limbs) + Cl * P32 (N_Limbs));
+      --  RHS unfolds: LV66 (T_Red, N_Limbs+2) = LV66 (T_Red, N_Limbs)
+      --              + Tr64*P32(N_Limbs) + Tr65*P32(N_Limbs+1).
+      pragma
+        Assert
+          (LV66 (T_Red, N_Limbs + 2)
+             = LV66 (T_Red, N_Limbs)
+               + Tr64 * P32 (N_Limbs)
+               + Tr65 * P32 (N_Limbs + 1));
+      pragma
+        Assert
+          (Base32 * LV66 (T_After, N_Limbs + 1)
+             = LV66 (T_Red, N_Limbs + 2)
+               + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
+   end Lemma_Reduce_Finalize;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -1507,11 +1654,29 @@ is
                 = Base32
                   * LV66 (T, N_Limbs - 1)
                   + GBV.Limb_Val (GB.LLI (Carry)) * P32 (N_Limbs));
-         Acc := Unsigned_64 (T (N_Limbs)) + Carry;
-         T (N_Limbs - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
-         Carry := Shift_Right (Acc, 32);
-         T (N_Limbs) := T (N_Limbs + 1) + Unsigned_32 (Carry);
-         T (N_Limbs + 1) := 0;
+         declare
+            T_Loop     : constant Limbs66 := T
+            with Ghost;
+            Carry_Loop : constant Unsigned_64 := Carry
+            with Ghost;
+         begin
+            --  Loop-exit suffix facts (J = N_Limbs).
+            pragma Assert (T (N_Limbs) = T_Red (N_Limbs));
+            pragma Assert (T (N_Limbs + 1) = T_Red (N_Limbs + 1));
+            Acc := Unsigned_64 (T (N_Limbs)) + Carry;
+            T (N_Limbs - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
+            Carry := Shift_Right (Acc, 32);
+            T (N_Limbs) := T (N_Limbs + 1) + Unsigned_32 (Carry);
+            T (N_Limbs + 1) := 0;
+            --  Full reduce identity: Base32 * value (T) = T_Red + M*N.
+            Lemma_Reduce_Finalize
+              (T_Loop, T, T_Red, N, M, Carry_Loop, Acc, Carry);
+            pragma
+              Assert
+                (Base32 * LV66 (T, N_Limbs + 1)
+                   = LV66 (T_Red, N_Limbs + 2)
+                     + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
+         end;
       end loop;
 
       --  T now holds A*B*R^-1 mod N, possibly with one extra N. The
