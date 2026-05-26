@@ -554,6 +554,18 @@ is
        LV128 (T, I + 1) + P32 (I + 1) * P_Entry
        = LV128 (T, I) + P32 (I) * Proc_New;
 
+   --  Cross-type valuation bridge: a 65-limb array and a 64-limb array that
+   --  agree on limbs 0 .. K-1 have the same base-2^32 value over the first K
+   --  limbs (both use the same P32 weights). Spec here; body below (uses the
+   --  late LV64_Unfold). Used to relate R/N65 (65-limb) to Out_R/N (64-limb).
+   procedure Lemma_LV65_Eq_LV64 (L : Limbs65; M : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Index => (if I < K then L (I) = M (I))),
+     Post               => LV65 (L, K) = LV64 (M, K),
+     Subprogram_Variant => (Decreases => K);
+
    --  Power additivity: 2**(32*(A+B)) = 2**(32*A) * 2**(32*B). Body below (uses
    --  the BI ring lemmas, which are declared later in this body).
    procedure Lemma_P32_Add (A, B : Natural)
@@ -724,6 +736,43 @@ is
    begin
       null;
    end Lemma_BI_Distrib;
+
+   --  Euclidean uniqueness of the remainder: a non-negative X with the
+   --  decomposition X = Q*D + R, 0 <= R < D (D > 0) has X mod D = R. The
+   --  quotient offset K = X/D - Q satisfies K*D = R - (X mod D) in (-D, D),
+   --  so K = 0. Isolated so the nonlinear multiply-monotonicity stays tiny.
+   procedure Lemma_Mod_Unique (X, Q, R, D : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       D > 0
+       and then X >= 0
+       and then X = Q * D + R
+       and then R >= 0
+       and then R < D,
+     Post => X mod D = R;
+
+   procedure Lemma_Mod_Unique (X, Q, R, D : Big.Big_Integer) is
+      K : constant Big.Big_Integer := X / D - Q;
+   begin
+      --  Division identity (X >= 0, D > 0): X = (X/D)*D + (X mod D).
+      pragma Assert (X = (X / D) * D + (X mod D));
+      Lemma_BI_Distrib (D, X / D, -Q);   --  D*(X/D - Q) = D*(X/D) - D*Q.
+      Lemma_BI_Comm (D, K);
+      Lemma_BI_Comm (D, X / D);
+      Lemma_BI_Comm (D, Q);
+      pragma Assert (K * D = R - (X mod D));
+      pragma Assert (K * D < D);          --  R < D, X mod D >= 0.
+      pragma Assert (K * D > -D);         --  R >= 0, X mod D < D.
+      if K >= 1 then
+         GBV.Lemma_BI_Mul_Mono (D, 1, K);   --  D = D*1 <= D*K.
+         Lemma_BI_Comm (D, K);
+      elsif K <= -1 then
+         GBV.Lemma_BI_Mul_Mono (D, K, -1);  --  D*K <= D*(-1) = -D.
+         Lemma_BI_Comm (D, K);
+      end if;
+      pragma Assert (K = 0);
+   end Lemma_Mod_Unique;
 
    ---------------------------------------------------------------------
    --  Horner low-split of the 66-limb valuation. The Montgomery reduce step
@@ -1384,7 +1433,12 @@ is
    ---------------------------------------------------------------------
 
    procedure Reduce (T : Limbs128; N : Limbs64; Out_R : out Limbs64)
-   with Pre => not Is_Zero64 (N)
+   with
+     Pre  => not Is_Zero64 (N),
+     Post =>
+       LV64 (Out_R, N_Limbs) < LV64 (N, N_Limbs)
+       and then LV64 (Out_R, N_Limbs)
+                = LV128 (T, 2 * N_Limbs) mod LV64 (N, N_Limbs)
    is
       R         : Limbs65 := [others => 0];
       N65       : Limbs65 := [others => 0];
@@ -1551,11 +1605,45 @@ is
       pragma Assert (LV128 (T, 0) = 0);
       pragma Assert (Processed = LV128 (T, 2 * N_Limbs));
 
-      --  Result fits in 64 limbs (since R < N < 2^2048, the high
-      --  limb of R is zero by induction).
+      --  R < N65 < 2^2048, so R's high (65th) limb is zero: R fits in 64 limbs
+      --  and LV65 (R, 65) = LV65 (R, 64).
+      Lemma_LV65_Top_Zero (R);
+      Lemma_LV65_Unfold (R, N_Limbs + 1);
+      pragma Assert (LV65 (R, N_Limbs + 1) = LV65 (R, N_Limbs));
+
+      --  N65 (N_Limbs) = 0 too, so LV65 (N65, 65) = LV64 (N, 64) > 0.
+      Lemma_LV65_Unfold (N65, N_Limbs + 1);
+      Lemma_LV65_Eq_LV64 (N65, N, N_Limbs);
+      pragma Assert (LV65 (N65, N_Limbs + 1) = LV64 (N, N_Limbs));
+      pragma Assert (LV64 (N, N_Limbs) > 0);
+
+      --  Euclidean uniqueness: Processed = Quo*N65 + R with 0 <= R < N65 pins
+      --  R = Processed mod N65 = LV128 (T, 2*N_Limbs) mod LV64 (N).
+      pragma
+        Assert
+          (Processed = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
+      pragma Assert (LV65 (R, N_Limbs + 1) >= 0);
+      pragma Assert (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
+      Lemma_LV128_Nonneg (T, 2 * N_Limbs);   --  Processed = LV128 (T) >= 0.
+      Lemma_Mod_Unique
+        (Processed, Quo, LV65 (R, N_Limbs + 1), LV65 (N65, N_Limbs + 1));
+      pragma
+        Assert (LV65 (R, N_Limbs + 1) = Processed mod LV65 (N65, N_Limbs + 1));
+
+      --  Copy R's low 64 limbs into Out_R; LV64 (Out_R) = LV65 (R, 65).
+      Out_R := [others => 0];
       for I in Limb_Index loop
          Out_R (I) := R (I);
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K <= I then Out_R (K) = R (K)));
       end loop;
+      Lemma_LV65_Eq_LV64 (R, Out_R, N_Limbs);
+      pragma Assert (LV64 (Out_R, N_Limbs) = LV65 (R, N_Limbs + 1));
+      pragma
+        Assert
+          (LV64 (Out_R, N_Limbs)
+             = LV128 (T, 2 * N_Limbs) mod LV64 (N, N_Limbs));
    end Reduce;
 
    ---------------------------------------------------------------------
@@ -2425,6 +2513,18 @@ is
       Lemma_BI_Comm (Base32, P_Entry);
       Lemma_BI_Comm (W, TI);
    end Lemma_Reduce_Recon_Outer;
+
+   procedure Lemma_LV65_Eq_LV64 (L : Limbs65; M : Limbs64; K : Limb_Plus_Index)
+   is
+   begin
+      if K /= 0 then
+         Lemma_LV65_Eq_LV64 (L, M, K - 1);   --  agree on 0 .. K-2.
+         Lemma_LV65_Unfold (L, K);
+         Lemma_LV64_Unfold
+           (M, K);           --  L (K-1) = M (K-1), same weight.
+
+      end if;
+   end Lemma_LV65_Eq_LV64;
 
    --  Body of Lemma_Mul128_Preserve (declared early; uses the ring/convolution
    --  toolkit here). Clean context: only its own Pre as hypotheses.
