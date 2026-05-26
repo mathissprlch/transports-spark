@@ -377,6 +377,23 @@ is
       null;
    end Lemma_LV128_Unfold;
 
+   --  An all-zero prefix has zero valuation (Mul128 outer accumulation base
+   --  case: T starts all-zero so LV128 (T, .) = 0).
+   procedure Lemma_LV128_Zero (T : Limbs128; K : Limb2_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb2_Index => (if I < K then T (I) = 0)),
+     Post               => LV128 (T, K) = 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Zero (T : Limbs128; K : Limb2_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV128_Zero (T, K - 1);
+      end if;
+   end Lemma_LV128_Zero;
+
    --  One-step P32 successor: P32 (K+1) = P32 (K) * Base32.
    procedure Lemma_P32_Succ (K : Natural)
    with Ghost, Pre => K <= 2 * N_Limbs, Post => P32 (K + 1) = P32 (K) * Base32;
@@ -427,6 +444,32 @@ is
        + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I + J + 1)
        = LV128 (T_Inner, I + J + 1)
          + (P32 (I) * LV64 (B, J + 1)) * GBV.Limb_Val (GB.LLI (A (I)));
+
+   --  Mul128 OUTER accumulation step, clean context. Given the inner-loop exit
+   --  (active prefix at J = N_Limbs) on T_AI plus the running accumulation
+   --  invariant on T_Inner, the final carry write (T_AI -> T_Final, limb
+   --  I+N_Limbs := Carry) advances the product by one A limb. Spec here so the
+   --  early Mul128 can call it; body below, after the toolkit.
+   procedure Lemma_Mul128_Outer
+     (T_Inner, T_AI, T_Final : Limbs128;
+      A, B                   : Limbs64;
+      I                      : Limb_Index;
+      Carry                  : Unsigned_64)
+   with
+     Ghost,
+     Pre  =>
+       Carry <= 16#FFFF_FFFF#
+       and then LV128 (T_AI, I + N_Limbs)
+                + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I + N_Limbs)
+                = LV128 (T_Inner, I + N_Limbs)
+                  + (P32 (I) * LV64 (B, N_Limbs))
+                    * GBV.Limb_Val (GB.LLI (A (I)))
+       and then LV128 (T_Inner, I + N_Limbs) = LV64 (A, I) * LV64 (B, N_Limbs)
+       and then T_Final (I + N_Limbs) = Unsigned_32 (Carry and 16#FFFF_FFFF#)
+       and then (for all K in Limb2_Index =>
+                   (if K /= I + N_Limbs then T_Final (K) = T_AI (K))),
+     Post =>
+       LV128 (T_Final, I + N_Limbs + 1) = LV64 (A, I + 1) * LV64 (B, N_Limbs);
 
    --  Value of the low K limbs of a 66-limb array -- the CIOS Mont_Mul
    --  accumulator width (64 + 2 carry words). Same base-2**32 Horner form.
@@ -731,11 +774,15 @@ is
    --  Schoolbook 64x64 multiply producing a 128-limb result.
    ---------------------------------------------------------------------
 
-   procedure Mul128 (A, B : Limbs64; T : out Limbs128) is
+   procedure Mul128 (A, B : Limbs64; T : out Limbs128)
+   with Post => LV128 (T, 2 * N_Limbs) = LV64 (A, N_Limbs) * LV64 (B, N_Limbs)
+   is
       Acc   : Unsigned_64;
       Carry : Unsigned_64;
    begin
       T := [others => 0];
+      --  Base of the outer accumulation invariant: LV128 (all-zero) = 0.
+      Lemma_LV128_Zero (T, N_Limbs);
       for I in Limb_Index loop
          --  Outer accumulation frame: limbs at and above I + N_Limbs are still
          --  zero (outer iteration i writes only limbs i .. i + N_Limbs).
@@ -743,6 +790,10 @@ is
            Loop_Invariant
              (for all K in Limb2_Index =>
                 (if K >= I + N_Limbs then T (K) = 0));
+         --  Running product: the low I limbs of A times all of B.
+         pragma
+           Loop_Invariant
+             (LV128 (T, I + N_Limbs) = LV64 (A, I) * LV64 (B, N_Limbs));
          Carry := 0;
          declare
             T_Inner : constant Limbs128 := T
@@ -791,10 +842,38 @@ is
                      Carry   => Carry);
                end;
             end loop;
-            --  I + 64 is in range 64 .. 127 — i.e., always inside Limbs128.
-            T (I + N_Limbs) := Unsigned_32 (Carry and 16#FFFFFFFF#);
+            --  Inner exit: the convolution invariant at J = N_Limbs (from the
+            --  last Lemma_Mul128_Preserve, J = N_Limbs - 1).
+            pragma
+              Assert
+                (LV128 (T, I + N_Limbs)
+                   + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I + N_Limbs)
+                   = LV128 (T_Inner, I + N_Limbs)
+                     + (P32 (I) * LV64 (B, N_Limbs))
+                       * GBV.Limb_Val (GB.LLI (A (I))));
+            declare
+               T_AI : constant Limbs128 := T
+               with Ghost;
+            begin
+               --  I + 64 is in range 64 .. 127 — i.e., always inside Limbs128.
+               T (I + N_Limbs) := Unsigned_32 (Carry and 16#FFFFFFFF#);
+               --  The final carry write advances the running product by the
+               --  full A (I) * B * 2**(32*I) term.
+               Lemma_Mul128_Outer
+                 (T_Inner => T_Inner,
+                  T_AI    => T_AI,
+                  T_Final => T,
+                  A       => A,
+                  B       => B,
+                  I       => I,
+                  Carry   => Carry);
+            end;
          end;
       end loop;
+      --  Outer accumulation at exit (I = N_Limbs): the full 128-limb product.
+      pragma
+        Assert
+          (LV128 (T, 2 * N_Limbs) = LV64 (A, N_Limbs) * LV64 (B, N_Limbs));
    end Mul128;
 
    ---------------------------------------------------------------------
@@ -1623,6 +1702,52 @@ is
       Lemma_BI_Mul_Eq
         (GBV.Limb_Val (GB.LLI (Carry)), P32 (I + J + 1), P32 (I + J) * Base32);
    end Lemma_Mul128_Preserve;
+
+   --  Body of Lemma_Mul128_Outer (declared early; uses the toolkit here).
+   procedure Lemma_Mul128_Outer
+     (T_Inner, T_AI, T_Final : Limbs128;
+      A, B                   : Limbs64;
+      I                      : Limb_Index;
+      Carry                  : Unsigned_64)
+   is
+      A_Val : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (A (I)))
+      with Ghost;
+      LB    : constant Big.Big_Integer := LV64 (B, N_Limbs)
+      with Ghost;
+   begin
+      --  The carry fits 32 bits, so the written limb's value is Limb_Val (Carry).
+      pragma Assert ((Carry and 16#FFFF_FFFF#) = Carry);
+      Lemma_LLI_Fits32 (Carry);
+      --  Carry-write extension: only limb I+N_Limbs changed (= Carry).
+      Lemma_LV128_Frame (T_Final, T_AI, I + N_Limbs);
+      Lemma_LV128_Unfold (T_Final, I + N_Limbs + 1);
+      pragma
+        Assert
+          (LV128 (T_Final, I + N_Limbs + 1)
+             = LV128 (T_AI, I + N_Limbs)
+               + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I + N_Limbs));
+      --  Substitute the inner-exit identity (the carry term cancels).
+      pragma
+        Assert
+          (LV128 (T_Final, I + N_Limbs + 1)
+             = LV128 (T_Inner, I + N_Limbs) + (P32 (I) * LB) * A_Val);
+      --  Apply the running accumulation invariant on T_Inner.
+      pragma
+        Assert
+          (LV128 (T_Final, I + N_Limbs + 1)
+             = LV64 (A, I) * LB + (P32 (I) * LB) * A_Val);
+      --  Expand LV64 (A, I+1) and rearrange to the product form.
+      Lemma_LV64_Unfold (A, I + 1);
+      Lemma_BI_Comm (LV64 (A, I) + A_Val * P32 (I), LB);
+      Lemma_BI_Distrib (LB, LV64 (A, I), A_Val * P32 (I));
+      Lemma_BI_Comm (LB, LV64 (A, I));
+      Lemma_BI_Comm (LB, A_Val * P32 (I));
+      Lemma_BI_Assoc (A_Val, P32 (I), LB);
+      Lemma_BI_Comm (A_Val, P32 (I) * LB);
+      pragma
+        Assert
+          (LV64 (A, I + 1) * LB = LV64 (A, I) * LB + (P32 (I) * LB) * A_Val);
+   end Lemma_Mul128_Outer;
 
    --  Pure ring step for the OUTER Montgomery loop (EXACT, no mod). From the
    --  running invariant H1 (Lvt_Old * P_I = Av*LvB_I + Q_Old*Nv), the net
