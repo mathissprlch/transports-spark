@@ -822,9 +822,14 @@ is
       return 0;
    end Compare64;
 
-   function Is_Zero64 (A : Limbs64) return Boolean is
+   function Is_Zero64 (A : Limbs64) return Boolean
+   with Post => Is_Zero64'Result = (for all I in Limb_Index => A (I) = 0)
+   is
    begin
       for I in Limb_Index loop
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K < I then A (K) = 0));
          if A (I) /= 0 then
             return False;
          end if;
@@ -989,8 +994,9 @@ is
    procedure Shl1_65 (A : Limbs65; R : out Limbs65)
    with
      Post =>
-       (if A (N_Limbs) < 2**31
-        then LV65 (R, N_Limbs + 1) = 2 * LV65 (A, N_Limbs + 1))
+       (R (0) and 1) = 0
+       and then (if A (N_Limbs) < 2**31
+                 then LV65 (R, N_Limbs + 1) = 2 * LV65 (A, N_Limbs + 1))
    is
       Carry : Unsigned_32 := 0;
       Hi    : Unsigned_32;
@@ -998,6 +1004,7 @@ is
       R := [others => 0];
       for I in Limb_Plus_Index loop
          pragma Loop_Invariant (Carry <= 1);
+         pragma Loop_Invariant (if I >= 1 then (R (0) and 1) = 0);
          pragma
            Loop_Invariant
              (LV65 (R, I) + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I)
@@ -1161,6 +1168,134 @@ is
    end Mul128;
 
    ---------------------------------------------------------------------
+   --  LV65 is monotone in the prefix length (each extra limb is >= 0).
+   procedure Lemma_LV65_Ge (L : Limbs65; K : Limb66_Index)
+   with
+     Ghost,
+     Post               => LV65 (L, N_Limbs + 1) >= LV65 (L, K),
+     Subprogram_Variant => (Decreases => N_Limbs + 1 - K);
+
+   procedure Lemma_LV65_Ge (L : Limbs65; K : Limb66_Index) is
+   begin
+      if K <= N_Limbs then
+         Lemma_LV65_Ge (L, K + 1);
+         Lemma_LV65_Unfold (L, K + 1);
+         GBV.Lemma_Limb_Val_Nonneg (GB.LLI (L (K)));
+         Lemma_P32_Pos (K);
+      end if;
+   end Lemma_LV65_Ge;
+
+   --  A nonzero limb at J forces a strictly positive valuation.
+   procedure Lemma_LV65_Pos (L : Limbs65; J : Limb_Plus_Index)
+   with Ghost, Pre => L (J) /= 0, Post => LV65 (L, N_Limbs + 1) > 0;
+
+   procedure Lemma_LV65_Pos (L : Limbs65; J : Limb_Plus_Index) is
+   begin
+      Lemma_LV65_Unfold (L, J + 1);
+      Lemma_LV65_Nonneg (L, J);
+      Lemma_P32_Pos (J);
+      GBV.Lemma_Limb_Val_Mono (1, GB.LLI (L (J)));
+      GBV.Lemma_Limb_Val_Succ (0);
+      pragma Assert (GBV.Limb_Val (GB.LLI (L (J))) >= 1);
+      pragma Assert (GBV.Limb_Val (GB.LLI (L (J))) * P32 (J) >= P32 (J));
+      pragma Assert (LV65 (L, J + 1) >= P32 (J));
+      Lemma_LV65_Ge (L, J + 1);
+   end Lemma_LV65_Pos;
+
+   --  Some nonzero limb forces a strictly positive valuation.
+   procedure Lemma_LV65_Pos_Exists (L : Limbs65)
+   with
+     Ghost,
+     Pre  => (for some J in Limb_Plus_Index => L (J) /= 0),
+     Post => LV65 (L, N_Limbs + 1) > 0;
+
+   procedure Lemma_LV65_Pos_Exists (L : Limbs65) is
+   begin
+      for J in Limb_Plus_Index loop
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Plus_Index => (if K < J then L (K) = 0));
+         if L (J) /= 0 then
+            Lemma_LV65_Pos (L, J);
+            return;
+         end if;
+      end loop;
+   end Lemma_LV65_Pos_Exists;
+
+   --  Below-radix valuation forces the top limb to be zero.
+   procedure Lemma_LV65_Top_Zero (L : Limbs65)
+   with
+     Ghost,
+     Pre  => LV65 (L, N_Limbs + 1) < P32 (N_Limbs),
+     Post => L (N_Limbs) = 0;
+
+   procedure Lemma_LV65_Top_Zero (L : Limbs65) is
+   begin
+      Lemma_LV65_Unfold (L, N_Limbs + 1);
+      Lemma_LV65_Nonneg (L, N_Limbs);
+      Lemma_P32_Pos (N_Limbs);
+      if L (N_Limbs) /= 0 then
+         GBV.Lemma_Limb_Val_Mono (1, GB.LLI (L (N_Limbs)));
+         GBV.Lemma_Limb_Val_Succ (0);
+         pragma Assert (GBV.Limb_Val (GB.LLI (L (N_Limbs))) >= 1);
+         pragma
+           Assert
+             (GBV.Limb_Val (GB.LLI (L (N_Limbs))) * P32 (N_Limbs)
+                >= P32 (N_Limbs));
+      end if;
+   end Lemma_LV65_Top_Zero;
+
+   --  OR-ing a single low bit into limb 0 (clear there after a shift) adds
+   --  exactly that bit to the valuation.
+   procedure Lemma_Or_Bit (R_Pre, R_After : Limbs65; Bit : Unsigned_32)
+   with
+     Ghost,
+     Pre  =>
+       Bit <= 1
+       and then (R_Pre (0) and 1) = 0
+       and then R_After (0) = (R_Pre (0) or Bit)
+       and then (for all K in Limb_Plus_Index =>
+                   (if K /= 0 then R_After (K) = R_Pre (K))),
+     Post =>
+       LV65 (R_After, N_Limbs + 1)
+       = LV65 (R_Pre, N_Limbs + 1) + GBV.Limb_Val (GB.LLI (Bit));
+
+   procedure Lemma_Or_Bit (R_Pre, R_After : Limbs65; Bit : Unsigned_32) is
+   begin
+      if Bit = 0 then
+         pragma Assert (R_After (0) = R_Pre (0));
+         pragma
+           Assert (GB.LLI (R_After (0)) = GB.LLI (R_Pre (0)) + GB.LLI (Bit));
+      else
+         pragma Assert (Bit = 1);
+         pragma Assert (R_Pre (0) <= 16#FFFF_FFFE#);
+         pragma Assert (R_After (0) = R_Pre (0) + 1);
+         pragma
+           Assert (GB.LLI (R_After (0)) = GB.LLI (R_Pre (0)) + GB.LLI (Bit));
+      end if;
+      GBV.Lemma_Limb_Val_Add (GB.LLI (R_Pre (0)), GB.LLI (Bit));
+      Lemma_LV65_Hi_Eq (R_After, R_Pre, 1);
+      Lemma_LV65_Unfold (R_After, 1);
+      Lemma_LV65_Unfold (R_Pre, 1);
+      GBV.Lemma_Limb_Val_Succ (0);
+   end Lemma_Or_Bit;
+
+   --  An all-zero prefix has zero valuation.
+   procedure Lemma_LV65_Zero (L : Limbs65; K : Limb66_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Plus_Index => (if I < K then L (I) = 0)),
+     Post               => LV65 (L, K) = 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV65_Zero (L : Limbs65; K : Limb66_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV65_Zero (L, K - 1);
+      end if;
+   end Lemma_LV65_Zero;
+
    --  Reduce a 128-limb value modulo a 64-limb non-zero modulus N.
    --
    --  Strategy: schoolbook long division by repeated shift-and-
@@ -1177,7 +1312,9 @@ is
    --  but correct, and SPARK-friendly.
    ---------------------------------------------------------------------
 
-   procedure Reduce (T : Limbs128; N : Limbs64; Out_R : out Limbs64) is
+   procedure Reduce (T : Limbs128; N : Limbs64; Out_R : out Limbs64)
+   with Pre => not Is_Zero64 (N)
+   is
       R         : Limbs65 := [others => 0];
       N65       : Limbs65 := [others => 0];
       Bit       : Unsigned_32;
@@ -1186,25 +1323,66 @@ is
       --  Promote N into a 65-limb form (limb 64 = 0).
       for I in Limb_Index loop
          N65 (I) := N (I);
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K <= I then N65 (K) = N (K)));
       end loop;
       N65 (N_Limbs) := 0;
 
-      --  Walk the numerator MSB-first. Limb index 127 is the highest;
-      --  bit 31 of that limb is the absolute MSB of the 4096-bit
-      --  numerator.
+      --  N65 value facts: 0 < LV65 (N65) < 2^2048 (limb N_Limbs is zero).
+      pragma Assert (for all K in Limb_Index => N65 (K) = N (K));
+      Lemma_LV65_Unfold (N65, N_Limbs + 1);
+      Lemma_LV65_Upper (N65, N_Limbs);
+      pragma Assert (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
+      pragma Assert (for some J in Limb_Plus_Index => N65 (J) /= 0);
+      Lemma_LV65_Pos_Exists (N65);
+      Lemma_LV65_Zero (R, N_Limbs + 1);   --  R starts all-zero: LV65 (R) = 0.
+
+      --  Walk the numerator MSB-first. The running remainder R stays in
+      --  [0, N): each bit doubles R, adds the bit, and conditionally
+      --  subtracts N once (since 2R + bit < 2N when R < N).
       for I in reverse Limb2_Index loop
+         pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) > 0);
+         pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
+         pragma
+           Loop_Invariant (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
          Limb_Word := T (I);
          for B in reverse 0 .. 31 loop
+            pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) > 0);
+            pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
+            pragma
+              Loop_Invariant (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
             Bit := Shift_Right (Limb_Word, B) and 1;
-            --  R := (R << 1) | Bit
+            --  R := (R << 1) | Bit, value level: LV65 (R) := 2*LV65 (R0) + Bit.
             declare
+               R0      : constant Limbs65 := R
+               with Ghost;
                Shifted : Limbs65;
             begin
+               Lemma_LV65_Top_Zero
+                 (R0);   --  R0 < N65 < 2^2048 => R0 (64) = 0.
                Shl1_65 (R, Shifted);
-               R := Shifted;
-               R (0) := R (0) or Bit;
+               declare
+                  R_Sh : constant Limbs65 := Shifted
+                  with Ghost;
+               begin
+                  R := Shifted;
+                  R (0) := R (0) or Bit;
+                  Lemma_Or_Bit (R_Sh, R, Bit);
+                  GBV.Lemma_Limb_Val_Mono (GB.LLI (Bit), 1);
+                  GBV.Lemma_Limb_Val_Succ (0);
+                  pragma
+                    Assert
+                      (LV65 (R, N_Limbs + 1)
+                         = 2
+                           * LV65 (R0, N_Limbs + 1)
+                           + GBV.Limb_Val (GB.LLI (Bit)));
+                  pragma
+                    Assert
+                      (LV65 (R, N_Limbs + 1) < 2 * LV65 (N65, N_Limbs + 1));
+               end;
             end;
-            --  If R >= N, subtract N.
+            --  If R >= N, subtract N (one subtract suffices: R was < 2N).
             if Compare65 (R, N65) >= 0 then
                declare
                   Diff : Limbs65;
@@ -1213,12 +1391,10 @@ is
                   R := Diff;
                end;
             end if;
+            pragma Assert (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
          end loop;
       end loop;
 
-      --  §0e value-bridge foundation for the running remainder: anchor the
-      --  65-limb valuation bounds (consumed by the in-progress Reduce
-      --  functional proof; the long-division correctness builds on LV65).
       Lemma_LV65_Nonneg (R, N_Limbs + 1);
       Lemma_LV65_Upper (R, N_Limbs + 1);
 
@@ -1248,7 +1424,9 @@ is
    --  Mod_Mul kernel on limb representation.
    ---------------------------------------------------------------------
 
-   procedure Limb_Mod_Mul (A, B, N : Limbs64; R : out Limbs64) is
+   procedure Limb_Mod_Mul (A, B, N : Limbs64; R : out Limbs64)
+   with Pre => not Is_Zero64 (N)
+   is
       T     : Limbs128;
       A_Red : Limbs64 := A;
       B_Red : Limbs64 := B;
@@ -1454,7 +1632,9 @@ is
    --
    --  Concretely: build T128 = 2^2048 (so T (64) = 1, others = 0),
    --  reduce to get R mod N, then square and reduce again.
-   procedure R_Sq_Mod_N (N : Limbs64; Out_R : out Limbs64) is
+   procedure R_Sq_Mod_N (N : Limbs64; Out_R : out Limbs64)
+   with Pre => not Is_Zero64 (N)
+   is
       T128  : Limbs128 := [others => 0];
       R_Mod : Limbs64;
       Sq128 : Limbs128;
@@ -2474,6 +2654,10 @@ is
          pragma Assert (LV66 (T_Red, 1) = GBV.Limb_Val (GB.LLI (T_Red (0))));
          pragma Assert (LV64 (N, 1) = GBV.Limb_Val (GB.LLI (N (0))));
          pragma Assert (Base32 * LV66 (T, 0) = 0);
+         Lemma_P32_Succ (0);
+         GBV.Lemma_Limb_Val_Succ (0);
+         pragma Assert (P32 (1) = Base32);
+         Lemma_BI_Mul_Eq (GBV.Limb_Val (GB.LLI (Carry)), P32 (1), Base32);
          pragma
            Assert
              (LV66 (T_Red, 1) + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, 1)
