@@ -950,31 +950,168 @@ is
         (GB.LLI (Tj) + GB.LLI (Aj) * GB.LLI (Bi), GB.LLI (C));
    end Lemma_MulAdd_Step;
 
+   --  Frame: LV66 (T, K) reads only limbs 0 .. K-1, so two arrays agreeing
+   --  there have equal valuations. Lets an update at index >= J leave the
+   --  running prefix value LV66 (-, J) untouched.
+   procedure Lemma_LV66_Frame (T1, T2 : Limbs66; K : Limb66_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb66_Index => (if I < K then T1 (I) = T2 (I))),
+     Post               => LV66 (T1, K) = LV66 (T2, K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV66_Frame (T1, T2 : Limbs66; K : Limb66_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV66_Frame (T1, T2, K - 1);
+      end if;
+   end Lemma_LV66_Frame;
+
+   --  Pure Big_Integer ring step for the mul-add convolution preservation:
+   --  given the running invariant (H1) and the per-step identity (H2), the
+   --  invariant advances by one limb. A linear combination H1 + P * H2 modulo
+   --  commutativity of the limb/weight products.
+   procedure Lemma_Conv_Step
+     (Lvtpre, Lvte, Lva, Tj, Cy, Av, Bv, Tev, Cold, P, BaseV : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       Lvtpre + Cold * P = Lvte + Lva * Bv
+       and then Tj + Cy * BaseV = Tev + Av * Bv + Cold,
+     Post =>
+       (Lvtpre + Tj * P) + Cy * (P * BaseV)
+       = (Lvte + Tev * P) + (Lva + Av * P) * Bv;
+
+   procedure Lemma_Conv_Step
+     (Lvtpre, Lvte, Lva, Tj, Cy, Av, Bv, Tev, Cold, P, BaseV : Big.Big_Integer)
+   is
+   begin
+      --  Restate the two hypotheses (also references the data formals).
+      pragma Assert (Lvtpre + Cold * P = Lvte + Lva * Bv);
+      pragma Assert (Tj + Cy * BaseV = Tev + Av * Bv + Cold);
+      Lemma_BI_Comm (P, BaseV);        --  P*BaseV = BaseV*P.
+      Lemma_BI_Assoc (Cy, BaseV, P);   --  Cy*(BaseV*P) = (Cy*BaseV)*P.
+      Lemma_BI_Assoc (Av, Bv, P);      --  (Av*Bv)*P = Av*(Bv*P).
+      Lemma_BI_Comm (Bv, P);           --  Bv*P = P*Bv.
+      Lemma_BI_Assoc (Av, P, Bv);      --  Av*(P*Bv) = (Av*P)*Bv.
+   end Lemma_Conv_Step;
+
+   --  Definitional one-step unfold of LV64 (forces the recursion in a clean
+   --  context where the heavy convolution VC stalls on it).
+   procedure Lemma_LV64_Unfold (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre  => K >= 1,
+     Post =>
+       LV64 (L, K)
+       = LV64 (L, K - 1) + GBV.Limb_Val (GB.LLI (L (K - 1))) * P32 (K - 1);
+
+   procedure Lemma_LV64_Unfold (L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      null;
+   end Lemma_LV64_Unfold;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
    is
-      T     : Limbs66 := [others => 0];
-      Acc   : Unsigned_64;
-      Carry : Unsigned_64;
-      M     : Unsigned_32;
+      T       : Limbs66 := [others => 0];
+      Acc     : Unsigned_64;
+      Carry   : Unsigned_64;
+      M       : Unsigned_32;
+      T_Entry : Limbs66 := [others => 0]
+      with Ghost;
    begin
       --  §0e value-bridge foundation: the 66-limb CIOS accumulator valuation
       --  is bounded in [0, 2^(32*66)) (anchors LV66 for the Mont_Mul proof).
       Lemma_LV66_Nonneg (T, N_Limbs + 2);
       Lemma_LV66_Upper (T, N_Limbs + 2);
       for I in Limb_Index loop
-         --  T := T + A * B (I)
+         --  T := T + A * B (I).  Inner J-loop convolution invariant (bn_mul1):
+         --  the updated low J limbs plus the carry equal the original low J
+         --  limbs plus A's low J limbs times the scalar B (I), at the value
+         --  level (LV66/LV64 over the §0e Limb_Val bridge).
          Carry := 0;
+         T_Entry := T;
          for J in Limb_Index loop
             pragma Loop_Invariant (Carry <= 16#FFFF_FFFF#);
-            Acc :=
-              Unsigned_64 (T (J))
-              + Unsigned_64 (A (J)) * Unsigned_64 (B (I))
-              + Carry;
-            Lemma_MulAdd_Step (T (J), A (J), B (I), Carry, Acc);
-            T (J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
-            Carry := Shift_Right (Acc, 32);
+            pragma
+              Loop_Invariant
+                (for all K in Limb66_Index =>
+                   (if K >= J then T (K) = T_Entry (K)));
+            pragma
+              Loop_Invariant
+                (LV66 (T, J) + GBV.Limb_Val (GB.LLI (Carry)) * P32 (J)
+                   = LV66 (T_Entry, J)
+                     + LV64 (A, J) * GBV.Limb_Val (GB.LLI (B (I))));
+            declare
+               T_Pre  : constant Limbs66 := T
+               with Ghost;
+               C_Old  : constant Unsigned_64 := Carry
+               with Ghost;
+               B_Val  : constant Big.Big_Integer :=
+                 GBV.Limb_Val (GB.LLI (B (I)))
+               with Ghost;
+               A_Val  : constant Big.Big_Integer :=
+                 GBV.Limb_Val (GB.LLI (A (J)))
+               with Ghost;
+               TE_Val : constant Big.Big_Integer :=
+                 GBV.Limb_Val (GB.LLI (T_Entry (J)))
+               with Ghost;
+            begin
+               pragma
+                 Assert (T (J) = T_Entry (J));   --  suffix invariant, K=J.
+               Acc :=
+                 Unsigned_64 (T (J))
+                 + Unsigned_64 (A (J)) * Unsigned_64 (B (I))
+                 + Carry;
+               Lemma_MulAdd_Step (T (J), A (J), B (I), Carry, Acc);
+               T (J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
+               Carry := Shift_Right (Acc, 32);
+
+               --  Prefix 0 .. J-1 untouched (only T (J) changed): frame LV66.
+               Lemma_LV66_Frame (T, T_Pre, J);
+               --  Per-step identity (Lemma_MulAdd_Step, via T (J) = low,
+               --  Carry = hi, and the pre-update T (J) = T_Entry (J)).
+               pragma
+                 Assert
+                   (GBV.Limb_Val (GB.LLI (T (J)))
+                      + GBV.Limb_Val (GB.LLI (Carry)) * Base32
+                      = TE_Val
+                        + A_Val * B_Val
+                        + GBV.Limb_Val (GB.LLI (C_Old)));
+               --  Definitional unfolds at J+1.
+               pragma
+                 Assert
+                   (LV66 (T, J + 1)
+                      = LV66 (T_Pre, J)
+                        + GBV.Limb_Val (GB.LLI (T (J))) * P32 (J));
+               pragma
+                 Assert
+                   (LV66 (T_Entry, J + 1)
+                      = LV66 (T_Entry, J) + TE_Val * P32 (J));
+               Lemma_LV64_Unfold (A, J + 1);
+               pragma Assert (P32 (J + 1) = P32 (J) * Base32);
+               --  Ring step: H1 (running invariant) + P32 (J) * H2 (per-step).
+               Lemma_Conv_Step
+                 (Lvtpre => LV66 (T_Pre, J),
+                  Lvte   => LV66 (T_Entry, J),
+                  Lva    => LV64 (A, J),
+                  Tj     => GBV.Limb_Val (GB.LLI (T (J))),
+                  Cy     => GBV.Limb_Val (GB.LLI (Carry)),
+                  Av     => A_Val,
+                  Bv     => B_Val,
+                  Tev    => TE_Val,
+                  Cold   => GBV.Limb_Val (GB.LLI (C_Old)),
+                  P      => P32 (J),
+                  BaseV  => Base32);
+               pragma
+                 Assert
+                   (LV66 (T, J + 1)
+                      + GBV.Limb_Val (GB.LLI (Carry)) * P32 (J + 1)
+                      = LV66 (T_Entry, J + 1) + LV64 (A, J + 1) * B_Val);
+            end;
          end loop;
          Acc := Unsigned_64 (T (N_Limbs)) + Carry;
          T (N_Limbs) := Unsigned_32 (Acc and 16#FFFFFFFF#);
