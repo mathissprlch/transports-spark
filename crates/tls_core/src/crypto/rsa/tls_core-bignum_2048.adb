@@ -1028,6 +1028,10 @@ is
       Lemma_LV66_Nonneg (T, N_Limbs + 2);
       Lemma_LV66_Upper (T, N_Limbs + 2);
       for I in Limb_Index loop
+         --  Outer invariant: the top accumulator word is cleared at the end of
+         --  every reduce step (and initially), so a fresh mul-add starts from
+         --  T (N_Limbs + 1) = 0.  Needed by the carry-finalize value identity.
+         pragma Loop_Invariant (T (N_Limbs + 1) = 0);
          --  T := T + A * B (I).  Inner J-loop convolution invariant (bn_mul1):
          --  the updated low J limbs plus the carry equal the original low J
          --  limbs plus A's low J limbs times the scalar B (I), at the value
