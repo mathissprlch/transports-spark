@@ -337,26 +337,28 @@ is
       return Spec_Finish (Key, Acc_F);
    end Spec_Poly1305_Mac;
 
+   --  RFC 8439 §2.5.1 clamp of the lower 16 key bytes (r). Shared by the
+   --  imperative Mac and the Big_Nat spec so r derivation matches exactly.
+   function Clamp_R_Bytes (Key : Key_Array) return Octet_Array
+   is ([for I in 1 .. 16 =>
+          (if I = 4 or else I = 8 or else I = 12 or else I = 16
+           then Key (I) and 16#0F#
+           elsif I = 5 or else I = 9 or else I = 13
+           then Key (I) and 16#FC#
+           else Key (I))])
+   with
+     Post =>
+       Clamp_R_Bytes'Result'First = 1 and then Clamp_R_Bytes'Result'Last = 16;
+
    --  Big_Integer-free MAC tag: store_felem (Spec_Mac_Acc (Message, r) + s),
    --  r = clamp (Key (1 .. 16)), s = Key (17 .. 32). Mirrors Spec_Poly1305_Mac
    --  over Big_Nat. Body here so it can reach the Encode / Spec_BN children.
    function Spec_Poly1305_Mac_BN
      (Key : Key_Array; Message : Octet_Array) return Tag_Array
-   is
-      Clamped : constant Octet_Array (1 .. 16) :=
-        [for I in 1 .. 16 =>
-           (if I = 4 or else I = 8 or else I = 12 or else I = 16
-            then Key (I) and 16#0F#
-            elsif I = 5 or else I = 9 or else I = 13
-            then Key (I) and 16#FC#
-            else Key (I))];
-   begin
-      return
-        SB.Store_Le_16
-          (GB."+"
-             (SB.Spec_Mac_Acc (Message, Enc.R_BN (Clamped)),
-              Enc.R_BN (Octet_Array (Key (17 .. 32)))));
-   end Spec_Poly1305_Mac_BN;
+   is (SB.Store_Le_16
+         (GB."+"
+            (SB.Spec_Mac_Acc (Message, Enc.R_BN (Clamp_R_Bytes (Key))),
+             Enc.R_BN (Octet_Array (Key (17 .. 32))))));
 
    ---------------------------------------------------------------------
    --  Pack a 16-byte little-endian integer (with the implicit
@@ -2263,24 +2265,9 @@ is
       Acc : Limbs;
    begin
       Out_Tag := [others => 0];
-      --  RFC 8439 §2.5.1 clamp.
-      declare
-         Clamped : Octet_Array (1 .. 16);
-      begin
-         for I in 1 .. 16 loop
-            Clamped (I) := Key (I);
-         end loop;
-         Clamped (4) := Clamped (4) and 16#0F#;
-         Clamped (8) := Clamped (8) and 16#0F#;
-         Clamped (12) := Clamped (12) and 16#0F#;
-         Clamped (16) := Clamped (16) and 16#0F#;
-         Clamped (5) := Clamped (5) and 16#FC#;
-         Clamped (9) := Clamped (9) and 16#FC#;
-         Clamped (13) := Clamped (13) and 16#FC#;
-         --  Load r from clamped key (16 bytes), WITHOUT the Poly1305
-         --  implicit-1 bit. r itself is just an integer.
-         Load_R (Clamped, R);
-      end;
+      --  RFC 8439 §2.5.1 clamp, then load r (16 bytes, no implicit-1 bit) --
+      --  the shared Clamp_R_Bytes matches the Big_Nat spec's r derivation.
+      Load_R (Clamp_R_Bytes (Key), R);
 
       --  r is a 26-bit-limb integer (no implicit-1 bit): every limb < 2**26,
       --  so it meets Multiply's R-side precondition. r is never modified after
