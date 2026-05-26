@@ -197,6 +197,40 @@ is
       end if;
    end Lemma_LV64_Nonneg;
 
+   --  The low-K limb value is below the K-limb radix: LV64 (L, K) < 2**(32*K).
+   procedure Lemma_LV64_Upper (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Post               => LV64 (L, K) < P32 (K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV64_Upper (L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);   --  P32 (0) = Limb_Val (1) = 1 > 0.
+
+      else
+         declare
+            W : constant Big.Big_Integer := P32 (K - 1)
+            with Ghost;
+            V : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (L (K - 1)))
+            with Ghost;
+         begin
+            Lemma_LV64_Upper (L, K - 1);             --  LV64 (L, K-1) < W.
+            Lemma_P32_Pos (K - 1);                   --  W > 0.
+            GBV.Lemma_Limb_Val_Nonneg (GB.LLI (L (K - 1)));   --  V >= 0.
+            --  V <= Limb_Val (2^32-1) = Base32 - 1 (top limb value).
+            GBV.Lemma_Limb_Val_Mono (GB.LLI (L (K - 1)), 2**32 - 1);
+            GBV.Lemma_Limb_Val_Succ (2**32 - 1);     --  Base32 = that + 1.
+            pragma Assert (V <= Base32 - 1);
+            --  Monotone multiply by the positive weight, then assemble.
+            pragma Assert (V * W <= (Base32 - 1) * W);
+            pragma Assert (P32 (K) = W * Base32);
+            pragma Assert ((Base32 - 1) * W + W = W * Base32);
+         end;
+      end if;
+   end Lemma_LV64_Upper;
+
    ---------------------------------------------------------------------
    --  Encoding / decoding between 256 BE bytes and limbs.
    --
@@ -623,8 +657,9 @@ is
          Limb_Mod_Mul (AL, BL, NL, RL);
       end if;
       --  §0e value-bridge foundation (consumed by the in-progress Mod_Mul
-      --  functional proof; for now anchors the limb valuation non-negativity).
+      --  functional proof; for now anchors the limb valuation bounds).
       Lemma_LV64_Nonneg (RL, N_Limbs);
+      Lemma_LV64_Upper (RL, N_Limbs);
       To_Bytes (RL, Out_R);
    end Mod_Mul;
 
