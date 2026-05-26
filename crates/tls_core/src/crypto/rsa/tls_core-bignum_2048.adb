@@ -2,11 +2,17 @@ pragma Warnings (Off, "redundant with clause in body");
 with Interfaces;
 pragma Warnings (On, "redundant with clause in body");
 
+with Tls_Core.Ghost_Bignum;
+with Tls_Core.Ghost_Bignum.Value;
+
 package body Tls_Core.Bignum_2048
   with SPARK_Mode
 is
 
    use Interfaces;
+
+   package GB renames Tls_Core.Ghost_Bignum;
+   package GBV renames Tls_Core.Ghost_Bignum.Value;
 
    ---------------------------------------------------------------------
    --  Ghost spec layer bodies. Real, computable Big_Integer arithmetic
@@ -126,6 +132,70 @@ is
    type Limbs128 is array (Limb2_Index) of Unsigned_32;
    type Limbs65 is array (Limb_Plus_Index) of Unsigned_32;
    type Limbs66 is array (Limb66_Index) of Unsigned_32;
+
+   ---------------------------------------------------------------------
+   --  §0e value bridge (ghost). Maps the little-endian 32-bit limb arrays
+   --  to their integer value WITHOUT the opaque To_Big_Integer: each limb
+   --  enters through Tls_Core.Ghost_Bignum.Value's unit-recursion ingress
+   --  (Limb_Val), whose +/-/* algebra is provable. A 32-bit limb (< 2**32)
+   --  sits well inside Val_Cap (2**110); the 2**(32*K) positional weights
+   --  are built by native Big_Integer multiplication (P32). This is the
+   --  base-2**32 analogue of Ghost_Bignum.Value's base-2**26 Horner Val.
+   ---------------------------------------------------------------------
+
+   --  2**32 as a Big_Integer, via the §0e-clean ingress.
+   Base32 : constant Big.Big_Integer := GBV.Limb_Val (2**32)
+   with Ghost;
+
+   --  2**(32*K).
+   function P32 (K : Natural) return Big.Big_Integer
+   is (if K = 0 then GBV.Limb_Val (1) else P32 (K - 1) * Base32)
+   with Ghost, Subprogram_Variant => (Decreases => K);
+
+   --  Value of the low K limbs (little-endian) of a 64-limb array.
+   function LV64 (L : Limbs64; K : Limb_Plus_Index) return Big.Big_Integer
+   is (if K = 0
+       then GBV.Limb_Val (0)
+       else LV64 (L, K - 1) + GBV.Limb_Val (GB.LLI (L (K - 1))) * P32 (K - 1))
+   with Ghost, Subprogram_Variant => (Decreases => K);
+
+   --  P32 (K) is strictly positive (a positive power of two).
+   procedure Lemma_P32_Pos (K : Natural)
+   with Ghost, Post => P32 (K) > 0, Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_P32_Pos (K : Natural) is
+   begin
+      if K = 0 then
+         GBV.Lemma_Limb_Val_Succ
+           (0);   --  Limb_Val (1) = Limb_Val (0) + 1 = 1.
+
+      else
+         Lemma_P32_Pos (K - 1);                      --  P32 (K-1) > 0.
+         GBV.Lemma_Limb_Val_Nonneg
+           (2**32 - 1);      --  Limb_Val (2^32-1) >= 0.
+         GBV.Lemma_Limb_Val_Succ
+           (2**32 - 1);        --  Base32 = that + 1 >= 1.
+      end if;
+   end Lemma_P32_Pos;
+
+   --  The limb valuation is non-negative.
+   procedure Lemma_LV64_Nonneg (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Post               => LV64 (L, K) >= 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV64_Nonneg (L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K = 0 then
+         null;   --  LV64 (L, 0) = Limb_Val (0) = 0.
+
+      else
+         Lemma_LV64_Nonneg (L, K - 1);                       --  tail >= 0.
+         GBV.Lemma_Limb_Val_Nonneg (GB.LLI (L (K - 1)));     --  limb >= 0.
+         Lemma_P32_Pos (K - 1);                              --  weight > 0.
+      end if;
+   end Lemma_LV64_Nonneg;
 
    ---------------------------------------------------------------------
    --  Encoding / decoding between 256 BE bytes and limbs.
@@ -531,6 +601,9 @@ is
       else
          Limb_Mod_Mul (AL, BL, NL, RL);
       end if;
+      --  §0e value-bridge foundation (consumed by the in-progress Mod_Mul
+      --  functional proof; for now anchors the limb valuation non-negativity).
+      Lemma_LV64_Nonneg (RL, N_Limbs);
       To_Bytes (RL, Out_R);
    end Mod_Mul;
 
