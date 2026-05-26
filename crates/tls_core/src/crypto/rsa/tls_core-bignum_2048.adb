@@ -929,19 +929,90 @@ is
        LV65 (A, I + 1) + GBV.Limb_Val (GB.LLI (Bout)) * P32 (I + 1)
        = LV65 (R_After, I + 1) + LV65 (B, I + 1);
 
+   --  Per-limb shift-left-by-1 value identity: low word + carry_out*2^32
+   --  = 2*a + carry_in.
+   procedure Lemma_Shl_Step (Ai, Cin, Ri, Cout : Unsigned_32)
+   with
+     Ghost,
+     Pre  =>
+       Cin <= 1
+       and then Ri = (Shift_Left (Ai, 1) or Cin)
+       and then Cout = (Shift_Right (Ai, 31) and 1),
+     Post =>
+       GBV.Limb_Val (GB.LLI (Ri)) + GBV.Limb_Val (GB.LLI (Cout)) * Base32
+       = GBV.Limb_Val (GB.LLI (Ai))
+         + GBV.Limb_Val (GB.LLI (Ai))
+         + GBV.Limb_Val (GB.LLI (Cin));
+
+   procedure Lemma_Shl_Step (Ai, Cin, Ri, Cout : Unsigned_32) is
+   begin
+      pragma Assert ((Shift_Left (Ai, 1) and 1) = 0);
+      pragma Assert (GB.LLI (Ri) = GB.LLI (Shift_Left (Ai, 1)) + GB.LLI (Cin));
+      pragma
+        Assert
+          (GB.LLI (Shift_Left (Ai, 1))
+             = 2 * GB.LLI (Ai) - GB.LLI (Cout) * 2**32);
+      pragma
+        Assert
+          (GB.LLI (Ri) + GB.LLI (Cout) * 2**32
+             = GB.LLI (Ai) + GB.LLI (Ai) + GB.LLI (Cin));
+      GBV.Lemma_Limb_Val_Mul32 (GB.LLI (Cout), 2**32);
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Ai), GB.LLI (Ai));
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Ai) + GB.LLI (Ai), GB.LLI (Cin));
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Ri), GB.LLI (Cout) * 2**32);
+   end Lemma_Shl_Step;
+
+   --  Shl1_65 loop preservation (clean context; body after the toolkit).
+   procedure Lemma_Shl65_Preserve
+     (A, R_Pre, R_After : Limbs65;
+      I                 : Limb_Plus_Index;
+      Cin, Cout         : Unsigned_32)
+   with
+     Ghost,
+     Pre  =>
+       Cin <= 1
+       and then R_After (I) = (Shift_Left (A (I), 1) or Cin)
+       and then Cout = (Shift_Right (A (I), 31) and 1)
+       and then (for all K in Limb_Plus_Index =>
+                   (if K /= I then R_After (K) = R_Pre (K)))
+       and then LV65 (R_Pre, I) + GBV.Limb_Val (GB.LLI (Cin)) * P32 (I)
+                = 2 * LV65 (A, I),
+     Post =>
+       LV65 (R_After, I + 1) + GBV.Limb_Val (GB.LLI (Cout)) * P32 (I + 1)
+       = 2 * LV65 (A, I + 1);
+
    ---------------------------------------------------------------------
    --  Shift a 64-limb value left by one bit, producing a 65-limb
    --  result. Used as the inner operation of the schoolbook reducer.
    ---------------------------------------------------------------------
 
-   procedure Shl1_65 (A : Limbs65; R : out Limbs65) is
+   procedure Shl1_65 (A : Limbs65; R : out Limbs65)
+   with
+     Post =>
+       (if A (N_Limbs) < 2**31
+        then LV65 (R, N_Limbs + 1) = 2 * LV65 (A, N_Limbs + 1))
+   is
       Carry : Unsigned_32 := 0;
       Hi    : Unsigned_32;
    begin
+      R := [others => 0];
       for I in Limb_Plus_Index loop
-         Hi := Shift_Right (A (I), 31) and 1;
-         R (I) := Shift_Left (A (I), 1) or Carry;
-         Carry := Hi;
+         pragma Loop_Invariant (Carry <= 1);
+         pragma
+           Loop_Invariant
+             (LV65 (R, I) + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I)
+                = 2 * LV65 (A, I));
+         declare
+            R_Pre : constant Limbs65 := R
+            with Ghost;
+            C_In  : constant Unsigned_32 := Carry
+            with Ghost;
+         begin
+            Hi := Shift_Right (A (I), 31) and 1;
+            R (I) := Shift_Left (A (I), 1) or Carry;
+            Carry := Hi;
+            Lemma_Shl65_Preserve (A, R_Pre, R, I, C_In, Carry);
+         end;
       end loop;
    end Shl1_65;
 
@@ -1589,6 +1660,43 @@ is
       Lemma_BI_Comm (W, Av);
       Lemma_BI_Comm (W, Biv);
    end Lemma_Sub65_Preserve;
+
+   --  Body of Lemma_Shl65_Preserve (declared early; uses the toolkit here).
+   procedure Lemma_Shl65_Preserve
+     (A, R_Pre, R_After : Limbs65;
+      I                 : Limb_Plus_Index;
+      Cin, Cout         : Unsigned_32)
+   is
+      Av  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (A (I)))
+      with Ghost;
+      Rv  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (R_After (I)))
+      with Ghost;
+      Civ : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Cin))
+      with Ghost;
+      Cov : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Cout))
+      with Ghost;
+      W   : constant Big.Big_Integer := P32 (I)
+      with Ghost;
+   begin
+      Lemma_Shl_Step (A (I), Cin, R_After (I), Cout);
+      --  (S): Rv + Cov*Base32 = Av + Av + Civ.
+      Lemma_LV65_Frame (R_After, R_Pre, I);
+      Lemma_LV65_Unfold (A, I + 1);
+      Lemma_LV65_Unfold (R_After, I + 1);
+      Lemma_P32_Succ (I);
+      Lemma_BI_Mul_Eq (W, Rv + Cov * Base32, Av + Av + Civ);
+      Lemma_BI_Distrib (W, Rv, Cov * Base32);
+      Lemma_BI_Distrib (W, Av + Av, Civ);
+      Lemma_BI_Distrib (W, Av, Av);
+      Lemma_BI_Comm (W, Cov * Base32);
+      Lemma_BI_Assoc (Cov, Base32, W);
+      Lemma_BI_Comm (Base32, W);
+      Lemma_BI_Mul_Eq (Cov, Base32 * W, W * Base32);
+      Lemma_BI_Mul_Eq (Cov, W * Base32, P32 (I + 1));
+      Lemma_BI_Comm (W, Rv);
+      Lemma_BI_Comm (W, Av);
+      Lemma_BI_Comm (W, Civ);
+   end Lemma_Shl65_Preserve;
 
    --  Pure Big_Integer ring step for the Montgomery reduce (shift) loop:
    --  given H1 (Pstep = BaseV*Lvtm1 + Cold*P) and the per-step identity
