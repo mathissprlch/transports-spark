@@ -559,6 +559,96 @@ is
       pragma Assert (GB.LLI (X - Y) + GB.LLI (Y) = GB.LLI (X));
    end Lemma_Limb_Big_Sub;
 
+   --  Limb_Val coincides with To_Big_Integer on non-negative naturals.
+   --  The §0e ingress is unit-recursive; this bridge lets a constant
+   --  scalar (e.g. 38 in the 2^256 mod p fold) cross between the
+   --  Limb_Val form (used in the value-layer pillars) and the
+   --  To_Big_Integer form (used in Frame Pre/Post). Inductive: at
+   --  N = 0 the identity is Limb_Val (0) = 0; at N > 0 unit-step via
+   --  Lemma_Limb_Val_Succ from the N-1 induction hypothesis.
+   procedure Lemma_Limb_Val_Eq_BI (N : Natural)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => N < 2**30,
+     Post               =>
+       GBV.Limb_Val (GB.LLI (N)) = Big.To_Big_Integer (N),
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_Limb_Val_Eq_BI (N : Natural) is
+   begin
+      if N = 0 then
+         null;
+         --  Limb_Val (0) = 0 = To_Big_Integer (0) by the Limb_Val unfold.
+      else
+         Lemma_Limb_Val_Eq_BI (N - 1);
+         --  IH: Limb_Val (N - 1) = To_Big_Integer (N - 1).
+         GBV.Lemma_Limb_Val_Succ (GB.LLI (N - 1));
+         --  Limb_Val (N) = Limb_Val (N - 1) + 1
+         --              = To_Big_Integer (N - 1) + 1
+         --              = To_Big_Integer (N).
+      end if;
+   end Lemma_Limb_Val_Eq_BI;
+
+   --  Bit-shift bridge: the punned U64-shift-left-by-16 coincides with
+   --  arithmetic multiplication by 2^16 (when the operand fits in 48
+   --  bits), then lifts via Limb_Val multiplicativity (Pillar 2) to the
+   --  Big_Integer §0e ingress: Limb_Big (C << 16) = Limb_Big (C) * Limb_Val (65536).
+   --  Consumed by Brick C in Carry's loop body to bridge the
+   --  Integer_64 assignment to the Lemma_Carry_*_Step_Frame Pre form.
+   procedure Lemma_Limb_Big_Shl16 (C : Integer_64)
+   with
+     Ghost,
+     Global => null,
+     Pre    => C in -2**40 .. 2**40,
+     Post   =>
+       Limb_Big (To_I64 (Shift_Left (To_U64 (C), 16)))
+       = Limb_Big (C) * GBV.Limb_Val (65536);
+
+   procedure Lemma_Limb_Big_Shl16 (C : Integer_64) is
+   begin
+      --  Step 1: bit-shift = multiply (decidable on the U64 bitvector
+      --  model when the operand fits in 48 bits, which the Pre ensures).
+      pragma Assert
+        (To_I64 (Shift_Left (To_U64 (C), 16)) = C * 65536);
+      --  Step 2: LLI homomorphism on product (no overflow under Pre).
+      pragma Assert (GB.LLI (C * 65536) = 65536 * GB.LLI (C));
+      --  Step 3: Limb_Val multiplicativity. Order: X is the smaller
+      --  factor (65536 = 2^16 fits Mul_X_Cap = 2^28); Y is the larger
+      --  (LLI (C) at most 2^40 fits Mul_Y_Cap = 2^81).
+      GBV.Lemma_Limb_Val_Mul (GB.LLI (65536), GB.LLI (C));
+      --  Combines: Limb_Big (C * 65536)
+      --          = Limb_Val (LLI (C * 65536))
+      --          = Limb_Val (65536 * LLI (C))
+      --          = Limb_Val (65536) * Limb_Val (LLI (C))
+      --          = Limb_Val (65536) * Limb_Big (C)
+      --          = Limb_Big (C) * Limb_Val (65536).
+   end Lemma_Limb_Big_Shl16;
+
+   --  Scalar-38 bridge: Limb_Big (38 * C) = To_Big_Integer (38) * Limb_Big (C).
+   --  Drives the top-fold step (O (0) := O (0) + 38 * C) on iteration
+   --  I = 15 of Carry's loop. Path: LLI homomorphism on 38 * C, then
+   --  Lemma_Limb_Val_Mul to split the product, then Lemma_Limb_Val_Eq_BI
+   --  to translate the Limb_Val (38) factor into the BI literal form
+   --  expected by Lemma_Carry_Top_Step_Frame's Pre.
+   procedure Lemma_Limb_Big_Mul38 (C : Integer_64)
+   with
+     Ghost,
+     Global => null,
+     Pre    => C in -2**45 .. 2**45,
+     Post   =>
+       Limb_Big (38 * C) = Big.To_Big_Integer (38) * Limb_Big (C);
+
+   procedure Lemma_Limb_Big_Mul38 (C : Integer_64) is
+   begin
+      pragma Assert (GB.LLI (38 * C) = 38 * GB.LLI (C));
+      GBV.Lemma_Limb_Val_Mul (GB.LLI (38), GB.LLI (C));
+      --  Limb_Val (38 * LLI (C)) = Limb_Val (38) * Limb_Val (LLI (C)).
+      Lemma_Limb_Val_Eq_BI (38);
+      --  Limb_Val (38) = To_Big_Integer (38), so the product becomes
+      --  To_Big_Integer (38) * Limb_Big (C).
+   end Lemma_Limb_Big_Mul38;
+
    --  Linearity of To_Big_Up_To: a felt whose low-N limbs are the limbwise
    --  sum (difference) of A and B has prefix value the sum (difference) of
    --  the prefix values. Recursion on N; each step is one Limb_Big additivity
@@ -914,6 +1004,11 @@ is
       Lemma_Frame_Top (Zero, Zero, 0);
       Lemma_Carry_Inner_Step_Frame (Zero, Zero, 0, 0);
       Lemma_Carry_Top_Step_Frame (Zero, Zero, 0);
+      --  Brick C bridge lemmas (touch them so -gnatwu doesn't strip
+      --  before Carry's loop body consumes them substantively).
+      Lemma_Limb_Val_Eq_BI (38);
+      Lemma_Limb_Big_Shl16 (0);
+      Lemma_Limb_Big_Mul38 (0);
    end Lemma_Brick_B_Anchor;
 
    procedure F_Add (O : out Felt; A, B : Felt) is
