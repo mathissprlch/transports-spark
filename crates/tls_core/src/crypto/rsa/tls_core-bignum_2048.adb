@@ -346,6 +346,88 @@ is
       end if;
    end Lemma_LV128_Upper;
 
+   --  Frame: LV128 (T, K) reads only limbs 0 .. K-1.
+   procedure Lemma_LV128_Frame (T1, T2 : Limbs128; K : Limb2_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb2_Index => (if I < K then T1 (I) = T2 (I))),
+     Post               => LV128 (T1, K) = LV128 (T2, K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Frame (T1, T2 : Limbs128; K : Limb2_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV128_Frame (T1, T2, K - 1);
+      end if;
+   end Lemma_LV128_Frame;
+
+   --  Definitional one-step unfold (gnatprove stalls unfolding LV128 at a
+   --  symbolic index like I+J+1 inside a heavy VC).
+   procedure Lemma_LV128_Unfold (T : Limbs128; K : Limb2_Plus_Index)
+   with
+     Ghost,
+     Pre  => K >= 1,
+     Post =>
+       LV128 (T, K)
+       = LV128 (T, K - 1) + GBV.Limb_Val (GB.LLI (T (K - 1))) * P32 (K - 1);
+
+   procedure Lemma_LV128_Unfold (T : Limbs128; K : Limb2_Plus_Index) is
+   begin
+      null;
+   end Lemma_LV128_Unfold;
+
+   --  One-step P32 successor: P32 (K+1) = P32 (K) * Base32.
+   procedure Lemma_P32_Succ (K : Natural)
+   with Ghost, Pre => K <= 2 * N_Limbs, Post => P32 (K + 1) = P32 (K) * Base32;
+
+   procedure Lemma_P32_Succ (K : Natural) is
+   begin
+      null;
+   end Lemma_P32_Succ;
+
+   --  Power additivity: 2**(32*(A+B)) = 2**(32*A) * 2**(32*B). Body below (uses
+   --  the BI ring lemmas, which are declared later in this body).
+   procedure Lemma_P32_Add (A, B : Natural)
+   with
+     Ghost,
+     Pre                => A <= 2 * N_Limbs and then B <= 2 * N_Limbs,
+     Post               => P32 (A + B) = P32 (A) * P32 (B),
+     Subprogram_Variant => (Decreases => B);
+
+   --  Mul128 inner-loop convolution preservation (bn_mul1 at offset I), proved
+   --  in a clean context (only its Pre as hypotheses). Spec here so the early
+   --  Mul128 can call it; body below, after the shared ring/convolution toolkit.
+   --  Writing T (I+J) := low (T_Inner (I+J) + A(I)*B(J) + C_Old), carry-out
+   --  Carry, advances the running product by A(I)*B(J)*2**(32*(I+J)).
+   procedure Lemma_Mul128_Preserve
+     (T_Pre, T_After, T_Inner : Limbs128;
+      A, B                    : Limbs64;
+      I, J                    : Limb_Index;
+      C_Old, Acc, Carry       : Unsigned_64)
+   with
+     Ghost,
+     Pre  =>
+       C_Old <= 16#FFFF_FFFF#
+       and then Acc
+                = Unsigned_64 (T_Pre (I + J))
+                  + Unsigned_64 (A (I)) * Unsigned_64 (B (J))
+                  + C_Old
+       and then Carry = Shift_Right (Acc, 32)
+       and then T_After (I + J) = Unsigned_32 (Acc and 16#FFFF_FFFF#)
+       and then (for all K in Limb2_Index =>
+                   (if K /= I + J then T_After (K) = T_Pre (K)))
+       and then T_Pre (I + J) = T_Inner (I + J)
+       and then LV128 (T_Pre, I + J)
+                + GBV.Limb_Val (GB.LLI (C_Old)) * P32 (I + J)
+                = LV128 (T_Inner, I + J)
+                  + (P32 (I) * LV64 (B, J)) * GBV.Limb_Val (GB.LLI (A (I))),
+     Post =>
+       LV128 (T_After, I + J + 1)
+       + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I + J + 1)
+       = LV128 (T_Inner, I + J + 1)
+         + (P32 (I) * LV64 (B, J + 1)) * GBV.Limb_Val (GB.LLI (A (I)));
+
    --  Value of the low K limbs of a 66-limb array -- the CIOS Mont_Mul
    --  accumulator width (64 + 2 carry words). Same base-2**32 Horner form.
    function LV66 (T : Limbs66; K : Limb66_Plus_Index) return Big.Big_Integer
@@ -658,16 +740,56 @@ is
       end loop;
       for I in Limb_Index loop
          Carry := 0;
-         for J in Limb_Index loop
-            Acc :=
-              Unsigned_64 (T (I + J))
-              + Unsigned_64 (A (I)) * Unsigned_64 (B (J))
-              + Carry;
-            T (I + J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
-            Carry := Shift_Right (Acc, 32);
-         end loop;
-         --  I + 64 is in range 64 .. 127 — i.e., always inside Limbs128.
-         T (I + N_Limbs) := Unsigned_32 (Carry and 16#FFFFFFFF#);
+         declare
+            T_Inner : constant Limbs128 := T
+            with Ghost;
+         begin
+            --  Inner J-loop convolution invariant (bn_mul1 at offset I): the
+            --  scalar A (I) times the low J limbs of B accumulates, weighted by
+            --  P32 (I), onto the running product at value level.
+            for J in Limb_Index loop
+               pragma Loop_Invariant (Carry <= 16#FFFF_FFFF#);
+               pragma
+                 Loop_Invariant
+                   (for all K in Limb2_Index =>
+                      (if K < I or else K >= I + J then T (K) = T_Inner (K)));
+               pragma
+                 Loop_Invariant
+                   (LV128 (T, I + J)
+                      + GBV.Limb_Val (GB.LLI (Carry)) * P32 (I + J)
+                      = LV128 (T_Inner, I + J)
+                        + (P32 (I) * LV64 (B, J))
+                          * GBV.Limb_Val (GB.LLI (A (I))));
+               declare
+                  T_Pre : constant Limbs128 := T
+                  with Ghost;
+                  C_Old : constant Unsigned_64 := Carry
+                  with Ghost;
+               begin
+                  pragma
+                    Assert (T (I + J) = T_Inner (I + J));  --  suffix K=I+J.
+                  Acc :=
+                    Unsigned_64 (T (I + J))
+                    + Unsigned_64 (A (I)) * Unsigned_64 (B (J))
+                    + Carry;
+                  T (I + J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
+                  Carry := Shift_Right (Acc, 32);
+                  Lemma_Mul128_Preserve
+                    (T_Pre   => T_Pre,
+                     T_After => T,
+                     T_Inner => T_Inner,
+                     A       => A,
+                     B       => B,
+                     I       => I,
+                     J       => J,
+                     C_Old   => C_Old,
+                     Acc     => Acc,
+                     Carry   => Carry);
+               end;
+            end loop;
+            --  I + 64 is in range 64 .. 127 — i.e., always inside Limbs128.
+            T (I + N_Limbs) := Unsigned_32 (Carry and 16#FFFFFFFF#);
+         end;
       end loop;
    end Mul128;
 
@@ -1408,6 +1530,95 @@ is
              = LV66 (T_Red, N_Limbs + 2)
                + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
    end Lemma_Reduce_Finalize;
+
+   --  Body of Lemma_P32_Add (declared early; uses the BI ring lemmas here).
+   procedure Lemma_P32_Add (A, B : Natural) is
+   begin
+      if B = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);   --  P32 (0) = Limb_Val (1) = 1.
+
+      else
+         Lemma_P32_Add (A, B - 1);      --  P32 (A+B-1) = P32 (A) * P32 (B-1).
+         --  P32 (A+B) = P32 (A+B-1)*Base32 = (P32 (A)*P32 (B-1))*Base32
+         --           = P32 (A)*(P32 (B-1)*Base32) = P32 (A)*P32 (B).
+         Lemma_BI_Assoc (P32 (A), P32 (B - 1), Base32);
+      end if;
+   end Lemma_P32_Add;
+
+   --  Body of Lemma_Mul128_Preserve (declared early; uses the ring/convolution
+   --  toolkit here). Clean context: only its own Pre as hypotheses.
+   procedure Lemma_Mul128_Preserve
+     (T_Pre, T_After, T_Inner : Limbs128;
+      A, B                    : Limbs64;
+      I, J                    : Limb_Index;
+      C_Old, Acc, Carry       : Unsigned_64)
+   is
+      A_Val : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (A (I)))
+      with Ghost;
+      B_Val : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (B (J)))
+      with Ghost;
+   begin
+      --  U64 multiplication commutes, so Acc = T_Pre(I+J) + B(J)*A(I) + C_Old.
+      pragma
+        Assert
+          (Unsigned_64 (A (I)) * Unsigned_64 (B (J))
+             = Unsigned_64 (B (J)) * Unsigned_64 (A (I)));
+      --  Per-step value identity (low/hi recombine; scalar A(I) as Bi).
+      Lemma_MulAdd_Step (T_Pre (I + J), B (J), A (I), C_Old, Acc);
+      --  Only T (I+J) changed: prefix 0 .. I+J-1 untouched.
+      Lemma_LV128_Frame (T_After, T_Pre, I + J);
+      --  Definitional unfolds at I+J+1 and the B-prefix at J+1.
+      Lemma_LV128_Unfold (T_After, I + J + 1);
+      Lemma_LV128_Unfold (T_Inner, I + J + 1);
+      Lemma_LV64_Unfold (B, J + 1);
+      --  Weight steps: P32 (I+J+1) = P32 (I+J)*Base32; P32 (I+J) = P32 (I)*P32 (J).
+      Lemma_P32_Succ (I + J);
+      Lemma_P32_Add (I, J);
+      --  Expand the B-prefix one limb at offset I:
+      --  P32 (I)*LV64 (B,J+1) = P32 (I)*LV64 (B,J) + B_Val*P32 (I+J).
+      Lemma_BI_Distrib (P32 (I), LV64 (B, J), B_Val * P32 (J));
+      Lemma_BI_Comm (P32 (I), B_Val * P32 (J));
+      Lemma_BI_Assoc (B_Val, P32 (J), P32 (I));
+      Lemma_BI_Comm (P32 (J), P32 (I));
+      pragma
+        Assert
+          (P32 (I) * LV64 (B, J + 1)
+             = P32 (I) * LV64 (B, J) + B_Val * P32 (I + J));
+      --  Congruence: multiply the expanded B-prefix by the fixed scalar A(I).
+      Lemma_BI_Mul_Eq
+        (A_Val,
+         P32 (I) * LV64 (B, J + 1),
+         P32 (I) * LV64 (B, J) + B_Val * P32 (I + J));
+      Lemma_BI_Comm (A_Val, P32 (I) * LV64 (B, J + 1));
+      Lemma_BI_Comm (A_Val, P32 (I) * LV64 (B, J) + B_Val * P32 (I + J));
+      --  Ring step: H1 (inv J) + per-step H2, fixed scalar A(I) factored out.
+      Lemma_Conv_Step
+        (Lvtpre => LV128 (T_Pre, I + J),
+         Lvte   => LV128 (T_Inner, I + J),
+         Lva    => P32 (I) * LV64 (B, J),
+         Tj     => GBV.Limb_Val (GB.LLI (T_After (I + J))),
+         Cy     => GBV.Limb_Val (GB.LLI (Carry)),
+         Av     => B_Val,
+         Bv     => A_Val,
+         Tev    => GBV.Limb_Val (GB.LLI (T_Inner (I + J))),
+         Cold   => GBV.Limb_Val (GB.LLI (C_Old)),
+         P      => P32 (I + J),
+         BaseV  => Base32);
+      --  Assemble the Post from Conv_Step's result: unfold/frame on the LHS,
+      --  unfold on the Inner side, and the carry weight via P32_Succ.
+      pragma
+        Assert
+          (LV128 (T_After, I + J + 1)
+             = LV128 (T_Pre, I + J)
+               + GBV.Limb_Val (GB.LLI (T_After (I + J))) * P32 (I + J));
+      pragma
+        Assert
+          (LV128 (T_Inner, I + J + 1)
+             = LV128 (T_Inner, I + J)
+               + GBV.Limb_Val (GB.LLI (T_Inner (I + J))) * P32 (I + J));
+      Lemma_BI_Mul_Eq
+        (GBV.Limb_Val (GB.LLI (Carry)), P32 (I + J + 1), P32 (I + J) * Base32);
+   end Lemma_Mul128_Preserve;
 
    --  Pure ring step for the OUTER Montgomery loop (EXACT, no mod). From the
    --  running invariant H1 (Lvt_Old * P_I = Av*LvB_I + Q_Old*Nv), the net
