@@ -620,25 +620,136 @@ is
    --  cheap "kill the low limb" reductions.
    ---------------------------------------------------------------------
 
-   --  Newton-Raphson inverse mod 2^32. Five iterations are enough for
-   --  any odd input (each iteration doubles the number of correct
-   --  bits, starting from 1; after 5 we have at least 32 correct
-   --  bits). Returns x such that x * N0 = 1 (mod 2^32).
-   function Inverse_Mod_2_32 (N0 : Unsigned_32) return Unsigned_32 is
-      X : Unsigned_32 := 1;
+   --  Square-divisibility helpers (Hensel-step lemmas): a value with its low m
+   --  bits zero squares to one with its low 2m bits zero. Isolated so the 32-bit
+   --  multiply is one focused bit-vector goal each.
+   procedure Lemma_Sq_Low8 (A : Unsigned_32)
+   with Ghost, Pre => (A and 255) = 0, Post => ((A * A) and 65535) = 0;
+
+   procedure Lemma_Sq_Low8 (A : Unsigned_32) is
    begin
-      for K in 1 .. 5 loop
-         --  x := x * (2 - N0 * x) mod 2^32
-         X := X * (2 - N0 * X);
-      end loop;
+      null;
+   end Lemma_Sq_Low8;
+
+   procedure Lemma_Sq_Low16 (A : Unsigned_32)
+   with Ghost, Pre => (A and 65535) = 0, Post => A * A = 0;
+
+   procedure Lemma_Sq_Low16 (A : Unsigned_32) is
+   begin
+      null;
+   end Lemma_Sq_Low16;
+
+   --  Associativity of the modular multiply (helps gnatprove past the nonlinear
+   --  rearrangement N0 * (X * c) = (N0 * X) * c in the Newton step).
+   procedure Lemma_Mul3 (A, B, C : Unsigned_32)
+   with Ghost, Post => A * (B * C) = (A * B) * C;
+
+   procedure Lemma_Mul3 (A, B, C : Unsigned_32) is
+   begin
+      null;
+   end Lemma_Mul3;
+
+   --  Newton-step polynomial identity (mod 2^32): T*(2-T) = 1 - (T-1)^2.
+   procedure Lemma_Poly_Sq (T : Unsigned_32)
+   with Ghost, Post => T * (2 - T) = 1 - (T - 1) * (T - 1);
+
+   procedure Lemma_Poly_Sq (T : Unsigned_32) is
+   begin
+      null;
+   end Lemma_Poly_Sq;
+
+   --  Left distributivity of the modular multiply.
+   procedure Lemma_Mul_Distrib (A, X, Y : Unsigned_32)
+   with Ghost, Post => A * (X + Y) = A * X + A * Y;
+
+   procedure Lemma_Mul_Distrib (A, X, Y : Unsigned_32) is
+   begin
+      null;
+   end Lemma_Mul_Distrib;
+
+   --  Newton-Raphson (Hensel lifting): x := x*(2 - N0*x) takes N0*x = 1 mod 2^m
+   --  to N0*x = 1 mod 2^(2m), since N0*x' = 2(N0x) - (N0x)^2 = 1 - (N0x - 1)^2
+   --  and (N0x - 1) = 0 mod 2^m. Five steps from m=1 (N0 odd) reach m=32.
+   function Inverse_Mod_2_32 (N0 : Unsigned_32) return Unsigned_32
+   with Pre => (N0 and 1) = 1, Post => N0 * Inverse_Mod_2_32'Result = 1
+   is
+      X : Unsigned_32 := 1;
+      T : Unsigned_32;
+   begin
+      pragma Assert (((N0 * X) and 1) = 1);          --  m = 1 (N0 odd).
+      X := X * (2 - N0 * X);
+      pragma Assert (((N0 * X) and 3) = 1);          --  m = 2.
+      X := X * (2 - N0 * X);
+      pragma Assert (((N0 * X) and 15) = 1);         --  m = 4.
+      X := X * (2 - N0 * X);
+      pragma Assert (((N0 * X) and 255) = 1);        --  m = 8.
+
+      --  Step to m = 16 via the square-divisibility helper. Prove the ring
+      --  identity on the explicit square first (the nonlinear part), then bind
+      --  it to an abstract Z so the final mask step carries no multiply term.
+      T := N0 * X;
+      declare
+         X0 : constant Unsigned_32 := X
+         with Ghost;
+      begin
+         X := X * (2 - T);
+         pragma Assert (X = X0 * (2 - T));
+         Lemma_Mul3 (N0, X0, 2 - T);
+         pragma Assert (N0 * X = T * (2 - T));
+         Lemma_Poly_Sq (T);
+         pragma Assert (N0 * X = 1 - (T - 1) * (T - 1));
+         pragma Assert (((T - 1) and 255) = 0);
+         Lemma_Sq_Low8 (T - 1);
+         declare
+            Z : constant Unsigned_32 := (T - 1) * (T - 1)
+            with Ghost;
+         begin
+            pragma Assert ((Z and 65535) = 0);
+            pragma Assert (N0 * X = 1 - Z);
+            pragma Assert (((N0 * X) and 65535) = 1);
+         end;
+      end;
+
+      --  Step to m = 32 (full): (N0*X - 1)^2 = 0.
+      T := N0 * X;
+      declare
+         X0 : constant Unsigned_32 := X
+         with Ghost;
+      begin
+         X := X * (2 - T);
+         pragma Assert (X = X0 * (2 - T));
+         Lemma_Mul3 (N0, X0, 2 - T);
+         pragma Assert (N0 * X = T * (2 - T));
+         Lemma_Poly_Sq (T);
+         pragma Assert (N0 * X = 1 - (T - 1) * (T - 1));
+         pragma Assert (((T - 1) and 65535) = 0);
+         Lemma_Sq_Low16 (T - 1);
+         declare
+            Z : constant Unsigned_32 := (T - 1) * (T - 1)
+            with Ghost;
+         begin
+            pragma Assert (Z = 0);
+            pragma Assert (N0 * X = 1 - Z);
+            pragma Assert (N0 * X = 1);
+         end;
+      end;
       return X;
    end Inverse_Mod_2_32;
 
-   --  n0_inv := -N0^-1 mod 2^32, where N0 = N (0).
-   function N0_Inv (N : Limbs64) return Unsigned_32 is
+   --  n0_inv := -N0^-1 mod 2^32, where N0 = N (0). The Montgomery m' constant:
+   --  N (0) * n0_inv = -1 (mod 2^32) = 16#FFFFFFFF#.
+   function N0_Inv (N : Limbs64) return Unsigned_32
+   with Pre => (N (0) and 1) = 1, Post => N (0) * N0_Inv'Result = 16#FFFFFFFF#
+   is
       Inv : constant Unsigned_32 := Inverse_Mod_2_32 (N (0));
    begin
-      --  Two's complement negation modulo 2^32.
+      --  N (0) * Inv = 1 (Inverse Post); -Inv + Inv = 0 (two's complement); so
+      --  by distributivity N (0)*(-Inv) + 1 = 0, i.e. N (0)*(-Inv) = -1.
+      pragma Assert (N (0) * Inv = 1);
+      pragma Assert (((not Inv) + 1) + Inv = 0);
+      Lemma_Mul_Distrib (N (0), (not Inv) + 1, Inv);
+      pragma Assert (N (0) * ((not Inv) + 1) + N (0) * Inv = 0);
+      pragma Assert (N (0) * ((not Inv) + 1) = 16#FFFFFFFF#);
       return (not Inv) + 1;
    end N0_Inv;
 
