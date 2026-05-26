@@ -163,6 +163,15 @@ is
    --  Mod_P_Spec(X - K*P) = Mod_P_Spec(X). Built atop Lemma_Mod_Shift_Up:
    --  uplift both X and Y = X - K*P by a sufficiently large N*P to make
    --  both non-negative shifts, apply Lemma_Mod_Shift_Up to each.
+   --  Right multiplication is congruence: A = B => C*A = C*B.
+   --  Null body (SPARK BI theory has this as multiplication
+   --  congruence, but symbolic divisors / large terms make it not
+   --  fire automatically; wrap as clean-context lemma).
+   procedure Lemma_BI_Mul_Cong_Right (C, A, B : Big.Big_Integer)
+   with Ghost, Pre => A = B, Post => C * A = C * B;
+
+   procedure Lemma_BI_Mul_Cong_Right (C, A, B : Big.Big_Integer) is null;
+
    procedure Lemma_Mod_Sub_KP (X : Big.Big_Integer; K : Big.Big_Integer)
    with
      Ghost,
@@ -405,6 +414,11 @@ is
       Lemma_Mod_Sub_KP (Big.To_Big_Integer (0), Big.To_Big_Integer (0));
    end Lemma_Brick_A_Anchor;
 
+   --  Brick B consumer (body defined later in the file, after the
+   --  per-iteration value-frame lemmas). Forward declaration here so
+   --  Carry's end-of-loop block can call it.
+   procedure Lemma_Brick_B_Anchor with Ghost;
+
    procedure Carry (O : in out Felt) is
       C        : Integer_64;
       --  The current limb may carry one inbound carry (< 2**40) on top of its
@@ -497,9 +511,10 @@ is
       end loop;
       --  Anchor for the §0e mod-p infrastructure (Brick A). Pinned at
       --  end-of-Carry where it cannot perturb the loop-invariant proof
-      --  context. Brick B/C will replace this with the actual
+      --  context. Brick C will replace these with the actual
       --  Equiv_Spec bridge in a future session.
       Lemma_Brick_A_Anchor;
+      Lemma_Brick_B_Anchor;
    end Carry;
 
    ---------------------------------------------------------------------
@@ -597,6 +612,309 @@ is
          Lemma_Limb_Big_Sub (A (N - 1), B (N - 1));
       end if;
    end Lemma_To_Big_Sub;
+
+   ---------------------------------------------------------------------
+   --  Brick B (Carry per-iteration value-frame lemmas).
+   --
+   --  Single-step value identity for the two shapes Carry emits inside
+   --  its loop body:
+   --
+   --    Inner step (I < 15): O_new (I)   = O_old (I) - C * 2^16
+   --                         O_new (I+1) = O_old (I+1) + C
+   --                         O_new (K)   = O_old (K)         (K /= I, I+1)
+   --     ⇒  To_Big_Spec (O_new) = To_Big_Spec (O_old)
+   --
+   --    Top step (I = 15):   O_new (15)  = O_old (15) - C * 2^16
+   --                         O_new (0)   = O_old (0) + 38 * C
+   --                         O_new (K)   = O_old (K)         (1 <= K <= 14)
+   --     ⇒  To_Big_Spec (O_new) = To_Big_Spec (O_old) - 2 * C * Prime_P_Spec
+   --
+   --  Both lemmas are inductive over the To_Big_Up_To prefix, exactly
+   --  the way bignum_2048 / Lemma_To_Big_Add work (commit 4cec40e
+   --  pattern). Brick C wires them into Carry's body via a per-iter
+   --  Loop_Invariant + a running K_acc.
+   ---------------------------------------------------------------------
+
+   --  Frame helper: if F and G agree at every limb except I and I+1,
+   --  then To_Big_Up_To diverges only by the contributions of those two
+   --  limbs, weighted by their position. Inductive on N over the
+   --  prefix length, mirrors Lemma_To_Big_Add's structure.
+   procedure Lemma_Frame_Inner
+     (F, G : Felt;
+      I    : Felt_Index;
+      N    : Natural)
+   with
+     Ghost,
+     Global             => null,
+     Pre                =>
+       I < 15
+       and then N <= 16
+       and then (for all K in Felt_Index =>
+                   (if K /= I and then K /= I + 1
+                    then Limb_Big (G (K)) = Limb_Big (F (K)))),
+     Post               =>
+       To_Big_Up_To (G, N)
+       = To_Big_Up_To (F, N)
+         + (if N > I then (Limb_Big (G (I)) - Limb_Big (F (I)))
+                          * Pow_2_16 (I)
+            else Big.To_Big_Integer (0))
+         + (if N > I + 1
+            then (Limb_Big (G (I + 1)) - Limb_Big (F (I + 1)))
+                 * Pow_2_16 (I + 1)
+            else Big.To_Big_Integer (0)),
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_Frame_Inner
+     (F, G : Felt;
+      I    : Felt_Index;
+      N    : Natural) is
+   begin
+      if N = 0 then
+         null;
+      else
+         Lemma_Frame_Inner (F, G, I, N - 1);
+         --  Step N: To_Big_Up_To (X, N) = To_Big_Up_To (X, N-1) +
+         --                                Limb_Big (X (N-1)) * Pow_2_16 (N-1).
+         --  Three cases for the limb at N-1.
+         if N - 1 = I then
+            --  Crossed the I threshold this step. Delta_I now contributes.
+            pragma Assert
+              ((Limb_Big (G (N - 1)) - Limb_Big (F (N - 1))) * Pow_2_16 (N - 1)
+               = (Limb_Big (G (I)) - Limb_Big (F (I))) * Pow_2_16 (I));
+         elsif N - 1 = I + 1 then
+            pragma Assert
+              ((Limb_Big (G (N - 1)) - Limb_Big (F (N - 1))) * Pow_2_16 (N - 1)
+               = (Limb_Big (G (I + 1)) - Limb_Big (F (I + 1)))
+                 * Pow_2_16 (I + 1));
+         else
+            pragma Assert (Limb_Big (G (N - 1)) = Limb_Big (F (N - 1)));
+            pragma Assert
+              ((Limb_Big (G (N - 1)) - Limb_Big (F (N - 1))) * Pow_2_16 (N - 1)
+               = Big.To_Big_Integer (0));
+         end if;
+      end if;
+   end Lemma_Frame_Inner;
+
+   --  Carry inner-step value preservation: the two touched limbs'
+   --  contributions cancel exactly.
+   --
+   --  Math: delta = (Limb_Big(G(I)) - Limb_Big(F(I))) * Pow_2_16(I)
+   --              + (Limb_Big(G(I+1)) - Limb_Big(F(I+1))) * Pow_2_16(I+1)
+   --              = -C * 2^16 * Pow_2_16(I) + C * Pow_2_16(I+1)
+   --              = -C * Pow_2_16(I+1) + C * Pow_2_16(I+1)
+   --              = 0  (since Pow_2_16(I+1) = 2^16 * Pow_2_16(I)).
+   procedure Lemma_Carry_Inner_Step_Frame
+     (F, G : Felt;
+      I    : Felt_Index;
+      C    : Interfaces.Integer_64)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       I < 15
+       and then Limb_Big (G (I))
+                = Limb_Big (F (I)) - Limb_Big (C) * GBV.Limb_Val (65536)
+       and then Limb_Big (G (I + 1)) = Limb_Big (F (I + 1)) + Limb_Big (C)
+       and then (for all K in Felt_Index =>
+                   (if K /= I and then K /= I + 1
+                    then Limb_Big (G (K)) = Limb_Big (F (K)))),
+     Post   => To_Big_Spec (G) = To_Big_Spec (F);
+
+   procedure Lemma_Carry_Inner_Step_Frame
+     (F, G : Felt;
+      I    : Felt_Index;
+      C    : Interfaces.Integer_64) is
+   begin
+      Lemma_Frame_Inner (F, G, I, 16);
+      --  Now in scope (from Lemma_Frame_Inner's Post):
+      --    To_Big_Spec (G) = To_Big_Spec (F)
+      --                    + Delta_I * Pow_2_16 (I)
+      --                    + Delta_I1 * Pow_2_16 (I + 1)
+      --  where Delta_I  = -Limb_Big(C) * Limb_Val(65536)
+      --        Delta_I1 = +Limb_Big(C)
+      --  and Pow_2_16 (I + 1) = Pow_2_16 (I) * Limb_Val (65536).
+      pragma Assert (Pow_2_16 (I + 1) = Pow_2_16 (I) * GBV.Limb_Val (65536));
+      --  Use C explicitly to silence -gnatwf (the Pre uses Limb_Big(C)).
+      pragma Assert (Limb_Big (C) = Limb_Big (C));
+   end Lemma_Carry_Inner_Step_Frame;
+
+   --  Top-step variant: limb 15 shifts out, limb 0 absorbs 38*C. The
+   --  net Big_Integer change equals -C*2^256 + 38*C = -2*C*p via
+   --  Lemma_Pow_2_256_Eq_2P_Plus_38.
+   procedure Lemma_Frame_Top
+     (F, G : Felt; N : Natural)
+   with
+     Ghost,
+     Global             => null,
+     Pre                =>
+       N <= 16
+       and then (for all K in Felt_Index =>
+                   (if K /= 0 and then K /= 15
+                    then Limb_Big (G (K)) = Limb_Big (F (K)))),
+     Post               =>
+       To_Big_Up_To (G, N)
+       = To_Big_Up_To (F, N)
+         + (if N > 0 then (Limb_Big (G (0)) - Limb_Big (F (0)))
+                          * Pow_2_16 (0)
+            else Big.To_Big_Integer (0))
+         + (if N > 15 then (Limb_Big (G (15)) - Limb_Big (F (15)))
+                           * Pow_2_16 (15)
+            else Big.To_Big_Integer (0)),
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_Frame_Top (F, G : Felt; N : Natural) is
+   begin
+      if N = 0 then
+         null;
+      else
+         Lemma_Frame_Top (F, G, N - 1);
+         if N - 1 = 0 then
+            pragma Assert
+              ((Limb_Big (G (N - 1)) - Limb_Big (F (N - 1))) * Pow_2_16 (N - 1)
+               = (Limb_Big (G (0)) - Limb_Big (F (0))) * Pow_2_16 (0));
+         elsif N - 1 = 15 then
+            pragma Assert
+              ((Limb_Big (G (N - 1)) - Limb_Big (F (N - 1))) * Pow_2_16 (N - 1)
+               = (Limb_Big (G (15)) - Limb_Big (F (15))) * Pow_2_16 (15));
+         else
+            pragma Assert (Limb_Big (G (N - 1)) = Limb_Big (F (N - 1)));
+            pragma Assert
+              ((Limb_Big (G (N - 1)) - Limb_Big (F (N - 1))) * Pow_2_16 (N - 1)
+               = Big.To_Big_Integer (0));
+         end if;
+      end if;
+   end Lemma_Frame_Top;
+
+   procedure Lemma_Carry_Top_Step_Frame
+     (F, G : Felt;
+      C    : Interfaces.Integer_64)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Limb_Big (G (15))
+       = Limb_Big (F (15)) - Limb_Big (C) * GBV.Limb_Val (65536)
+       and then Limb_Big (G (0))
+                = Limb_Big (F (0)) + Big.To_Big_Integer (38) * Limb_Big (C)
+       and then (for all K in Felt_Index =>
+                   (if K /= 0 and then K /= 15
+                    then Limb_Big (G (K)) = Limb_Big (F (K)))),
+     Post   =>
+       To_Big_Spec (G)
+       = To_Big_Spec (F)
+         - Big.To_Big_Integer (2) * Limb_Big (C) * Prime_P_Spec;
+
+   procedure Lemma_Carry_Top_Step_Frame
+     (F, G : Felt;
+      C    : Interfaces.Integer_64) is
+      CB : constant Big.Big_Integer := Limb_Big (C);
+   begin
+      Lemma_Frame_Top (F, G, 16);
+      Lemma_Pow_2_256_Eq_2P_Plus_38;
+      pragma Assert (Pow_2_16 (16) = Pow_2_16 (15) * GBV.Limb_Val (65536));
+      GBV.Lemma_Limb_Val_Succ (0);   --  Limb_Val (1) = 1 = Pow_2_16 (0).
+      pragma Assert (Pow_2_16 (0) = Big.To_Big_Integer (1));
+      --  After Lemma_Frame_Top: To_Big_Spec(G) - To_Big_Spec(F) =
+      --    (Limb_Big(G(0)) - Limb_Big(F(0))) * Pow_2_16(0)
+      --  + (Limb_Big(G(15)) - Limb_Big(F(15))) * Pow_2_16(15)
+      --  Pre gives:
+      --    Limb_Big(G(0)) - Limb_Big(F(0)) = 38 * CB
+      --    Limb_Big(G(15)) - Limb_Big(F(15)) = -CB * Limb_Val(65536)
+      --  So delta = 38 * CB - CB * Limb_Val(65536) * Pow_2_16(15)
+      --           = 38 * CB - CB * Pow_2_16(16)
+      --           = 38 * CB - CB * (2*p + 38)
+      --           = -2 * CB * p.
+      pragma Assert
+        (Limb_Big (G (0)) - Limb_Big (F (0)) = Big.To_Big_Integer (38) * CB);
+      pragma Assert
+        (Limb_Big (G (15)) - Limb_Big (F (15))
+         = -CB * GBV.Limb_Val (65536));
+      --  Multiply both sides by Pow_2_16 (15):
+      pragma Assert
+        ((Limb_Big (G (15)) - Limb_Big (F (15))) * Pow_2_16 (15)
+         = (-CB * GBV.Limb_Val (65536)) * Pow_2_16 (15));
+      --  Associativity + commutativity gymnastics:
+      pragma Assert
+        ((-CB * GBV.Limb_Val (65536)) * Pow_2_16 (15)
+         = -CB * (GBV.Limb_Val (65536) * Pow_2_16 (15)));
+      pragma Assert (GBV.Limb_Val (65536) * Pow_2_16 (15)
+                     = Pow_2_16 (15) * GBV.Limb_Val (65536));
+      pragma Assert (Pow_2_16 (15) * GBV.Limb_Val (65536) = Pow_2_16 (16));
+      pragma Assert (GBV.Limb_Val (65536) * Pow_2_16 (15) = Pow_2_16 (16));
+      pragma Assert
+        (-CB * (GBV.Limb_Val (65536) * Pow_2_16 (15))
+         = -CB * Pow_2_16 (16));
+      pragma Assert
+        ((-CB * GBV.Limb_Val (65536)) * Pow_2_16 (15)
+         = -CB * Pow_2_16 (16));
+      pragma Assert
+        ((Limb_Big (G (15)) - Limb_Big (F (15))) * Pow_2_16 (15)
+         = -CB * Pow_2_16 (16));
+      --  Combine the two delta contributions explicitly via the
+      --  Lemma_Frame_Top Post (already in scope).
+      pragma Assert
+        (To_Big_Spec (G) - To_Big_Spec (F)
+         = (Limb_Big (G (0)) - Limb_Big (F (0))) * Pow_2_16 (0)
+           + (Limb_Big (G (15)) - Limb_Big (F (15))) * Pow_2_16 (15));
+      pragma Assert
+        (To_Big_Spec (G) - To_Big_Spec (F)
+         = Big.To_Big_Integer (38) * CB * Big.To_Big_Integer (1)
+           + (-CB * Pow_2_16 (16)));
+      pragma Assert
+        (To_Big_Spec (G) - To_Big_Spec (F)
+         = Big.To_Big_Integer (38) * CB - CB * Pow_2_16 (16));
+      pragma Assert
+        (Pow_2_16 (16) = 2 * Prime_P_Spec + Big.To_Big_Integer (38));
+      --  Substitute Pow_2_16 (16) = 2*p + 38:
+      --    -CB * (2*p + 38) = -2*CB*p - 38*CB
+      --    +38*CB - 2*CB*p - 38*CB = -2*CB*p.
+      --  Cleaner path: rewrite the delta via substitution.
+      --  We have:
+      --    delta = 38 * CB + (-CB) * Pow_2_16 (16)
+      --          = 38 * CB - CB * Pow_2_16 (16)
+      --  With Pow_2_16 (16) = 2*p + 38, we want to show
+      --    38 * CB - CB * Pow_2_16 (16) = -2 * CB * p.
+      --  Equivalently: CB * Pow_2_16 (16) = 38 * CB + 2 * CB * p.
+      --  Push via the just-proven Pow_2_16 (16) = 2*p + 38 + distrib.
+      pragma Assert
+        (Pow_2_16 (16) = Big.To_Big_Integer (2) * Prime_P_Spec
+                       + Big.To_Big_Integer (38));
+      Lemma_BI_Mul_Cong_Right
+        (CB, Pow_2_16 (16),
+         Big.To_Big_Integer (2) * Prime_P_Spec + Big.To_Big_Integer (38));
+      pragma Assert
+        (CB * Pow_2_16 (16)
+         = CB * (Big.To_Big_Integer (2) * Prime_P_Spec
+                 + Big.To_Big_Integer (38)));
+      --  Distribute CB over the (2*p + 38) sum.
+      pragma Assert
+        (CB * (2 * Prime_P_Spec + Big.To_Big_Integer (38))
+         = CB * (2 * Prime_P_Spec) + CB * Big.To_Big_Integer (38));
+      pragma Assert (CB * (2 * Prime_P_Spec)
+                     = Big.To_Big_Integer (2) * CB * Prime_P_Spec);
+      pragma Assert (CB * Big.To_Big_Integer (38)
+                     = Big.To_Big_Integer (38) * CB);
+      pragma Assert
+        (CB * (2 * Prime_P_Spec + Big.To_Big_Integer (38))
+         = Big.To_Big_Integer (2) * CB * Prime_P_Spec
+           + Big.To_Big_Integer (38) * CB);
+      pragma Assert
+        (To_Big_Spec (G) - To_Big_Spec (F)
+         = -(Big.To_Big_Integer (2) * CB * Prime_P_Spec));
+   end Lemma_Carry_Top_Step_Frame;
+
+   --  Brick B consumer: a trivial ghost touchpoint that calls the
+   --  per-iteration value-frame lemmas at zero-witness inputs so
+   --  they're not -gnatwu-unreferenced before Brick C wires them
+   --  into Carry's body via a Loop_Invariant.  (Spec at line ~420.)
+   procedure Lemma_Brick_B_Anchor is
+      Zero : constant Felt := [others => 0];
+   begin
+      Lemma_Frame_Inner (Zero, Zero, 0, 0);
+      Lemma_Frame_Top (Zero, Zero, 0);
+      Lemma_Carry_Inner_Step_Frame (Zero, Zero, 0, 0);
+      Lemma_Carry_Top_Step_Frame (Zero, Zero, 0);
+   end Lemma_Brick_B_Anchor;
 
    procedure F_Add (O : out Felt; A, B : Felt) is
    begin
