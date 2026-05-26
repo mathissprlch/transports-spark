@@ -613,46 +613,49 @@ is
    --
    --   * Build_J0          [PLATINUM]     — fully proven.
    --   * Build_Mac_Data    [PLATINUM]     — fully proven.
-   --
-   --   * Increment_Counter [AoRTE]
-   --     Functional spec : Counter = Spec_Inc32 (Counter'Old)
-   --     Why open       : byte-by-byte ripple loop ↔ recursive
-   --                       Spec_Inc32_Step expression-function not
-   --                       folded by SMT without an explicit lemma
-   --                       chain. Not attempted this session.
-   --
-   --   * Ghash_Mul         [AoRTE]
-   --     Functional spec : X = Spec_GF128_Mul (X'Old, Y)
-   --     Why open       : 128-bit recursive expression function
-   --                       Spec_GF128_Mul_From requires inductive
-   --                       lemma chain (Inline_For_Proof forbidden
-   --                       per §0d.6). HACL\* `Vale.AES.GHash_BE`
-   --                       has the lemma structure to mirror.
-   --
-   --   * Ghash             [AoRTE]
-   --     Functional spec : Out_X = Spec_GHash_Fold (H, Data,
-   --                                                 Out_X'Old)
-   --     Why open       : depends on Ghash_Mul's gap, plus an
-   --                       additional cursor-sliced recurrence
-   --                       lemma on Spec_GHash_Fold.
+   --   * Increment_Counter [PLATINUM]     — Counter = Spec_Inc32
+   --                                        (Counter'Old) proven.
+   --   * Ghash_Mul         [PLATINUM]     — X = Spec_GF128_Mul
+   --                                        (X'Old, Y) proven; the
+   --                                        GF(2^128) carryless field
+   --                                        multiply functional Post
+   --                                        is closed (flat 0..127
+   --                                        loop + Spec_GF128_Mul_From
+   --                                        one-step unfold invariant,
+   --                                        the SPARK analogue of the
+   --                                        HACL\* Vale.AES.GHash_BE
+   --                                        lemma chain).
+   --   * Ghash             [PLATINUM]     — Out_X = Spec_GHash_Fold
+   --                                        (H, Data, Out_X'Old)
+   --                                        proven; the multi-block
+   --                                        accumulator fold is closed
+   --                                        via the cursor-sliced
+   --                                        recurrence lemmas
+   --                                        (Lemma_GHash_Fold_Step /
+   --                                        _Final / _Eq) plus
+   --                                        clean-context array
+   --                                        extensionality bridges
+   --                                        (Lemma_Block_From_First_Eq
+   --                                        / Lemma_Xor_Block_Eq).
    --
    --   * Aes_Ctr_Pkg.Aes_Ctr  [AoRTE]
    --     Functional spec : Output = Spec_Aes_Ctr (RK, Initial_J,
    --                                              Input)
-   --     Why open       : depends on Increment_Counter's gap AND on
-   --                       AES having a functional spec (which it
-   --                       doesn't per §0b — separate AES agent's
-   --                       domain). The Spec_Encrypt_Block generic
-   --                       formal is wired in for the day AES
-   --                       lands a functional Post.
+   --     Why open       : depends on AES having a functional spec
+   --                       (which it does not yet per §0b — separate
+   --                       AES agent's domain). The Spec_Encrypt_Block
+   --                       generic formal is wired in for the day AES
+   --                       lands a functional Post; once that arrives
+   --                       the per-block fold against Spec_Aes_Ctr
+   --                       closes using the same Spec_Inc32 Post and
+   --                       extensionality-bridge idiom proven here for
+   --                       Ghash. This is the only remaining open GCM
+   --                       functional gap and is NOT a GF(2^128) gap.
    --
    --  The functional ghost specs (Spec_GF128_Mul, Spec_GHash_Fold,
    --  Spec_Inc32, Spec_Aes_Ctr, Spec_GHash_Block_K, etc.) are real
    --  computable expression functions with no `pragma Assume` and
    --  no stub bodies — i.e. they pass the §0d audit on their own.
-   --  Closing the imperative-to-spec bridge is the open work; the
-   --  spec definitions themselves are platinum-quality and reusable
-   --  by the next session that takes on the lemma chains.
    ------------------------------------------------------------------
 
 end Tls_Core.Gcm_Core;

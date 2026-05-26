@@ -524,6 +524,114 @@ is
    end Lemma_GHash_Fold_Final;
 
    ---------------------------------------------------------------------
+   --  Lemma_GHash_Fold_Eq — argument congruence for Spec_GHash_Fold:
+   --  equal Data slices (same bounds + contents) and equal accumulator
+   --  Y fold to the same value. Spec_GHash_Fold's value is a pure
+   --  function of its arguments, but SMT does not apply Leibniz
+   --  substitution on a recursive expression function when the two
+   --  slice / accumulator expressions are syntactically distinct (same
+   --  wall as Lemma_GF128_Mul_Eq). The lemma states the congruence
+   --  explicitly; the body discharges it by structural induction on
+   --  the recursion (one tail slice per step).
+   ---------------------------------------------------------------------
+
+   procedure Lemma_GHash_Fold_Eq
+     (H : Block_16; D1, D2 : Octet_Array; Y1, Y2 : Block_16)
+   with
+     Ghost,
+     Pre                =>
+       D1'First = D2'First
+       and then D1'Last = D2'Last
+       and then D1'Last < Integer'Last - 16
+       and then D1 = D2
+       and then Y1 = Y2,
+     Post               =>
+       Spec_GHash_Fold (H, D1, Y1) = Spec_GHash_Fold (H, D2, Y2),
+     Subprogram_Variant => (Decreases => D1'Length);
+
+   procedure Lemma_GHash_Fold_Eq
+     (H : Block_16; D1, D2 : Octet_Array; Y1, Y2 : Block_16) is
+   begin
+      if D1'Length = 0 then
+         --  Both folds return their (equal) accumulators unchanged.
+         return;
+      elsif D1'Length <= 16 then
+         --  Small-Length branch: result is a single GF128 multiply of
+         --  the leading (zero-padded) block. Equal contents/bounds
+         --  give equal leading blocks; equal Y gives an equal product.
+         pragma
+           Assert
+             (Spec_GHash_Block_From_First (D1)
+                = Spec_GHash_Block_From_First (D2));
+         return;
+      else
+         --  Recursive branch: equal leading blocks and equal Y give
+         --  an equal intermediate accumulator; equal tail slices then
+         --  fold identically by the inductive hypothesis.
+         pragma
+           Assert
+             (Spec_GHash_Block_From_First (D1)
+                = Spec_GHash_Block_From_First (D2));
+         pragma
+           Assert
+             (D1 (D1'First + 16 .. D1'Last) = D2 (D2'First + 16 .. D2'Last));
+         Lemma_GHash_Fold_Eq
+           (H  => H,
+            D1 => D1 (D1'First + 16 .. D1'Last),
+            D2 => D2 (D2'First + 16 .. D2'Last),
+            Y1 =>
+              Spec_GF128_Mul
+                (Spec_Xor_Block (Y1, Spec_GHash_Block_From_First (D1)), H),
+            Y2 =>
+              Spec_GF128_Mul
+                (Spec_Xor_Block (Y2, Spec_GHash_Block_From_First (D2)), H));
+         return;
+      end if;
+   end Lemma_GHash_Fold_Eq;
+
+   ---------------------------------------------------------------------
+   --  Lemma_Block_From_First_Eq — array extensionality bridge: a
+   --  Block_16 whose every byte equals Spec_GHash_Byte_Or_Zero of the
+   --  leading (zero-padded) block of Suffix IS that block. Stated as
+   --  a clean-context ghost lemma so the aggregate-from-elementwise
+   --  step proves in a minimal proof context, independent of the
+   --  surrounding accumulator-fold reasoning load in Ghash.
+   ---------------------------------------------------------------------
+
+   procedure Lemma_Block_From_First_Eq (Suffix : Octet_Array; B : Block_16)
+   with
+     Ghost,
+     Pre  =>
+       Suffix'Length > 0
+       and then Suffix'Last < Integer'Last - 16
+       and then (for all I in 1 .. 16 =>
+                   B (I) = Spec_GHash_Byte_Or_Zero (Suffix, 0, I)),
+     Post => B = Spec_GHash_Block_From_First (Suffix);
+
+   procedure Lemma_Block_From_First_Eq (Suffix : Octet_Array; B : Block_16) is
+   begin
+      null;
+   end Lemma_Block_From_First_Eq;
+
+   ---------------------------------------------------------------------
+   --  Lemma_Xor_Block_Eq — array extensionality bridge: a Block_16
+   --  whose every byte is the XOR of the corresponding bytes of A and
+   --  C IS Spec_Xor_Block (A, C). Clean-context ghost lemma for the
+   --  same stability reason as Lemma_Block_From_First_Eq.
+   ---------------------------------------------------------------------
+
+   procedure Lemma_Xor_Block_Eq (A, C, R : Block_16)
+   with
+     Ghost,
+     Pre  => (for all I in 1 .. 16 => R (I) = (A (I) xor C (I))),
+     Post => R = Spec_Xor_Block (A, C);
+
+   procedure Lemma_Xor_Block_Eq (A, C, R : Block_16) is
+   begin
+      null;
+   end Lemma_Xor_Block_Eq;
+
+   ---------------------------------------------------------------------
    --  Ghash — full-message accumulator.
    --
    --  Body uses the bit-by-bit Ghash_Mul (not the 4-bit table)
@@ -664,11 +772,26 @@ is
             --        (H, Suffix [Suffix'First+16 .. Suffix'Last], <new-Y>)
             --  where <new-Y> = Spec_GF128_Mul (Spec_Xor_Block
             --   (Out_X_Pre, Spec_GHash_Block_From_First (Suffix)), H)
-            --   = Out_X (just established).
+            --   = Out_X (established at the Ghash_Mul step above).
             pragma
               Assert
                 (Suffix (Suffix'First + 16 .. Suffix'Last)
                    = Data (Data'First + Cursor + 16 .. Data'Last));
+            --  Congruence on the recursive fold: rewrite the lemma's
+            --  tail slice to the cursor-advanced slice of Data and its
+            --  accumulator <new-Y> to Out_X in one step. SMT will not
+            --  apply Leibniz substitution to the recursive fold on its
+            --  own (same wall as Lemma_GF128_Mul_Eq).
+            Lemma_GHash_Fold_Eq
+              (H  => H,
+               D1 => Suffix (Suffix'First + 16 .. Suffix'Last),
+               D2 => Data (Data'First + Cursor + 16 .. Data'Last),
+               Y1 =>
+                 Spec_GF128_Mul
+                   (Spec_Xor_Block
+                      (Out_X_Pre, Spec_GHash_Block_From_First (Suffix)),
+                    H),
+               Y2 => Out_X);
             pragma
               Assert
                 (Spec_GHash_Fold (H, Suffix, Out_X_Pre)
@@ -735,6 +858,7 @@ is
               Assert
                 (for all I in 1 .. 16 =>
                    Block (I) = Spec_GHash_Byte_Or_Zero (Suffix, 0, I));
+            Lemma_Block_From_First_Eq (Suffix, Block);
             pragma Assert (Block = Spec_GHash_Block_From_First (Suffix));
 
             declare
@@ -751,6 +875,9 @@ is
                     Loop_Invariant
                       (for all M in I + 1 .. 16 => Out_X (M) = Out_X_Mid (M));
                end loop;
+               Lemma_Xor_Block_Eq (Out_X_Mid, Block, Out_X);
+               pragma Assert (Out_X = Spec_Xor_Block (Out_X_Mid, Block));
+               pragma Assert (Out_X_Mid = Out_X_Pre);
                pragma Assert (Out_X = Spec_Xor_Block (Out_X_Pre, Block));
             end;
 
