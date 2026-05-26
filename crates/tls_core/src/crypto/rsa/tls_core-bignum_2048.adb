@@ -3277,6 +3277,108 @@ is
       pragma Assert (Mv * P32 (I) <= P32 (I + 1) - P32 (I));
    end Lemma_Q_Bound_Step;
 
+   --  Cancel a positive common factor from a strict product inequality.
+   procedure Lemma_BI_Lt_Cancel (X, Y, C : Big.Big_Integer)
+   with Ghost, Pre => C > 0 and then X * C < Y * C, Post => X < Y;
+
+   procedure Lemma_BI_Lt_Cancel (X, Y, C : Big.Big_Integer) is
+   begin
+      if X >= Y then
+         GBV.Lemma_BI_Mul_Mono (C, Y, X);   --  C >= 0, Y <= X => C*Y <= C*X
+         Lemma_BI_Comm (C, Y);
+         Lemma_BI_Comm (C, X);
+         pragma Assert (Y * C <= X * C);     --  contradicts the precondition
+
+      end if;
+   end Lemma_BI_Lt_Cancel;
+
+   --  Montgomery accumulator bound: from the exact identity Tv*R = Av*Bv + Qv*Nv
+   --  with reduced operands (Av, Bv < Nv) and a quotient below R, the result is
+   --  below 2*Nv -- so a single conditional subtract of Nv yields a value < Nv.
+   procedure Lemma_Mont_Bound (Tv, R, Av, Bv, Nv, Qv : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       Tv >= 0
+       and then R > 0
+       and then Av >= 0
+       and then Bv >= 0
+       and then Nv > 0
+       and then Qv >= 0
+       and then Av < Nv
+       and then Bv < Nv
+       and then Nv <= R
+       and then Qv < R
+       and then Tv * R = Av * Bv + Qv * Nv,
+     Post => Tv < 2 * Nv;
+
+   procedure Lemma_Mont_Bound (Tv, R, Av, Bv, Nv, Qv : Big.Big_Integer) is
+   begin
+      --  Av*Bv <= (Nv-1)^2 < Nv*Nv <= Nv*R.
+      GBV.Lemma_BI_Mul_Mono (Av, Bv, Nv - 1);       --  Av*Bv <= Av*(Nv-1)
+      GBV.Lemma_BI_Mul_Mono (Nv - 1, Av, Nv - 1);   --  (Nv-1)*Av <= (Nv-1)^2
+      Lemma_BI_Comm (Av, Nv - 1);
+      GBV.Lemma_BI_Mul_Mono (Nv, Nv, R);            --  Nv*Nv <= Nv*R
+      pragma Assert (Av * Bv <= (Nv - 1) * (Nv - 1));
+      pragma Assert (Nv * Nv = (Nv - 1) * (Nv - 1) + (2 * Nv - 1));
+      pragma Assert (Av * Bv < Nv * R);
+      --  Qv*Nv <= (R-1)*Nv < R*Nv.
+      GBV.Lemma_BI_Mul_Mono (Nv, Qv, R - 1);        --  Nv*Qv <= Nv*(R-1)
+      Lemma_BI_Comm (Nv, Qv);
+      Lemma_BI_Comm (Nv, R - 1);
+      pragma Assert (Qv * Nv <= (R - 1) * Nv);
+      pragma Assert (R * Nv = (R - 1) * Nv + Nv);
+      pragma Assert (Qv * Nv < R * Nv);
+      --  Sum < 2*Nv*R, then cancel R > 0.
+      Lemma_BI_Comm (Nv, R);
+      Lemma_BI_Assoc (2, Nv, R);
+      pragma Assert (Tv * R < (2 * Nv) * R);
+      Lemma_BI_Lt_Cancel (Tv, 2 * Nv, R);
+   end Lemma_Mont_Bound;
+
+   --  Apply the accumulator bound under reduced operands. A ghost procedure so
+   --  the hypothesis-guarded reasoning (ghost LV64 in the guard) is legal, and
+   --  the bound algebra stays out of the Mont_Mul body.
+   procedure Lemma_Mont_Acc_Bound
+     (T : Limbs66; A, B, N : Limbs64; Q : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       LV66 (T, N_Limbs + 1) >= 0
+       and then Q >= 0
+       and then Q < P32 (N_Limbs)
+       and then LV66 (T, N_Limbs + 1) * P32 (N_Limbs)
+                = LV64 (A, N_Limbs)
+                  * LV64 (B, N_Limbs)
+                  + Q * LV64 (N, N_Limbs),
+     Post =>
+       (if LV64 (A, N_Limbs) < LV64 (N, N_Limbs)
+          and then LV64 (B, N_Limbs) < LV64 (N, N_Limbs)
+          and then not Is_Zero64 (N)
+        then LV66 (T, N_Limbs + 1) < 2 * LV64 (N, N_Limbs));
+
+   procedure Lemma_Mont_Acc_Bound
+     (T : Limbs66; A, B, N : Limbs64; Q : Big.Big_Integer) is
+   begin
+      if LV64 (A, N_Limbs) < LV64 (N, N_Limbs)
+        and then LV64 (B, N_Limbs) < LV64 (N, N_Limbs)
+        and then not Is_Zero64 (N)
+      then
+         Lemma_LV64_Nonneg (A, N_Limbs);
+         Lemma_LV64_Nonneg (B, N_Limbs);
+         Lemma_LV64_Pos_Exists (N);       --  LV64 (N) > 0
+         Lemma_LV64_Upper (N, N_Limbs);   --  LV64 (N) < P32 (64) = R
+         Lemma_P32_Pos (N_Limbs);
+         Lemma_Mont_Bound
+           (LV66 (T, N_Limbs + 1),
+            P32 (N_Limbs),
+            LV64 (A, N_Limbs),
+            LV64 (B, N_Limbs),
+            LV64 (N, N_Limbs),
+            Q);
+      end if;
+   end Lemma_Mont_Acc_Bound;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -3726,6 +3828,16 @@ is
                      + Q * LV64 (N, N_Limbs));
          end;
       end loop;
+
+      --  Exit state (all 64 limbs processed): exact Montgomery identity
+      --  value (T) * R = A*B + Q*N, with R = P32 (64) = 2^2048.
+      pragma
+        Assert
+          (LV66 (T, N_Limbs + 1) * P32 (N_Limbs)
+             = LV64 (A, N_Limbs) * LV64 (B, N_Limbs) + Q * LV64 (N, N_Limbs));
+      Lemma_LV66_Nonneg (T, N_Limbs + 1);
+      --  Under reduced operands the accumulator is < 2N (single conditional sub).
+      Lemma_Mont_Acc_Bound (T, A, B, N, Q);
 
       --  T now holds A*B*R^-1 mod N, possibly with one extra N. The
       --  value lives in T (0 .. N_Limbs); the top word (T (N_Limbs))
