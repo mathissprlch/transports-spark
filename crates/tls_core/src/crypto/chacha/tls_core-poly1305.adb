@@ -2090,37 +2090,166 @@ is
    ---------------------------------------------------------------------
 
    procedure Finish_Tag (Acc : Limbs; Key : Key_Array; Out_Tag : out Tag_Array)
-   with Pre => (for all I in Limb_Index => Acc (I) < 2**26)
+   with
+     Pre  => (for all I in Limb_Index => Acc (I) < 2**26),
+     Post =>
+       Out_Tag
+       = SB.Store_Le_16
+           (GB."+" (To_Big_Nat (Acc), Enc.R_BN (Octet_Array (Key (17 .. 32)))))
    is
-      Carry_Acc : U64 := 0;
-      T         : array (Limb_Index) of U64 := [others => 0];
-      H_Lo      : U64;
-      H_Hi      : U64;
+      SL   : constant Limbs := S_Limbs (Key)
+      with Ghost;
+      S_BN : constant GB.Big_Nat := Enc.R_BN (Octet_Array (Key (17 .. 32)))
+      with Ghost;
+      AS   : constant GB.Big_Nat := GB."+" (To_Big_Nat (Acc), S_BN)
+      with Ghost;
+      C    : U64;
+      T    : array (Limb_Index) of U64 := [others => 0];
+      H_Lo : U64;
+      H_Hi : U64;
    begin
       Out_Tag := [others => 0];
-      Lemma_S_Bridge (Key);   --  To_Big_Nat (S_Limbs (Key)) = R_BN (s bytes).
-      for I in Limb_Index loop
-         T (I) := Acc (I) + S_Limb (Key, I) + Carry_Acc;
-         Carry_Acc := Shift_Right (T (I), 26);
-         T (I) := T (I) and Mask_26;
-      end loop;
+      Lemma_S_Bridge (Key);   --  To_Big_Nat (SL) = S_BN.
+      Lemma_To_Big_Nat_Reduced (Acc);
+      pragma Assert (for all I in Limb_Index => S_Limb (Key, I) < 2**26);
+      Lemma_To_Big_Nat_Reduced (SL);
+      pragma Assert (GB."=" (To_Big_Nat (SL), S_BN));
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             To_Big_Nat (SL) (I) = GB.LLI (S_Limb (Key, I)));
+      pragma
+        Assert
+          (for all I in Limb_Index => S_BN (I) = GB.LLI (S_Limb (Key, I)));
+      pragma Assert (GB.In_Bounds (AS, GB.Prod_Cap));
+      pragma
+        Assert
+          (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+             AS (I) = 0);
+      pragma
+        Assert
+          (for all I in Limb_Index =>
+             AS (I) = GB.LLI (Acc (I)) + GB.LLI (S_Limb (Key, I)));
 
-      --  Repack into two 64-bit halves (limb i at bit 26 * i).
+      --  T = clean sweep of (Acc + s): the carry loop, unrolled so each T (i) is
+      --  shown equal to Sweep5_Out (AS) (i) (mirrors Clean_Carry; the carry out
+      --  of limb 4 is dropped = mod 2^130, then the store masks to 2^128).
+      T (0) := Acc (0) + S_Limb (Key, 0);
+      pragma Assert (GB.LLI (T (0)) = AS (0));
+      Lemma_Shift_Mask_26 (T (0));
+      C := Shift_Right (T (0), 26);
+      T (0) := T (0) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C0 (AS));
+      pragma Assert (GB.LLI (T (0)) = GB.Sweep5_Out (AS) (0));
+
+      T (1) := Acc (1) + S_Limb (Key, 1) + C;
+      pragma Assert (GB.LLI (T (1)) = AS (1) + GB.LLI (C));
+      Lemma_Shift_Mask_26 (T (1));
+      C := Shift_Right (T (1), 26);
+      T (1) := T (1) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C1 (AS));
+      pragma
+        Assert (GB.Sweep5_Out (AS) (1) = GB.Lo26 (AS (1) + GB.Sw_C0 (AS)));
+      pragma Assert (GB.LLI (T (1)) = GB.Sweep5_Out (AS) (1));
+
+      T (2) := Acc (2) + S_Limb (Key, 2) + C;
+      pragma Assert (GB.LLI (T (2)) = AS (2) + GB.LLI (C));
+      Lemma_Shift_Mask_26 (T (2));
+      C := Shift_Right (T (2), 26);
+      T (2) := T (2) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C2 (AS));
+      pragma
+        Assert (GB.Sweep5_Out (AS) (2) = GB.Lo26 (AS (2) + GB.Sw_C1 (AS)));
+      pragma Assert (GB.LLI (T (2)) = GB.Sweep5_Out (AS) (2));
+
+      T (3) := Acc (3) + S_Limb (Key, 3) + C;
+      pragma Assert (GB.LLI (T (3)) = AS (3) + GB.LLI (C));
+      Lemma_Shift_Mask_26 (T (3));
+      C := Shift_Right (T (3), 26);
+      T (3) := T (3) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C3 (AS));
+      pragma
+        Assert (GB.Sweep5_Out (AS) (3) = GB.Lo26 (AS (3) + GB.Sw_C2 (AS)));
+      pragma Assert (GB.LLI (T (3)) = GB.Sweep5_Out (AS) (3));
+
+      T (4) := Acc (4) + S_Limb (Key, 4) + C;
+      pragma Assert (GB.LLI (T (4)) = AS (4) + GB.LLI (C));
+      Lemma_Shift_Mask_26 (T (4));
+      C := Shift_Right (T (4), 26);
+      T (4) := T (4) and Mask_26;
+      pragma Assert (GB.LLI (C) = GB.Sw_C4 (AS));
+      pragma
+        Assert (GB.Sweep5_Out (AS) (4) = GB.Lo26 (AS (4) + GB.Sw_C3 (AS)));
+      pragma Assert (GB.LLI (T (4)) = GB.Sweep5_Out (AS) (4));
+
+      pragma Assert (T (0) = U64 (GB.Sweep5_Out (AS) (0)));
+      pragma Assert (T (1) = U64 (GB.Sweep5_Out (AS) (1)));
+      pragma Assert (T (2) = U64 (GB.Sweep5_Out (AS) (2)));
+      pragma Assert (T (3) = U64 (GB.Sweep5_Out (AS) (3)));
+      pragma Assert (T (4) = U64 (GB.Sweep5_Out (AS) (4)));
+
+      --  Repack into two 64-bit halves = SB.Fin_Lo / SB.Fin_Hi (store_felem).
       H_Lo :=
         T (0)
         or Shift_Left (T (1), 26)
         or Shift_Left (T (2) and 16#0000_0FFF#, 52);
+      pragma
+        Assert
+          (H_Lo
+             = (U64 (GB.Sweep5_Out (AS) (0))
+                or Shift_Left (U64 (GB.Sweep5_Out (AS) (1)), 26)
+                or Shift_Left
+                     (U64 (GB.Sweep5_Out (AS) (2)) and 16#0000_0FFF#, 52)));
+      pragma Assert (H_Lo = SB.Fin_Lo (AS));
       H_Hi :=
         Shift_Right (T (2), 12)
         or Shift_Left (T (3), 14)
         or Shift_Left (T (4) and 16#00FF_FFFF#, 40);
+      pragma
+        Assert
+          (H_Hi
+             = (Shift_Right (U64 (GB.Sweep5_Out (AS) (2)), 12)
+                or Shift_Left (U64 (GB.Sweep5_Out (AS) (3)), 14)
+                or Shift_Left
+                     (U64 (GB.Sweep5_Out (AS) (4)) and 16#00FF_FFFF#, 40)));
+      pragma Assert (H_Hi = SB.Fin_Hi (AS));
 
-      for I in 0 .. 7 loop
-         Out_Tag (1 + I) := Octet (Shift_Right (H_Lo, 8 * I) and 16#FF#);
-      end loop;
-      for I in 0 .. 7 loop
-         Out_Tag (9 + I) := Octet (Shift_Right (H_Hi, 8 * I) and 16#FF#);
-      end loop;
+      --  Little-endian byte emission = SB.Store_Le_16 (AS), unrolled per byte.
+      Out_Tag (1) := Octet (Shift_Right (H_Lo, 0) and 16#FF#);
+      Out_Tag (2) := Octet (Shift_Right (H_Lo, 8) and 16#FF#);
+      Out_Tag (3) := Octet (Shift_Right (H_Lo, 16) and 16#FF#);
+      Out_Tag (4) := Octet (Shift_Right (H_Lo, 24) and 16#FF#);
+      Out_Tag (5) := Octet (Shift_Right (H_Lo, 32) and 16#FF#);
+      Out_Tag (6) := Octet (Shift_Right (H_Lo, 40) and 16#FF#);
+      Out_Tag (7) := Octet (Shift_Right (H_Lo, 48) and 16#FF#);
+      Out_Tag (8) := Octet (Shift_Right (H_Lo, 56) and 16#FF#);
+      Out_Tag (9) := Octet (Shift_Right (H_Hi, 0) and 16#FF#);
+      Out_Tag (10) := Octet (Shift_Right (H_Hi, 8) and 16#FF#);
+      Out_Tag (11) := Octet (Shift_Right (H_Hi, 16) and 16#FF#);
+      Out_Tag (12) := Octet (Shift_Right (H_Hi, 24) and 16#FF#);
+      Out_Tag (13) := Octet (Shift_Right (H_Hi, 32) and 16#FF#);
+      Out_Tag (14) := Octet (Shift_Right (H_Hi, 40) and 16#FF#);
+      Out_Tag (15) := Octet (Shift_Right (H_Hi, 48) and 16#FF#);
+      Out_Tag (16) := Octet (Shift_Right (H_Hi, 56) and 16#FF#);
+      --  Out_Tag = store_felem (AS) = Store_Le_16 (To_Big_Nat (Acc) + R_BN (s)),
+      --  which is the postcondition (AS is exactly that sum).
+      pragma Assert (Out_Tag (1) = SB.Store_Le_16 (AS) (1));
+      pragma Assert (Out_Tag (2) = SB.Store_Le_16 (AS) (2));
+      pragma Assert (Out_Tag (3) = SB.Store_Le_16 (AS) (3));
+      pragma Assert (Out_Tag (4) = SB.Store_Le_16 (AS) (4));
+      pragma Assert (Out_Tag (5) = SB.Store_Le_16 (AS) (5));
+      pragma Assert (Out_Tag (6) = SB.Store_Le_16 (AS) (6));
+      pragma Assert (Out_Tag (7) = SB.Store_Le_16 (AS) (7));
+      pragma Assert (Out_Tag (8) = SB.Store_Le_16 (AS) (8));
+      pragma Assert (Out_Tag (9) = SB.Store_Le_16 (AS) (9));
+      pragma Assert (Out_Tag (10) = SB.Store_Le_16 (AS) (10));
+      pragma Assert (Out_Tag (11) = SB.Store_Le_16 (AS) (11));
+      pragma Assert (Out_Tag (12) = SB.Store_Le_16 (AS) (12));
+      pragma Assert (Out_Tag (13) = SB.Store_Le_16 (AS) (13));
+      pragma Assert (Out_Tag (14) = SB.Store_Le_16 (AS) (14));
+      pragma Assert (Out_Tag (15) = SB.Store_Le_16 (AS) (15));
+      pragma Assert (Out_Tag (16) = SB.Store_Le_16 (AS) (16));
+      pragma Assert (Out_Tag = SB.Store_Le_16 (AS));
    end Finish_Tag;
 
    ---------------------------------------------------------------------
