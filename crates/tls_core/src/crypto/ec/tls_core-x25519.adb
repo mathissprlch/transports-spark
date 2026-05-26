@@ -232,6 +232,15 @@ is
       D (0) := 1;
 
       for I in reverse 0 .. 254 loop
+         --  felem_fits invariant (AoRTE): the carried Montgomery state and the
+         --  base point stay reduced (In_Felem .. Reduced_Cap), so every F_Add /
+         --  F_Sub (output <= 2 * Reduced_Cap) re-feeds F_Mul within its
+         --  F_Mul_In_Cap budget and the ladder is closed for runtime errors.
+         pragma Loop_Invariant (In_Felem (A, Reduced_Cap));
+         pragma Loop_Invariant (In_Felem (B, Reduced_Cap));
+         pragma Loop_Invariant (In_Felem (C, Reduced_Cap));
+         pragma Loop_Invariant (In_Felem (D, Reduced_Cap));
+         pragma Loop_Invariant (In_Felem (X, Reduced_Cap));
          R :=
            Integer_64
              ((Shift_Right (Unsigned_8 (Z (1 + I / 8)), Natural (I mod 8)))

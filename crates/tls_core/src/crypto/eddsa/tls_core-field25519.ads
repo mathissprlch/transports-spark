@@ -49,6 +49,51 @@ is
    subtype Felt_Index is Natural range 0 .. 15;
    type Felt is array (Felt_Index) of Interfaces.Integer_64;
 
+   --  felem_fits analogue (HACL\* Hacl.Spec.Curve25519.Field51.Lemmas):
+   --  every limb's magnitude is at or below Bound. The leaf field ops carry
+   --  a bound Pre/Post so the signed-Integer_64 limb arithmetic provably
+   --  stays inside the 64-bit accumulator (absence of runtime errors) and so
+   --  callers (the X25519 ladder) can thread a per-step limb invariant.
+   function In_Felem (F : Felt; Bound : Interfaces.Integer_64) return Boolean
+   is (for all I in Felt_Index => F (I) >= -Bound and then F (I) <= Bound)
+   with Ghost, Global => null, Pre => Bound >= 0;
+
+   --  Carry-output shape (HACL\* mul_inv_t analogue): limbs 1 .. 15 are
+   --  fully reduced to the low 16 bits (0 .. 2**16-1); limb 0 alone may
+   --  carry the 38× top-fold and is bounded by Top. This non-uniform
+   --  predicate is what lets the second carry pass in F_Mul converge to a
+   --  tight re-feedable output (a uniform In_Felem loses limb 0's shape).
+   function Carried (F : Felt; Top : Interfaces.Integer_64) return Boolean
+   is (F (0) >= 0
+       and then F (0) <= Top
+       and then (for all I in Felt_Index =>
+                   (if I >= 1 then F (I) >= 0 and then F (I) <= 2**16 - 1)))
+   with Ghost, Global => null, Pre => Top >= 0;
+
+   --  Limb-magnitude budget for the leaf field ops (AoRTE discipline):
+   --    * Carry accepts up to Carry_In_Cap (covers the F_Mul fold output,
+   --      <= 39 * 16 * (2**20)**2 = 624 * 2**40 < 2**50 < Carry_In_Cap) and
+   --      reduces a wide input to a Carry_Out_Cap-bounded limb 0 (the 38×
+   --      top-fold) with limbs 1 .. 15 in 0 .. 2**16-1.
+   --    * A once-carried element (Carried (.,Carry_Out_Cap)) re-carries to a
+   --      tight Reduced_Cap output, which re-feeds F_Mul.
+   Carry_In_Cap  : constant Interfaces.Integer_64 := 2**55;
+   Carry_Out_Cap : constant Interfaces.Integer_64 := 2**45;
+   Reduced_Cap   : constant Interfaces.Integer_64 := 2**17;
+
+   --  F_Mul / F_Sqr input budget: each of the 31 convolution columns sums at
+   --  most 16 products of magnitude <= Bound**2 (one per outer limb), so the
+   --  whole buffer is <= 16 * Bound**2; the 38× fold then gives <= 39 * 16 *
+   --  Bound**2.  With Bound = 2**20 that is 624 * 2**40 < 2**50 < Carry_In_Cap.
+   --  Output is the tight Reduced_Cap (two carry passes); a single F_Add of
+   --  two outputs (<= 2 * Reduced_Cap = 2**18) stays within F_Mul_In_Cap.
+   F_Mul_In_Cap : constant Interfaces.Integer_64 := 2**20;
+
+   --  F_Add / F_Sub input budget: a limb sum/difference of two bounded
+   --  elements must stay inside Integer_64 with headroom for the ghost
+   --  Limb_Big additivity lemma (Val_Int = -2**110 .. 2**110).
+   F_Add_Cap : constant Interfaces.Integer_64 := 2**62 - 1;
+
    ---------------------------------------------------------------------
    --  Ghost spec layer.
    --
@@ -147,30 +192,65 @@ is
    --  Carry preserves the represented integer modulo p — the
    --  fold of a top-limb spillover by 38 = 2^256 mod p witnesses
    --  this directly. Equiv post locks that property.
+   --
+   --  The In_Felem / Carried Pre / Post conjuncts are the AoRTE / felem_fits
+   --  half (proven): a Carry_In_Cap-bounded input keeps every signed-Integer_64
+   --  intermediate in range and yields a Carried (.,Carry_Out_Cap) output;
+   --  if the input was already once-carried (Carried (.,Carry_Out_Cap)) the
+   --  output tightens to Carried (.,Reduced_Cap). The Equiv_Spec conjunct is
+   --  the mod-p functional half (the 2^255-19 reduce-algebra port over the
+   --  value layer, not yet discharged — honest-unproven, no bypass).
    procedure Carry (O : in out Felt)
-   with Post => Equiv_Spec (To_Big_Spec (O), To_Big_Spec (O'Old));
+   with
+     Pre  => In_Felem (O, Carry_In_Cap),
+     Post =>
+       Equiv_Spec (To_Big_Spec (O), To_Big_Spec (O'Old))
+       and then Carried (O, Carry_Out_Cap)
+       and then (if Carried (O'Old, Carry_Out_Cap)
+                 then Carried (O, Reduced_Cap));
 
    --  Limb-wise add. Linearity of To_Big_Spec gives
    --      To_Big_Spec (O) = To_Big_Spec (A) + To_Big_Spec (B)
-   --  exactly (no reduction).
+   --  exactly (no reduction). The In_Felem Pre/Post is the AoRTE half:
+   --  bounded inputs give a sum bounded by twice the input cap.
    procedure F_Add (O : out Felt; A, B : Felt)
-   with Post => To_Big_Spec (O) = To_Big_Spec (A) + To_Big_Spec (B);
+   with
+     Pre  => In_Felem (A, F_Add_Cap) and then In_Felem (B, F_Add_Cap),
+     Post =>
+       To_Big_Spec (O) = To_Big_Spec (A) + To_Big_Spec (B)
+       and then (for all I in Felt_Index => O (I) = A (I) + B (I));
 
    procedure F_Sub (O : out Felt; A, B : Felt)
-   with Post => To_Big_Spec (O) = To_Big_Spec (A) - To_Big_Spec (B);
+   with
+     Pre  => In_Felem (A, F_Add_Cap) and then In_Felem (B, F_Add_Cap),
+     Post =>
+       To_Big_Spec (O) = To_Big_Spec (A) - To_Big_Spec (B)
+       and then (for all I in Felt_Index => O (I) = A (I) - B (I));
 
    --  Multiply mod p, with two carry passes producing canonical-
    --  ish output. F_Sqr(o, a) = F_Mul(o, a, a).
    --
    --  Post: To_Big_Spec (O) ≡ To_Big_Spec (A) * To_Big_Spec (B)
    --  modulo p.  This is the F\*  fmul  spec.
+   --
+   --  The In_Felem Pre/Post is the AoRTE / felem_fits half (proven): an
+   --  F_Mul_In_Cap-bounded pair multiplies (16-term convolution + 38× fold)
+   --  inside Carry_In_Cap, then two carry passes reduce to the tight
+   --  Reduced_Cap output that re-feeds the ladder. The Equiv_Spec conjunct
+   --  is the mod-p functional half (honest-unproven, no bypass).
    procedure F_Mul (O : out Felt; A, B : Felt)
    with
-     Post => Equiv_Spec (To_Big_Spec (O), To_Big_Spec (A) * To_Big_Spec (B));
+     Pre  => In_Felem (A, F_Mul_In_Cap) and then In_Felem (B, F_Mul_In_Cap),
+     Post =>
+       Equiv_Spec (To_Big_Spec (O), To_Big_Spec (A) * To_Big_Spec (B))
+       and then In_Felem (O, Reduced_Cap);
 
    procedure F_Sqr (O : out Felt; A : Felt)
    with
-     Post => Equiv_Spec (To_Big_Spec (O), To_Big_Spec (A) * To_Big_Spec (A));
+     Pre  => In_Felem (A, F_Mul_In_Cap),
+     Post =>
+       Equiv_Spec (To_Big_Spec (O), To_Big_Spec (A) * To_Big_Spec (A))
+       and then In_Felem (O, Reduced_Cap);
 
    --  Inverse mod p via Fermat: a^(p-2). Uses the standard
    --  exponent walk (squaring 254 times, with multiplies inserted
@@ -182,35 +262,51 @@ is
    --  I_Val is non-zero mod p.
    procedure F_Inv (O : out Felt; I_Val : Felt)
    with
+     Pre  => In_Felem (I_Val, F_Mul_In_Cap),
      Post =>
-       (if not Equiv_Spec (To_Big_Spec (I_Val), Big.To_Big_Integer (0))
-        then
-          Equiv_Spec
-            (To_Big_Spec (O) * To_Big_Spec (I_Val), Big.To_Big_Integer (1)));
+       In_Felem (O, Reduced_Cap)
+       and then (if not Equiv_Spec
+                          (To_Big_Spec (I_Val), Big.To_Big_Integer (0))
+                 then
+                   Equiv_Spec
+                     (To_Big_Spec (O) * To_Big_Spec (I_Val),
+                      Big.To_Big_Integer (1)));
 
    --  z^((p-5)/8). Used by Ed25519 point decompression to recover
    --  x from y via the Tonelli-style square root for p ≡ 5 mod 8.
    --  Algorithm: c <- z; for a from 250 downto 0: c <- c²;
    --  if a /= 1 then c <- c*z. Same shape as TweetNaCl pow2523.
-   procedure Pow_2523 (O : out Felt; Z : Felt);
+   procedure Pow_2523 (O : out Felt; Z : Felt)
+   with Pre => In_Felem (Z, F_Mul_In_Cap), Post => In_Felem (O, Reduced_Cap);
 
    --  Constant-time conditional swap. Swap_Bit = 1 swaps every
    --  limb of P and Q; Swap_Bit = 0 leaves them untouched. No
-   --  branches dependent on Swap_Bit.
-   procedure C_Swap (P, Q : in out Felt; Swap_Bit : Interfaces.Integer_64);
+   --  branches dependent on Swap_Bit. The XOR pun is an exact
+   --  conditional swap, so the result is a permutation of the inputs
+   --  (relational Post) — any per-limb bound the caller knows about the
+   --  inputs therefore transfers to the outputs.
+   procedure C_Swap (P, Q : in out Felt; Swap_Bit : Interfaces.Integer_64)
+   with
+     Pre  => Swap_Bit in 0 .. 1,
+     Post =>
+       (P = P'Old and then Q = Q'Old) or else (P = Q'Old and then Q = P'Old);
 
    --  Final reduction mod p, then serialise to 32 LE bytes.
-   procedure Pack (O : out Bytes_32; N : Felt);
+   procedure Pack (O : out Bytes_32; N : Felt)
+   with Pre => In_Felem (N, F_Mul_In_Cap);
 
    --  Read 32 LE bytes into a field element. The high bit of byte
    --  32 is masked off (per RFC 7748 §5 Decode-X25519 / RFC 8032
-   --  §5.1.3).
-   procedure Unpack (O : out Felt; B : Bytes_32);
+   --  §5.1.3). Each limb is a 16-bit byte pair (<= 2**16-1 <= Reduced_Cap),
+   --  so the output is a reduced-shape element.
+   procedure Unpack (O : out Felt; B : Bytes_32)
+   with Post => In_Felem (O, Reduced_Cap);
 
    --  Parity test: returns the low bit of the canonical packing.
    --  Used by Ed25519 to recover the sign bit of x during point
    --  decompression.
-   function Parity (N : Felt) return Interfaces.Integer_64;
+   function Parity (N : Felt) return Interfaces.Integer_64
+   with Pre => In_Felem (N, F_Mul_In_Cap);
 
    --  Two helpers exposed because Ed25519's scalar-bit and sign-bit
    --  extraction reuses them; both are bit-pattern operations on
