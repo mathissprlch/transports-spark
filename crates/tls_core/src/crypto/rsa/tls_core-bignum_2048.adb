@@ -206,14 +206,35 @@ is
    --  The high byte of the limb is at the lower 1-based index.
    ---------------------------------------------------------------------
 
-   procedure From_Bytes (B : Bigint; L : out Limbs64) is
+   --  Arithmetic value of limb I from its four big-endian bytes (each < 256,
+   --  so the weighted sum is exact in Unsigned_32 -- no wrap).
+   function Limb_Of_Bytes (B : Bigint; I : Limb_Index) return Unsigned_32
+   is (Unsigned_32 (B (Byte_Length - 4 * I - 3))
+       * 2**24
+       + Unsigned_32 (B (Byte_Length - 4 * I - 2)) * 2**16
+       + Unsigned_32 (B (Byte_Length - 4 * I - 1)) * 2**8
+       + Unsigned_32 (B (Byte_Length - 4 * I)))
+   with Ghost;
+
+   procedure From_Bytes (B : Bigint; L : out Limbs64)
+   with Post => (for all I in Limb_Index => L (I) = Limb_Of_Bytes (B, I))
+   is
    begin
+      --  Unconditional init so flow analysis sees L initialized when the loop
+      --  invariant reads the already-written prefix; the loop overwrites all.
+      L := [others => 0];
       for I in Limb_Index loop
          L (I) :=
            Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 3)), 24)
            or Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 2)), 16)
            or Shift_Left (Unsigned_32 (B (Byte_Length - 4 * I - 1)), 8)
            or Unsigned_32 (B (Byte_Length - 4 * I));
+         --  The four shifted bytes occupy disjoint 8-bit fields, so OR = sum.
+         pragma Assert (L (I) = Limb_Of_Bytes (B, I));
+         pragma
+           Loop_Invariant
+             (for all J in Limb_Index range 0 .. I =>
+                L (J) = Limb_Of_Bytes (B, J));
       end loop;
    end From_Bytes;
 
