@@ -2019,6 +2019,67 @@ is
       end if;
    end Cond_Subtract;
 
+   --  s = Key (17 .. 32) little-endian, packed into 5x26-bit limbs (byte p of
+   --  s is Key (16 + p)). Same packing as Encode.Enc_Limb / R_Limb4, written
+   --  directly so the Big_Nat bridge below is structural.
+   function S_Limb (Key : Key_Array; Idx : Limb_Index) return U64
+   is (case Idx is
+         when 0 =>
+           U64 (Key (17))
+           or Shift_Left (U64 (Key (18)), 8)
+           or Shift_Left (U64 (Key (19)), 16)
+           or Shift_Left (U64 (Key (20) and 16#03#), 24),
+         when 1 =>
+           Shift_Right (U64 (Key (20)), 2)
+           or Shift_Left (U64 (Key (21)), 6)
+           or Shift_Left (U64 (Key (22)), 14)
+           or Shift_Left (U64 (Key (23) and 16#0F#), 22),
+         when 2 =>
+           Shift_Right (U64 (Key (23)), 4)
+           or Shift_Left (U64 (Key (24)), 4)
+           or Shift_Left (U64 (Key (25)), 12)
+           or Shift_Left (U64 (Key (26) and 16#3F#), 20),
+         when 3 =>
+           Shift_Right (U64 (Key (26)), 6)
+           or Shift_Left (U64 (Key (27)), 2)
+           or Shift_Left (U64 (Key (28)), 10)
+           or Shift_Left (U64 (Key (29)), 18),
+         when 4 =>
+           U64 (Key (30))
+           or Shift_Left (U64 (Key (31)), 8)
+           or Shift_Left (U64 (Key (32)), 16));
+
+   function S_Limbs (Key : Key_Array) return Limbs
+   is ([for I in Limb_Index => S_Limb (Key, I)])
+   with Ghost;
+
+   --  Big_Nat bridge: the s-limbs embed to R_BN of the 16 s-bytes (no clamp,
+   --  no implicit-1), exactly like Load_Block <-> Encode_BN.
+   procedure Lemma_S_Bridge (Key : Key_Array)
+   with
+     Ghost,
+     Post =>
+       GB."="
+         (To_Big_Nat (S_Limbs (Key)), Enc.R_BN (Octet_Array (Key (17 .. 32))));
+
+   procedure Lemma_S_Bridge (Key : Key_Array) is
+      B  : constant Octet_Array := Octet_Array (Key (17 .. 32));
+      SL : constant Limbs := S_Limbs (Key);
+   begin
+      pragma Assert (B'First = 17 and then B'Last = 32);
+      pragma Assert (for all J in 17 .. 32 => B (J) = Key (J));
+      pragma Assert (GB.LLI (SL (0)) = Enc.R_BN (B) (0));
+      pragma Assert (GB.LLI (SL (1)) = Enc.R_BN (B) (1));
+      pragma Assert (GB.LLI (SL (2)) = Enc.R_BN (B) (2));
+      pragma Assert (GB.LLI (SL (3)) = Enc.R_BN (B) (3));
+      pragma Assert (GB.LLI (SL (4)) = Enc.R_BN (B) (4));
+      pragma
+        Assert
+          (for all I in GB.Limb_Index =>
+             To_Big_Nat (SL) (I) = Enc.R_BN (B) (I));
+      pragma Assert (GB."=" (To_Big_Nat (SL), Enc.R_BN (B)));
+   end Lemma_S_Bridge;
+
    ---------------------------------------------------------------------
    --  Finish_Tag: serialise (Acc + s) mod 2^128 as the 16-byte LE tag.
    --  s = Key (17 .. 32) packed into 5x26-bit limbs (Get_S_Limb). The carry
@@ -2031,48 +2092,15 @@ is
    procedure Finish_Tag (Acc : Limbs; Key : Key_Array; Out_Tag : out Tag_Array)
    with Pre => (for all I in Limb_Index => Acc (I) < 2**26)
    is
-      --  s as a 17-byte LE integer (upper byte 0, s is 128 bits).
-      function Get_S_Limb (Idx : Limb_Index) return U64
-      with Pre => Idx <= 4;
-
-      --  s = Key (17 .. 32) little-endian, packed into 5x26-bit limbs (byte p
-      --  of s is Key (16 + p)). Direct case expression (no Padded buffer) so it
-      --  matches the Encode.Enc_Limb / R_Limb4 packing for the Big_Nat bridge.
-      function Get_S_Limb (Idx : Limb_Index) return U64
-      is (case Idx is
-            when 0 =>
-              U64 (Key (17))
-              or Shift_Left (U64 (Key (18)), 8)
-              or Shift_Left (U64 (Key (19)), 16)
-              or Shift_Left (U64 (Key (20) and 16#03#), 24),
-            when 1 =>
-              Shift_Right (U64 (Key (20)), 2)
-              or Shift_Left (U64 (Key (21)), 6)
-              or Shift_Left (U64 (Key (22)), 14)
-              or Shift_Left (U64 (Key (23) and 16#0F#), 22),
-            when 2 =>
-              Shift_Right (U64 (Key (23)), 4)
-              or Shift_Left (U64 (Key (24)), 4)
-              or Shift_Left (U64 (Key (25)), 12)
-              or Shift_Left (U64 (Key (26) and 16#3F#), 20),
-            when 3 =>
-              Shift_Right (U64 (Key (26)), 6)
-              or Shift_Left (U64 (Key (27)), 2)
-              or Shift_Left (U64 (Key (28)), 10)
-              or Shift_Left (U64 (Key (29)), 18),
-            when 4 =>
-              U64 (Key (30))
-              or Shift_Left (U64 (Key (31)), 8)
-              or Shift_Left (U64 (Key (32)), 16));
-
       Carry_Acc : U64 := 0;
       T         : array (Limb_Index) of U64 := [others => 0];
       H_Lo      : U64;
       H_Hi      : U64;
    begin
       Out_Tag := [others => 0];
+      Lemma_S_Bridge (Key);   --  To_Big_Nat (S_Limbs (Key)) = R_BN (s bytes).
       for I in Limb_Index loop
-         T (I) := Acc (I) + Get_S_Limb (I) + Carry_Acc;
+         T (I) := Acc (I) + S_Limb (Key, I) + Carry_Acc;
          Carry_Acc := Shift_Right (T (I), 26);
          T (I) := T (I) and Mask_26;
       end loop;
