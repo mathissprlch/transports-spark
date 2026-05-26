@@ -379,6 +379,27 @@ is
       end if;
    end Lemma_LV64_Zero;
 
+   --  Unit-at-0 array (L (0) = 1, rest 0) valuates to 1 (the constant "1").
+   procedure Lemma_LV64_One (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       L (0) = 1
+       and then (for all I in Limb_Index => (if I >= 1 then L (I) = 0)),
+     Post               =>
+       LV64 (L, K) = (if K = 0 then GBV.Limb_Val (0) else GBV.Limb_Val (1)),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV64_One (L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV64_One (L, K - 1);
+         Lemma_LV64_Unfold (L, K);
+         GBV.Lemma_Limb_Val_Succ (0);   --  Limb_Val (1) = 1, P32 (0) = 1.
+
+      end if;
+   end Lemma_LV64_One;
+
    --  Value of the low K limbs (little-endian) of a 65-limb array -- the
    --  running remainder width used by the schoolbook Reduce. Same base-2**32
    --  Horner form as LV64; K ranges up to N_Limbs + 1 (all 65 limbs).
@@ -917,6 +938,64 @@ is
    begin
       null;
    end Lemma_BI_Distrib;
+
+   --  P32 (K) >= 2 for K >= 1 (a positive power of 2^32). Placed after the BI
+   --  ring helpers / Lemma_P32_Succ it depends on.
+   procedure Lemma_P32_Ge_Two (K : Natural)
+   with Ghost, Pre => K >= 1 and then K <= 2 * N_Limbs, Post => P32 (K) >= 2;
+
+   procedure Lemma_P32_Ge_Two (K : Natural) is
+   begin
+      Lemma_P32_Succ (K - 1);               --  P32 (K) = P32 (K-1) * Base32.
+      Lemma_P32_Pos (K - 1);                --  P32 (K-1) >= 1.
+      GBV.Lemma_Limb_Val_Mono (2, 2**32);   --  Limb_Val (2) <= Base32.
+      GBV.Lemma_Limb_Val_Succ (1);
+      GBV.Lemma_Limb_Val_Succ (0);          --  Limb_Val (2) = 2.
+      GBV.Lemma_BI_Mul_Mono
+        (Base32, 1, P32 (K - 1));   --  Base32 <= Base32*P32.
+      Lemma_BI_Comm (P32 (K - 1), Base32);
+   end Lemma_P32_Ge_Two;
+
+   --  A nonzero, non-unit limb array valuates to at least 2 (the RSA modulus N
+   --  after the N = 0 / N = 1 edge-case returns is >= 2).
+   procedure Lemma_LV64_Ge_Two (L : Limbs64)
+   with
+     Ghost,
+     Pre  =>
+       (for some J in Limb_Index => L (J) /= 0)
+       and then not (L (0) = 1
+                     and then (for all I in Limb_Index =>
+                                 (if I >= 1 then L (I) = 0))),
+     Post => LV64 (L, N_Limbs) >= 2;
+
+   procedure Lemma_LV64_Ge_Two (L : Limbs64) is
+   begin
+      for I in 1 .. N_Limbs - 1 loop
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K in 1 .. I - 1 then L (K) = 0));
+         if L (I) /= 0 then
+            Lemma_LV64_Unfold (L, I + 1);
+            Lemma_LV64_Nonneg (L, I);
+            Lemma_P32_Ge_Two (I);
+            GBV.Lemma_Limb_Val_Mono (1, GB.LLI (L (I)));
+            GBV.Lemma_Limb_Val_Succ (0);
+            GBV.Lemma_BI_Mul_Mono (P32 (I), 1, GBV.Limb_Val (GB.LLI (L (I))));
+            Lemma_BI_Comm (P32 (I), GBV.Limb_Val (GB.LLI (L (I))));
+            pragma Assert (LV64 (L, I + 1) >= P32 (I));
+            Lemma_LV64_Ge (L, I + 1);
+            return;
+         end if;
+      end loop;
+      --  All higher limbs zero, so L (0) /= 0 (some nonzero) and L (0) /= 1
+      --  (not the unit) -- hence L (0) >= 2.
+      Lemma_LV64_Unfold (L, 1);
+      Lemma_LV64_Nonneg (L, 0);
+      GBV.Lemma_Limb_Val_Mono (2, GB.LLI (L (0)));
+      GBV.Lemma_Limb_Val_Succ (1);
+      GBV.Lemma_Limb_Val_Succ (0);
+      Lemma_LV64_Ge (L, 1);
+   end Lemma_LV64_Ge_Two;
 
    --  Euclidean uniqueness of the remainder: a non-negative X with the
    --  decomposition X = Q*D + R, 0 <= R < D (D > 0) has X mod D = R. The
@@ -4115,23 +4194,34 @@ is
          return;
       end if;
 
-      --  N = 1 detection: low limb is 1, all others zero.
+      --  N = 1 detection: low limb is 1, all others zero. Scan all limbs (no
+      --  early exit) so the loop invariant ties Is_One to N's limbs, exposing
+      --  "N is not the unit" -- needed to prove LV64 (N) >= 2 below.
       declare
          Is_One : Boolean := NL (0) = 1;
       begin
-         if Is_One then
-            for I in 1 .. N_Limbs - 1 loop
-               if NL (I) /= 0 then
-                  Is_One := False;
-                  exit;
-               end if;
-            end loop;
-         end if;
+         for I in 1 .. N_Limbs - 1 loop
+            if NL (I) /= 0 then
+               Is_One := False;
+            end if;
+            pragma
+              Loop_Invariant
+                (Is_One
+                   = (NL (0) = 1
+                      and then (for all K in Limb_Index =>
+                                  (if K in 1 .. I then NL (K) = 0))));
+         end loop;
          if Is_One then
             Result := [others => 0];
             To_Bytes (Result, Out_R);
             return;
          end if;
+         --  Falls through: N is neither 0 nor 1 (nor even) => LV64 (N) >= 2.
+         pragma
+           Assert
+             (not (NL (0) = 1
+                   and then (for all I in Limb_Index =>
+                               (if I >= 1 then NL (I) = 0))));
       end;
 
       --  Reduce Base mod N so we can convert to Montgomery form
@@ -4144,6 +4234,12 @@ is
             Reduce (Wide, NL, BL);
          end;
       end if;
+      --  After the edge-case returns and the reduce, LV64 (N) >= 2 (> 0) and
+      --  the base is reduced: LV64 (BL) < LV64 (N). These discharge the
+      --  reduced-operand hypotheses of every Mont_Mul below.
+      Lemma_LV64_Pos_Exists (NL);   --  LV64 (NL) > 0.
+      Lemma_LV64_Ge_Two (NL);       --  LV64 (NL) >= 2.
+      pragma Assert (LV64 (BL, N_Limbs) < LV64 (NL, N_Limbs));
 
       declare
          Inv32    : constant Unsigned_32 := N0_Inv (NL);
@@ -4153,25 +4249,42 @@ is
          Result_M : Limbs64;
       begin
          One_L (0) := 1;
+         Lemma_LV64_One (One_L, N_Limbs);   --  LV64 (One_L) = 1 (< LV64 (NL)).
 
          --  R^2 mod N — sole remaining slow step (one schoolbook
          --  reduction per Mod_Exp call).
          R_Sq_Mod_N (NL, R2);
+         pragma Assert (LV64 (R2, N_Limbs) < LV64 (NL, N_Limbs));
 
          --  Convert Base to Montgomery form: Base_M = Base * R mod N
          --  = Mont_Mul (Base, R^2).
          Mont_Mul (BL, R2, NL, Inv32, Base_M);
+         pragma Assert (LV64 (Base_M, N_Limbs) < LV64 (NL, N_Limbs));
 
          --  Montgomery form of 1: 1_M = R mod N = Mont_Mul (1, R^2).
          Mont_Mul (One_L, R2, NL, Inv32, Result_M);
+         pragma Assert (LV64 (Result_M, N_Limbs) < LV64 (NL, N_Limbs));
 
          --  Square-and-multiply, MSB-first scan of Exp. We always
          --  start from MontForm(1) and square+conditionally-multiply
          --  for every bit (no "Started" optimisation needed: squaring
-         --  MontForm(1) is still MontForm(1)).
+         --  MontForm(1) is still MontForm(1)). The reduced-operand bound
+         --  LV64 (Result_M), LV64 (Base_M) < LV64 (NL) is maintained so each
+         --  Mont_Mul's residue contract applies.
          for I in reverse Limb_Index loop
+            pragma Loop_Invariant (LV64 (NL, N_Limbs) > 0);
+            pragma
+              Loop_Invariant (LV64 (Result_M, N_Limbs) < LV64 (NL, N_Limbs));
+            pragma
+              Loop_Invariant (LV64 (Base_M, N_Limbs) < LV64 (NL, N_Limbs));
             Limb_Word := EL (I);
             for B in reverse 0 .. 31 loop
+               pragma Loop_Invariant (LV64 (NL, N_Limbs) > 0);
+               pragma
+                 Loop_Invariant
+                   (LV64 (Result_M, N_Limbs) < LV64 (NL, N_Limbs));
+               pragma
+                 Loop_Invariant (LV64 (Base_M, N_Limbs) < LV64 (NL, N_Limbs));
                Bit := Shift_Right (Limb_Word, B) and 1;
                Mont_Mul (Result_M, Result_M, NL, Inv32, Tmp);
                Result_M := Tmp;
