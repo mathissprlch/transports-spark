@@ -1494,6 +1494,15 @@ is
                  (T_Pre, T, T_Red, N, M, C_Old, Acc, Carry, J);
             end;
          end loop;
+         --  Convolution invariant at loop exit (J = N_Limbs): the low N_Limbs
+         --  limbs of T_Red + M*N have been folded and shifted into T (0..62).
+         pragma
+           Assert
+             (LV66 (T_Red, N_Limbs)
+                + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs)
+                = Base32
+                  * LV66 (T, N_Limbs - 1)
+                  + GBV.Limb_Val (GB.LLI (Carry)) * P32 (N_Limbs));
          Acc := Unsigned_64 (T (N_Limbs)) + Carry;
          T (N_Limbs - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
          Carry := Shift_Right (Acc, 32);
