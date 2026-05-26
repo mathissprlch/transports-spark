@@ -832,6 +832,103 @@ is
       return True;
    end Is_Zero64;
 
+   --  Frame: LV65 (L, K) reads only limbs 0 .. K-1.
+   procedure Lemma_LV65_Frame (L1, L2 : Limbs65; K : Limb66_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Plus_Index => (if I < K then L1 (I) = L2 (I))),
+     Post               => LV65 (L1, K) = LV65 (L2, K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV65_Frame (L1, L2 : Limbs65; K : Limb66_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV65_Frame (L1, L2, K - 1);
+      end if;
+   end Lemma_LV65_Frame;
+
+   --  Per-limb subtract-with-borrow value identity (§0e image of one Sub65
+   --  step): low word + b + borrow_in = a + borrow_out * 2^32.
+   procedure Lemma_Sub_Step
+     (Ai, Bi : Unsigned_32; Bin, Diff, Bout : Unsigned_64; Ri : Unsigned_32)
+   with
+     Ghost,
+     Pre  =>
+       Bin <= 1
+       and then Diff = Unsigned_64 (Ai) - Unsigned_64 (Bi) - Bin
+       and then Ri = Unsigned_32 (Diff and 16#FFFFFFFF#)
+       and then Bout = (Shift_Right (Diff, 63) and 1),
+     Post =>
+       GBV.Limb_Val (GB.LLI (Ri))
+       + GBV.Limb_Val (GB.LLI (Bi))
+       + GBV.Limb_Val (GB.LLI (Bin))
+       = GBV.Limb_Val (GB.LLI (Ai)) + GBV.Limb_Val (GB.LLI (Bout)) * Base32;
+
+   procedure Lemma_Sub_Step
+     (Ai, Bi : Unsigned_32; Bin, Diff, Bout : Unsigned_64; Ri : Unsigned_32) is
+   begin
+      if Unsigned_64 (Ai) >= Unsigned_64 (Bi) + Bin then
+         --  No borrow: Diff is the exact difference and is below 2^32.
+         pragma Assert (Diff = Unsigned_64 (Ai) - Unsigned_64 (Bi) - Bin);
+         pragma Assert (Diff < 2**32);
+         pragma Assert (Bout = 0);
+         pragma Assert (Unsigned_64 (Ri) = Diff);
+         pragma
+           Assert (GB.LLI (Ri) = GB.LLI (Ai) - GB.LLI (Bi) - GB.LLI (Bin));
+      else
+         --  Borrow: the subtraction wrapped. With deficit D = Bi+Bin-Ai in
+         --  [1, 2^32], Diff = 2^64 - D, so Ri = 2^32 - D and bit 63 is set.
+         declare
+            D : constant Unsigned_64 :=
+              Unsigned_64 (Bi) + Bin - Unsigned_64 (Ai)
+            with Ghost;
+         begin
+            pragma Assert (D >= 1 and then D <= 2**32);
+            pragma Assert (Diff = Unsigned_64 (0) - D);
+            pragma Assert (Diff >= 2**64 - 2**32);
+            pragma Assert (Bout = 1);
+            pragma Assert (Unsigned_64 (Ri) = 2**32 - D);
+            pragma
+              Assert (GB.LLI (D) = GB.LLI (Bi) + GB.LLI (Bin) - GB.LLI (Ai));
+            pragma
+              Assert
+                (GB.LLI (Ri)
+                   = GB.LLI (Ai) - GB.LLI (Bi) - GB.LLI (Bin) + 2**32);
+         end;
+      end if;
+      pragma
+        Assert
+          (GB.LLI (Ri) + GB.LLI (Bi) + GB.LLI (Bin)
+             = GB.LLI (Ai) + GB.LLI (Bout) * 2**32);
+      --  Lift the integer identity to the Limb_Val layer.
+      GBV.Lemma_Limb_Val_Mul32 (GB.LLI (Bout), 2**32);
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Ai), GB.LLI (Bout) * 2**32);
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Ri), GB.LLI (Bi));
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Ri) + GB.LLI (Bi), GB.LLI (Bin));
+   end Lemma_Sub_Step;
+
+   --  Sub65 loop preservation (clean context; body after the toolkit since it
+   --  multiplies the per-step identity through P32 (I) via Lemma_BI_Mul_Eq).
+   procedure Lemma_Sub65_Preserve
+     (A, B, R_Pre, R_After : Limbs65;
+      I                    : Limb_Plus_Index;
+      Bin, Diff, Bout      : Unsigned_64)
+   with
+     Ghost,
+     Pre  =>
+       Bin <= 1
+       and then Diff = Unsigned_64 (A (I)) - Unsigned_64 (B (I)) - Bin
+       and then R_After (I) = Unsigned_32 (Diff and 16#FFFFFFFF#)
+       and then Bout = (Shift_Right (Diff, 63) and 1)
+       and then (for all K in Limb_Plus_Index =>
+                   (if K /= I then R_After (K) = R_Pre (K)))
+       and then LV65 (A, I) + GBV.Limb_Val (GB.LLI (Bin)) * P32 (I)
+                = LV65 (R_Pre, I) + LV65 (B, I),
+     Post =>
+       LV65 (A, I + 1) + GBV.Limb_Val (GB.LLI (Bout)) * P32 (I + 1)
+       = LV65 (R_After, I + 1) + LV65 (B, I + 1);
+
    ---------------------------------------------------------------------
    --  Shift a 64-limb value left by one bit, producing a 65-limb
    --  result. Used as the inner operation of the schoolbook reducer.
@@ -853,15 +950,37 @@ is
    --  Caller must guarantee A >= B (no borrow out).
    ---------------------------------------------------------------------
 
-   procedure Sub65 (A, B : Limbs65; R : out Limbs65) is
+   procedure Sub65 (A, B : Limbs65; R : out Limbs65)
+   with
+     Pre  => LV65 (A, N_Limbs + 1) >= LV65 (B, N_Limbs + 1),
+     Post =>
+       LV65 (R, N_Limbs + 1) = LV65 (A, N_Limbs + 1) - LV65 (B, N_Limbs + 1)
+   is
       Borrow : Unsigned_64 := 0;
       Diff   : Unsigned_64;
    begin
+      R := [others => 0];
       for I in Limb_Plus_Index loop
-         Diff := Unsigned_64 (A (I)) - Unsigned_64 (B (I)) - Borrow;
-         R (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
-         Borrow := Shift_Right (Diff, 63) and 1;
+         pragma Loop_Invariant (Borrow <= 1);
+         pragma
+           Loop_Invariant
+             (LV65 (A, I) + GBV.Limb_Val (GB.LLI (Borrow)) * P32 (I)
+                = LV65 (R, I) + LV65 (B, I));
+         declare
+            R_Pre : constant Limbs65 := R
+            with Ghost;
+            B_In  : constant Unsigned_64 := Borrow
+            with Ghost;
+         begin
+            Diff := Unsigned_64 (A (I)) - Unsigned_64 (B (I)) - Borrow;
+            R (I) := Unsigned_32 (Diff and 16#FFFFFFFF#);
+            Borrow := Shift_Right (Diff, 63) and 1;
+            Lemma_Sub65_Preserve (A, B, R_Pre, R, I, B_In, Diff, Borrow);
+         end;
       end loop;
+      --  At exit the borrow must be 0: A >= B, and LV65 (R) < P32 (N_Limbs+1),
+      --  so a leftover borrow would force LV65 (R) >= P32 (N_Limbs+1).
+      Lemma_LV65_Upper (R, N_Limbs + 1);
    end Sub65;
 
    ---------------------------------------------------------------------
@@ -1426,6 +1545,50 @@ is
    begin
       null;
    end Lemma_BI_Mul_Eq;
+
+   --  Body of Lemma_Sub65_Preserve (declared early; uses the toolkit here).
+   procedure Lemma_Sub65_Preserve
+     (A, B, R_Pre, R_After : Limbs65;
+      I                    : Limb_Plus_Index;
+      Bin, Diff, Bout      : Unsigned_64)
+   is
+      Av  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (A (I)))
+      with Ghost;
+      Bv  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (B (I)))
+      with Ghost;
+      Rv  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (R_After (I)))
+      with Ghost;
+      Biv : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Bin))
+      with Ghost;
+      Bov : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Bout))
+      with Ghost;
+      W   : constant Big.Big_Integer := P32 (I)
+      with Ghost;
+   begin
+      Lemma_Sub_Step (A (I), B (I), Bin, Diff, Bout, R_After (I));
+      --  (S): Rv + Bv + Biv = Av + Bov * Base32.
+      Lemma_LV65_Frame (R_After, R_Pre, I);
+      Lemma_LV65_Unfold (A, I + 1);
+      Lemma_LV65_Unfold (B, I + 1);
+      Lemma_LV65_Unfold (R_After, I + 1);
+      Lemma_P32_Succ (I);
+      --  Multiply (S) through by W = P32 (I), then distribute both sides.
+      Lemma_BI_Mul_Eq (W, Rv + Bv + Biv, Av + Bov * Base32);
+      Lemma_BI_Distrib (W, Rv + Bv, Biv);
+      Lemma_BI_Distrib (W, Rv, Bv);
+      Lemma_BI_Distrib (W, Av, Bov * Base32);
+      --  W * (Bov * Base32) = Bov * (W * Base32) = Bov * P32 (I+1).
+      Lemma_BI_Comm (W, Bov * Base32);
+      Lemma_BI_Assoc (Bov, Base32, W);
+      Lemma_BI_Comm (Base32, W);
+      Lemma_BI_Mul_Eq (Bov, Base32 * W, W * Base32);
+      Lemma_BI_Mul_Eq (Bov, W * Base32, P32 (I + 1));
+      --  Align limb*weight (unfold form) with weight*limb (distrib form).
+      Lemma_BI_Comm (W, Rv);
+      Lemma_BI_Comm (W, Bv);
+      Lemma_BI_Comm (W, Av);
+      Lemma_BI_Comm (W, Biv);
+   end Lemma_Sub65_Preserve;
 
    --  Pure Big_Integer ring step for the Montgomery reduce (shift) loop:
    --  given H1 (Pstep = BaseV*Lvtm1 + Cold*P) and the per-step identity
