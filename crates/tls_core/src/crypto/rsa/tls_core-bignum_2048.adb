@@ -343,6 +343,23 @@ is
       end if;
    end Lemma_LV66_Upper;
 
+   --  An all-zero prefix has zero valuation (the outer Montgomery invariant's
+   --  I = 0 base case: T starts all-zero so LV66 (T, .) = 0).
+   procedure Lemma_LV66_Zero (T : Limbs66; K : Limb66_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb66_Index => (if I < K then T (I) = 0)),
+     Post               => LV66 (T, K) = 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV66_Zero (T : Limbs66; K : Limb66_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV66_Zero (T, K - 1);
+      end if;
+   end Lemma_LV66_Zero;
+
    ---------------------------------------------------------------------
    --  Big_Integer ring helpers. The value layer (GBV.Limb_Val images) is the
    --  mathematical integers, so these are pure polynomial identities; the
@@ -1328,6 +1345,61 @@ is
                + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
    end Lemma_Reduce_Finalize;
 
+   --  Pure ring step for the OUTER Montgomery loop (EXACT, no mod). From the
+   --  running invariant H1 (Lvt_Old * P_I = Av*LvB_I + Q_Old*Nv), the net
+   --  per-iteration identity H2 (Lvt_New * Base32 = Lvt_Old + Av*Bi + Mv*Nv),
+   --  and the B-limb unfold H3 (LvB_I1 = LvB_I + Bi*P_I), advance one B-limb:
+   --  Lvt_New * (P_I*Base32) = Av*LvB_I1 + (Q_Old + Mv*P_I)*Nv.
+   procedure Lemma_Mont_Step
+     (Lvt_Old, Lvt_New, Av, Bi, Nv, Mv, LvB_I, LvB_I1, Q_Old, P_I :
+        Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       Lvt_New * Base32 = Lvt_Old + Av * Bi + Mv * Nv
+       and then Lvt_Old * P_I = Av * LvB_I + Q_Old * Nv
+       and then LvB_I1 = LvB_I + Bi * P_I,
+     Post => Lvt_New * (P_I * Base32) = Av * LvB_I1 + (Q_Old + Mv * P_I) * Nv;
+
+   procedure Lemma_Mont_Step
+     (Lvt_Old, Lvt_New, Av, Bi, Nv, Mv, LvB_I, LvB_I1, Q_Old, P_I :
+        Big.Big_Integer) is
+   begin
+      pragma Assert (Lvt_New * Base32 = Lvt_Old + Av * Bi + Mv * Nv);
+      pragma Assert (Lvt_Old * P_I = Av * LvB_I + Q_Old * Nv);
+      pragma Assert (LvB_I1 = LvB_I + Bi * P_I);
+      --  LHS = (Lvt_New*Base32) * P_I.
+      Lemma_BI_Comm (P_I, Base32);
+      Lemma_BI_Assoc (Lvt_New, Base32, P_I);
+      pragma Assert (Lvt_New * (P_I * Base32) = (Lvt_New * Base32) * P_I);
+      Lemma_BI_Mul_Eq (P_I, Lvt_New * Base32, Lvt_Old + Av * Bi + Mv * Nv);
+      Lemma_BI_Comm (P_I, Lvt_New * Base32);
+      Lemma_BI_Comm (P_I, Lvt_Old + Av * Bi + Mv * Nv);
+      Lemma_BI_Distrib (P_I, Lvt_Old + Av * Bi, Mv * Nv);
+      Lemma_BI_Distrib (P_I, Lvt_Old, Av * Bi);
+      Lemma_BI_Comm (P_I, Lvt_Old);
+      Lemma_BI_Comm (P_I, Av * Bi);
+      Lemma_BI_Comm (P_I, Mv * Nv);
+      pragma
+        Assert
+          (Lvt_New * (P_I * Base32)
+             = Lvt_Old * P_I + Av * Bi * P_I + Mv * Nv * P_I);
+      --  RHS: Av*LvB_I1 + (Q_Old + Mv*P_I)*Nv.
+      Lemma_BI_Distrib (Av, LvB_I, Bi * P_I);
+      Lemma_BI_Assoc (Av, Bi, P_I);
+      Lemma_BI_Comm (Q_Old + Mv * P_I, Nv);
+      Lemma_BI_Distrib (Nv, Q_Old, Mv * P_I);
+      Lemma_BI_Comm (Nv, Q_Old);
+      Lemma_BI_Assoc (Mv, P_I, Nv);
+      Lemma_BI_Comm (Nv, Mv * P_I);
+      Lemma_BI_Assoc (Mv, Nv, P_I);
+      Lemma_BI_Comm (Nv, P_I);
+      pragma
+        Assert
+          (Av * LvB_I1 + (Q_Old + Mv * P_I) * Nv
+             = Av * LvB_I + Av * Bi * P_I + Q_Old * Nv + Mv * Nv * P_I);
+   end Lemma_Mont_Step;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -1340,16 +1412,31 @@ is
       with Ghost;
       T_Red   : Limbs66 := [others => 0]
       with Ghost;
+      Q       : Big.Big_Integer := 0
+      with Ghost;
+      Q_Old   : Big.Big_Integer := 0
+      with Ghost;
    begin
       --  §0e value-bridge foundation: the 66-limb CIOS accumulator valuation
       --  is bounded in [0, 2^(32*66)) (anchors LV66 for the Mont_Mul proof).
       Lemma_LV66_Nonneg (T, N_Limbs + 2);
       Lemma_LV66_Upper (T, N_Limbs + 2);
+      --  Base of the outer Montgomery invariant: T all-zero => LV66 = 0, so at
+      --  I = 0 the invariant reads 0 * P32 (0) = A * 0 + 0 * N.
+      Lemma_LV66_Zero (T, N_Limbs + 1);
       for I in Limb_Index loop
          --  Outer invariant: the top accumulator word is cleared at the end of
          --  every reduce step (and initially), so a fresh mul-add starts from
          --  T (N_Limbs + 1) = 0.  Needed by the carry-finalize value identity.
          pragma Loop_Invariant (T (N_Limbs + 1) = 0);
+         --  Exact Montgomery running invariant: after I limbs of B processed,
+         --  value(T) * 2^(32*I) = A * value (low I limbs of B) + Q * N, with Q
+         --  the accumulated Montgomery quotient (no mod -- exact).
+         pragma
+           Loop_Invariant
+             (LV66 (T, N_Limbs + 1) * P32 (I)
+                = LV64 (A, N_Limbs) * LV64 (B, I) + Q * LV64 (N, N_Limbs));
+         Q_Old := Q;
          --  T := T + A * B (I).  Inner J-loop convolution invariant (bn_mul1):
          --  the updated low J limbs plus the carry equal the original low J
          --  limbs plus A's low J limbs times the scalar B (I), at the value
@@ -1574,6 +1661,8 @@ is
          --  CIOS invariant foundation: the low limb of T + M*N vanishes.
          Lemma_Low_Limb_Killed (T (0), N (0), Inv32);
          pragma Assert (T (0) + M * N (0) = 0);
+         --  Accumulate the Montgomery quotient (exact running invariant).
+         Q := Q_Old + GBV.Limb_Val (GB.LLI (M)) * P32 (I);
 
          --  T := (T + M * N) / 2^32 (the division is the limb shift). T_Red
          --  snapshots the pre-reduce accumulator; the shift loop writes T (J-1)
@@ -1691,6 +1780,61 @@ is
                    = LV66 (T_Entry, N_Limbs + 2)
                      + LV64 (A, N_Limbs) * GBV.Limb_Val (GB.LLI (B (I)))
                      + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
+            --  Outer Montgomery invariant preservation (exact, via the
+            --  accumulated quotient Q).  T_Entry top word is 0, so its
+            --  N_Limbs+2 and N_Limbs+1 valuations agree.
+            Lemma_LV66_Unfold (T_Entry, N_Limbs + 2);
+            pragma
+              Assert
+                (LV66 (T_Entry, N_Limbs + 2) = LV66 (T_Entry, N_Limbs + 1));
+            --  inv (I) on the outer snapshot (T_Entry = T at loop top).
+            pragma
+              Assert
+                (LV66 (T_Entry, N_Limbs + 1) * P32 (I)
+                   = LV64 (A, N_Limbs)
+                     * LV64 (B, I)
+                     + Q_Old * LV64 (N, N_Limbs));
+            --  Net identity in Lvt_New*Base32 form.
+            Lemma_BI_Comm (Base32, LV66 (T, N_Limbs + 1));
+            pragma
+              Assert
+                (LV66 (T, N_Limbs + 1) * Base32
+                   = LV66 (T_Entry, N_Limbs + 1)
+                     + LV64 (A, N_Limbs) * GBV.Limb_Val (GB.LLI (B (I)))
+                     + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
+            Lemma_LV64_Unfold (B, I + 1);
+            Lemma_Mont_Step
+              (Lvt_Old => LV66 (T_Entry, N_Limbs + 1),
+               Lvt_New => LV66 (T, N_Limbs + 1),
+               Av      => LV64 (A, N_Limbs),
+               Bi      => GBV.Limb_Val (GB.LLI (B (I))),
+               Nv      => LV64 (N, N_Limbs),
+               Mv      => GBV.Limb_Val (GB.LLI (M)),
+               LvB_I   => LV64 (B, I),
+               LvB_I1  => LV64 (B, I + 1),
+               Q_Old   => Q_Old,
+               P_I     => P32 (I));
+            pragma Assert (P32 (I + 1) = P32 (I) * Base32);
+            --  LHS: rewrite LV66 * P32 (I+1) into the LV66 * (P32 (I)*Base32)
+            --  shape Lemma_Mont_Step produced (gnatprove won't push the
+            --  P32 (I+1) = P32 (I)*Base32 equality through the product inline).
+            Lemma_BI_Mul_Eq
+              (LV66 (T, N_Limbs + 1), P32 (I + 1), P32 (I) * Base32);
+            --  RHS: Q = Q_Old + Limb_Val (M) * P32 (I), so the accumulated
+            --  quotient term matches Lemma_Mont_Step's (Q_Old + Mv*P_I)*Nv.
+            Lemma_BI_Mul_Eq
+              (LV64 (N, N_Limbs),
+               Q,
+               Q_Old + GBV.Limb_Val (GB.LLI (M)) * P32 (I));
+            Lemma_BI_Comm (LV64 (N, N_Limbs), Q);
+            Lemma_BI_Comm
+              (LV64 (N, N_Limbs), Q_Old + GBV.Limb_Val (GB.LLI (M)) * P32 (I));
+            pragma
+              Assert
+                (LV66 (T, N_Limbs + 1) * P32 (I + 1)
+                   = LV64 (A, N_Limbs)
+                     * LV64 (B, I + 1)
+                     + Q * LV64 (N, N_Limbs));
          end;
       end loop;
 
