@@ -233,6 +233,80 @@ is
       end if;
    end Lemma_LV64_Upper;
 
+   --  Definitional one-step unfold of LV64 (forces the recursion in a clean
+   --  context where the heavy convolution VC stalls on it). Spec here (early,
+   --  so Compare64 and its ordering helpers can call it); body far below.
+   procedure Lemma_LV64_Unfold (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre  => K >= 1,
+     Post =>
+       LV64 (L, K)
+       = LV64 (L, K - 1) + GBV.Limb_Val (GB.LLI (L (K - 1))) * P32 (K - 1);
+
+   --  High-part equality (LV64): A and B agreeing on every limb at or above K
+   --  differ only in the low K limbs. Mirrors Lemma_LV65_Hi_Eq.
+   procedure Lemma_LV64_Hi_Eq (A, B : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Index => (if I >= K then A (I) = B (I))),
+     Post               =>
+       LV64 (A, N_Limbs) - LV64 (A, K) = LV64 (B, N_Limbs) - LV64 (B, K),
+     Subprogram_Variant => (Decreases => N_Limbs - K);
+
+   procedure Lemma_LV64_Hi_Eq (A, B : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K <= N_Limbs - 1 then
+         Lemma_LV64_Hi_Eq (A, B, K + 1);
+         Lemma_LV64_Unfold (A, K + 1);
+         Lemma_LV64_Unfold (B, K + 1);
+      end if;
+   end Lemma_LV64_Hi_Eq;
+
+   --  Lexicographic dominance (LV64): at the most-significant differing limb I
+   --  (all higher limbs equal), the limb-I order decides the value order.
+   procedure Lemma_LV64_Cmp_Limb (A, B : Limbs64; I : Limb_Index)
+   with
+     Ghost,
+     Pre  => (for all K in Limb_Index => (if K > I then A (K) = B (K))),
+     Post =>
+       (if A (I) > B (I) then LV64 (A, N_Limbs) > LV64 (B, N_Limbs))
+       and then (if A (I) < B (I) then LV64 (A, N_Limbs) < LV64 (B, N_Limbs));
+
+   procedure Lemma_LV64_Cmp_Limb (A, B : Limbs64; I : Limb_Index) is
+      AvI : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (A (I)))
+      with Ghost;
+      BvI : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (B (I)))
+      with Ghost;
+      W   : constant Big.Big_Integer := P32 (I)
+      with Ghost;
+   begin
+      Lemma_LV64_Hi_Eq (A, B, I + 1);
+      Lemma_LV64_Unfold (A, I + 1);
+      Lemma_LV64_Unfold (B, I + 1);
+      Lemma_LV64_Nonneg (A, I);
+      Lemma_LV64_Nonneg (B, I);
+      Lemma_LV64_Upper (A, I);
+      Lemma_LV64_Upper (B, I);
+      Lemma_P32_Pos (I);
+      pragma
+        Assert
+          (LV64 (A, N_Limbs) - LV64 (B, N_Limbs)
+             = (LV64 (A, I) - LV64 (B, I)) + (AvI - BvI) * W);
+      if A (I) > B (I) then
+         GBV.Lemma_Limb_Val_Mono (GB.LLI (B (I)) + 1, GB.LLI (A (I)));
+         GBV.Lemma_Limb_Val_Succ (GB.LLI (B (I)));
+         pragma Assert (AvI >= BvI + 1);
+         pragma Assert ((AvI - BvI) * W >= W);
+      elsif A (I) < B (I) then
+         GBV.Lemma_Limb_Val_Mono (GB.LLI (A (I)) + 1, GB.LLI (B (I)));
+         GBV.Lemma_Limb_Val_Succ (GB.LLI (A (I)));
+         pragma Assert (BvI >= AvI + 1);
+         pragma Assert ((BvI - AvI) * W >= W);
+      end if;
+   end Lemma_LV64_Cmp_Limb;
+
    --  Value of the low K limbs (little-endian) of a 65-limb array -- the
    --  running remainder width used by the schoolbook Reduce. Same base-2**32
    --  Horner form as LV64; K ranges up to N_Limbs + 1 (all 65 limbs).
@@ -930,15 +1004,28 @@ is
       return 0;
    end Compare65;
 
-   function Compare64 (A, B : Limbs64) return Integer is
+   function Compare64 (A, B : Limbs64) return Integer
+   with
+     Post =>
+       (Compare64'Result >= 0) = (LV64 (A, N_Limbs) >= LV64 (B, N_Limbs))
+       and then (Compare64'Result <= 0)
+                = (LV64 (A, N_Limbs) <= LV64 (B, N_Limbs))
+   is
    begin
       for I in reverse Limb_Index loop
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K > I then A (K) = B (K)));
          if A (I) > B (I) then
+            Lemma_LV64_Cmp_Limb (A, B, I);
             return 1;
          elsif A (I) < B (I) then
+            Lemma_LV64_Cmp_Limb (A, B, I);
             return -1;
          end if;
       end loop;
+      --  All limbs equal: equal valuations (Hi_Eq from K = 0; LV64 (-, 0) = 0).
+      Lemma_LV64_Hi_Eq (A, B, 0);
       return 0;
    end Compare64;
 
@@ -1987,16 +2074,6 @@ is
       Lemma_BI_Comm (Bv, P);           --  Bv*P = P*Bv.
       Lemma_BI_Assoc (Av, P, Bv);      --  Av*(P*Bv) = (Av*P)*Bv.
    end Lemma_Conv_Step;
-
-   --  Definitional one-step unfold of LV64 (forces the recursion in a clean
-   --  context where the heavy convolution VC stalls on it).
-   procedure Lemma_LV64_Unfold (L : Limbs64; K : Limb_Plus_Index)
-   with
-     Ghost,
-     Pre  => K >= 1,
-     Post =>
-       LV64 (L, K)
-       = LV64 (L, K - 1) + GBV.Limb_Val (GB.LLI (L (K - 1))) * P32 (K - 1);
 
    procedure Lemma_LV64_Unfold (L : Limbs64; K : Limb_Plus_Index) is
    begin
