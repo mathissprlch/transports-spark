@@ -620,6 +620,30 @@ is
       end if;
    end Lemma_LV128_Zero;
 
+   --  Unit numerator: an array with limb N_Limbs = 1 and all others 0 valuates
+   --  to P32 (N_Limbs) = 2^2048 = R (the Montgomery radix). Used by R_Sq_Mod_N.
+   procedure Lemma_LV128_Unit (T : Limbs128; K : Limb2_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb2_Index => (if I /= N_Limbs then T (I) = 0))
+       and then T (N_Limbs) = 1,
+     Post               =>
+       LV128 (T, K) = (if K <= N_Limbs then 0 else P32 (N_Limbs)),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV128_Unit (T : Limbs128; K : Limb2_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV128_Unit (T, K - 1);
+         Lemma_LV128_Unfold (T, K);
+         if K - 1 = N_Limbs then
+            GBV.Lemma_Limb_Val_Succ (0);   --  Limb_Val (1) = 1.
+
+         end if;
+      end if;
+   end Lemma_LV128_Unit;
+
    --  One-step P32 successor: P32 (K+1) = P32 (K) * Base32.
    procedure Lemma_P32_Succ (K : Natural)
    with Ghost, Pre => K <= 2 * N_Limbs, Post => P32 (K + 1) = P32 (K) * Base32;
@@ -2438,20 +2462,40 @@ is
    --  Concretely: build T128 = 2^2048 (so T (64) = 1, others = 0),
    --  reduce to get R mod N, then square and reduce again.
    procedure R_Sq_Mod_N (N : Limbs64; Out_R : out Limbs64)
-   with Pre => not Is_Zero64 (N)
+   with
+     Pre  => not Is_Zero64 (N),
+     Post =>
+       (if LV64 (N, N_Limbs) > 0
+        then
+          LV64 (Out_R, N_Limbs) < LV64 (N, N_Limbs)
+          and then LV64 (Out_R, N_Limbs)
+                   = (P32 (N_Limbs) * P32 (N_Limbs)) mod LV64 (N, N_Limbs))
    is
       T128  : Limbs128 := [others => 0];
       R_Mod : Limbs64;
       Sq128 : Limbs128;
    begin
       --  T128 represents 2^2048 (one in limb position 64 of a 128-bit
-      --  numerator). Reduction by N yields R mod N.
+      --  numerator). Reduction by N yields R mod N (R = P32 (64)).
+      Lemma_LV64_Pos_Exists (N);   --  LV64 (N) > 0 (modulus is nonzero).
+      Lemma_P32_Pos (N_Limbs);
       T128 (N_Limbs) := 1;
+      Lemma_LV128_Unit (T128, 2 * N_Limbs);
+      pragma Assert (LV128 (T128, 2 * N_Limbs) = P32 (N_Limbs));
       Reduce (T128, N, R_Mod);
+      --  R_Mod = R mod N.
+      pragma
+        Assert (LV64 (R_Mod, N_Limbs) = P32 (N_Limbs) mod LV64 (N, N_Limbs));
 
-      --  Square and reduce again: R^2 mod N.
+      --  Square and reduce again: (R mod N)^2 mod N = R^2 mod N.
       Mul128 (R_Mod, R_Mod, Sq128);
       Reduce (Sq128, N, Out_R);
+      pragma
+        Assert
+          (LV64 (Out_R, N_Limbs)
+             = (LV64 (R_Mod, N_Limbs) * LV64 (R_Mod, N_Limbs))
+               mod LV64 (N, N_Limbs));
+      Lemma_Mod_Mul_Cong (P32 (N_Limbs), P32 (N_Limbs), LV64 (N, N_Limbs));
    end R_Sq_Mod_N;
 
    ---------------------------------------------------------------------
