@@ -93,13 +93,23 @@ is
        Byte_Big'Result = Ghost_Bignum.Value.Limb_Val (Ghost_Bignum.LLI (X))
        and then Byte_Big'Result >= Big.To_Big_Integer (0);
 
-   --  2 ** (8 * N). Bounded so it stays within reasonable proof depth.
+   --  2 ** (8 * N) = (2^8)^N. §0e-clean: built from Limb_Val (256) by recursion
+   --  (NOT To_Big_Integer (2) ** ..), with the one-step factor exposed in the
+   --  Post so the byte↔limb bridge (Pow_2_8 (4*K) = P32 (K)) can unfold it.
    function Pow_2_8 (N : Natural) return Big.Big_Integer
    with
      Ghost,
-     Global => null,
-     Pre    => N <= Byte_Length,
-     Post   => Pow_2_8'Result > Big.To_Big_Integer (0);
+     Global             => null,
+     Pre                => N <= Byte_Length,
+     Post               =>
+       Pow_2_8'Result > Big.To_Big_Integer (0)
+       and then (if N = 0
+                 then Pow_2_8'Result = Ghost_Bignum.Value.Limb_Val (1))
+       and then (if N >= 1
+                 then
+                   Pow_2_8'Result
+                   = Pow_2_8 (N - 1) * Ghost_Bignum.Value.Limb_Val (256)),
+     Subprogram_Variant => (Decreases => N);
 
    --  Σ_{i=0..N-1} B (256 - i) * 2^(8*i) — integer value of the low
    --  N bytes of the BE 256-byte Bigint, expressed as a recursive

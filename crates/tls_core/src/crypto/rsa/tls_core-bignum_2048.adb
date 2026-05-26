@@ -29,7 +29,14 @@ is
 
    function Pow_2_8 (N : Natural) return Big.Big_Integer is
    begin
-      return Big.To_Big_Integer (2)**(8 * N);
+      if N = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);            --  Limb_Val (1) = 1 > 0.
+         return GBV.Limb_Val (1);
+      else
+         GBV.Lemma_Limb_Val_Succ (0);            --  Limb_Val (1) = 1.
+         GBV.Lemma_Limb_Val_Mono (1, 256);       --  Limb_Val (256) >= 1 > 0.
+         return Pow_2_8 (N - 1) * GBV.Limb_Val (256);
+      end if;
    end Pow_2_8;
 
    --  Square-and-multiply on Big_Integer. Mirror of HACL\*'s `pow_mod`
