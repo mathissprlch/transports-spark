@@ -712,6 +712,17 @@ is
      Post               => LV65 (L, K) = LV64 (M, K),
      Subprogram_Variant => (Decreases => K);
 
+   --  Prefix-equality bridge between a 65-limb and a 66-limb array (same Horner
+   --  valuation over equal low limbs). Used to lift Mont_Mul's accumulator T
+   --  (66 limbs) to a 65-limb array for the conditional subtract via Sub65.
+   procedure Lemma_LV65_Eq_LV66 (L : Limbs65; T : Limbs66; K : Limb66_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb66_Index => (if I < K then L (I) = T (I))),
+     Post               => LV65 (L, K) = LV66 (T, K),
+     Subprogram_Variant => (Decreases => K);
+
    --  Power additivity: 2**(32*(A+B)) = 2**(32*A) * 2**(32*B). Body below (uses
    --  the BI ring lemmas, which are declared later in this body).
    procedure Lemma_P32_Add (A, B : Natural)
@@ -3069,6 +3080,17 @@ is
       end if;
    end Lemma_LV65_Eq_LV64;
 
+   procedure Lemma_LV65_Eq_LV66 (L : Limbs65; T : Limbs66; K : Limb66_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV65_Eq_LV66 (L, T, K - 1);   --  agree on 0 .. K-2.
+         Lemma_LV65_Unfold (L, K);
+         Lemma_LV66_Unfold
+           (T, K);           --  L (K-1) = T (K-1), same weight.
+
+      end if;
+   end Lemma_LV65_Eq_LV66;
+
    --  Body of Lemma_Mul128_Preserve (declared early; uses the ring/convolution
    --  toolkit here). Clean context: only its own Pre as hypotheses.
    procedure Lemma_Mul128_Preserve
@@ -3336,11 +3358,39 @@ is
       Lemma_BI_Lt_Cancel (Tv, 2 * Nv, R);
    end Lemma_Mont_Bound;
 
-   --  Apply the accumulator bound under reduced operands. A ghost procedure so
-   --  the hypothesis-guarded reasoning (ghost LV64 in the guard) is legal, and
-   --  the bound algebra stays out of the Mont_Mul body.
-   procedure Lemma_Mont_Acc_Bound
-     (T : Limbs66; A, B, N : Limbs64; Q : Big.Big_Integer)
+   --  Modular congruence: X*R and AB differ by a multiple of Nv, so they share
+   --  the same residue mod Nv. (Montgomery: the discarded N-multiples vanish.)
+   procedure Lemma_Mont_Congr (X, R, AB, Nv, Qp : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       Nv > 0
+       and then AB >= 0
+       and then X * R >= 0
+       and then X * R = AB + Qp * Nv,
+     Post => (X * R) mod Nv = AB mod Nv;
+
+   procedure Lemma_Mont_Congr (X, R, AB, Nv, Qp : Big.Big_Integer) is
+      Rab : constant Big.Big_Integer := AB mod Nv;
+   begin
+      --  Euclid: AB = (AB/Nv)*Nv + Rab, so X*R = (AB/Nv + Qp)*Nv + Rab.
+      Lemma_BI_Distrib (Nv, AB / Nv, Qp);
+      Lemma_BI_Comm (Nv, AB / Nv + Qp);
+      Lemma_BI_Comm (Nv, AB / Nv);
+      pragma Assert (X * R = (AB / Nv + Qp) * Nv + Rab);
+      Lemma_Mod_Unique (X * R, AB / Nv + Qp, Rab, Nv);
+   end Lemma_Mont_Congr;
+
+   --  Final Mont_Mul result wrap: under reduced operands, the conditional
+   --  subtract yields Out_R < N with the Montgomery residue. A ghost procedure
+   --  so the hypothesis-guarded narrowing/congruence (ghost guards) is legal.
+   procedure Lemma_Mont_Wrap
+     (T       : Limbs66;
+      R65     : Limbs65;
+      A, B, N : Limbs64;
+      Out_R   : Limbs64;
+      Q       : Big.Big_Integer;
+      Did_Sub : Boolean)
    with
      Ghost,
      Pre  =>
@@ -3348,40 +3398,86 @@ is
        and then Q >= 0
        and then Q < P32 (N_Limbs)
        and then LV66 (T, N_Limbs + 1) * P32 (N_Limbs)
-                = LV64 (A, N_Limbs)
-                  * LV64 (B, N_Limbs)
-                  + Q * LV64 (N, N_Limbs),
+                = LV64 (A, N_Limbs) * LV64 (B, N_Limbs) + Q * LV64 (N, N_Limbs)
+       and then (if Did_Sub
+                 then
+                   LV66 (T, N_Limbs + 1) >= LV64 (N, N_Limbs)
+                   and then LV65 (R65, N_Limbs + 1)
+                            = LV66 (T, N_Limbs + 1) - LV64 (N, N_Limbs)
+                   and then (for all I in Limb_Index => Out_R (I) = R65 (I))
+                 else
+                   LV66 (T, N_Limbs + 1) < LV64 (N, N_Limbs)
+                   and then LV64 (Out_R, N_Limbs) = LV66 (T, N_Limbs + 1)),
      Post =>
        (if LV64 (A, N_Limbs) < LV64 (N, N_Limbs)
           and then LV64 (B, N_Limbs) < LV64 (N, N_Limbs)
-          and then not Is_Zero64 (N)
-        then LV66 (T, N_Limbs + 1) < 2 * LV64 (N, N_Limbs));
+          and then LV64 (N, N_Limbs) > 0
+        then
+          LV64 (Out_R, N_Limbs) < LV64 (N, N_Limbs)
+          and then (LV64 (Out_R, N_Limbs) * P32 (N_Limbs))
+                   mod LV64 (N, N_Limbs)
+                   = (LV64 (A, N_Limbs) * LV64 (B, N_Limbs))
+                     mod LV64 (N, N_Limbs));
 
-   procedure Lemma_Mont_Acc_Bound
-     (T : Limbs66; A, B, N : Limbs64; Q : Big.Big_Integer) is
+   procedure Lemma_Mont_Wrap
+     (T       : Limbs66;
+      R65     : Limbs65;
+      A, B, N : Limbs64;
+      Out_R   : Limbs64;
+      Q       : Big.Big_Integer;
+      Did_Sub : Boolean)
+   is
+      Av : constant Big.Big_Integer := LV64 (A, N_Limbs);
+      Bv : constant Big.Big_Integer := LV64 (B, N_Limbs);
+      Nv : constant Big.Big_Integer := LV64 (N, N_Limbs);
+      Tv : constant Big.Big_Integer := LV66 (T, N_Limbs + 1);
+      Rr : constant Big.Big_Integer := P32 (N_Limbs);
    begin
-      if LV64 (A, N_Limbs) < LV64 (N, N_Limbs)
-        and then LV64 (B, N_Limbs) < LV64 (N, N_Limbs)
-        and then not Is_Zero64 (N)
-      then
+      if Av < Nv and then Bv < Nv and then Nv > 0 then
+         Lemma_LV64_Upper (N, N_Limbs);   --  Nv < Rr
+         Lemma_P32_Pos (N_Limbs);
          Lemma_LV64_Nonneg (A, N_Limbs);
          Lemma_LV64_Nonneg (B, N_Limbs);
-         Lemma_LV64_Pos_Exists (N);       --  LV64 (N) > 0
-         Lemma_LV64_Upper (N, N_Limbs);   --  LV64 (N) < P32 (64) = R
-         Lemma_P32_Pos (N_Limbs);
-         Lemma_Mont_Bound
-           (LV66 (T, N_Limbs + 1),
-            P32 (N_Limbs),
-            LV64 (A, N_Limbs),
-            LV64 (B, N_Limbs),
-            LV64 (N, N_Limbs),
-            Q);
+         Lemma_Mont_Bound (Tv, Rr, Av, Bv, Nv, Q);   --  Tv < 2*Nv
+         if Did_Sub then
+            --  LV65 (R65) = Tv - Nv < Nv < Rr => R65 top limb 0 => narrow.
+            pragma Assert (LV65 (R65, N_Limbs + 1) < P32 (N_Limbs));
+            Lemma_LV65_Top_Zero (R65);
+            Lemma_LV65_Unfold (R65, N_Limbs + 1);
+            Lemma_LV65_Eq_LV64 (R65, Out_R, N_Limbs);
+            pragma Assert (LV64 (Out_R, N_Limbs) = Tv - Nv);
+            Lemma_LV64_Nonneg (Out_R, N_Limbs);
+            --  (Tv-Nv)*Rr = Tv*Rr - Nv*Rr = Av*Bv + (Q-Rr)*Nv.
+            Lemma_BI_Distrib (Nv, Q, -Rr);
+            Lemma_BI_Comm (Nv, Q - Rr);
+            Lemma_BI_Comm (Nv, Q);
+            Lemma_BI_Comm (Nv, Rr);
+            pragma
+              Assert (LV64 (Out_R, N_Limbs) * Rr = Av * Bv + (Q - Rr) * Nv);
+            Lemma_Mont_Congr (LV64 (Out_R, N_Limbs), Rr, Av * Bv, Nv, Q - Rr);
+         else
+            Lemma_LV64_Nonneg (Out_R, N_Limbs);
+            pragma Assert (LV64 (Out_R, N_Limbs) = Tv);
+            pragma Assert (LV64 (Out_R, N_Limbs) * Rr = Av * Bv + Q * Nv);
+            Lemma_Mont_Congr (LV64 (Out_R, N_Limbs), Rr, Av * Bv, Nv, Q);
+         end if;
       end if;
-   end Lemma_Mont_Acc_Bound;
+   end Lemma_Mont_Wrap;
 
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
-   with Pre => N (0) * Inv32 = 16#FFFFFFFF#
+   with
+     Pre  => N (0) * Inv32 = 16#FFFFFFFF#,
+     Post =>
+       (if LV64 (A, N_Limbs) < LV64 (N, N_Limbs)
+          and then LV64 (B, N_Limbs) < LV64 (N, N_Limbs)
+          and then LV64 (N, N_Limbs) > 0
+        then
+          LV64 (Out_R, N_Limbs) < LV64 (N, N_Limbs)
+          and then (LV64 (Out_R, N_Limbs) * P32 (N_Limbs))
+                   mod LV64 (N, N_Limbs)
+                   = (LV64 (A, N_Limbs) * LV64 (B, N_Limbs))
+                     mod LV64 (N, N_Limbs))
    is
       T       : Limbs66 := [others => 0];
       Acc     : Unsigned_64;
@@ -3836,36 +3932,74 @@ is
           (LV66 (T, N_Limbs + 1) * P32 (N_Limbs)
              = LV64 (A, N_Limbs) * LV64 (B, N_Limbs) + Q * LV64 (N, N_Limbs));
       Lemma_LV66_Nonneg (T, N_Limbs + 1);
-      --  Under reduced operands the accumulator is < 2N (single conditional sub).
-      Lemma_Mont_Acc_Bound (T, A, B, N, Q);
+      pragma Assert (Q >= 0 and then Q < P32 (N_Limbs));
 
-      --  T now holds A*B*R^-1 mod N, possibly with one extra N. The
-      --  value lives in T (0 .. N_Limbs); the top word (T (N_Limbs))
-      --  is at most 1.
+      --  Conditional subtract via the proven 65-limb helpers: lift T's low 65
+      --  limbs and N (zero-extended) to 65-limb arrays, compare, subtract once.
+      --  Under reduced operands value (T) < 2N, so one subtract gives < N.
       declare
-         T64      : Limbs64;
-         Top      : constant Unsigned_32 := T (N_Limbs);
-         Need_Sub : Boolean;
+         T65, N65, R65 : Limbs65 := [others => 0];
+         T64           : Limbs64 := [others => 0];
+         Did_Sub       : Boolean;
       begin
-         for K in Limb_Index loop
-            T64 (K) := T (K);
+         for K in Limb_Plus_Index loop
+            T65 (K) := T (K);
+            pragma
+              Loop_Invariant
+                (for all J in Limb_Plus_Index =>
+                   (if J <= K then T65 (J) = T (J)));
          end loop;
-         Need_Sub := Top /= 0 or else Compare64 (T64, N) >= 0;
-         if Need_Sub then
-            --  T := T - N (in 64 limbs, ignoring the overflow word).
-            declare
-               Borrow : Unsigned_64 := 0;
-               Diff   : Unsigned_64;
-            begin
-               for J in Limb_Index loop
-                  Diff := Unsigned_64 (T64 (J)) - Unsigned_64 (N (J)) - Borrow;
-                  T64 (J) := Unsigned_32 (Diff and 16#FFFFFFFF#);
-                  Borrow := Shift_Right (Diff, 63) and 1;
-               end loop;
-               --  Borrow may equal Top (cancellation); we discard it.
-               pragma Unreferenced (Borrow);
-            end;
+         N65 := [others => 0];
+         for K in Limb_Index loop
+            N65 (K) := N (K);
+            pragma
+              Loop_Invariant
+                (for all J in Limb_Index => (if J <= K then N65 (J) = N (J)));
+            pragma Loop_Invariant (N65 (N_Limbs) = 0);
+         end loop;
+
+         --  Value bridges: LV65 (T65) = value (T); LV65 (N65) = LV64 (N).
+         Lemma_LV65_Eq_LV66 (T65, T, N_Limbs + 1);
+         Lemma_LV65_Eq_LV64 (N65, N, N_Limbs);
+         Lemma_LV65_Unfold (N65, N_Limbs + 1);
+         pragma Assert (LV65 (N65, N_Limbs + 1) = LV64 (N, N_Limbs));
+         pragma Assert (LV65 (T65, N_Limbs + 1) = LV66 (T, N_Limbs + 1));
+
+         Did_Sub := Compare65 (T65, N65) >= 0;
+         R65 := T65;   --  default (unused by the wrap lemma when not Did_Sub)
+         if Did_Sub then
+            Sub65 (T65, N65, R65);
+            for K in Limb_Index loop
+               T64 (K) := R65 (K);
+               pragma
+                 Loop_Invariant
+                   (for all J in Limb_Index =>
+                      (if J <= K then T64 (J) = R65 (J)));
+            end loop;
+            pragma Assert (LV66 (T, N_Limbs + 1) >= LV64 (N, N_Limbs));
+            pragma
+              Assert
+                (LV65 (R65, N_Limbs + 1)
+                   = LV66 (T, N_Limbs + 1) - LV64 (N, N_Limbs));
+         else
+            --  value (T) < N <= R-1, so T's top limb is 0; narrow to 64 limbs.
+            Lemma_LV64_Upper (N, N_Limbs);
+            pragma Assert (LV65 (T65, N_Limbs + 1) < P32 (N_Limbs));
+            Lemma_LV65_Top_Zero (T65);
+            Lemma_LV65_Unfold (T65, N_Limbs + 1);
+            for K in Limb_Index loop
+               T64 (K) := T65 (K);
+               pragma
+                 Loop_Invariant
+                   (for all J in Limb_Index =>
+                      (if J <= K then T64 (J) = T65 (J)));
+            end loop;
+            Lemma_LV65_Eq_LV64 (T65, T64, N_Limbs);
+            pragma Assert (LV64 (T64, N_Limbs) = LV66 (T, N_Limbs + 1));
+            pragma Assert (LV66 (T, N_Limbs + 1) < LV64 (N, N_Limbs));
          end if;
+
+         Lemma_Mont_Wrap (T, R65, A, B, N, T64, Q, Did_Sub);
          Out_R := T64;
       end;
    end Mont_Mul;
