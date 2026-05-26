@@ -1318,6 +1318,9 @@ is
             --  Low limbs 0 .. N_Limbs-1 untouched by the finalize.
             Lemma_LV66_Frame (T, T_Pre, N_Limbs);
             pragma Assert (T_Entry (N_Limbs + 1) = 0);   --  outer invariant.
+            --  Top word is just the carry-out (started at 0), so <= 1: the
+            --  reduce-step shift later folds it without overflow.
+            pragma Assert (T (N_Limbs + 1) <= 1);
             --  U64-level: the stored words equal Acc's low / high halves
             --  (T (N_Limbs+1) started at 0, so the add is 0 + carry-out).
             pragma
@@ -1429,6 +1432,7 @@ is
          --  snapshots the pre-reduce accumulator; the shift loop writes T (J-1)
          --  and leaves limbs >= J-1 equal to T_Red until they are consumed.
          T_Red := T;
+         pragma Assert (T_Red (N_Limbs + 1) <= 1);   --  carry-out bound.
          Carry := 0;
          --  J = 0: low half of T (0) + M * N (0) + carry. Result's low
          --  half is discarded (it is zero by construction); only the
