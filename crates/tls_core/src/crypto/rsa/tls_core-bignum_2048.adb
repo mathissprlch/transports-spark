@@ -344,6 +344,102 @@ is
    end Lemma_LV66_Upper;
 
    ---------------------------------------------------------------------
+   --  Big_Integer ring helpers. The value layer (GBV.Limb_Val images) is the
+   --  mathematical integers, so these are pure polynomial identities; the
+   --  nonlinear solver discharges the null bodies. Distinct from the
+   --  Unsigned_32 (mod 2**32) helpers Lemma_Mul3 / Lemma_Mul_Comm below.
+   ---------------------------------------------------------------------
+
+   procedure Lemma_BI_Assoc (A, B, C : Big.Big_Integer)
+   with Ghost, Post => A * (B * C) = (A * B) * C;
+
+   procedure Lemma_BI_Assoc (A, B, C : Big.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Assoc;
+
+   procedure Lemma_BI_Comm (A, B : Big.Big_Integer)
+   with Ghost, Post => A * B = B * A;
+
+   procedure Lemma_BI_Comm (A, B : Big.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Comm;
+
+   procedure Lemma_BI_Distrib (A, B, C : Big.Big_Integer)
+   with Ghost, Post => A * (B + C) = A * B + A * C;
+
+   procedure Lemma_BI_Distrib (A, B, C : Big.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Distrib;
+
+   ---------------------------------------------------------------------
+   --  Horner low-split of the 66-limb valuation. The Montgomery reduce step
+   --  kills the bottom limb and shifts the array down one place (a divide by
+   --  2**32). Shift1 is that down-shift; Lemma_LV66_Low_Split is its value
+   --  meaning: LV66 (T, K) = Limb_Val (T (0)) + Base32 * LV66 (Shift1 (T), K-1).
+   --  At K = N_Limbs + 2 with T (0) killed, this gives the exact /2**32.
+   ---------------------------------------------------------------------
+
+   --  One-limb down-shift: Shift1 (T)(j) = T (j+1), zero in the vacated top.
+   function Shift1 (T : Limbs66) return Limbs66
+   is ([for J in Limb66_Index => (if J < N_Limbs + 1 then T (J + 1) else 0)])
+   with Ghost;
+
+   procedure Lemma_LV66_Low_Split (T : Limbs66; K : Limb66_Plus_Index)
+   with
+     Ghost,
+     Pre                => K >= 1,
+     Post               =>
+       LV66 (T, K)
+       = GBV.Limb_Val (GB.LLI (T (0))) + Base32 * LV66 (Shift1 (T), K - 1),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV66_Low_Split (T : Limbs66; K : Limb66_Plus_Index) is
+   begin
+      if K = 1 then
+         GBV.Lemma_Limb_Val_Succ (0);   --  P32 (0) = Limb_Val (1) = 1.
+
+      else
+         declare
+            S  : constant Limbs66 := Shift1 (T)
+            with Ghost;
+            X  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (T (K - 1)))
+            with Ghost;
+            W  : constant Big.Big_Integer := P32 (K - 2)
+            with Ghost;
+            L2 : constant Big.Big_Integer := LV66 (S, K - 2)
+            with Ghost;
+         begin
+            Lemma_LV66_Low_Split (T, K - 1);              --  IH.
+            --  Top unfold of the LHS: LV66 (T, K) = LV66 (T, K-1) + X*P32(K-1).
+            pragma Assert (LV66 (T, K) = LV66 (T, K - 1) + X * P32 (K - 1));
+            --  IH, restated in S / L2 terms (Shift1 (T) = S, LV66 (S,K-2)=L2).
+            pragma
+              Assert
+                (LV66 (T, K - 1)
+                   = GBV.Limb_Val (GB.LLI (T (0))) + Base32 * L2);
+            pragma Assert (S (K - 2) = T (K - 1));        --  shift index.
+            pragma Assert (LV66 (S, K - 1) = L2 + X * W); --  LV66 def at S.
+            pragma Assert (P32 (K - 1) = W * Base32);     --  P32 def.
+            Lemma_BI_Assoc (X, W, Base32);                --  X*(W*B)=(X*W)*B.
+            Lemma_BI_Comm (X * W, Base32);                --  (X*W)*B=B*(X*W).
+            pragma Assert (X * P32 (K - 1) = Base32 * (X * W));
+            Lemma_BI_Distrib (Base32, L2, X * W);         --  B*(L2+X*W).
+            pragma
+              Assert
+                (Base32 * LV66 (S, K - 1) = Base32 * L2 + Base32 * (X * W));
+            --  Assemble the Post (S = Shift1 (T)).
+            pragma
+              Assert
+                (LV66 (T, K)
+                   = GBV.Limb_Val (GB.LLI (T (0))) + Base32 * LV66 (S, K - 1));
+         end;
+      end if;
+   end Lemma_LV66_Low_Split;
+
+   ---------------------------------------------------------------------
    --  Encoding / decoding between 256 BE bytes and limbs.
    --
    --  Limb i (0 <= i < 64) covers the four bytes whose big-endian
