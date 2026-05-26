@@ -166,6 +166,31 @@ is
       end if;
    end Lemma_Pow2_Is_Pow;
 
+   procedure Lemma_Pow2_Add (A1, B1 : Natural) is
+   begin
+      if B1 /= 0 then
+         Lemma_Pow2_Add (A1, B1 - 1);   --  Pow2(A1+B1-1) = Pow2(A1)*Pow2(B1-1)
+         Lemma_Pow2_Succ (A1 + B1);     --  Pow2(A1+B1) = 2*Pow2(A1+B1-1)
+         Lemma_Pow2_Succ (B1);          --  Pow2(B1) = 2*Pow2(B1-1)
+         --  Pow2(A1+B1) = 2*(Pow2(A1)*Pow2(B1-1)) = Pow2(A1)*(2*Pow2(B1-1)).
+         Lemma_Assoc (2, Pow2 (A1), Pow2 (B1 - 1));
+         Lemma_Comm (2, Pow2 (A1));
+         Lemma_Assoc (Pow2 (A1), 2, Pow2 (B1 - 1));
+      end if;
+   end Lemma_Pow2_Add;
+
+   procedure Lemma_Pow2_Pow_Mul (M, K : Natural) is
+   begin
+      if K /= 0 then
+         pragma Assert (M * K <= Natural'Last);
+         pragma Assert (M * (K - 1) <= Natural'Last - M);
+         Lemma_Pow2_Pow_Mul (M, K - 1);   --  Pow(Pow2(M),K-1) = Pow2(M*(K-1))
+         Lemma_Pow2_Add
+           (M * (K - 1), M); --  Pow2(M*(K-1)+M) = Pow2(M*(K-1))*Pow2(M)
+         pragma Assert (M * (K - 1) + M = M * K);
+      end if;
+   end Lemma_Pow2_Pow_Mul;
+
    procedure Lemma_Pow_One (E : Natural) is
    begin
       if E /= 0 then

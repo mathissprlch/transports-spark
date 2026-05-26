@@ -39,6 +39,21 @@ is
    procedure Lemma_Pow2_Is_Pow (A : Natural)
    with Post => Pow2 (A) = Pow (2, A), Subprogram_Variant => (Decreases => A);
 
+   --  Exponents add: 2**(A+B) = 2**A * 2**B.
+   procedure Lemma_Pow2_Add (A1, B1 : Natural)
+   with
+     Pre                => A1 <= Natural'Last - B1,
+     Post               => Pow2 (A1 + B1) = Pow2 (A1) * Pow2 (B1),
+     Subprogram_Variant => (Decreases => B1);
+
+   --  Power of a power: (2**M)**K = 2**(M*K). Bridges a base-2**M radix
+   --  (e.g. P32 with M=32) to the bit-level Pow2.
+   procedure Lemma_Pow2_Pow_Mul (M, K : Natural)
+   with
+     Pre                => K = 0 or else M <= Natural'Last / K,
+     Post               => Pow (Pow2 (M), K) = Pow2 (M * K),
+     Subprogram_Variant => (Decreases => K);
+
    --  Pow (1, E) = 1.
    procedure Lemma_Pow_One (E : Natural)
    with Post => Pow (1, E) = 1, Subprogram_Variant => (Decreases => E);
