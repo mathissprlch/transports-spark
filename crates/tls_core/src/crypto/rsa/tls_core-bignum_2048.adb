@@ -1580,6 +1580,12 @@ is
          --  and leaves limbs >= J-1 equal to T_Red until they are consumed.
          T_Red := T;
          pragma Assert (T_Red (N_Limbs + 1) <= 1);   --  carry-out bound.
+         --  Carry the mul-add identity (A) onto the reduce snapshot T_Red.
+         pragma
+           Assert
+             (LV66 (T_Red, N_Limbs + 2)
+                = LV66 (T_Entry, N_Limbs + 2)
+                  + LV64 (A, N_Limbs) * GBV.Limb_Val (GB.LLI (B (I))));
          Carry := 0;
          --  J = 0: low half of T (0) + M * N (0) + carry. Result's low
          --  half is discarded (it is zero by construction); only the
@@ -1675,6 +1681,15 @@ is
               Assert
                 (Base32 * LV66 (T, N_Limbs + 1)
                    = LV66 (T_Red, N_Limbs + 2)
+                     + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
+            --  Net per-iteration identity (compose mul-add A + reduce B):
+            --  the new T, times R-step Base32, is the old T (T_Entry) plus
+            --  A*B(I) plus M*N -- the exact CIOS step before reduction mod N.
+            pragma
+              Assert
+                (Base32 * LV66 (T, N_Limbs + 1)
+                   = LV66 (T_Entry, N_Limbs + 2)
+                     + LV64 (A, N_Limbs) * GBV.Limb_Val (GB.LLI (B (I)))
                      + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, N_Limbs));
          end;
       end loop;
