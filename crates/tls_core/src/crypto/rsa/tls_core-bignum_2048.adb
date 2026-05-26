@@ -1038,6 +1038,149 @@ is
       null;
    end Lemma_LLI_Fits32;
 
+   --  Congruence: equal factors give equal products (left multiply).
+   procedure Lemma_BI_Mul_Eq (C, A, B : Big.Big_Integer)
+   with Ghost, Pre => A = B, Post => C * A = C * B;
+
+   procedure Lemma_BI_Mul_Eq (C, A, B : Big.Big_Integer) is
+   begin
+      null;
+   end Lemma_BI_Mul_Eq;
+
+   --  Pure Big_Integer ring step for the Montgomery reduce (shift) loop:
+   --  given H1 (Pstep = BaseV*Lvtm1 + Cold*P) and the per-step identity
+   --  H2 (Low + Cy*BaseV = Trj + MN + Cold), advance by one shifted limb.
+   procedure Lemma_Reduce_Step
+     (Pstep, Lvtm1, Low, Cy, Cold, Trj, MN, P, BaseV : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  =>
+       Pstep = BaseV * Lvtm1 + Cold * P
+       and then Low + Cy * BaseV = Trj + MN + Cold,
+     Post =>
+       Pstep + (Trj + MN) * P = BaseV * Lvtm1 + Low * P + Cy * (P * BaseV);
+
+   procedure Lemma_Reduce_Step
+     (Pstep, Lvtm1, Low, Cy, Cold, Trj, MN, P, BaseV : Big.Big_Integer) is
+   begin
+      pragma Assert (Pstep = BaseV * Lvtm1 + Cold * P);
+      pragma Assert (Low + Cy * BaseV = Trj + MN + Cold);
+      Lemma_BI_Comm (P, BaseV);
+      Lemma_BI_Assoc (Cy, BaseV, P);
+   end Lemma_Reduce_Step;
+
+   --  Montgomery reduce-loop preservation, proved in a CLEAN context (only its
+   --  own Pre as hypotheses) so the heavy reduce loop only instantiates one
+   --  Post.  T_After is T_Pre with limb J-1 overwritten by the low word of
+   --  Acc = T_Pre (J) + M*N (J) + C_Old, and Carry the carry-out.  Given the
+   --  running invariant INV(J), it yields INV(J+1).
+   procedure Lemma_Reduce_Preserve
+     (T_Pre, T_After, T_Red : Limbs66;
+      N                     : Limbs64;
+      M                     : Unsigned_32;
+      C_Old, Acc, Carry     : Unsigned_64;
+      J                     : Limb_Index)
+   with
+     Ghost,
+     Pre  =>
+       J >= 1
+       and then C_Old <= 16#FFFF_FFFF#
+       and then Acc
+                = Unsigned_64 (T_Pre (J))
+                  + Unsigned_64 (M) * Unsigned_64 (N (J))
+                  + C_Old
+       and then Carry = Shift_Right (Acc, 32)
+       and then (for all K in Limb66_Index =>
+                   (if K /= J - 1 then T_After (K) = T_Pre (K)))
+       and then T_After (J - 1) = Unsigned_32 (Acc and 16#FFFF_FFFF#)
+       and then T_Pre (J) = T_Red (J)
+       and then LV66 (T_Red, J) + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, J)
+                = Base32
+                  * LV66 (T_Pre, J - 1)
+                  + GBV.Limb_Val (GB.LLI (C_Old)) * P32 (J),
+     Post =>
+       LV66 (T_Red, J + 1) + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, J + 1)
+       = Base32
+         * LV66 (T_After, J)
+         + GBV.Limb_Val (GB.LLI (Carry)) * P32 (J + 1);
+
+   procedure Lemma_Reduce_Preserve
+     (T_Pre, T_After, T_Red : Limbs66;
+      N                     : Limbs64;
+      M                     : Unsigned_32;
+      C_Old, Acc, Carry     : Unsigned_64;
+      J                     : Limb_Index)
+   is
+      M_Val  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (M))
+      with Ghost;
+      N_Val  : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (N (J)))
+      with Ghost;
+      TR_Val : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (T_Red (J)))
+      with Ghost;
+      Low    : constant Big.Big_Integer :=
+        GBV.Limb_Val (GB.LLI (T_After (J - 1)))
+      with Ghost;
+      Cy     : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (Carry))
+      with Ghost;
+      Cold   : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (C_Old))
+      with Ghost;
+   begin
+      --  Per-step value identity (Lemma_MulAdd_Step image; clean context).
+      Lemma_MulAdd_Step (T_Pre (J), M, N (J), C_Old, Acc);
+      pragma Assert (Low + Cy * Base32 = TR_Val + M_Val * N_Val + Cold);
+      --  Prefix 0 .. J-2 untouched: LV66 (T_After, J-1) = LV66 (T_Pre, J-1).
+      Lemma_LV66_Frame (T_After, T_Pre, J - 1);
+      Lemma_LV66_Unfold (T_After, J);
+      Lemma_LV66_Unfold (T_Red, J + 1);
+      Lemma_LV64_Unfold (N, J + 1);
+      pragma Assert (P32 (J + 1) = P32 (J) * Base32);
+      pragma Assert (P32 (J) = P32 (J - 1) * Base32);
+      pragma
+        Assert (LV66 (T_After, J) = LV66 (T_Pre, J - 1) + Low * P32 (J - 1));
+      Lemma_BI_Mul_Eq (Low, P32 (J), P32 (J - 1) * Base32);
+      Lemma_BI_Assoc (Low, P32 (J - 1), Base32);
+      Lemma_BI_Comm (Low * P32 (J - 1), Base32);
+      pragma Assert (Low * P32 (J) = Base32 * (Low * P32 (J - 1)));
+      Lemma_Reduce_Step
+        (Pstep => LV66 (T_Red, J) + M_Val * LV64 (N, J),
+         Lvtm1 => LV66 (T_Pre, J - 1),
+         Low   => Low,
+         Cy    => Cy,
+         Cold  => Cold,
+         Trj   => TR_Val,
+         MN    => M_Val * N_Val,
+         P     => P32 (J),
+         BaseV => Base32);
+      --  LHS assembly: distribute m over the LV64 / LV66 unfolds.
+      pragma Assert (LV66 (T_Red, J + 1) = LV66 (T_Red, J) + TR_Val * P32 (J));
+      pragma Assert (LV64 (N, J + 1) = LV64 (N, J) + N_Val * P32 (J));
+      Lemma_BI_Distrib (M_Val, LV64 (N, J), N_Val * P32 (J));
+      Lemma_BI_Assoc (M_Val, N_Val, P32 (J));
+      pragma
+        Assert
+          (M_Val * LV64 (N, J + 1)
+             = M_Val * LV64 (N, J) + (M_Val * N_Val) * P32 (J));
+      Lemma_BI_Comm (TR_Val + M_Val * N_Val, P32 (J));
+      Lemma_BI_Distrib (P32 (J), TR_Val, M_Val * N_Val);
+      Lemma_BI_Comm (P32 (J), TR_Val);
+      Lemma_BI_Comm (P32 (J), M_Val * N_Val);
+      pragma
+        Assert
+          ((TR_Val + M_Val * N_Val) * P32 (J)
+             = TR_Val * P32 (J) + (M_Val * N_Val) * P32 (J));
+      pragma
+        Assert
+          (LV66 (T_Red, J + 1) + M_Val * LV64 (N, J + 1)
+             = (LV66 (T_Red, J) + M_Val * LV64 (N, J))
+               + (TR_Val + M_Val * N_Val) * P32 (J));
+      --  RHS assembly.
+      pragma
+        Assert
+          (Base32 * LV66 (T_After, J)
+             = Base32 * LV66 (T_Pre, J - 1) + Low * P32 (J));
+      pragma Assert (Cy * P32 (J + 1) = Cy * (P32 (J) * Base32));
+   end Lemma_Reduce_Preserve;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -1292,19 +1435,64 @@ is
          --  carry into the next limb matters.
          Acc :=
            Unsigned_64 (T (0)) + Unsigned_64 (M) * Unsigned_64 (N (0)) + Carry;
+         Lemma_MulAdd_Step (T (0), M, N (0), Carry, Acc);
+         pragma
+           Assert (Unsigned_32 (Acc and 16#FFFF_FFFF#) = T (0) + M * N (0));
+         pragma Assert (Unsigned_32 (Acc and 16#FFFF_FFFF#) = 0);   --  kill.
          Carry := Shift_Right (Acc, 32);
+         --  INV (1): the J=0 low limb vanished; the carry holds the value.
+         Lemma_LV66_Unfold (T_Red, 1);
+         Lemma_LV64_Unfold (N, 1);
+         GBV.Lemma_Limb_Val_Succ (0);            --  Limb_Val (1) = 1.
+         pragma Assert (P32 (0) = 1);
+         pragma Assert (P32 (1) = Base32);
+         pragma Assert (T_Red (0) = T (0));
+         pragma
+           Assert
+             (GBV.Limb_Val (GB.LLI (Unsigned_32 (Acc and 16#FFFF_FFFF#))) = 0);
+         --  MulAdd image with the low word zero and carry-in zero.
+         pragma
+           Assert
+             (GBV.Limb_Val (GB.LLI (Carry)) * Base32
+                = GBV.Limb_Val (GB.LLI (T (0)))
+                  + GBV.Limb_Val (GB.LLI (M)) * GBV.Limb_Val (GB.LLI (N (0))));
+         pragma Assert (LV66 (T_Red, 1) = GBV.Limb_Val (GB.LLI (T_Red (0))));
+         pragma Assert (LV64 (N, 1) = GBV.Limb_Val (GB.LLI (N (0))));
+         pragma Assert (Base32 * LV66 (T, 0) = 0);
+         pragma
+           Assert
+             (LV66 (T_Red, 1) + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, 1)
+                = Base32
+                  * LV66 (T, 0)
+                  + GBV.Limb_Val (GB.LLI (Carry)) * P32 (1));
          for J in 1 .. N_Limbs - 1 loop
             pragma Loop_Invariant (Carry <= 16#FFFF_FFFF#);
             pragma
               Loop_Invariant
                 (for all K in Limb66_Index =>
                    (if K >= J - 1 then T (K) = T_Red (K)));
-            Acc :=
-              Unsigned_64 (T (J))
-              + Unsigned_64 (M) * Unsigned_64 (N (J))
-              + Carry;
-            T (J - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
-            Carry := Shift_Right (Acc, 32);
+            pragma
+              Loop_Invariant
+                (LV66 (T_Red, J) + GBV.Limb_Val (GB.LLI (M)) * LV64 (N, J)
+                   = Base32
+                     * LV66 (T, J - 1)
+                     + GBV.Limb_Val (GB.LLI (Carry)) * P32 (J));
+            declare
+               T_Pre : constant Limbs66 := T
+               with Ghost;
+               C_Old : constant Unsigned_64 := Carry
+               with Ghost;
+            begin
+               Acc :=
+                 Unsigned_64 (T (J))
+                 + Unsigned_64 (M) * Unsigned_64 (N (J))
+                 + Carry;
+               T (J - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
+               Carry := Shift_Right (Acc, 32);
+               --  Preservation: discharged by the clean-context lemma.
+               Lemma_Reduce_Preserve
+                 (T_Pre, T, T_Red, N, M, C_Old, Acc, Carry, J);
+            end;
          end loop;
          Acc := Unsigned_64 (T (N_Limbs)) + Carry;
          T (N_Limbs - 1) := Unsigned_32 (Acc and 16#FFFFFFFF#);
