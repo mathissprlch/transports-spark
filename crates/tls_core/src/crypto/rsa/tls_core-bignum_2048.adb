@@ -483,6 +483,77 @@ is
       null;
    end Lemma_P32_Succ;
 
+   --  Powers of two (binary radix), for the per-bit reconstruction inside
+   --  Reduce's inner loop. Pow2 (K) = 2^K as a Big_Integer -- defined by
+   --  recursive doubling so there is NO variable-exponent 2**K literal (which
+   --  gnatprove cannot bound). Distinct from P32 (the base-2^32 radix);
+   --  Pow2 (32) = Base32 (see Lemma_Pow2_32).
+   function Pow2 (K : Natural) return Big.Big_Integer
+   is (if K = 0 then GBV.Limb_Val (1) else 2 * Pow2 (K - 1))
+   with Ghost, Subprogram_Variant => (Decreases => K);
+
+   --  One-step doubling: Pow2 (K+1) = 2 * Pow2 (K). Immediate from the def.
+   procedure Lemma_Pow2_Succ (K : Natural)
+   with Ghost, Pre => K <= 32, Post => Pow2 (K + 1) = 2 * Pow2 (K);
+
+   procedure Lemma_Pow2_Succ (K : Natural) is
+   begin
+      null;
+   end Lemma_Pow2_Succ;
+
+   --  Exponent additivity: Pow2 (A+B) = Pow2 (A) * Pow2 (B). Spec here; body
+   --  below (uses the BI ring lemmas declared later). Lets Lemma_Pow2_32 fold
+   --  to Base32 in log-many squarings rather than 32 linear steps.
+   procedure Lemma_Pow2_Add (A, B : Natural)
+   with
+     Ghost,
+     Pre                => A <= 32 and then B <= 32 - A,
+     Post               => Pow2 (A + B) = Pow2 (A) * Pow2 (B),
+     Subprogram_Variant => (Decreases => B);
+
+   --  Pow2 (32) = Base32 -- the single concrete fact the inner reconstruction
+   --  needs to fold 32 bit-doublings into one base-2^32 limb weight. Spec here;
+   --  body below (uses BI ring + the GBV Mul32 factoring of Base32 = 2^32).
+   procedure Lemma_Pow2_32
+   with Ghost, Post => Pow2 (32) = Base32;
+
+   --  Reduce inner-loop per-bit reconstruction step (clean context). Given the
+   --  partial reconstruction of limb LW after bits 31..B+1 (Proc_Old) and one
+   --  more doubling-plus-bit (Proc_New), advances it to bits 31..B. Spec here so
+   --  Reduce can call it; body below. Lets the inner loop discharge the
+   --  reconstruction invariant from one Post (the heavy inline form does not
+   --  converge).
+   procedure Lemma_Reduce_Recon_Step
+     (P_Entry, Proc_Old, Proc_New : Big.Big_Integer;
+      LW, Bit                     : Unsigned_32;
+      B                           : Natural)
+   with
+     Ghost,
+     Pre  =>
+       B <= 31
+       and then Bit = (Shift_Right (LW, B) and 1)
+       and then Proc_New = 2 * Proc_Old + GBV.Limb_Val (GB.LLI (Bit))
+       and then Proc_Old
+                = P_Entry
+                  * Pow2 (31 - B)
+                  + GBV.Limb_Val (GB.LLI (Shift_Right (LW, B + 1))),
+     Post =>
+       Proc_New
+       = P_Entry * Pow2 (32 - B) + GBV.Limb_Val (GB.LLI (Shift_Right (LW, B)));
+
+   --  Reduce outer-loop per-limb reconstruction step (clean context, pure
+   --  algebra). One full inner loop folds limb T (I) into Processed
+   --  (Proc_New = P_Entry*Base32 + Limb_Val (T (I))); this advances the LV128
+   --  prefix identity from I+1 to I. Spec here; body below (uses BI_Mul_Eq).
+   procedure Lemma_Reduce_Recon_Outer
+     (T : Limbs128; I : Limb2_Index; P_Entry, Proc_New : Big.Big_Integer)
+   with
+     Ghost,
+     Pre  => Proc_New = P_Entry * Base32 + GBV.Limb_Val (GB.LLI (T (I))),
+     Post =>
+       LV128 (T, I + 1) + P32 (I + 1) * P_Entry
+       = LV128 (T, I) + P32 (I) * Proc_New;
+
    --  Power additivity: 2**(32*(A+B)) = 2**(32*A) * 2**(32*B). Body below (uses
    --  the BI ring lemmas, which are declared later in this body).
    procedure Lemma_P32_Add (A, B : Natural)
@@ -1319,11 +1390,27 @@ is
       N65       : Limbs65 := [others => 0];
       Bit       : Unsigned_32;
       Limb_Word : Unsigned_32;
+      --  Per-bit scratch (hoisted: SPARK forbids non-scalar objects declared
+      --  before an end-of-body loop invariant).
+      Shifted   : Limbs65;
+      Diff      : Limbs65;
+      R0        : Limbs65 := [others => 0]
+      with Ghost;
+      R_Sh      : Limbs65 := [others => 0]
+      with Ghost;
+      P_Old     : Big.Big_Integer := 0
+      with Ghost;
+      Q_Old0    : Big.Big_Integer := 0
+      with Ghost;
       --  Exact long-division ghosts: Processed = bits scanned so far,
       --  Quo = accumulated quotient. Invariant: Processed = Quo*N + R.
       Processed : Big.Big_Integer := 0
       with Ghost;
       Quo       : Big.Big_Integer := 0
+      with Ghost;
+      --  Processed snapshot at each outer-iteration entry, for the per-limb
+      --  reconstruction (Processed reconstructs the numerator MSB-first).
+      P_Entry   : Big.Big_Integer := 0
       with Ghost;
    begin
       --  Promote N into a 65-limb form (limb 64 = 0).
@@ -1348,16 +1435,74 @@ is
       --  [0, N): each bit doubles R, adds the bit, and conditionally
       --  subtracts N once (since 2R + bit < 2N when R < N).
       for I in reverse Limb2_Index loop
-         pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) > 0);
-         pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
-         pragma
-           Loop_Invariant (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
-         pragma
-           Loop_Invariant
-             (Processed
-                = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
          Limb_Word := T (I);
+         P_Entry := Processed;
+         --  Base of the inner reconstruction (the "B = 32" boundary):
+         --  Pow2 (0) = 1 and Shift_Right (Limb_Word, 32) = 0, so
+         --  Processed = P_Entry * Pow2 (0) + Limb_Val (Shift_Right (LW, 32)).
+         GBV.Lemma_Limb_Val_Succ (0);
+         pragma Assert (Shift_Right (Limb_Word, 32) = 0);
+         pragma Assert (Pow2 (0) = 1);
+         pragma
+           Assert (GBV.Limb_Val (GB.LLI (Shift_Right (Limb_Word, 32))) = 0);
+         pragma
+           Assert
+             (Processed
+                = P_Entry
+                  * Pow2 (0)
+                  + GBV.Limb_Val (GB.LLI (Shift_Right (Limb_Word, 32))));
          for B in reverse 0 .. 31 loop
+            P_Old := Processed;
+            Q_Old0 := Quo;
+            Bit := Shift_Right (Limb_Word, B) and 1;
+            --  R := (R << 1) | Bit: LV65 (R) := 2*LV65 (R0) + Bit.
+            R0 := R;
+            Lemma_LV65_Top_Zero (R0);   --  R0 < N65 < 2^2048 => R0 (64) = 0.
+            Shl1_65 (R, Shifted);
+            R_Sh := Shifted;
+            R := Shifted;
+            R (0) := R (0) or Bit;
+            Lemma_Or_Bit (R_Sh, R, Bit);
+            GBV.Lemma_Limb_Val_Mono (GB.LLI (Bit), 1);
+            GBV.Lemma_Limb_Val_Succ (0);
+            pragma
+              Assert
+                (LV65 (R, N_Limbs + 1)
+                   = 2 * LV65 (R0, N_Limbs + 1) + GBV.Limb_Val (GB.LLI (Bit)));
+            pragma
+              Assert (LV65 (R, N_Limbs + 1) < 2 * LV65 (N65, N_Limbs + 1));
+            --  Long-division ghosts: absorb one bit, double the quotient,
+            --  and advance the per-bit reconstruction of limb T (I).
+            Processed := 2 * Processed + GBV.Limb_Val (GB.LLI (Bit));
+            Quo := 2 * Quo;
+            Lemma_Reduce_Recon_Step
+              (P_Entry, P_Old, Processed, Limb_Word, Bit, B);
+            --  Exact-quotient step (pre-subtract): from the entry invariant
+            --  P_Old = Q_Old0*N65 + LV65 (R0) and the R-doubling identity.
+            Lemma_BI_Assoc (2, Q_Old0, LV65 (N65, N_Limbs + 1));
+            Lemma_BI_Distrib
+              (2, Q_Old0 * LV65 (N65, N_Limbs + 1), LV65 (R0, N_Limbs + 1));
+            pragma
+              Assert
+                (Processed
+                   = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
+            --  If R >= N, subtract N (one subtract suffices: R was < 2N).
+            if Compare65 (R, N65) >= 0 then
+               Sub65 (R, N65, Diff);
+               --  Sub65: LV65 (Diff) = LV65 (R_or) - LV65 (N65); incrementing
+               --  Quo keeps Processed = Quo*N65 + LV65 (R) (one N65 moves from
+               --  the remainder into the quotient): (Quo+1)*N65 = Quo*N65 + N65.
+               Lemma_BI_Distrib (LV65 (N65, N_Limbs + 1), Quo, 1);
+               Lemma_BI_Comm (LV65 (N65, N_Limbs + 1), Quo + 1);
+               Lemma_BI_Comm (LV65 (N65, N_Limbs + 1), Quo);
+               R := Diff;
+               Quo := Quo + 1;
+               pragma
+                 Assert
+                   (Processed
+                      = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
+            end if;
+            pragma Assert (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
             pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) > 0);
             pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
             pragma
@@ -1366,55 +1511,45 @@ is
               Loop_Invariant
                 (Processed
                    = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
-            Bit := Shift_Right (Limb_Word, B) and 1;
-            --  R := (R << 1) | Bit, value level: LV65 (R) := 2*LV65 (R0) + Bit.
-            declare
-               R0      : constant Limbs65 := R
-               with Ghost;
-               Shifted : Limbs65;
-            begin
-               Lemma_LV65_Top_Zero
-                 (R0);   --  R0 < N65 < 2^2048 => R0 (64) = 0.
-               Shl1_65 (R, Shifted);
-               declare
-                  R_Sh : constant Limbs65 := Shifted
-                  with Ghost;
-               begin
-                  R := Shifted;
-                  R (0) := R (0) or Bit;
-                  Lemma_Or_Bit (R_Sh, R, Bit);
-                  GBV.Lemma_Limb_Val_Mono (GB.LLI (Bit), 1);
-                  GBV.Lemma_Limb_Val_Succ (0);
-                  pragma
-                    Assert
-                      (LV65 (R, N_Limbs + 1)
-                         = 2
-                           * LV65 (R0, N_Limbs + 1)
-                           + GBV.Limb_Val (GB.LLI (Bit)));
-                  pragma
-                    Assert
-                      (LV65 (R, N_Limbs + 1) < 2 * LV65 (N65, N_Limbs + 1));
-               end;
-            end;
-            --  Long-division ghosts: absorb one bit and double the quotient.
-            Processed := 2 * Processed + GBV.Limb_Val (GB.LLI (Bit));
-            Quo := 2 * Quo;
-            --  If R >= N, subtract N (one subtract suffices: R was < 2N).
-            if Compare65 (R, N65) >= 0 then
-               declare
-                  Diff : Limbs65;
-               begin
-                  Sub65 (R, N65, Diff);
-                  R := Diff;
-               end;
-               Quo := Quo + 1;
-            end if;
-            pragma Assert (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
+            pragma
+              Loop_Invariant
+                (Processed
+                   = P_Entry
+                     * Pow2 (32 - B)
+                     + GBV.Limb_Val (GB.LLI (Shift_Right (Limb_Word, B))));
          end loop;
+         --  One full inner loop folded limb T (I) into Processed; advance the
+         --  LV128 prefix reconstruction identity from I+1 down to I.
+         Lemma_Pow2_32;
+         pragma Assert (Shift_Right (Limb_Word, 0) = Limb_Word);
+         pragma
+           Assert
+             (Processed
+                = P_Entry * Base32 + GBV.Limb_Val (GB.LLI (Limb_Word)));
+         pragma Assert (Limb_Word = T (I));
+         Lemma_Reduce_Recon_Outer (T, I, P_Entry, Processed);
+         pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) > 0);
+         pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
+         pragma
+           Loop_Invariant (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
+         pragma
+           Loop_Invariant
+             (Processed
+                = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
+         pragma
+           Loop_Invariant
+             (LV128 (T, 2 * N_Limbs) = LV128 (T, I) + P32 (I) * Processed);
       end loop;
 
       Lemma_LV65_Nonneg (R, N_Limbs + 1);
       Lemma_LV65_Upper (R, N_Limbs + 1);
+
+      --  All 4096 bits scanned: the outer reconstruction invariant at I = 0
+      --  (LV128 (T,0) = 0, P32 (0) = 1) gives Processed = LV128 (T, 2*N_Limbs).
+      GBV.Lemma_Limb_Val_Succ (0);   --  P32 (0) = Limb_Val (1) = 1.
+      pragma Assert (P32 (0) = 1);
+      pragma Assert (LV128 (T, 0) = 0);
+      pragma Assert (Processed = LV128 (T, 2 * N_Limbs));
 
       --  Result fits in 64 limbs (since R < N < 2^2048, the high
       --  limb of R is zero by induction).
@@ -2190,6 +2325,106 @@ is
          Lemma_BI_Assoc (P32 (A), P32 (B - 1), Base32);
       end if;
    end Lemma_P32_Add;
+
+   procedure Lemma_Pow2_Add (A, B : Natural) is
+   begin
+      if B = 0 then
+         GBV.Lemma_Limb_Val_Succ (0);   --  Pow2 (0) = Limb_Val (1) = 1.
+
+      else
+         Lemma_Pow2_Add (A, B - 1);     --  Pow2 (A+B-1) = Pow2 (A)*Pow2 (B-1).
+         Lemma_Pow2_Succ (A + B - 1);   --  Pow2 (A+B)   = 2 * Pow2 (A+B-1).
+         Lemma_Pow2_Succ (B - 1);       --  Pow2 (B)     = 2 * Pow2 (B-1).
+         --  Pow2 (A+B) = 2*(Pow2 (A)*Pow2 (B-1)) = Pow2 (A)*(2*Pow2 (B-1))
+         --            = Pow2 (A)*Pow2 (B).
+         Lemma_BI_Assoc (Pow2 (A), 2, Pow2 (B - 1));
+         Lemma_BI_Comm (Pow2 (A), 2);
+      end if;
+   end Lemma_Pow2_Add;
+
+   procedure Lemma_Pow2_32 is
+   begin
+      --  Base32 = Limb_Val (2**32) = 2^32 as a concrete Big_Integer, built by
+      --  repeated squaring through the symmetric Mul32 multiplicativity.
+      GBV.Lemma_Limb_Val_Succ (0);              --  Limb_Val (1)    = 1.
+      GBV.Lemma_Limb_Val_Succ (1);              --  Limb_Val (2)    = 2.
+      GBV.Lemma_Limb_Val_Mul32 (2, 2);          --  Limb_Val (4)    = 4.
+      GBV.Lemma_Limb_Val_Mul32 (2**2, 2**2);    --  Limb_Val (16)   = 16.
+      GBV.Lemma_Limb_Val_Mul32 (2**4, 2**4);    --  Limb_Val (256)  = 256.
+      GBV.Lemma_Limb_Val_Mul32 (2**8, 2**8);    --  Limb_Val (2**16)= 65536.
+      GBV.Lemma_Limb_Val_Mul32 (2**16, 2**16);  --  Limb_Val (2**32)= 2^32.
+      --  Pow2 (32) = 2^32 by the matching squaring chain.
+      Lemma_Pow2_Succ (0);                       --  Pow2 (1)  = 2.
+      Lemma_Pow2_Succ (1);                       --  Pow2 (2)  = 4.
+      Lemma_Pow2_Add (2, 2);                     --  Pow2 (4)  = 16.
+      Lemma_Pow2_Add (4, 4);                     --  Pow2 (8)  = 256.
+      Lemma_Pow2_Add (8, 8);                     --  Pow2 (16) = 65536.
+      Lemma_Pow2_Add (16, 16);                   --  Pow2 (32) = 2^32 = Base32.
+   end Lemma_Pow2_32;
+
+   procedure Lemma_Reduce_Recon_Step
+     (P_Entry, Proc_Old, Proc_New : Big.Big_Integer;
+      LW, Bit                     : Unsigned_32;
+      B                           : Natural)
+   is
+      Y   : constant Unsigned_32 := Shift_Right (LW, B);
+      Yh  : constant Unsigned_32 := Shift_Right (LW, B + 1);
+      LY  : constant GB.LLI := GB.LLI (Y);
+      LYh : constant GB.LLI := GB.LLI (Yh);
+      LB  : constant GB.LLI := GB.LLI (Bit);
+   begin
+      pragma Assert (Proc_New = 2 * Proc_Old + GBV.Limb_Val (GB.LLI (Bit)));
+      --  Bitvector facts: Yh = Y >> 1, Bit = Y mod 2, Y = 2*Yh + Bit.
+      pragma Assert (Bit = (Y and 1));
+      pragma Assert (Shift_Right (Y, 1) = Yh);
+      pragma Assert (Yh < 2**31);
+      pragma Assert (Y = 2 * Yh + Bit);
+      --  Lift to LLI through a doubled-U32 intermediate (no wrap at any step).
+      declare
+         D : constant Unsigned_32 := 2 * Yh;
+      begin
+         pragma Assert (D <= 16#FFFF_FFFE#);     --  D = 2*Yh, Yh < 2^31.
+         pragma Assert (Bit <= 1);
+         pragma Assert (GB.LLI (D) = 2 * LYh);   --  2*Yh < 2^32, value lift.
+         pragma
+           Assert (Y = D + Bit);            --  D + Bit < 2^32, value lift.
+         pragma Assert (LY = GB.LLI (D) + LB);
+      end;
+      pragma Assert (LY = 2 * LYh + LB);
+      --  Limb_Val doubling: Limb_Val (Y) = 2*Limb_Val (Yh) + Limb_Val (Bit).
+      GBV.Lemma_Limb_Val_Add
+        (LYh, LYh);   --  Limb_Val (2*LYh) = 2*Limb_Val (LYh)
+      GBV.Lemma_Limb_Val_Add (2 * LYh, LB);
+      --  Pow2 doubling: Pow2 (32-B) = 2*Pow2 (31-B).
+      Lemma_Pow2_Succ (31 - B);
+      --  Reassociate 2*(P_Entry*Pow2 (31-B)) = P_Entry*Pow2 (32-B).
+      Lemma_BI_Assoc (2, P_Entry, Pow2 (31 - B));
+      Lemma_BI_Comm (2, P_Entry);
+      Lemma_BI_Assoc (P_Entry, 2, Pow2 (31 - B));
+   end Lemma_Reduce_Recon_Step;
+
+   procedure Lemma_Reduce_Recon_Outer
+     (T : Limbs128; I : Limb2_Index; P_Entry, Proc_New : Big.Big_Integer)
+   is
+      W  : constant Big.Big_Integer := P32 (I);
+      TI : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (T (I)));
+   begin
+      pragma Assert (Proc_New = P_Entry * Base32 + TI);
+      --  LV128 (T, I+1) = LV128 (T, I) + Limb_Val (T (I)) * P32 (I).
+      Lemma_LV128_Unfold (T, I + 1);
+      --  P32 (I+1) = P32 (I) * Base32.
+      Lemma_P32_Succ (I);
+      --  P32 (I+1)*P_Entry = (P32 (I)*Base32)*P_Entry = P32 (I)*(Base32*P_Entry).
+      Lemma_BI_Mul_Eq (P_Entry, P32 (I + 1), W * Base32);
+      Lemma_BI_Assoc (W, Base32, P_Entry);
+      --  P32 (I)*Proc_New = P32 (I)*(P_Entry*Base32 + Limb_Val (T (I)))
+      --                  = P32 (I)*(P_Entry*Base32) + P32 (I)*Limb_Val (T (I)).
+      Lemma_BI_Distrib (W, P_Entry * Base32, TI);
+      Lemma_BI_Assoc (W, P_Entry, Base32);
+      Lemma_BI_Comm (W, Base32);
+      Lemma_BI_Comm (Base32, P_Entry);
+      Lemma_BI_Comm (W, TI);
+   end Lemma_Reduce_Recon_Outer;
 
    --  Body of Lemma_Mul128_Preserve (declared early; uses the ring/convolution
    --  toolkit here). Clean context: only its own Pre as hypotheses.
