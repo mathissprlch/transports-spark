@@ -74,6 +74,18 @@ is
      Post               => Limb_Val (X * Y) = Limb_Val (X) * Limb_Val (Y),
      Subprogram_Variant => (Decreases => abs Y);
 
+   --  Symmetric 32-bit-operand multiplicativity, for base-2**32 limb arrays
+   --  (RSA-2048 Montgomery): both factors up to 2**32, product up to 2**64,
+   --  well inside Val_Cap = 2**110. A separate pair of caps is needed because
+   --  2**32 * Mul_Cap_Y (2**81) would exceed Val_Cap; same induction on Y.
+   Mul32_Cap : constant := 2**32;
+   subtype Mul32_Int is LLI range -Mul32_Cap .. Mul32_Cap;
+
+   procedure Lemma_Limb_Val_Mul32 (X, Y : Mul32_Int)
+   with
+     Post               => Limb_Val (X * Y) = Limb_Val (X) * Limb_Val (Y),
+     Subprogram_Variant => (Decreases => abs Y);
+
    ------------------------------------------------------------------
    --  Big_Nat value: Horner evaluation in base Base = Limb_Val (Limb_Base).
    --  Val (A) = sum_k Limb_Val (A (k)) * Base**k. Base is OUR ingress of the
