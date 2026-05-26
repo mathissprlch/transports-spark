@@ -1319,6 +1319,12 @@ is
       N65       : Limbs65 := [others => 0];
       Bit       : Unsigned_32;
       Limb_Word : Unsigned_32;
+      --  Exact long-division ghosts: Processed = bits scanned so far,
+      --  Quo = accumulated quotient. Invariant: Processed = Quo*N + R.
+      Processed : Big.Big_Integer := 0
+      with Ghost;
+      Quo       : Big.Big_Integer := 0
+      with Ghost;
    begin
       --  Promote N into a 65-limb form (limb 64 = 0).
       for I in Limb_Index loop
@@ -1346,12 +1352,20 @@ is
          pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
          pragma
            Loop_Invariant (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
+         pragma
+           Loop_Invariant
+             (Processed
+                = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
          Limb_Word := T (I);
          for B in reverse 0 .. 31 loop
             pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) > 0);
             pragma Loop_Invariant (LV65 (N65, N_Limbs + 1) < P32 (N_Limbs));
             pragma
               Loop_Invariant (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
+            pragma
+              Loop_Invariant
+                (Processed
+                   = Quo * LV65 (N65, N_Limbs + 1) + LV65 (R, N_Limbs + 1));
             Bit := Shift_Right (Limb_Word, B) and 1;
             --  R := (R << 1) | Bit, value level: LV65 (R) := 2*LV65 (R0) + Bit.
             declare
@@ -1382,6 +1396,9 @@ is
                       (LV65 (R, N_Limbs + 1) < 2 * LV65 (N65, N_Limbs + 1));
                end;
             end;
+            --  Long-division ghosts: absorb one bit and double the quotient.
+            Processed := 2 * Processed + GBV.Limb_Val (GB.LLI (Bit));
+            Quo := 2 * Quo;
             --  If R >= N, subtract N (one subtract suffices: R was < 2N).
             if Compare65 (R, N65) >= 0 then
                declare
@@ -1390,6 +1407,7 @@ is
                   Sub65 (R, N65, Diff);
                   R := Diff;
                end;
+               Quo := Quo + 1;
             end if;
             pragma Assert (LV65 (R, N_Limbs + 1) < LV65 (N65, N_Limbs + 1));
          end loop;
