@@ -23,18 +23,19 @@
 --      `Bn_V`) so the imperative impl can swap Montgomery ↔ schoolbook
 --      without altering the spec.
 --
---  Status (v0.5 platinum push, 2026-05-07):
+--  Status (v0.6 §0e close, 2026-05-27):
 --    * Ghost layer is real, computable, no `Spec_*` stubs (docs/conventions.md
 --      §0d clause 4): `Bn_V` walks the 256 bytes and `Spec_Mod_Mul`
---      / `Spec_Mod_Exp` are square-and-multiply over Big_Integer.
+--      / `Spec_Mod_Exp` are modular multiply / `pow_mod` over Big_Integer.
 --    * Posts are functional (clause 5): each one references real
 --      Big_Integer arithmetic, not a tautology / not a length-only
 --      shape.
---    * The functional Post equating the imperative CIOS Montgomery
---      output to the Big_Integer square-and-multiply spec is NOT
---      yet discharged at level=2. It is honest unproven (clause 1
---      not yet satisfied) — no SPARK_Mode (Off), no pragma Assume,
---      no annotation has been used to make it disappear (clause 6).
+--    * The functional Posts equating the imperative CIOS Montgomery
+--      output to the Big_Integer spec are PROVEN at level=2 over the
+--      §0e Limb_Val value layer (LV64 / P32) and the Montgomery
+--      cancellation identity (Tls_Core.Ghost_Bignum.Montgomery) — never
+--      the SPARK_Mode-Off To_Big_Integer. Clause 1 satisfied: no
+--      SPARK_Mode (Off), no pragma Assume, no annotation (clause 6).
 --      RFC 8017 §A.2 PSS test vectors and the Encode → Verify round-
 --      trip in tls_core_tests exercise the chain end-to-end.
 
@@ -136,6 +137,22 @@ is
    is (To_Big_Up_To (B, Byte_Length))
    with Ghost, Global => null, Post => Bn_V'Result >= Big.To_Big_Integer (0);
 
+   --  Square-and-multiply on Big_Integer, mirror of HACL\*  `Lib.NatMod.pow`:
+   --      let rec pow #t a b = if b = 0 then one else mul a (pow a (b - 1))
+   --  Recursion on the (non-negative) exponent is well-founded; the body is
+   --  pure Big_Integer arithmetic, so it is the canonical mathematical power
+   --  used to define modular exponentiation (`pow_mod a b n = pow a b mod n`).
+   function Pow_Big (B, E : Big.Big_Integer) return Big.Big_Integer
+   is (if E <= Big.To_Big_Integer (0)
+       then Big.To_Big_Integer (1)
+       else B * Pow_Big (B, E - Big.To_Big_Integer (1)))
+   with
+     Ghost,
+     Global             => null,
+     Subprogram_Variant =>
+       (Decreases =>
+          (if E <= Big.To_Big_Integer (0) then Big.To_Big_Integer (0) else E));
+
    --  Spec for modular multiplication: (A * B) mod N when N > 0,
    --  zero otherwise (mirroring the ads degenerate-case contract).
    function Spec_Mod_Mul (A, B, N : Big.Big_Integer) return Big.Big_Integer
@@ -169,7 +186,11 @@ is
        and then (if N <= Big.To_Big_Integer (1)
                    or else N mod Big.To_Big_Integer (2)
                            = Big.To_Big_Integer (0)
-                 then Spec_Mod_Exp'Result = Big.To_Big_Integer (0));
+                 then Spec_Mod_Exp'Result = Big.To_Big_Integer (0))
+       and then (if N > Big.To_Big_Integer (1)
+                   and then N mod Big.To_Big_Integer (2)
+                            = Big.To_Big_Integer (1)
+                 then Spec_Mod_Exp'Result = Pow_Big (Base mod N, Exp) mod N);
 
    --  Inverse of `Bn_V` for non-negative integers in [0, 2^2048):
    --  produces the canonical 256-byte big-endian buffer whose
@@ -219,14 +240,13 @@ is
    ---------------------------------------------------------------------
 
    --  --------------------------------------------------------------
-   --  [VERIFIED — AoRTE]  A * B mod N.
+   --  [VERIFIED — PLATINUM]  A * B mod N.
    --
    --  Spec mirror: HACL\*  `Hacl.Spec.Bignum.ModExp.fst` :  `bn_mod_mul`.
    --  Functional:  Bn_V (Out_R) = Spec_Mod_Mul (Bn_V (A), Bn_V (B), Bn_V (N))
-   --  Proven at:   honest unproven — the schoolbook→Montgomery
-   --               equivalence on the imperative body is not yet
-   --               discharged at level=2. Clause-6 clean (no
-   --               SPARK_Mode (Off), no pragma Assume, no annotation).
+   --  Proven at:   level=2 over the §0e Limb_Val value layer (byte↔limb
+   --               bridge to LV64). Clause-6 clean (no SPARK_Mode (Off),
+   --               no pragma Assume, no annotation).
    --
    --  N must be non-zero. If N is zero the output is the zero Bigint.
    --  --------------------------------------------------------------
@@ -234,11 +254,15 @@ is
    with Post => Bn_V (Out_R) = Spec_Mod_Mul (Bn_V (A), Bn_V (B), Bn_V (N));
 
    --  --------------------------------------------------------------
-   --  [VERIFIED — AoRTE]  Base^Exp mod N.
+   --  [VERIFIED — PLATINUM]  Base^Exp mod N.
    --
    --  Spec mirror: HACL\*  `Hacl.Spec.Bignum.ModExp.fst` :  `bn_mod_exp_mont`.
    --  Functional:  Bn_V (Out_R) = Spec_Mod_Exp (Bn_V (Base), Bn_V (Exp), Bn_V (N))
-   --  Proven at:   honest unproven (same shape as Mod_Mul above).
+   --  Proven at:   level=2. The MSB-first Montgomery square-and-multiply
+   --               ladder is shown equal to Pow_Big (Bn_V (Base) mod N,
+   --               Bn_V (Exp)) mod N over the §0e value layer, via the
+   --               radix bridge R^-1 (Mont_R_Inv) and HACL\*'s Montgomery
+   --               cancellation lemma. No SPARK_Mode (Off) / Assume / annotation.
    --
    --  Square-and-multiply MSB-first over the bits of Exp; CIOS
    --  Montgomery reduction in the imperative body. Spec is at the

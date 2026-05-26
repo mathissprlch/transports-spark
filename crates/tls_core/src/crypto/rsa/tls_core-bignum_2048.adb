@@ -1,6 +1,7 @@
 pragma Warnings (Off, "redundant with clause in body");
 with Interfaces;
 pragma Warnings (On, "redundant with clause in body");
+with Tls_Core.Ghost_Bignum.Montgomery;
 
 package body Tls_Core.Bignum_2048
   with SPARK_Mode
@@ -10,6 +11,7 @@ is
 
    package GB renames Tls_Core.Ghost_Bignum;
    package GBV renames Tls_Core.Ghost_Bignum.Value;
+   package MG renames Tls_Core.Ghost_Bignum.Montgomery;
 
    ---------------------------------------------------------------------
    --  Ghost spec layer bodies. Real, computable Big_Integer arithmetic
@@ -39,46 +41,69 @@ is
       end if;
    end Pow_2_8;
 
-   --  Square-and-multiply on Big_Integer. Mirror of HACL\*'s `pow_mod`
-   --  in `Lib.NatMod.fst`:
-   --      val pow #t : a:t -> b:nat -> Tot t (decreases b)
-   --      let rec pow #t a b =
-   --        if b = 0 then one
-   --        else mul a (pow a (b - 1))
-   --  We then take the result mod N at the top level. The recursion
-   --  on Exp is well-founded (decreasing nat), and the body is purely
-   --  a Big_Integer computation — no representation hooks.
-   function Spec_Mod_Exp
-     (Base, Exp, N : Big.Big_Integer) return Big.Big_Integer
-   is
-      One    : constant Big.Big_Integer := Big.To_Big_Integer (1);
-      Two    : constant Big.Big_Integer := Big.To_Big_Integer (2);
-      Zero_B : constant Big.Big_Integer := Big.To_Big_Integer (0);
-      Result : Big.Big_Integer := One;
-      B      : Big.Big_Integer;
-      E      : Big.Big_Integer := Exp;
+   --  Pow_Big is non-negative for a non-negative base (induction on E).
+   procedure Lemma_Pow_Big_Nonneg (B, E : Big.Big_Integer)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => B >= 0 and then E >= 0,
+     Post               => Pow_Big (B, E) >= 0,
+     Subprogram_Variant => (Decreases => E);
+
+   procedure Lemma_Pow_Big_Nonneg (B, E : Big.Big_Integer) is
    begin
-      --  Spec degenerate cases mirror the imperative ads:
-      if N <= One then
-         return Zero_B;
+      if E > 0 then
+         Lemma_Pow_Big_Nonneg (B, E - 1);   --  Pow_Big (B, E-1) >= 0.
+      --  Pow_Big (B, E) = B * Pow_Big (B, E-1): a product of non-negatives.
+
       end if;
-      if N mod Two = Zero_B then
-         return Zero_B;
+   end Lemma_Pow_Big_Nonneg;
+
+   --  Exponents add: Pow_Big (B, X+Y) = Pow_Big (B, X) * Pow_Big (B, Y).
+   --  Induction on Y (HACL\*  `Lib.NatMod.lemma_pow_add`).
+   procedure Lemma_Pow_Big_Add (B, X, Y : Big.Big_Integer)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => X >= 0 and then Y >= 0,
+     Post               =>
+       Pow_Big (B, X + Y) = Pow_Big (B, X) * Pow_Big (B, Y),
+     Subprogram_Variant => (Decreases => Y);
+
+   procedure Lemma_Pow_Big_Add (B, X, Y : Big.Big_Integer) is
+   begin
+      if Y = 0 then
+         --  Pow_Big (B, X+0) = Pow_Big (B, X) = Pow_Big (B, X) * 1.
+         pragma Assert (Pow_Big (B, Y) = 1);
+         pragma Assert (X + Y = X);
+      else
+         pragma Assert (X + Y > 0);   --  unfold Pow_Big (B, X+Y).
+         Lemma_Pow_Big_Add (B, X, Y - 1);
+         --  Pow_Big (B, X+Y) = B * Pow_Big (B, X+Y-1)
+         --    = B * Pow_Big (B, X) * Pow_Big (B, Y-1) [IH]
+         --    = Pow_Big (B, X) * (B * Pow_Big (B, Y-1)) = Pow_Big (B, X) * Pow_Big (B, Y).
+         pragma Assert (X + Y - 1 = X + (Y - 1));
       end if;
-      B := Base mod N;
-      --  Iterative square-and-multiply, LSB-first. Equivalent to
-      --  HACL\*'s `pow` viewed through binary expansion of Exp.
-      while E > Zero_B loop
-         pragma Loop_Invariant (Result >= Zero_B and then Result < N);
-         pragma Loop_Invariant (B >= Zero_B and then B < N);
-         pragma Loop_Variant (Decreases => E);
-         if E mod Two = One then
-            Result := (Result * B) mod N;
-         end if;
-         E := E / Two;
-         B := (B * B) mod N;
-      end loop;
-      return Result;
+   end Lemma_Pow_Big_Add;
+
+   --  Spec for modular exponentiation, the canonical HACL\*  `Lib.NatMod.pow_mod`:
+   --      let pow_mod #m a b = pow a b % m
+   --  reduced to its degenerate forms for N <= 1 / even N (which the imperative
+   --  body returns zero for). For odd N > 1, the result is Pow_Big (Base mod N,
+   --  Exp) mod N -- the canonical modular power, exposed in the postcondition.
+   function Spec_Mod_Exp
+     (Base, Exp, N : Big.Big_Integer) return Big.Big_Integer is
+   begin
+      if N <= 1 then
+         return 0;
+      end if;
+      if N mod 2 = 0 then
+         return 0;
+      end if;
+      --  N is odd > 1. (Base mod N) >= 0 because N > 0; Pow_Big of a
+      --  non-negative base is non-negative, and reducing mod N > 0 keeps it so.
+      Lemma_Pow_Big_Nonneg (Base mod N, Exp);
+      return Pow_Big (Base mod N, Exp) mod N;
    end Spec_Mod_Exp;
 
    --  Iterated division over Big_Integer: (E / P) / Q = E / (P * Q) for
@@ -253,6 +278,98 @@ is
            (2**32 - 1);        --  Base32 = that + 1 >= 1.
       end if;
    end Lemma_P32_Pos;
+
+   ---------------------------------------------------------------------
+   --  Radix bridge: P32 (the base-2**32 weight) = the bit-level Pow2 of
+   --  the §0e Montgomery layer, so that layer can supply the modular
+   --  inverse of R = P32 (N_Limbs) = 2**2048.
+   ---------------------------------------------------------------------
+
+   --  Base32 = 2**32 = Pow2 (32), proved by 5 static squaring steps
+   --  (2 -> 4 -> 16 -> 256 -> 65536 -> 2**32) via Limb_Val multiplicativity,
+   --  avoiding any dynamic 2**K (which defeats the overflow checker).
+   procedure Lemma_Base32_Is_Pow2
+   with Ghost, Post => Base32 = MG.Pow2 (32);
+
+   procedure Lemma_Base32_Is_Pow2 is
+   begin
+      GBV.Lemma_Limb_Val_Succ (0);                  --  Limb_Val (1) = 1.
+      GBV.Lemma_Limb_Val_Succ (1);                  --  Limb_Val (2) = 2.
+      MG.Lemma_Pow2_Succ (1);                       --  Pow2 (1) = 2.
+      pragma Assert (GBV.Limb_Val (2) = MG.Pow2 (1));
+
+      GBV.Lemma_Limb_Val_Mul32
+        (2, 2);             --  Limb_Val (4) = Limb_Val(2)^2.
+      MG.Lemma_Pow2_Add (1, 1);                     --  Pow2 (2) = Pow2(1)^2.
+      pragma Assert (GBV.Limb_Val (4) = MG.Pow2 (2));
+
+      GBV.Lemma_Limb_Val_Mul32 (4, 4);             --  Limb_Val (16).
+      MG.Lemma_Pow2_Add (2, 2);                     --  Pow2 (4).
+      pragma Assert (GBV.Limb_Val (16) = MG.Pow2 (4));
+
+      GBV.Lemma_Limb_Val_Mul32 (16, 16);           --  Limb_Val (256).
+      MG.Lemma_Pow2_Add (4, 4);                     --  Pow2 (8).
+      pragma Assert (GBV.Limb_Val (256) = MG.Pow2 (8));
+
+      GBV.Lemma_Limb_Val_Mul32 (256, 256);         --  Limb_Val (65536).
+      MG.Lemma_Pow2_Add (8, 8);                     --  Pow2 (16).
+      pragma Assert (GBV.Limb_Val (65536) = MG.Pow2 (16));
+
+      GBV.Lemma_Limb_Val_Mul32 (65536, 65536);     --  Limb_Val (2**32).
+      MG.Lemma_Pow2_Add (16, 16);                   --  Pow2 (32).
+      pragma Assert (GBV.Limb_Val (2**32) = MG.Pow2 (32));
+   end Lemma_Base32_Is_Pow2;
+
+   --  P32 is the base-2**32 power: P32 (K) = Pow (Base32, K).
+   procedure Lemma_P32_Is_Pow (K : Natural)
+   with
+     Ghost,
+     Post               => P32 (K) = MG.Pow (Base32, K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_P32_Is_Pow (K : Natural) is
+   begin
+      if K = 0 then
+         GBV.Lemma_Limb_Val_Succ
+           (0);            --  P32 (0) = 1 = Pow (Base32, 0).
+
+      else
+         Lemma_P32_Is_Pow (K - 1);
+      end if;
+   end Lemma_P32_Is_Pow;
+
+   --  P32 (K) = Pow2 (32*K): the base-2**32 radix is the bit-level radix.
+   procedure Lemma_P32_Is_Pow2 (K : Natural)
+   with Ghost, Pre => K <= 2**20, Post => P32 (K) = MG.Pow2 (32 * K);
+
+   procedure Lemma_P32_Is_Pow2 (K : Natural) is
+   begin
+      Lemma_P32_Is_Pow (K);                      --  P32 (K) = Pow (Base32, K).
+      Lemma_Base32_Is_Pow2;                       --  Base32 = Pow2 (32).
+      MG.Lemma_Pow2_Pow_Mul
+        (32, K);             --  Pow (Pow2 (32), K) = Pow2 (32*K).
+      pragma Assert (MG.Pow (Base32, K) = MG.Pow (MG.Pow2 (32), K));
+   end Lemma_P32_Is_Pow2;
+
+   --  Modular inverse of R = P32 (N_Limbs) modulo an odd Nv > 1 (HACL\*'s
+   --  R^-1 mod n), delegated to the §0e Montgomery layer.
+   function Mont_R_Inv (Nv : Big.Big_Integer) return Big.Big_Integer
+   with
+     Ghost,
+     Pre  => Nv > 1 and then Nv mod 2 = 1,
+     Post =>
+       Mont_R_Inv'Result >= 0
+       and then Mont_R_Inv'Result < Nv
+       and then (P32 (N_Limbs) * Mont_R_Inv'Result) mod Nv = 1;
+
+   function Mont_R_Inv (Nv : Big.Big_Integer) return Big.Big_Integer is
+      D : constant Big.Big_Integer := MG.Mont_Inv (32 * N_Limbs, Nv);
+   begin
+      Lemma_P32_Is_Pow2
+        (N_Limbs);               --  P32 (N_Limbs) = Pow2 (2048).
+      pragma Assert (P32 (N_Limbs) = MG.Pow2 (32 * N_Limbs));
+      return D;
+   end Mont_R_Inv;
 
    --  The limb valuation is non-negative.
    procedure Lemma_LV64_Nonneg (L : Limbs64; K : Limb_Plus_Index)
@@ -4458,6 +4575,281 @@ is
    end Mod_Mul;
 
    ---------------------------------------------------------------------
+   --  Mod_Exp functional-correctness layer (§0e): the Montgomery
+   --  square-and-multiply ladder computes Pow_Big (Base mod N, Exp) mod N.
+   --  All reasoning is over the §0e Limb_Val value layer (LV64 / P32), the
+   --  modular inverse R^-1 = Mont_R_Inv (radix bridge), and the Montgomery
+   --  cancellation identity MG.Lemma_Mont_Id -- never the SPARK_Mode-Off
+   --  To_Big_Integer.  R = P32 (N_Limbs) = 2**2048.
+   ---------------------------------------------------------------------
+
+   --  R-cancellation: R = P32 (N_Limbs) is invertible mod an odd N > 1, so a
+   --  Montgomery-residue equality X*R == Y*R (mod N) collapses to X == Y
+   --  (mod N).  Via the radix bridge Mont_R_Inv and HACL\*'s lemma_mont_id.
+   procedure Lemma_R_Cancel (Nv, X, Y : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Nv > 1
+       and then Nv mod 2 = 1
+       and then X >= 0
+       and then X < Nv
+       and then Y >= 0
+       and then (X * P32 (N_Limbs)) mod Nv = (Y * P32 (N_Limbs)) mod Nv,
+     Post   => X = Y mod Nv;
+
+   procedure Lemma_R_Cancel (Nv, X, Y : Big.Big_Integer) is
+      D : constant Big.Big_Integer := Mont_R_Inv (Nv);
+   begin
+      Lemma_P32_Pos (N_Limbs);                       --  R = P32 (N_Limbs) > 0.
+      MG.Lemma_Mont_Id (Nv, P32 (N_Limbs), D, X);
+      MG.Lemma_Mont_Id (Nv, P32 (N_Limbs), D, Y);
+      pragma
+        Assert
+          (((X * P32 (N_Limbs)) mod Nv * D) mod Nv
+             = ((Y * P32 (N_Limbs)) mod Nv * D) mod Nv);
+      pragma Assert (X mod Nv = Y mod Nv);
+      pragma Assert (X mod Nv = X);                  --  0 <= X < Nv.
+   end Lemma_R_Cancel;
+
+   --  Montgomery composition: combining two residues multiplies their logical
+   --  values.  Given Rm == U*R, Sm == V*R (mod N) and Rm2 the reduced
+   --  Montgomery product (Rm2*R == Rm*Sm mod N), we get Rm2 == U*V*R (mod N).
+   procedure Lemma_Mont_Compose (Nv, U, V, Rm, Sm, Rm2 : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Nv > 1
+       and then Nv mod 2 = 1
+       and then U >= 0
+       and then V >= 0
+       and then Rm = (U * P32 (N_Limbs)) mod Nv
+       and then Sm = (V * P32 (N_Limbs)) mod Nv
+       and then Rm2 >= 0
+       and then Rm2 < Nv
+       and then (Rm2 * P32 (N_Limbs)) mod Nv = (Rm * Sm) mod Nv,
+     Post   => Rm2 = (U * V * P32 (N_Limbs)) mod Nv;
+
+   procedure Lemma_Mont_Compose (Nv, U, V, Rm, Sm, Rm2 : Big.Big_Integer) is
+      R : constant Big.Big_Integer := P32 (N_Limbs);
+   begin
+      Lemma_P32_Pos (N_Limbs);                       --  R > 0.
+      Lemma_Mod_Mul_Cong (U * R, V * R, Nv);
+      --  (Rm*Sm) mod Nv = ((U*R) mod Nv * (V*R) mod Nv) mod Nv = ((U*R)*(V*R)) mod Nv.
+      pragma Assert ((Rm * Sm) mod Nv = ((U * R) * (V * R)) mod Nv);
+      pragma Assert ((U * R) * (V * R) = (U * V * R) * R);   --  ring.
+      pragma Assert ((Rm2 * R) mod Nv = ((U * V * R) * R) mod Nv);
+      Lemma_R_Cancel (Nv, Rm2, U * V * R);
+   end Lemma_Mont_Compose;
+
+   --  Bit decomposition (value layer): for a 32-bit word W and bit position
+   --  B <= 31, the value of W>>B is twice the value of W>>(B+1) plus bit B.
+   procedure Lemma_Bit_Split (W : Unsigned_32; B : Natural)
+   with
+     Ghost,
+     Global => null,
+     Pre    => B <= 31,
+     Post   =>
+       GBV.Limb_Val (GB.LLI (Shift_Right (W, B)))
+       = 2
+         * GBV.Limb_Val (GB.LLI (Shift_Right (W, B + 1)))
+         + GBV.Limb_Val (GB.LLI (Shift_Right (W, B) and 1));
+
+   procedure Lemma_Bit_Split (W : Unsigned_32; B : Natural) is
+      Lo  : constant Unsigned_32 := Shift_Right (W, B);
+      Hi  : constant Unsigned_32 := Shift_Right (W, B + 1);
+      Bit : constant Unsigned_32 := Lo and 1;
+   begin
+      --  Machine bit-decomposition of the 32-bit word (bitvector theory).
+      pragma Assert (Hi = Shift_Right (Lo, 1));
+      pragma Assert (Lo = 2 * Hi + Bit);
+      --  Lift to LLI (exact; all operands < 2**32, no overflow).
+      pragma Assert (GB.LLI (Lo) = 2 * GB.LLI (Hi) + GB.LLI (Bit));
+      GBV.Lemma_Limb_Val_Succ (0);                  --  Limb_Val (1) = 1.
+      GBV.Lemma_Limb_Val_Succ (1);                  --  Limb_Val (2) = 2.
+      GBV.Lemma_Limb_Val_Mul32
+        (2, GB.LLI (Hi));    --  Limb_Val (2*Hi) = 2*Limb_Val (Hi).
+      GBV.Lemma_Limb_Val_Add (2 * GB.LLI (Hi), GB.LLI (Bit));
+   end Lemma_Bit_Split;
+
+   --  Every Horner term above limb 0 is a multiple of Base32, so LV64 splits
+   --  as Limb_Val (L (0)) + Base32 * Q with Q >= 0.
+   procedure Lemma_LV64_Even_Above
+     (L : Limbs64; K : Limb_Plus_Index; Q : out Big.Big_Integer)
+   with
+     Ghost,
+     Global             => null,
+     Pre                => K >= 1,
+     Post               =>
+       Q >= 0
+       and then LV64 (L, K) = GBV.Limb_Val (GB.LLI (L (0))) + Base32 * Q,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV64_Even_Above
+     (L : Limbs64; K : Limb_Plus_Index; Q : out Big.Big_Integer)
+   is
+      Q1 : Big.Big_Integer;
+   begin
+      Lemma_LV64_Unfold (L, K);
+      if K = 1 then
+         GBV.Lemma_Limb_Val_Succ
+           (0);               --  P32 (0) = Limb_Val (1) = 1.
+         Q := 0;
+      else
+         Lemma_LV64_Even_Above (L, K - 1, Q1);       --  IH.
+         GBV.Lemma_Limb_Val_Nonneg (GB.LLI (L (K - 1)));
+         Lemma_P32_Pos (K - 2);
+         --  P32 (K-1) = P32 (K-2) * Base32, so the new term is Base32 * (...).
+         pragma Assert (P32 (K - 1) = P32 (K - 2) * Base32);
+         Q := Q1 + GBV.Limb_Val (GB.LLI (L (K - 1))) * P32 (K - 2);
+      end if;
+   end Lemma_LV64_Even_Above;
+
+   --  Parity of LV64 equals the low bit of limb 0 (Base32 = 2**32 is even).
+   procedure Lemma_LV64_Low_Bit (L : Limbs64)
+   with
+     Ghost,
+     Global => null,
+     Post   => LV64 (L, N_Limbs) mod 2 = GBV.Limb_Val (GB.LLI (L (0) and 1));
+
+   procedure Lemma_LV64_Low_Bit (L : Limbs64) is
+      Q   : Big.Big_Integer;
+      Hi  : Big.Big_Integer;
+      Bit : constant Big.Big_Integer := GBV.Limb_Val (GB.LLI (L (0) and 1));
+   begin
+      Lemma_LV64_Even_Above
+        (L, N_Limbs, Q);   --  NV = Limb_Val (L (0)) + Base32*Q.
+      Lemma_Bit_Split
+        (L (0), 0);              --  Limb_Val (L (0)) = 2*Hi + Bit.
+      Hi := GBV.Limb_Val (GB.LLI (Shift_Right (L (0), 1)));
+      pragma Assert (Shift_Right (L (0), 0) = L (0));
+      pragma Assert (GBV.Limb_Val (GB.LLI (L (0))) = 2 * Hi + Bit);
+      Lemma_Base32_Is_Pow2;                    --  Base32 = Pow2 (32).
+      MG.Lemma_Pow2_Succ (32);                 --  Pow2 (32) = 2 * Pow2 (31).
+      MG.Lemma_Pow2_Pos (31);                  --  Pow2 (31) >= 0.
+      GBV.Lemma_Limb_Val_Nonneg (GB.LLI (Shift_Right (L (0), 1)));
+      --  bit in {0,1}: Limb_Val (0)=0, Limb_Val (1)=1.
+      GBV.Lemma_Limb_Val_Succ (0);
+      pragma Assert (Bit = 0 or else Bit = 1);
+      --  NV = 2*(Hi + Pow2(31)*Q) + Bit, Bit in {0,1} => NV mod 2 = Bit.
+      pragma Assert (LV64 (L, N_Limbs) = 2 * (Hi + MG.Pow2 (31) * Q) + Bit);
+      Lemma_LV64_Nonneg (L, N_Limbs);
+      Lemma_Mod_Unique (LV64 (L, N_Limbs), Hi + MG.Pow2 (31) * Q, Bit, 2);
+   end Lemma_LV64_Low_Bit;
+
+   --  Value of the high limbs [J .. N_Limbs-1] of the exponent array, re-based
+   --  so limb J is least significant -- the MSB-first prefix the ladder builds.
+   function Exp_Suffix
+     (L : Limbs64; J : Limb_Plus_Index) return Big.Big_Integer
+   is (if J >= N_Limbs
+       then GBV.Limb_Val (0)
+       else GBV.Limb_Val (GB.LLI (L (J))) + Base32 * Exp_Suffix (L, J + 1))
+   with Ghost, Subprogram_Variant => (Decreases => N_Limbs - J);
+
+   --  Linking identity: Exp_Suffix (L, J) * P32 (J) + LV64 (L, J) = LV64 (L,
+   --  N_Limbs).  Downward induction; at J=0 gives Exp_Suffix (L, 0) = LV64.
+   procedure Lemma_Exp_Suffix (L : Limbs64; J : Limb_Plus_Index)
+   with
+     Ghost,
+     Global             => null,
+     Post               =>
+       Exp_Suffix (L, J) * P32 (J) + LV64 (L, J) = LV64 (L, N_Limbs),
+     Subprogram_Variant => (Decreases => N_Limbs - J);
+
+   procedure Lemma_Exp_Suffix (L : Limbs64; J : Limb_Plus_Index) is
+   begin
+      if J < N_Limbs then
+         Lemma_Exp_Suffix (L, J + 1);            --  IH at J+1.
+         Lemma_LV64_Unfold (L, J + 1);
+         pragma Assert (P32 (J + 1) = P32 (J) * Base32);
+      end if;
+   end Lemma_Exp_Suffix;
+
+   --  Ladder squaring step: Result_M == Pow_Big (BR, P)*R  =>  the Montgomery
+   --  square is Pow_Big (BR, 2*P)*R (mod N).
+   procedure Lemma_Mont_Sq (Nv, BR, P, Rm, Rm2 : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Nv > 1
+       and then Nv mod 2 = 1
+       and then BR >= 0
+       and then P >= 0
+       and then Rm = (Pow_Big (BR, P) * P32 (N_Limbs)) mod Nv
+       and then Rm2 >= 0
+       and then Rm2 < Nv
+       and then (Rm2 * P32 (N_Limbs)) mod Nv = (Rm * Rm) mod Nv,
+     Post   => Rm2 = (Pow_Big (BR, 2 * P) * P32 (N_Limbs)) mod Nv;
+
+   procedure Lemma_Mont_Sq (Nv, BR, P, Rm, Rm2 : Big.Big_Integer) is
+   begin
+      Lemma_Pow_Big_Nonneg (BR, P);
+      Lemma_Mont_Compose (Nv, Pow_Big (BR, P), Pow_Big (BR, P), Rm, Rm, Rm2);
+      Lemma_Pow_Big_Add (BR, P, P);
+      pragma Assert (P + P = 2 * P);
+   end Lemma_Mont_Sq;
+
+   --  Ladder multiply step: Result_M == Pow_Big (BR, Q)*R and Base_M == BR*R
+   --  =>  the Montgomery product is Pow_Big (BR, Q+1)*R (mod N).
+   procedure Lemma_Mont_Mul1 (Nv, BR, Q, Rm, Bm, Rm2 : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Nv > 1
+       and then Nv mod 2 = 1
+       and then BR >= 0
+       and then Q >= 0
+       and then Rm = (Pow_Big (BR, Q) * P32 (N_Limbs)) mod Nv
+       and then Bm = (BR * P32 (N_Limbs)) mod Nv
+       and then Rm2 >= 0
+       and then Rm2 < Nv
+       and then (Rm2 * P32 (N_Limbs)) mod Nv = (Rm * Bm) mod Nv,
+     Post   => Rm2 = (Pow_Big (BR, Q + 1) * P32 (N_Limbs)) mod Nv;
+
+   procedure Lemma_Mont_Mul1 (Nv, BR, Q, Rm, Bm, Rm2 : Big.Big_Integer) is
+   begin
+      Lemma_Pow_Big_Nonneg (BR, Q);
+      Lemma_Mont_Compose (Nv, Pow_Big (BR, Q), BR, Rm, Bm, Rm2);
+      --  Pow_Big (BR, Q+1) = BR * Pow_Big (BR, Q) (Q+1 >= 1).
+      pragma Assert (Pow_Big (BR, Q) * BR = Pow_Big (BR, Q + 1));
+   end Lemma_Mont_Mul1;
+
+   --  To-Montgomery conversion: Mont_Mul (A, R^2) == A*R (mod N).  Given the
+   --  Mont_Mul residue (Am*R == A*R2v) and R2v == R^2 mod N, Am == A*R (mod N).
+   procedure Lemma_To_Mont (Nv, A, R2v, Am : Big.Big_Integer)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       Nv > 1
+       and then Nv mod 2 = 1
+       and then A >= 0
+       and then R2v = (P32 (N_Limbs) * P32 (N_Limbs)) mod Nv
+       and then Am >= 0
+       and then Am < Nv
+       and then (Am * P32 (N_Limbs)) mod Nv = (A * R2v) mod Nv,
+     Post   => Am = (A * P32 (N_Limbs)) mod Nv;
+
+   procedure Lemma_To_Mont (Nv, A, R2v, Am : Big.Big_Integer) is
+      R : constant Big.Big_Integer := P32 (N_Limbs);
+   begin
+      Lemma_P32_Pos (N_Limbs);
+      pragma Assert (R2v = (R * R) mod Nv);   --  precondition.
+      pragma Assert (R2v mod Nv = R2v);       --  0 <= R2v < Nv.
+      Lemma_Mod_Mul_Cong (A, R * R, Nv);
+      Lemma_Mod_Mul_Cong (A, R2v, Nv);
+      --  (A*R2v) mod Nv = (A*(R*R)) mod Nv = ((A*R)*R) mod Nv.
+      pragma Assert ((A * R2v) mod Nv = (A * (R * R)) mod Nv);
+      pragma Assert (A * (R * R) = (A * R) * R);
+      pragma Assert ((Am * R) mod Nv = ((A * R) * R) mod Nv);
+      Lemma_R_Cancel (Nv, Am, A * R);
+   end Lemma_To_Mont;
+
+   ---------------------------------------------------------------------
    --  Mod_Exp: Montgomery square-and-multiply.
    --
    --  Total cost: 1 schoolbook reduction (for R^2 mod N) + ~3072
@@ -4478,6 +4870,11 @@ is
       From_Bytes (Exp, EL);
       From_Bytes (N, NL);
 
+      --  Byte<->limb bridges. NL and EL are never mutated below; the Base
+      --  bridge is taken just before BL is reduced in place.
+      Lemma_Bn_Bridge (N, NL, N_Limbs);
+      Lemma_Bn_Bridge (Exp, EL, N_Limbs);
+
       --  Edge cases: N = 0 (illegal — return zero per the ads), or
       --  N = 1 (everything is 0 mod 1), or N even (Montgomery needs
       --  gcd(N, R)=1; RSA moduli are odd, but be defensive). For an
@@ -4487,6 +4884,15 @@ is
       if Is_Zero64 (NL) or else (NL (0) and 1) = 0 then
          Result := [others => 0];
          To_Bytes (Result, Out_R);
+         Lemma_Bn_Bridge (Out_R, Result, N_Limbs);
+         Lemma_LV64_Zero (Result, N_Limbs);   --  Bn_V (Out_R) = 0.
+         if Is_Zero64 (NL) then
+            Lemma_LV64_Zero
+              (NL, N_Limbs);     --  Bn_V (N) = 0 <= 1 => Spec = 0.
+
+         else
+            Lemma_LV64_Low_Bit (NL);           --  Bn_V (N) even => Spec = 0.
+         end if;
          return;
       end if;
 
@@ -4510,6 +4916,11 @@ is
          if Is_One then
             Result := [others => 0];
             To_Bytes (Result, Out_R);
+            Lemma_Bn_Bridge (Out_R, Result, N_Limbs);
+            Lemma_LV64_Zero (Result, N_Limbs);   --  Bn_V (Out_R) = 0.
+            Lemma_LV64_One
+              (NL, N_Limbs);         --  Bn_V (N) = 1 <= 1 => Spec = 0.
+            GBV.Lemma_Limb_Val_Succ (0);          --  Limb_Val (1) = 1.
             return;
          end if;
          --  Falls through: N is neither 0 nor 1 (nor even) => LV64 (N) >= 2.
@@ -4520,22 +4931,40 @@ is
                                (if I >= 1 then NL (I) = 0))));
       end;
 
-      --  Reduce Base mod N so we can convert to Montgomery form
-      --  cleanly (Mont_Mul precondition is operands < N).
+      --  N is odd > 1 here. Establish the modular facts the Montgomery layer
+      --  needs (positivity, >= 2, oddness) over the §0e value layer.
+      Lemma_LV64_Pos_Exists (NL);   --  Bn_V (N) > 0.
+      Lemma_LV64_Ge_Two (NL);       --  Bn_V (N) >= 2.
+      Lemma_LV64_Low_Bit (NL);      --  LV64 (N) mod 2 = low bit of limb 0.
+      GBV.Lemma_Limb_Val_Succ (0);  --  Limb_Val (1) = 1: the low bit is 1.
+      pragma Assert (LV64 (NL, N_Limbs) mod 2 = 1);
+      pragma Assert (Bn_V (N) > 0);
+
+      --  Reduce Base mod N so we can convert to Montgomery form cleanly
+      --  (Mont_Mul precondition is operands < N). Track the value: after this
+      --  block LV64 (BL) = Bn_V (Base) mod Bn_V (N).
+      Lemma_Bn_Bridge
+        (Base, BL, N_Limbs);   --  LV64 (BL) = Bn_V (Base) (pre-reduce).
       if Compare64 (BL, NL) >= 0 then
          declare
             Wide : Limbs128;
          begin
             Widen (BL, Wide);
+            pragma Assert (LV128 (Wide, 2 * N_Limbs) = Bn_V (Base));
             Reduce (Wide, NL, BL);
+            pragma Assert (LV64 (BL, N_Limbs) = Bn_V (Base) mod Bn_V (N));
          end;
+      else
+         Lemma_LV64_Nonneg (BL, N_Limbs);
+         pragma Assert (LV64 (BL, N_Limbs) = Bn_V (Base));
+         pragma Assert (LV64 (BL, N_Limbs) < Bn_V (N));
+         --  0 <= LV64 (BL) < Bn_V (N) => LV64 (BL) mod Bn_V (N) = LV64 (BL).
+         Lemma_Mod_Unique
+           (LV64 (BL, N_Limbs), 0, LV64 (BL, N_Limbs), Bn_V (N));
+         pragma Assert (LV64 (BL, N_Limbs) = Bn_V (Base) mod Bn_V (N));
       end if;
-      --  After the edge-case returns and the reduce, LV64 (N) >= 2 (> 0) and
-      --  the base is reduced: LV64 (BL) < LV64 (N). These discharge the
-      --  reduced-operand hypotheses of every Mont_Mul below.
-      Lemma_LV64_Pos_Exists (NL);   --  LV64 (NL) > 0.
-      Lemma_LV64_Ge_Two (NL);       --  LV64 (NL) >= 2.
       pragma Assert (LV64 (BL, N_Limbs) < LV64 (NL, N_Limbs));
+      pragma Assert (LV64 (BL, N_Limbs) = Bn_V (Base) mod Bn_V (N));
 
       declare
          Inv32    : constant Unsigned_32 := N0_Inv (NL);
@@ -4543,59 +4972,196 @@ is
          One_L    : Limbs64 := [others => 0];
          Base_M   : Limbs64;
          Result_M : Limbs64;
+         --  §0e ghost shadow of the Montgomery computation. NV = Bn_V (N),
+         --  RR = R = 2**2048, BR = Bn_V (Base) mod N, EV = Bn_V (Exp), and P is
+         --  the exponent prefix (high bits, MSB-first) processed so far.
+         NV       : constant Big.Big_Integer := Bn_V (N)
+         with Ghost;
+         RR       : constant Big.Big_Integer := P32 (N_Limbs)
+         with Ghost;
+         --  BR = Bn_V (Base) mod Bn_V (N), assigned in the body rather than as a
+         --  constant initializer -- a "mod" in a ghost-constant initializer trips
+         --  a GNAT code-gen ICE (gnat_to_gnu_entity, decl.cc:479).
+         BR       : Big.Big_Integer := 0
+         with Ghost;
+         EV       : constant Big.Big_Integer := Bn_V (Exp)
+         with Ghost;
+         P        : Big.Big_Integer := 0
+         with Ghost;
       begin
+         BR := Bn_V (Base) mod Bn_V (N);
+         Lemma_P32_Pos (N_Limbs);
+         pragma Assert (LV64 (NL, N_Limbs) = NV);
+         pragma Assert (LV64 (BL, N_Limbs) = BR);
+         pragma Assert (LV64 (EL, N_Limbs) = EV);
+         pragma Assert (NV > 1 and then NV mod 2 = 1);
+         pragma Assert (BR >= 0);
+
          One_L (0) := 1;
          Lemma_LV64_One (One_L, N_Limbs);   --  LV64 (One_L) = 1 (< LV64 (NL)).
+         GBV.Lemma_Limb_Val_Succ (0);
 
          --  R^2 mod N — sole remaining slow step (one schoolbook
          --  reduction per Mod_Exp call).
          R_Sq_Mod_N (NL, R2);
-         pragma Assert (LV64 (R2, N_Limbs) < LV64 (NL, N_Limbs));
+         pragma Assert (LV64 (R2, N_Limbs) < NV);
+         pragma Assert (LV64 (R2, N_Limbs) = (RR * RR) mod NV);
 
-         --  Convert Base to Montgomery form: Base_M = Base * R mod N
-         --  = Mont_Mul (Base, R^2).
+         --  Convert Base to Montgomery form: Base_M = Base * R mod N.
          Mont_Mul (BL, R2, NL, Inv32, Base_M);
-         pragma Assert (LV64 (Base_M, N_Limbs) < LV64 (NL, N_Limbs));
+         pragma Assert (LV64 (Base_M, N_Limbs) < NV);
+         Lemma_LV64_Nonneg (Base_M, N_Limbs);
+         Lemma_To_Mont (NV, BR, LV64 (R2, N_Limbs), LV64 (Base_M, N_Limbs));
+         pragma Assert (LV64 (Base_M, N_Limbs) = (BR * RR) mod NV);
 
          --  Montgomery form of 1: 1_M = R mod N = Mont_Mul (1, R^2).
          Mont_Mul (One_L, R2, NL, Inv32, Result_M);
-         pragma Assert (LV64 (Result_M, N_Limbs) < LV64 (NL, N_Limbs));
+         pragma Assert (LV64 (Result_M, N_Limbs) < NV);
+         Lemma_LV64_Nonneg (Result_M, N_Limbs);
+         Lemma_To_Mont (NV, 1, LV64 (R2, N_Limbs), LV64 (Result_M, N_Limbs));
+         --  P = 0: Pow_Big (BR, 0) = 1, so Result_M = (Pow_Big (BR, 0) * R) mod N.
+         pragma Assert (Pow_Big (BR, P) = 1);
+         pragma
+           Assert (LV64 (Result_M, N_Limbs) = (Pow_Big (BR, P) * RR) mod NV);
 
-         --  Square-and-multiply, MSB-first scan of Exp. We always
-         --  start from MontForm(1) and square+conditionally-multiply
-         --  for every bit (no "Started" optimisation needed: squaring
-         --  MontForm(1) is still MontForm(1)). The reduced-operand bound
-         --  LV64 (Result_M), LV64 (Base_M) < LV64 (NL) is maintained so each
-         --  Mont_Mul's residue contract applies.
+         --  Square-and-multiply, MSB-first scan of Exp. Invariant: Result_M is
+         --  the Montgomery form of Pow_Big (BR, P), with P the exponent prefix
+         --  (high limbs / bits) consumed so far -- Exp_Suffix (EL, I+1) at the
+         --  top of outer iteration I.
+         --  Invariants are END-placed (post-body form) so the post-loop state
+         --  -- P = Exp_Suffix (EL, I) after limb I, and P = Bn_V (Exp) after the
+         --  whole scan -- is exposed for the convert-out step.
          for I in reverse Limb_Index loop
-            pragma Loop_Invariant (LV64 (NL, N_Limbs) > 0);
-            pragma
-              Loop_Invariant (LV64 (Result_M, N_Limbs) < LV64 (NL, N_Limbs));
-            pragma
-              Loop_Invariant (LV64 (Base_M, N_Limbs) < LV64 (NL, N_Limbs));
             Limb_Word := EL (I);
+            pragma Assert (Shift_Right (Limb_Word, 32) = 0);
             for B in reverse 0 .. 31 loop
-               pragma Loop_Invariant (LV64 (NL, N_Limbs) > 0);
+               Bit := Shift_Right (Limb_Word, B) and 1;
+               pragma Assert (Bit = 0 or else Bit = 1);
+               --  Square: Result_M := Result_M^2 in the Montgomery domain.
+               Mont_Mul (Result_M, Result_M, NL, Inv32, Tmp);
+               Lemma_LV64_Nonneg (Tmp, N_Limbs);
+               Lemma_Mont_Sq
+                 (NV, BR, P, LV64 (Result_M, N_Limbs), LV64 (Tmp, N_Limbs));
+               Result_M := Tmp;
+               pragma
+                 Assert
+                   (LV64 (Result_M, N_Limbs)
+                      = (Pow_Big (BR, 2 * P) * RR) mod NV);
+               if Bit = 1 then
+                  --  Multiply by Base_M: Result_M := Result_M * Base in domain.
+                  Mont_Mul (Result_M, Base_M, NL, Inv32, Tmp);
+                  Lemma_LV64_Nonneg (Tmp, N_Limbs);
+                  Lemma_Mont_Mul1
+                    (NV,
+                     BR,
+                     2 * P,
+                     LV64 (Result_M, N_Limbs),
+                     LV64 (Base_M, N_Limbs),
+                     LV64 (Tmp, N_Limbs));
+                  Result_M := Tmp;
+                  pragma
+                    Assert
+                      (LV64 (Result_M, N_Limbs)
+                         = (Pow_Big (BR, 2 * P + 1) * RR) mod NV);
+               end if;
+               --  Horner advance of the exponent prefix by one bit.
+               Lemma_Bit_Split (Limb_Word, B);
+               MG.Lemma_Pow2_Succ (32 - B);
+               GBV.Lemma_Limb_Val_Succ
+                 (0);   --  Limb_Val (1) = 1, Limb_Val (0) = 0.
+               pragma Assert (if Bit = 1 then GBV.Limb_Val (GB.LLI (Bit)) = 1);
+               pragma Assert (if Bit = 0 then GBV.Limb_Val (GB.LLI (Bit)) = 0);
+               --  Result_M = Montgomery form of Pow_Big (BR, 2*P + bit).
+               pragma
+                 Assert
+                   (if Bit = 1
+                      then
+                        LV64 (Result_M, N_Limbs)
+                        = (Pow_Big (BR, 2 * P + 1) * RR) mod NV
+                      else
+                        LV64 (Result_M, N_Limbs)
+                        = (Pow_Big (BR, 2 * P) * RR) mod NV);
+               P := 2 * P + GBV.Limb_Val (GB.LLI (Bit));
+               pragma
+                 Assert
+                   (LV64 (Result_M, N_Limbs) = (Pow_Big (BR, P) * RR) mod NV);
+               pragma Loop_Invariant (LV64 (NL, N_Limbs) = NV);
+               pragma Loop_Invariant (LV64 (Result_M, N_Limbs) < NV);
+               pragma
+                 Loop_Invariant (LV64 (Base_M, N_Limbs) = (BR * RR) mod NV);
+               pragma Loop_Invariant (P >= 0);
                pragma
                  Loop_Invariant
-                   (LV64 (Result_M, N_Limbs) < LV64 (NL, N_Limbs));
+                   (P
+                      = Exp_Suffix (EL, I + 1)
+                        * MG.Pow2 (32 - B)
+                        + GBV.Limb_Val (GB.LLI (Shift_Right (Limb_Word, B))));
                pragma
-                 Loop_Invariant (LV64 (Base_M, N_Limbs) < LV64 (NL, N_Limbs));
-               Bit := Shift_Right (Limb_Word, B) and 1;
-               Mont_Mul (Result_M, Result_M, NL, Inv32, Tmp);
-               Result_M := Tmp;
-               if Bit = 1 then
-                  Mont_Mul (Result_M, Base_M, NL, Inv32, Tmp);
-                  Result_M := Tmp;
-               end if;
+                 Loop_Invariant
+                   (LV64 (Result_M, N_Limbs) = (Pow_Big (BR, P) * RR) mod NV);
             end loop;
+            --  All 32 bits of limb I consumed: P = Exp_Suffix (EL, I).
+            Lemma_Base32_Is_Pow2;
+            pragma Assert (Shift_Right (Limb_Word, 0) = Limb_Word);
+            pragma Assert (MG.Pow2 (32) = Base32);
+            pragma Assert (P = Exp_Suffix (EL, I));
+            pragma Loop_Invariant (LV64 (NL, N_Limbs) = NV);
+            pragma Loop_Invariant (LV64 (Result_M, N_Limbs) < NV);
+            pragma Loop_Invariant (LV64 (Base_M, N_Limbs) = (BR * RR) mod NV);
+            pragma Loop_Invariant (P >= 0);
+            pragma Loop_Invariant (P = Exp_Suffix (EL, I));
+            pragma
+              Loop_Invariant
+                (LV64 (Result_M, N_Limbs) = (Pow_Big (BR, P) * RR) mod NV);
          end loop;
 
-         --  Convert out of Montgomery form: x = Mont_Mul (x_M, 1).
-         Mont_Mul (Result_M, One_L, NL, Inv32, Result);
-      end;
+         --  All 64 limbs done: P = Exp_Suffix (EL, 0) = LV64 (EL) = Bn_V (Exp).
+         Lemma_Exp_Suffix (EL, 0);
+         pragma Assert (P = EV);
+         pragma
+           Assert (LV64 (Result_M, N_Limbs) = (Pow_Big (BR, EV) * RR) mod NV);
 
-      To_Bytes (Result, Out_R);
+         --  Convert out of Montgomery form: Result = Mont_Mul (Result_M, 1), so
+         --  Result*R == Result_M == Pow_Big (BR, EV)*R (mod N); cancel R.
+         Lemma_LV64_One (One_L, N_Limbs);   --  LV64 (One_L) = 1.
+         GBV.Lemma_Limb_Val_Succ (0);
+         Lemma_LV64_Nonneg (Result_M, N_Limbs);
+         pragma Assert (LV64 (Result_M, N_Limbs) < NV);
+         pragma Assert (LV64 (One_L, N_Limbs) < NV);
+         Mont_Mul (Result_M, One_L, NL, Inv32, Result);
+         Lemma_LV64_Nonneg (Result, N_Limbs);
+         --  Mont_Mul (x, 1) residue: (Result*R) mod N = (Result_M*1) mod N.
+         pragma
+           Assert
+             ((LV64 (Result, N_Limbs) * RR) mod NV
+                = (LV64 (Result_M, N_Limbs) * LV64 (One_L, N_Limbs)) mod NV);
+         pragma
+           Assert
+             (LV64 (Result_M, N_Limbs) * LV64 (One_L, N_Limbs)
+                = LV64 (Result_M, N_Limbs));
+         pragma
+           Assert
+             ((LV64 (Result, N_Limbs) * RR) mod NV
+                = LV64 (Result_M, N_Limbs) mod NV);
+         --  0 <= LV64 (Result_M) < NV => LV64 (Result_M) mod NV = LV64 (Result_M).
+         Lemma_Mod_Unique
+           (LV64 (Result_M, N_Limbs), 0, LV64 (Result_M, N_Limbs), NV);
+         pragma
+           Assert
+             ((LV64 (Result, N_Limbs) * RR) mod NV
+                = (Pow_Big (BR, EV) * RR) mod NV);
+         Lemma_Pow_Big_Nonneg (BR, EV);
+         Lemma_R_Cancel (NV, LV64 (Result, N_Limbs), Pow_Big (BR, EV));
+
+         To_Bytes (Result, Out_R);
+         Lemma_Bn_Bridge (Out_R, Result, N_Limbs);
+         pragma
+           Assert
+             (Bn_V (Out_R)
+                = Pow_Big (Bn_V (Base) mod Bn_V (N), Bn_V (Exp)) mod Bn_V (N));
+      end;
+      --  N odd > 1: Spec_Mod_Exp = Pow_Big (Bn_V (Base) mod N, Bn_V (Exp)) mod N.
+      pragma Assert (Bn_V (N) > 1 and then Bn_V (N) mod 2 = 1);
    end Mod_Exp;
 
    ---------------------------------------------------------------------
