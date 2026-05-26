@@ -908,6 +908,48 @@ is
    --  Post: R < N.
    ---------------------------------------------------------------------
 
+   --  Per-step mul-add value identity (bn_mul1): for the CIOS inner-loop word
+   --  Acc = Tj + Aj*Bi + C with carry-in C < 2**32, the stored low word and the
+   --  carry-out recombine -- at the Limb_Val level -- to exactly Tj + Aj*Bi + C.
+   --  This is the local step the inner J-loop convolution invariant folds.
+   procedure Lemma_MulAdd_Step (Tj, Aj, Bi : Unsigned_32; C, Acc : Unsigned_64)
+   with
+     Ghost,
+     Pre  =>
+       C <= 16#FFFF_FFFF#
+       and then Acc
+                = Unsigned_64 (Tj) + Unsigned_64 (Aj) * Unsigned_64 (Bi) + C,
+     Post =>
+       GBV.Limb_Val (GB.LLI (Unsigned_32 (Acc and 16#FFFF_FFFF#)))
+       + GBV.Limb_Val (GB.LLI (Shift_Right (Acc, 32))) * Base32
+       = GBV.Limb_Val (GB.LLI (Tj))
+         + GBV.Limb_Val (GB.LLI (Aj)) * GBV.Limb_Val (GB.LLI (Bi))
+         + GBV.Limb_Val (GB.LLI (C));
+
+   procedure Lemma_MulAdd_Step (Tj, Aj, Bi : Unsigned_32; C, Acc : Unsigned_64)
+   is
+      Low : constant Unsigned_32 := Unsigned_32 (Acc and 16#FFFF_FFFF#);
+      Hi  : constant Unsigned_64 := Shift_Right (Acc, 32);
+   begin
+      --  U64 bit-decomposition (Acc < 2**64, no wrap).
+      pragma Assert (Unsigned_64 (Low) = (Acc and 16#FFFF_FFFF#));
+      pragma Assert (Acc = Unsigned_64 (Low) + Hi * 2**32);
+      --  Lift the decomposition to LLI (exact; 128-bit, no overflow).
+      pragma Assert (GB.LLI (Acc) = GB.LLI (Low) + GB.LLI (Hi) * 2**32);
+      --  Split image: Limb_Val (Acc) = Limb_Val (Low) + Limb_Val (Hi) * Base32.
+      GBV.Lemma_Limb_Val_Mul32 (GB.LLI (Hi), 2**32);
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Low), GB.LLI (Hi) * 2**32);
+      --  Operand image: Acc = Tj + Aj*Bi + C as LLI.
+      pragma
+        Assert
+          (GB.LLI (Acc)
+             = GB.LLI (Tj) + GB.LLI (Aj) * GB.LLI (Bi) + GB.LLI (C));
+      GBV.Lemma_Limb_Val_Mul32 (GB.LLI (Aj), GB.LLI (Bi));
+      GBV.Lemma_Limb_Val_Add (GB.LLI (Tj), GB.LLI (Aj) * GB.LLI (Bi));
+      GBV.Lemma_Limb_Val_Add
+        (GB.LLI (Tj) + GB.LLI (Aj) * GB.LLI (Bi), GB.LLI (C));
+   end Lemma_MulAdd_Step;
+
    procedure Mont_Mul
      (A, B, N : Limbs64; Inv32 : Unsigned_32; Out_R : out Limbs64)
    with Pre => N (0) * Inv32 = 16#FFFFFFFF#
@@ -925,10 +967,12 @@ is
          --  T := T + A * B (I)
          Carry := 0;
          for J in Limb_Index loop
+            pragma Loop_Invariant (Carry <= 16#FFFF_FFFF#);
             Acc :=
               Unsigned_64 (T (J))
               + Unsigned_64 (A (J)) * Unsigned_64 (B (I))
               + Carry;
+            Lemma_MulAdd_Step (T (J), A (J), B (I), Carry, Acc);
             T (J) := Unsigned_32 (Acc and 16#FFFFFFFF#);
             Carry := Shift_Right (Acc, 32);
          end loop;
