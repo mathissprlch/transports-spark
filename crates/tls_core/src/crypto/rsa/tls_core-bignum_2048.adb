@@ -310,6 +310,75 @@ is
       end if;
    end Lemma_LV64_Cmp_Limb;
 
+   --  LV64 is monotone in the prefix length (each extra limb is >= 0).
+   procedure Lemma_LV64_Ge (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Post               => LV64 (L, N_Limbs) >= LV64 (L, K),
+     Subprogram_Variant => (Decreases => N_Limbs - K);
+
+   procedure Lemma_LV64_Ge (L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K <= N_Limbs - 1 then
+         Lemma_LV64_Ge (L, K + 1);
+         Lemma_LV64_Unfold (L, K + 1);
+         GBV.Lemma_Limb_Val_Nonneg (GB.LLI (L (K)));
+         Lemma_P32_Pos (K);
+      end if;
+   end Lemma_LV64_Ge;
+
+   --  A nonzero limb at J forces a strictly positive valuation.
+   procedure Lemma_LV64_Pos (L : Limbs64; J : Limb_Index)
+   with Ghost, Pre => L (J) /= 0, Post => LV64 (L, N_Limbs) > 0;
+
+   procedure Lemma_LV64_Pos (L : Limbs64; J : Limb_Index) is
+   begin
+      Lemma_LV64_Unfold (L, J + 1);
+      Lemma_LV64_Nonneg (L, J);
+      Lemma_P32_Pos (J);
+      GBV.Lemma_Limb_Val_Mono (1, GB.LLI (L (J)));
+      GBV.Lemma_Limb_Val_Succ (0);
+      pragma Assert (GBV.Limb_Val (GB.LLI (L (J))) >= 1);
+      pragma Assert (GBV.Limb_Val (GB.LLI (L (J))) * P32 (J) >= P32 (J));
+      pragma Assert (LV64 (L, J + 1) >= P32 (J));
+      Lemma_LV64_Ge (L, J + 1);
+   end Lemma_LV64_Pos;
+
+   --  Some nonzero limb forces a strictly positive valuation.
+   procedure Lemma_LV64_Pos_Exists (L : Limbs64)
+   with
+     Ghost,
+     Pre  => (for some J in Limb_Index => L (J) /= 0),
+     Post => LV64 (L, N_Limbs) > 0;
+
+   procedure Lemma_LV64_Pos_Exists (L : Limbs64) is
+   begin
+      for J in Limb_Index loop
+         pragma
+           Loop_Invariant
+             (for all K in Limb_Index => (if K < J then L (K) = 0));
+         if L (J) /= 0 then
+            Lemma_LV64_Pos (L, J);
+            return;
+         end if;
+      end loop;
+   end Lemma_LV64_Pos_Exists;
+
+   --  All-zero limbs give a zero valuation.
+   procedure Lemma_LV64_Zero (L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre                => (for all I in Limb_Index => L (I) = 0),
+     Post               => LV64 (L, K) = 0,
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_LV64_Zero (L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_LV64_Zero (L, K - 1);
+      end if;
+   end Lemma_LV64_Zero;
+
    --  Value of the low K limbs (little-endian) of a 65-limb array -- the
    --  running remainder width used by the schoolbook Reduce. Same base-2**32
    --  Horner form as LV64; K ranges up to N_Limbs + 1 (all 65 limbs).
@@ -990,7 +1059,269 @@ is
       end loop;
    end From_Bytes;
 
-   procedure To_Bytes (L : Limbs64; B : out Bigint) is
+   ---------------------------------------------------------------------
+   --  Byte<->limb valuation bridge: Bn_V (B) = LV64 (From_Bytes (B), 64).
+   --
+   --  Bn_V is the base-256 big-endian Horner value (spec layer); LV64 is the
+   --  base-2**32 limb Horner value (imperative layer). Both are §0e-clean
+   --  (built on GBV.Limb_Val, never To_Big_Integer). The bridge regroups the
+   --  256 bytes into 64 four-byte limbs; the key identity is the boundary
+   --  weight match Pow_2_8 (4*K) = P32 (K) (i.e. 2**(8*4K) = 2**(32K)).
+   ---------------------------------------------------------------------
+
+   --  Boundary weight match: 2**(8*(4*K)) = 2**(32*K).
+   procedure Lemma_Pow_2_8_Is_P32 (K : Limb_Plus_Index)
+   with
+     Ghost,
+     Post               => Pow_2_8 (4 * K) = P32 (K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_Pow_2_8_Is_P32 (K : Limb_Plus_Index) is
+      L256 : constant Big.Big_Integer := GBV.Limb_Val (256);
+   begin
+      if K /= 0 then
+         Lemma_Pow_2_8_Is_P32 (K - 1);
+         Lemma_P32_Succ (K - 1);
+         GBV.Lemma_Limb_Val_Mul32
+           (256, 256);       --  Limb_Val (65536) = L256^2
+         GBV.Lemma_Limb_Val_Mul32 (65536, 65536);   --  Base32 = L256^4
+         pragma Assert (L256 * L256 * (L256 * L256) = Base32);
+         pragma Assert (Pow_2_8 (4 * K) = Pow_2_8 (4 * K - 1) * L256);
+         pragma Assert (Pow_2_8 (4 * K - 1) = Pow_2_8 (4 * K - 2) * L256);
+         pragma Assert (Pow_2_8 (4 * K - 2) = Pow_2_8 (4 * K - 3) * L256);
+         pragma Assert (Pow_2_8 (4 * K - 3) = Pow_2_8 (4 * K - 4) * L256);
+         pragma
+           Assert
+             (Pow_2_8 (4 * K)
+                = Pow_2_8 (4 * (K - 1)) * (L256 * L256 * (L256 * L256)));
+         pragma Assert (Pow_2_8 (4 * K) = P32 (K - 1) * Base32);
+      end if;
+   end Lemma_Pow_2_8_Is_P32;
+
+   --  Intra-limb byte weights Pow_2_8 (0 .. 3) in Limb_Val form.
+   procedure Lemma_Pow_2_8_Is_Limb_Val
+   with
+     Ghost,
+     Post =>
+       Pow_2_8 (0) = GBV.Limb_Val (1)
+       and then Pow_2_8 (1) = GBV.Limb_Val (256)
+       and then Pow_2_8 (2) = GBV.Limb_Val (65536)
+       and then Pow_2_8 (3) = GBV.Limb_Val (16#100_0000#);
+
+   procedure Lemma_Pow_2_8_Is_Limb_Val is
+   begin
+      GBV.Lemma_Limb_Val_Succ (0);              --  Limb_Val (1) = 1
+      GBV.Lemma_Limb_Val_Mul32 (256, 256);      --  Limb_Val (65536) = L256^2
+      GBV.Lemma_Limb_Val_Mul32 (65536, 256);    --  Limb_Val (2^24) = .. * L256
+      pragma Assert (Pow_2_8 (0) = GBV.Limb_Val (1));
+      pragma Assert (Pow_2_8 (1) = Pow_2_8 (0) * GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (1) = GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (2) = Pow_2_8 (1) * GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (2) = GBV.Limb_Val (65536));
+      pragma Assert (Pow_2_8 (3) = Pow_2_8 (2) * GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (3) = GBV.Limb_Val (16#100_0000#));
+   end Lemma_Pow_2_8_Is_Limb_Val;
+
+   --  A four-byte limb's Limb_Val decomposes into its big-endian bytes weighted
+   --  by the intra-limb Pow_2_8 powers (no Unsigned_32 wrap: each byte < 256).
+   procedure Lemma_Byte_Pack (B : Bigint; I : Limb_Index)
+   with
+     Ghost,
+     Post =>
+       GBV.Limb_Val (GB.LLI (Limb_Of_Bytes (B, I)))
+       = Byte_Big (B (Byte_Length - 4 * I - 3))
+         * Pow_2_8 (3)
+         + Byte_Big (B (Byte_Length - 4 * I - 2)) * Pow_2_8 (2)
+         + Byte_Big (B (Byte_Length - 4 * I - 1)) * Pow_2_8 (1)
+         + Byte_Big (B (Byte_Length - 4 * I));
+
+   procedure Lemma_Byte_Pack (B : Bigint; I : Limb_Index) is
+      U3 : constant Unsigned_32 := Unsigned_32 (B (Byte_Length - 4 * I - 3));
+      U2 : constant Unsigned_32 := Unsigned_32 (B (Byte_Length - 4 * I - 2));
+      U1 : constant Unsigned_32 := Unsigned_32 (B (Byte_Length - 4 * I - 1));
+      U0 : constant Unsigned_32 := Unsigned_32 (B (Byte_Length - 4 * I));
+      V3 : constant GB.LLI := GB.LLI (U3);
+      V2 : constant GB.LLI := GB.LLI (U2);
+      V1 : constant GB.LLI := GB.LLI (U1);
+      V0 : constant GB.LLI := GB.LLI (U0);
+   begin
+      Lemma_Pow_2_8_Is_Limb_Val;
+      --  No Unsigned_32 wrap: each partial weighted sum is < 2**32.
+      pragma Assert (U3 <= 255 and U2 <= 255 and U1 <= 255 and U0 <= 255);
+      pragma Assert (U3 * 2**24 <= 16#FF00_0000#);
+      pragma Assert (U3 * 2**24 + U2 * 2**16 <= 16#FFFF_0000#);
+      pragma Assert (U3 * 2**24 + U2 * 2**16 + U1 * 2**8 <= 16#FFFF_FF00#);
+      pragma
+        Assert
+          (GB.LLI (Limb_Of_Bytes (B, I))
+             = V3 * 2**24 + V2 * 2**16 + V1 * 2**8 + V0);
+      --  Split additively (Val_Cap = 2**110 >> 2**32).
+      GBV.Lemma_Limb_Val_Add (V3 * 2**24 + V2 * 2**16 + V1 * 2**8, V0);
+      GBV.Lemma_Limb_Val_Add (V3 * 2**24 + V2 * 2**16, V1 * 2**8);
+      GBV.Lemma_Limb_Val_Add (V3 * 2**24, V2 * 2**16);
+      --  Split each weighted byte multiplicatively (both operands < 2**32).
+      GBV.Lemma_Limb_Val_Mul32 (V3, 2**24);
+      GBV.Lemma_Limb_Val_Mul32 (V2, 2**16);
+      GBV.Lemma_Limb_Val_Mul32 (V1, 2**8);
+      --  Byte_Big (octet) = Limb_Val (LLI (octet)); LLI (U) = LLI (octet).
+      pragma Assert (V3 = GB.LLI (B (Byte_Length - 4 * I - 3)));
+      pragma Assert (V2 = GB.LLI (B (Byte_Length - 4 * I - 2)));
+      pragma Assert (V1 = GB.LLI (B (Byte_Length - 4 * I - 1)));
+      pragma Assert (V0 = GB.LLI (B (Byte_Length - 4 * I)));
+   end Lemma_Byte_Pack;
+
+   --  The four big-endian bytes of limb J contribute P32 (J) * limb-value to
+   --  the base-256 Horner sum.
+   procedure Lemma_Limb_Contrib (B : Bigint; J : Limb_Index)
+   with
+     Ghost,
+     Post =>
+       Byte_Big (B (Byte_Length - 4 * J - 3))
+       * Pow_2_8 (4 * J + 3)
+       + Byte_Big (B (Byte_Length - 4 * J - 2)) * Pow_2_8 (4 * J + 2)
+       + Byte_Big (B (Byte_Length - 4 * J - 1)) * Pow_2_8 (4 * J + 1)
+       + Byte_Big (B (Byte_Length - 4 * J)) * Pow_2_8 (4 * J)
+       = GBV.Limb_Val (GB.LLI (Limb_Of_Bytes (B, J))) * P32 (J);
+
+   procedure Lemma_Limb_Contrib (B : Bigint; J : Limb_Index) is
+      W    : constant Big.Big_Integer := P32 (J);
+      B3   : constant Big.Big_Integer :=
+        Byte_Big (B (Byte_Length - 4 * J - 3));
+      B2   : constant Big.Big_Integer :=
+        Byte_Big (B (Byte_Length - 4 * J - 2));
+      B1   : constant Big.Big_Integer :=
+        Byte_Big (B (Byte_Length - 4 * J - 1));
+      B0   : constant Big.Big_Integer := Byte_Big (B (Byte_Length - 4 * J));
+      P8_3 : constant Big.Big_Integer := Pow_2_8 (3);
+      P8_2 : constant Big.Big_Integer := Pow_2_8 (2);
+      P8_1 : constant Big.Big_Integer := Pow_2_8 (1);
+      S    : constant Big.Big_Integer :=
+        B3 * P8_3 + B2 * P8_2 + B1 * P8_1 + B0;
+   begin
+      Lemma_Pow_2_8_Is_P32 (J);          --  Pow_2_8 (4J) = P32 (J) = W
+      Lemma_Pow_2_8_Is_Limb_Val;
+      Lemma_Byte_Pack (B, J);            --  Limb_Val (..) = S
+
+      --  Weight factorizations: Pow_2_8 (4J+m) = W * Pow_2_8 (m).
+      pragma
+        Assert (Pow_2_8 (4 * J + 1) = Pow_2_8 (4 * J) * GBV.Limb_Val (256));
+      pragma
+        Assert
+          (Pow_2_8 (4 * J + 2) = Pow_2_8 (4 * J + 1) * GBV.Limb_Val (256));
+      pragma
+        Assert
+          (Pow_2_8 (4 * J + 3) = Pow_2_8 (4 * J + 2) * GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (4 * J) = W);
+      --  P8_2 = P8_1 * L256, P8_3 = P8_2 * L256 (Pow_2_8 Post step).
+      pragma Assert (P8_2 = P8_1 * GBV.Limb_Val (256));
+      pragma Assert (P8_3 = P8_2 * GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (4 * J + 1) = W * P8_1);
+      --  4J+2: substitute then re-associate.
+      pragma Assert (Pow_2_8 (4 * J + 2) = (W * P8_1) * GBV.Limb_Val (256));
+      Lemma_BI_Assoc (W, P8_1, GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (4 * J + 2) = W * (P8_1 * GBV.Limb_Val (256)));
+      pragma Assert (Pow_2_8 (4 * J + 2) = W * P8_2);
+      --  4J+3: substitute then re-associate.
+      pragma Assert (Pow_2_8 (4 * J + 3) = (W * P8_2) * GBV.Limb_Val (256));
+      Lemma_BI_Assoc (W, P8_2, GBV.Limb_Val (256));
+      pragma Assert (Pow_2_8 (4 * J + 3) = W * (P8_2 * GBV.Limb_Val (256)));
+      pragma Assert (Pow_2_8 (4 * J + 3) = W * P8_3);
+
+      --  Per-term: Bk * (W * P8_k) = W * (Bk * P8_k).
+      Lemma_BI_Assoc (B3, W, P8_3);
+      Lemma_BI_Comm (B3, W);
+      Lemma_BI_Assoc (W, B3, P8_3);
+      pragma Assert (B3 * Pow_2_8 (4 * J + 3) = W * (B3 * P8_3));
+      Lemma_BI_Assoc (B2, W, P8_2);
+      Lemma_BI_Comm (B2, W);
+      Lemma_BI_Assoc (W, B2, P8_2);
+      pragma Assert (B2 * Pow_2_8 (4 * J + 2) = W * (B2 * P8_2));
+      Lemma_BI_Assoc (B1, W, P8_1);
+      Lemma_BI_Comm (B1, W);
+      Lemma_BI_Assoc (W, B1, P8_1);
+      pragma Assert (B1 * Pow_2_8 (4 * J + 1) = W * (B1 * P8_1));
+      Lemma_BI_Comm (B0, W);
+      pragma Assert (B0 * Pow_2_8 (4 * J) = W * B0);
+
+      --  Distribute W over the four-term sum S = M (= limb value).
+      Lemma_BI_Distrib (W, B3 * P8_3 + B2 * P8_2 + B1 * P8_1, B0);
+      Lemma_BI_Distrib (W, B3 * P8_3 + B2 * P8_2, B1 * P8_1);
+      Lemma_BI_Distrib (W, B3 * P8_3, B2 * P8_2);
+      pragma
+        Assert
+          (W * S
+             = W * (B3 * P8_3) + W * (B2 * P8_2) + W * (B1 * P8_1) + W * B0);
+      --  The four byte terms sum term-by-term to the same value (per the
+      --  per-term factorizations established above).
+      pragma
+        Assert
+          (B3
+             * Pow_2_8 (4 * J + 3)
+             + B2 * Pow_2_8 (4 * J + 2)
+             + B1 * Pow_2_8 (4 * J + 1)
+             + B0 * Pow_2_8 (4 * J)
+             = W * (B3 * P8_3) + W * (B2 * P8_2) + W * (B1 * P8_1) + W * B0);
+      pragma
+        Assert
+          (B3
+             * Pow_2_8 (4 * J + 3)
+             + B2 * Pow_2_8 (4 * J + 2)
+             + B1 * Pow_2_8 (4 * J + 1)
+             + B0 * Pow_2_8 (4 * J)
+             = W * S);
+      pragma Assert (S = GBV.Limb_Val (GB.LLI (Limb_Of_Bytes (B, J))));
+      Lemma_BI_Comm (W, GBV.Limb_Val (GB.LLI (Limb_Of_Bytes (B, J))));
+   end Lemma_Limb_Contrib;
+
+   --  Bn_V over the first 4*K bytes equals LV64 over the first K limbs, for any
+   --  limb array L that decodes B (L (I) = Limb_Of_Bytes (B, I)).
+   procedure Lemma_Bn_Bridge (B : Bigint; L : Limbs64; K : Limb_Plus_Index)
+   with
+     Ghost,
+     Pre                =>
+       (for all I in Limb_Index =>
+          (if I < K then L (I) = Limb_Of_Bytes (B, I))),
+     Post               => To_Big_Up_To (B, 4 * K) = LV64 (L, K),
+     Subprogram_Variant => (Decreases => K);
+
+   procedure Lemma_Bn_Bridge (B : Bigint; L : Limbs64; K : Limb_Plus_Index) is
+   begin
+      if K /= 0 then
+         Lemma_Bn_Bridge (B, L, K - 1);
+         Lemma_Limb_Contrib (B, K - 1);
+         Lemma_LV64_Unfold (L, K);
+
+         --  Unfold To_Big_Up_To four times (one limb's worth of bytes).
+         pragma
+           Assert
+             (To_Big_Up_To (B, 4 * K)
+                = To_Big_Up_To (B, 4 * K - 1)
+                  + Byte_Big (B (Byte_Length - (4 * K - 1)))
+                    * Pow_2_8 (4 * K - 1));
+         pragma
+           Assert
+             (To_Big_Up_To (B, 4 * K - 1)
+                = To_Big_Up_To (B, 4 * K - 2)
+                  + Byte_Big (B (Byte_Length - (4 * K - 2)))
+                    * Pow_2_8 (4 * K - 2));
+         pragma
+           Assert
+             (To_Big_Up_To (B, 4 * K - 2)
+                = To_Big_Up_To (B, 4 * K - 3)
+                  + Byte_Big (B (Byte_Length - (4 * K - 3)))
+                    * Pow_2_8 (4 * K - 3));
+         pragma
+           Assert
+             (To_Big_Up_To (B, 4 * K - 3)
+                = To_Big_Up_To (B, 4 * K - 4)
+                  + Byte_Big (B (Byte_Length - (4 * K - 4)))
+                    * Pow_2_8 (4 * K - 4));
+      end if;
+   end Lemma_Bn_Bridge;
+
+   procedure To_Bytes (L : Limbs64; B : out Bigint)
+   with Post => (for all I in Limb_Index => Limb_Of_Bytes (B, I) = L (I))
+   is
    begin
       --  Pre-zero the whole buffer so flow analysis sees an
       --  unconditional initialisation; the limb-walk below overwrites
@@ -1005,6 +1336,14 @@ is
          B (Byte_Length - 4 * I - 1) :=
            Octet (Shift_Right (L (I), 8) and 16#FF#);
          B (Byte_Length - 4 * I) := Octet (L (I) and 16#FF#);
+         --  The four bytes just written reassemble L (I) (disjoint 8-bit
+         --  fields); earlier limbs (lower I) live at strictly higher byte
+         --  indices, so they are untouched by this iteration.
+         pragma Assert (Limb_Of_Bytes (B, I) = L (I));
+         pragma
+           Loop_Invariant
+             (for all J in Limb_Index range 0 .. I =>
+                Limb_Of_Bytes (B, J) = L (J));
       end loop;
    end To_Bytes;
 
@@ -3389,17 +3728,28 @@ is
       From_Bytes (A, AL);
       From_Bytes (B, BL);
       From_Bytes (N, NL);
+
+      --  Byte<->limb bridge: Bn_V (X) = LV64 (From_Bytes (X), 64).
+      Lemma_Bn_Bridge (A, AL, N_Limbs);
+      Lemma_Bn_Bridge (B, BL, N_Limbs);
+      Lemma_Bn_Bridge (N, NL, N_Limbs);
+      pragma Assert (Bn_V (A) = LV64 (AL, N_Limbs));
+      pragma Assert (Bn_V (B) = LV64 (BL, N_Limbs));
+      pragma Assert (Bn_V (N) = LV64 (NL, N_Limbs));
+
       if Is_Zero64 (NL) then
-         --  Degenerate: modulus is zero. Return zero (per ads).
+         --  Degenerate: modulus is zero => Bn_V (N) = 0 => Spec = 0.
          RL := [others => 0];
+         Lemma_LV64_Zero (RL, N_Limbs);
+         Lemma_LV64_Zero (NL, N_Limbs);
       else
          Limb_Mod_Mul (AL, BL, NL, RL);
+         Lemma_LV64_Pos_Exists (NL);   --  Bn_V (N) > 0 => Spec = (A*B) mod N.
       end if;
-      --  §0e value-bridge foundation (consumed by the in-progress Mod_Mul
-      --  functional proof; for now anchors the limb valuation bounds).
-      Lemma_LV64_Nonneg (RL, N_Limbs);
-      Lemma_LV64_Upper (RL, N_Limbs);
+
       To_Bytes (RL, Out_R);
+      Lemma_Bn_Bridge (Out_R, RL, N_Limbs);
+      pragma Assert (Bn_V (Out_R) = LV64 (RL, N_Limbs));
    end Mod_Mul;
 
    ---------------------------------------------------------------------
