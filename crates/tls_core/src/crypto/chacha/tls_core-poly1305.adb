@@ -2254,6 +2254,154 @@ is
       pragma Assert (Out_Tag = SB.Store_Le_16 (AS));
    end Finish_Tag;
 
+   --  Congruence helpers for the final MAC-Post chain. The SMT does not lift
+   --  f (X) = f (Y) from a structural X = Y for these positional operations in
+   --  the noisy Mac body; an isolated lemma context discharges it (same idea as
+   --  Lemma_Canon_Cong / Lemma_FAdd_Cong above).
+
+   --  GB."+" is congruent in its first argument (its Post is the per-limb sum).
+   procedure Lemma_Add_Cong_L (A1, A2, B : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (A1, A2)
+       and then GB.In_Bounds (A1, GB.Add_Cap)
+       and then GB.In_Bounds (A2, GB.Add_Cap)
+       and then GB.In_Bounds (B, GB.Add_Cap),
+     Post   => GB."=" (GB."+" (A1, B), GB."+" (A2, B));
+
+   procedure Lemma_Add_Cong_L (A1, A2, B : GB.Big_Nat) is
+   begin
+      null;
+   end Lemma_Add_Cong_L;
+
+   --  Spec_Fold is congruent in its key element r (induction on N: each step is
+   --  Field_Mul (Field_Add (fold, block), r), congruent by the field-op lemmas).
+   procedure Lemma_Fold_Cong
+     (Message : Octet_Array; N : Natural; R1, R2 : GB.Big_Nat)
+   with
+     Ghost,
+     Global             => null,
+     Pre                =>
+       GB."=" (R1, R2)
+       and then GB.In_Bounds (R1, GB.In_Cap)
+       and then GB.In_Bounds (R2, GB.In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   R1 (I) = 0)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   R2 (I) = 0)
+       and then Message'Last < Integer'Last - 16
+       and then N <= Message'Length / 16,
+     Post               =>
+       GB."=" (SB.Spec_Fold (Message, N, R1), SB.Spec_Fold (Message, N, R2)),
+     Subprogram_Variant => (Decreases => N);
+
+   procedure Lemma_Fold_Cong
+     (Message : Octet_Array; N : Natural; R1, R2 : GB.Big_Nat) is
+   begin
+      if N = 0 then
+         null;   --  both folds are GB.Zero.
+
+      else
+         Lemma_Fold_Cong (Message, N - 1, R1, R2);   --  IH: equal sub-folds.
+         declare
+            B1  : constant GB.Big_Nat := SB.Spec_Fold (Message, N - 1, R1)
+            with Ghost;
+            B2  : constant GB.Big_Nat := SB.Spec_Fold (Message, N - 1, R2)
+            with Ghost;
+            Blk : constant GB.Big_Nat :=
+              Enc.Encode_BN
+                (Message
+                   (Message'First
+                    + 16 * (N - 1)
+                    .. Message'First + 16 * N - 1),
+                 16,
+                 False)
+            with Ghost;
+            FA1 : constant GB.Big_Nat := GB.Field_Add (B1, Blk)
+            with Ghost;
+            FA2 : constant GB.Big_Nat := GB.Field_Add (B2, Blk)
+            with Ghost;
+         begin
+            Lemma_FAdd_Cong (B1, B2, Blk, Blk);     --  FA1 = FA2.
+            Lemma_FMul_Cong (FA1, FA2, R1, R2);     --  step (N) equal.
+            pragma
+              Assert
+                (GB."="
+                   (SB.Spec_Fold (Message, N, R1), GB.Field_Mul (FA1, R1)));
+            pragma
+              Assert
+                (GB."="
+                   (SB.Spec_Fold (Message, N, R2), GB.Field_Mul (FA2, R2)));
+         end;
+      end if;
+   end Lemma_Fold_Cong;
+
+   --  Spec_Mac_Acc is congruent in its key element r.
+   procedure Lemma_SMA_Cong (Message : Octet_Array; R1, R2 : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (R1, R2)
+       and then GB.In_Bounds (R1, GB.In_Cap)
+       and then GB.In_Bounds (R2, GB.In_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   R1 (I) = 0)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   R2 (I) = 0)
+       and then Message'Last < Integer'Last - 16,
+     Post   =>
+       GB."=" (SB.Spec_Mac_Acc (Message, R1), SB.Spec_Mac_Acc (Message, R2));
+
+   procedure Lemma_SMA_Cong (Message : Octet_Array; R1, R2 : GB.Big_Nat) is
+      K : constant Natural := Message'Length / 16;
+   begin
+      Lemma_Fold_Cong (Message, K, R1, R2);   --  full-block folds congruent.
+      if Message'Length mod 16 /= 0 then
+         declare
+            B1  : constant GB.Big_Nat := SB.Spec_Fold (Message, K, R1)
+            with Ghost;
+            B2  : constant GB.Big_Nat := SB.Spec_Fold (Message, K, R2)
+            with Ghost;
+            Blk : constant GB.Big_Nat :=
+              Enc.Encode_BN
+                (Message (Message'First + 16 * K .. Message'Last),
+                 Message'Length mod 16,
+                 True)
+            with Ghost;
+            FA1 : constant GB.Big_Nat := GB.Field_Add (B1, Blk)
+            with Ghost;
+            FA2 : constant GB.Big_Nat := GB.Field_Add (B2, Blk)
+            with Ghost;
+         begin
+            Lemma_FAdd_Cong (B1, B2, Blk, Blk);
+            Lemma_FMul_Cong (FA1, FA2, R1, R2);
+         end;
+      end if;
+   end Lemma_SMA_Cong;
+
+   --  Store_Le_16 is congruent: equal Big_Nat inputs serialise identically.
+   procedure Lemma_Store_Cong (X, Y : GB.Big_Nat)
+   with
+     Ghost,
+     Global => null,
+     Pre    =>
+       GB."=" (X, Y)
+       and then GB.In_Bounds (X, GB.Prod_Cap)
+       and then GB.In_Bounds (Y, GB.Prod_Cap)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   X (I) = 0)
+       and then (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                   Y (I) = 0),
+     Post   => SB.Store_Le_16 (X) = SB.Store_Le_16 (Y);
+
+   procedure Lemma_Store_Cong (X, Y : GB.Big_Nat) is
+   begin
+      null;
+   end Lemma_Store_Cong;
+
    ---------------------------------------------------------------------
    --  Mac
    ---------------------------------------------------------------------
@@ -2263,8 +2411,10 @@ is
    is
       R   : Limbs;
       Acc : Limbs;
+      --  The Big_Nat key element r = R_BN (clamp (Key (1 .. 16))), the spec form.
+      RB  : constant GB.Big_Nat := Enc.R_BN (Clamp_R_Bytes (Key))
+      with Ghost;
    begin
-      Out_Tag := [others => 0];
       --  RFC 8439 §2.5.1 clamp, then load r (16 bytes, no implicit-1 bit) --
       --  the shared Clamp_R_Bytes matches the Big_Nat spec's r derivation.
       Load_R (Clamp_R_Bytes (Key), R);
@@ -2277,6 +2427,19 @@ is
       --  Fold the whole message into the accumulator. Fold_Blocks proves
       --  Feval_BN (Acc) = Spec_Mac_Acc (Message, To_Big_Nat (R)).
       Lemma_To_Big_Nat_Reduced (R);   --  To_Big_Nat (R): In_Cap, zero from 5.
+
+      --  Establish the spec-r congruence here, while the Load_R facts
+      --  (To_Big_Nat (R) = RB, r limbs < 2**26) are fresh and the proof context
+      --  is small. This survives as a stable equality the finish chain reuses by
+      --  transitivity, avoiding a To_Big_Nat (R) precondition in the large body.
+      pragma Assert (GB."=" (To_Big_Nat (R), RB));   --  Load_R Post.
+      Lemma_SMA_Cong (Message, To_Big_Nat (R), RB);
+      pragma
+        Assert
+          (GB."="
+             (SB.Spec_Mac_Acc (Message, To_Big_Nat (R)),
+              SB.Spec_Mac_Acc (Message, RB)));
+
       Fold_Blocks (Message, R, Acc);
 
       --  Partial reduction: the two carry-folds bring Acc into [0, 2^130).
@@ -2402,8 +2565,55 @@ is
          end;
       end;
 
-      --  Acc := Acc + s (mod 2^128), serialised little-endian as the tag.
-      Finish_Tag (Acc, Key, Out_Tag);
+      --  Lift the canonical-accumulator freeze fact onto the Big_Nat MAC spec
+      --  and serialise (Acc + s) as the tag:
+      --    To_Big_Nat (Acc) = Spec_Mac_Acc (Message, r)       (freeze, above)
+      --    To_Big_Nat (R)   = R_BN (Clamp_R_Bytes (Key))      (Load_R Post)
+      --  so Out_Tag = Store_Le_16 (Spec_Mac_Acc (Message, R_BN clamp) + s)
+      --  = Spec_Poly1305_Mac_BN (Key, Message).
+      declare
+         S    : constant GB.Big_Nat := Enc.R_BN (Octet_Array (Key (17 .. 32)))
+         with Ghost;
+         MAc  : constant GB.Big_Nat := SB.Spec_Mac_Acc (Message, RB)
+         with Ghost;
+         Sum1 : constant GB.Big_Nat := GB."+" (To_Big_Nat (Acc), S)
+         with Ghost;
+         Sum2 : constant GB.Big_Nat := GB."+" (MAc, S)
+         with Ghost;
+      begin
+         Lemma_To_Big_Nat_Reduced (Acc);   --  To_Big_Nat (Acc): In_Cap, zero5.
+
+         --  Transit the freeze fact onto the spec r via the congruence
+         --  established right after Load_R (cheap GB."=" transitivity):
+         --    To_Big_Nat (Acc) = Spec_Mac_Acc (Message, To_Big_Nat (R))  [freeze]
+         --    Spec_Mac_Acc (Message, To_Big_Nat (R)) = Spec_Mac_Acc (Message, RB)
+         pragma Assert (GB."=" (To_Big_Nat (Acc), MAc));
+
+         --  "+ s" congruence: Sum1 = (To_Big_Nat (Acc) + s) = (MAc + s) = Sum2.
+         Lemma_Add_Cong_L (To_Big_Nat (Acc), MAc, S);
+         pragma Assert (GB."=" (Sum1, Sum2));
+
+         --  Both sums fit Prod_Cap and are zero from limb 5 (operands In_Cap,
+         --  zero5), so Store_Le_16 accepts them and is congruent across them.
+         pragma Assert (GB.In_Bounds (Sum1, GB.Prod_Cap));
+         pragma Assert (GB.In_Bounds (Sum2, GB.Prod_Cap));
+         pragma
+           Assert
+             (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                Sum1 (I) = 0);
+         pragma
+           Assert
+             (for all I in GB.Limb_Index range 5 .. GB.Max_Limbs - 1 =>
+                Sum2 (I) = 0);
+         Lemma_Store_Cong (Sum1, Sum2);
+
+         --  Acc := Acc + s (mod 2^128), serialised little-endian as the tag.
+         Finish_Tag (Acc, Key, Out_Tag);
+         --  Finish_Tag Post: Out_Tag = Store_Le_16 (To_Big_Nat (Acc) + s).
+         pragma Assert (Out_Tag = SB.Store_Le_16 (Sum1));
+         pragma Assert (Out_Tag = SB.Store_Le_16 (Sum2));
+         pragma Assert (Out_Tag = Spec_Poly1305_Mac_BN (Key, Message));
+      end;
    end Mac;
 
 end Tls_Core.Poly1305;

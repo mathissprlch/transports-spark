@@ -493,6 +493,6 @@ is
      (Key : Key_Array; Message : Octet_Array; Out_Tag : out Tag_Array)
    with
      Pre  => Message'Last < Integer'Last - 16,
-     Post => Out_Tag = Spec_Poly1305_Mac (Key, Message);
+     Post => Out_Tag = Spec_Poly1305_Mac_BN (Key, Message);
 
 end Tls_Core.Poly1305;
